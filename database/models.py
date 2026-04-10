@@ -54,6 +54,7 @@ def init_db():
        experience INTEGER DEFAULT 0,
        nord_marks INTEGER DEFAULT 0,
        action_points INTEGER DEFAULT 0,
+       photo_file_id TEXT,
        registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
        last_active TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )

@@ -16,15 +16,13 @@ logger = logging.getLogger(__name__)
 
 # Клавиатура главного меню
 MAIN_KEYBOARD = [
-    ["👤 Профиль", "🛒 Магазин"],
-    ["🎒 Инвентарь", "📝 Отчет"],
-    ["❓ Помощь"]
+    ["👤 Профиль", "❓ Помощь"]
 ]
 main_menu_markup = ReplyKeyboardMarkup(MAIN_KEYBOARD, resize_keyboard=True)
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /start"""
+    """Обработчик команды /start - без Markdown"""
 
     user = update.effective_user
 
@@ -37,69 +35,49 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         full_name=user.full_name
     )
 
-    # Приветственное сообщение
+    # Приветственное сообщение БЕЗ Markdown разметки
     welcome_text = (
-        f"🛩 **Добро пожаловать С.О.Д.Н., {user.full_name}!**\n\n"
-        f"Вы - пилот ВВС Нордхайма.\n\n"
-        f"📋 **Основные команды:**\n"
-        f"• /profile - Ваш профиль\n"
-        f"• /shop - Магазин снаряжения\n"
-        f"• /inventory - Ваш инвентарь\n"
-        f"• /new_report - Сдать боевой отчет\n"
-        f"• /help - Помощь\n\n"
-        f"💰 **Игровая валюта:**\n"
-        f"• Нордмарки - основная валюта (нет лимита)\n"
-        f"• Очки действия (AP) - лимит 150\n\n"
-        f"Удачи в небе! 🎮"
+        "🛩 ДОБРО ПОЖАЛОВАТЬ В С.О.Д.Н.!\n\n"
+        f"Пилот: {user.full_name}\n\n"
+        "Вы - пилот ВВС Нордхайма.\n\n"
+        "Основные команды:\n"
+        "• /profile - Ваш профиль\n"
+        "• /help - Помощь\n\n"
+        "Игровая валюта:\n"
+        "• Нордмарки - основная валюта (нет лимита)\n"
+        "• Очки действия (AP) - лимит 150\n\n"
+        "Удачи в небе!"
     )
 
+
+
+    # Отправляем сообщение БЕЗ parse_mode
     await update.message.reply_text(
         welcome_text,
-        reply_markup=main_menu_markup,
-        parse_mode='Markdown'
+        reply_markup=main_menu_markup
     )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /help"""
+    """Обработчик команды /help - без Markdown"""
 
     help_text = (
-        "🛩 **Warplane Nord Bot - Помощь**\n\n"
-
-        "**📋 Основные команды:**\n"
+        "🛩 WARPLANE Nord BOT - ПОМОЩЬ\n\n"
+        "Основные команды:\n"
         "/start - Начать работу с ботом\n"
         "/profile - Ваш профиль и статистика\n"
-        "/shop - Магазин снаряжения\n"
-        "/inventory - Ваш инвентарь\n"
-        "/new_report - Сдать боевой отчет\n"
         "/help - Это сообщение\n\n"
-
-        "**💰 Игровая валюта:**\n"
-        "• **Нордмарки** - основная валюта, нет лимита\n"
-        "• **Очки действия (AP)** - лимит 150, восстанавливаются со временем\n\n"
-
-        "**📊 Ранговая система:**\n"
+        "Игровая валюта:\n"
+        "• Нордмарки - основная валюта, нет лимита\n"
+        "• Очки действия (AP) - лимит 150\n\n"
+        "Ранговая система:\n"
         "1. Рядовой (0 опыта)\n"
         "2. Капрал (100 опыта)\n"
         "3. Сержант (300 опыта)\n"
         "4. Лейтенант (600 опыта)\n"
         "5. Капитан (1000 опыта)\n\n"
-
-        "**📝 Система отчетов:**\n"
-        "• Сдавайте отчеты после боевых вылетов\n"
-        "• Прикрепляйте скриншоты из игры\n"
-        "• Получайте награды в валюте\n\n"
-
-        "**🛒 Магазин:**\n"
-        "• Покупайте снаряжение и имущество\n"
-        "• Улучшайте своего пилота\n"
-        "• Инвестируйте в недвижимость\n\n"
-
-        "❓ **Если возникли вопросы:**\n"
-        "Свяжитесь с администраторами через @BotFather"
+        "❓ Если возникли вопросы:\n"
+        "Свяжитесь с администраторами"
     )
 
-    await update.message.reply_text(
-        help_text,
-        parse_mode='Markdown'
-    )
+    await update.message.reply_text(help_text)

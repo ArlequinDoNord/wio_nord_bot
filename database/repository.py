@@ -16,6 +16,64 @@ class PilotRepository:
     """Репозиторий для работы с пилотами"""
 
     @staticmethod
+    def save_pilot_photo(telegram_id, photo_file_id):
+        """
+        Сохранить file_id фото пилота
+        Args:
+            telegram_id: ID пользователя
+            photo_file_id: file_id фото из Telegram
+        """
+        conn = sqlite3.connect(Config.DATABASE_PATH)
+        cur = conn.cursor()
+
+        cur.execute('''
+        UPDATE pilots SET photo_file_id = ? WHERE telegram_id = ?''', (photo_file_id, telegram_id))
+        conn.commit()
+        conn.close()
+        print(f"Фото сохранено для пилота {telegram_id}")
+
+    @staticmethod
+    def get_pilot_photo(telegram_id):
+        """
+        Получить file_id фото пилота
+
+        Args:
+            telegram_id: ID пользователя
+
+        Returns:
+            str: file_id фото или None
+        """
+        conn = sqlite3.connect(Config.DATABASE_PATH)
+        cur = conn.cursor()
+
+        cur.execute('SELECT photo_file_id FROM pilots WHERE telegram_id = ?', (telegram_id,))
+        result = cur.fetchone()
+
+        conn.close()
+        return result[0] if result and result[0] else None
+
+    @staticmethod
+    def delete_pilot_photo(telegram_id):
+        """
+        Удалить фото пилота
+
+        Args:
+            telegram_id: ID пользователя
+        """
+        conn = sqlite3.connect(Config.DATABASE_PATH)
+        cur = conn.cursor()
+
+        cur.execute('''
+            UPDATE pilots 
+            SET photo_file_id = NULL 
+            WHERE telegram_id = ?
+            ''', (telegram_id,))
+
+        conn.commit()
+        conn.close()
+        print(f"✅ Фото удалено для пилота {telegram_id}")
+
+    @staticmethod
     def get_or_create_pilot(telegram_id, username=None, full_name=None):
         """
         Получить пилота по telegram_id или создать нового
@@ -212,6 +270,62 @@ class PilotRepository:
         conn.commit()
         conn.close()
 
+    @staticmethod
+    def get_pilot_stats(telegram_id):
+        """
+        Получить расширенную статистику пилота
+
+        Args:
+            telegram_id: ID пользователя в Telegram
+
+        Returns:
+            dict: Статистика пилота или None
+        """
+        conn = sqlite3.connect(Config.DATABASE_PATH)
+        cur = conn.cursor()
+
+        # Получаем ID пилота
+        cur.execute('SELECT id FROM pilots WHERE telegram_id = ?', (telegram_id,))
+        result = cur.fetchone()
+
+        if not result:
+            conn.close()
+            return None
+
+        pilot_db_id = result[0]
+
+        # Считаем количество отчетов
+        cur.execute('''
+            SELECT 
+                COUNT(*) as total_reports,
+                SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as approved_reports
+            FROM reports 
+            WHERE pilot_id = ?
+            ''', (pilot_db_id,))
+
+        reports_stats = cur.fetchone()
+        total_reports = reports_stats[0] or 0
+        approved_reports = reports_stats[1] or 0
+
+        # Считаем предметы в инвентаре
+        cur.execute('''
+            SELECT COUNT(*), SUM(quantity) 
+            FROM inventory 
+            WHERE pilot_id = ?
+            ''', (pilot_db_id,))
+
+        inv_stats = cur.fetchone()
+        unique_items = inv_stats[0] or 0
+        total_items = inv_stats[1] or 0
+
+        conn.close()
+
+        return {
+            'total_reports': total_reports,
+            'approved_reports': approved_reports,
+            'unique_items': unique_items,
+            'total_items': total_items
+        }
 
 class ShopRepository:
     """Репозиторий для работы с магазином"""

@@ -1,70 +1,44 @@
 """
-Обработчик команды /profile
+Обработчик команды /profile - упрощенная версия
 """
 
-import logging
 import sys
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from database.repository import PilotRepository
 
-logger = logging.getLogger(__name__)
 
-
-async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /profile"""
+async def profile_command(update, context):
+    """Упрощенная версия профиля"""
 
     user = update.effective_user
 
-    # Получаем профиль пилота
-    profile = PilotRepository.get_pilot_profile(user.id)
+    try:
+        profile = PilotRepository.get_pilot_profile(user.id)
 
-    if not profile:
-        await update.message.reply_text(
-            "❌ Профиль не найден. Используйте /start для регистрации."
-        )
-        return
+        if not profile:
+            await update.message.reply_text("❌ Профиль не найден. Используйте /start")
+            return
 
-    full_name, rank, level, experience, nord_marks, action_points, reg_date, last_active = profile
+        full_name, rank, level, experience, nord_marks, action_points, reg_date, last_active = profile[:8]
 
-    # Рассчитываем прогресс до следующего уровня
-    next_level_exp = level * 100  # Простая формула: 100, 200, 300...
-    exp_progress = min(100, int((experience / next_level_exp) * 100))
-    progress_bar = "█" * (exp_progress // 10) + "░" * (10 - (exp_progress // 10))
+        # Получаем статистику
+        stats = PilotRepository.get_pilot_stats(user.id)
 
-    # Формируем сообщение профиля
-    profile_text = (
-        f"👤 **Личная карточка пилота**\n"
-        f"═══════════════════════\n\n"
-        f"**Имя:** {full_name}\n"
-        f"**Ранг:** {rank}\n"
-        f"**Уровень:** {level}\n\n"
+        text = f"👤 ПРОФИЛЬ ПИЛОТА\n"
+        text += f"{'=' * 25}\n\n"
+        text += f"Имя: {full_name}\n"
+        text += f"Ранг: {rank}\n"
+        text += f"Уровень: {level}\n"
+        text += f"Опыт: {experience}\n\n"
+        text += f"💰 Нордмарки: {nord_marks}\n"
+        text += f"⚡ Очки действия: {action_points}/150\n\n"
+        text += f"📦 Предметов: {stats['total_items'] if stats else 0}\n"
+        text += f"📝 Отчетов: {stats['total_reports'] if stats else 0}\n"
+        text += f"✅ Принято: {stats['approved_reports'] if stats else 0}\n"
 
-        f"📊 **Прогресс:**\n"
-        f"Опыт: {experience}/{next_level_exp}\n"
-        f"`[{progress_bar}]` {exp_progress}%\n\n"
+        await update.message.reply_text(text)
 
-        f"💰 **Финансы:**\n"
-        f"• Нордмарки: **{nord_marks}** ✈️\n"
-        f"• Очки действия: **{action_points}/150** ⚡️\n\n"
-
-        f"📅 **Дата регистрации:** {reg_date[:10]}\n"
-        f"🕐 **Последний визит:** {last_active[:16]}"
-    )
-
-    # Создаем инлайн-кнопки
-    keyboard = [
-        [InlineKeyboardButton("📦 Инвентарь", callback_data="inventory_view")],
-        [InlineKeyboardButton("🏆 Достижения", callback_data="achievements")],
-        [InlineKeyboardButton("📊 Статистика", callback_data="statistics")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await update.message.reply_text(
-        profile_text,
-        reply_markup=reply_markup,
-        parse_mode='Markdown'
-    )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Ошибка: {str(e)[:200]}")
