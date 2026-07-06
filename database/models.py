@@ -107,6 +107,40 @@ def init_db():
        FOREIGN KEY (pilot_id) REFERENCES pilots (id) 
     )
     ''')
+    # 5. Таблица ролей пользователей
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS user_roles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        telegram_id INTEGER NOT NULL,
+        role TEXT NOT NULL,  -- admin, shop_admin, finance_admin, moderator
+        granted_by INTEGER,
+        granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (telegram_id) REFERENCES pilots (telegram_id),
+        UNIQUE(telegram_id, role)
+    )
+    ''')
+
+    # 6. Таблица логов админ-действий
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS admin_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_id INTEGER NOT NULL,
+        action TEXT NOT NULL,
+        target_id INTEGER,
+        details TEXT,
+        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
+
+    # 7. Таблица для временного хранения изображений товаров
+    cur.execute('''
+    CREATE TABLE IF NOT EXISTS temp_item_images (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        admin_id INTEGER NOT NULL,
+        file_id TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    ''')
     conn.commit()
 
     # Проверяем, есть ли уже предметы

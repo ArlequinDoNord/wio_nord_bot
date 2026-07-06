@@ -327,109 +327,115 @@ class PilotRepository:
             'total_items': total_items
         }
 
+
 class ShopRepository:
     """Репозиторий для работы с магазином"""
 
     @staticmethod
     def get_all_items():
-        """
-        Получить все предметы магазина
-
-        Returns:
-            list: Список всех предметов
-        """
+        """Получить все предметы магазина"""
         conn = sqlite3.connect(Config.DATABASE_PATH)
         cur = conn.cursor()
-
         cur.execute('SELECT * FROM items ORDER BY price_nord')
         items = cur.fetchall()
         conn.close()
         return items
 
     @staticmethod
-    def get_item_by_id(item_id):
-        """
-        Получить предмет по ID
-
-        Args:
-            item_id: ID предмета
-
-        Returns:
-            tuple: Данные предмета или None
-        """
+    def get_items_by_category(category):
+        """Получить предметы по категории"""
         conn = sqlite3.connect(Config.DATABASE_PATH)
         cur = conn.cursor()
+        cur.execute('SELECT * FROM items WHERE item_type = ? ORDER BY price_nord', (category,))
+        items = cur.fetchall()
+        conn.close()
+        return items
 
+    @staticmethod
+    def get_item_by_id(item_id):
+        """Получить предмет по ID"""
+        conn = sqlite3.connect(Config.DATABASE_PATH)
+        cur = conn.cursor()
         cur.execute('SELECT * FROM items WHERE id = ?', (item_id,))
         item = cur.fetchone()
         conn.close()
         return item
 
     @staticmethod
-    def buy_item(pilot_id, item_id, payment_type='nord'):
+    def buy_item(pilot_telegram_id, item_id, payment_type='nord'):
         """
         Купить предмет
 
         Args:
-            pilot_id: ID пилота
+            pilot_telegram_id: Telegram ID пилота
             item_id: ID предмета
             payment_type: 'nord' или 'ap'
 
         Returns:
-            tuple: (success, message)
+            tuple: (success, message, item_name)
         """
         conn = sqlite3.connect(Config.DATABASE_PATH)
         cur = conn.cursor()
 
         try:
+            # Получаем ID пилота из БД
+            cur.execute('SELECT id, nord_marks, action_points FROM pilots WHERE telegram_id = ?', (pilot_telegram_id,))
+            pilot = cur.fetchone()
+
+            if not pilot:
+                return False, "Пилот не найден", None
+
+            pilot_db_id, nord_marks, action_points = pilot
+
             # Получаем информацию о предмете
             cur.execute('SELECT * FROM items WHERE id = ?', (item_id,))
             item = cur.fetchone()
 
             if not item:
-                return False, "Предмет не найден"
+                return False, "Предмет не найден", None
 
-            # Получаем информацию о пилоте
-            cur.execute('SELECT id, nord_marks, action_points FROM pilots WHERE id = ?', (pilot_id,))
-            pilot = cur.fetchone()
-
-            if not pilot:
-                return False, "Пилот не найден"
-
-            pilot_db_id, nord_marks, action_points = pilot
-            price_nord = item[3]  # price_nord
-            price_ap = item[4]  # price_ap
+            item_name = item[1]
+            price_nord = item[3]
+            price_ap = item[4]
 
             # Проверяем возможность покупки
             if payment_type == 'nord':
                 if nord_marks < price_nord:
-                    return False, f"Недостаточно нордмарок! Нужно: {price_nord}, есть: {nord_marks}"
+                    return False, f"Недостаточно Нордмарок! Нужно: {price_nord}, есть: {nord_marks}", None
 
-                # Списываем нордмарки
+                # Списываем Нордмарки
                 new_nord = nord_marks - price_nord
                 cur.execute('UPDATE pilots SET nord_marks = ? WHERE id = ?', (new_nord, pilot_db_id))
 
             elif payment_type == 'ap':
                 if action_points < price_ap:
-                    return False, f"Недостаточно очков действия! Нужно: {price_ap}, есть: {action_points}"
+                    return False, f"Недостаточно Очков действия! Нужно: {price_ap}, есть: {action_points}", None
 
                 # Списываем AP
                 new_ap = action_points - price_ap
                 cur.execute('UPDATE pilots SET action_points = ? WHERE id = ?', (new_ap, pilot_db_id))
+            else:
+                return False, "Неверный тип оплаты", None
 
-            # Добавляем предмет в инвентарь
-            cur.execute('''
-            INSERT INTO inventory (pilot_id, item_id, quantity)
-            VALUES (?, ?, 1)
-            ''', (pilot_db_id, item_id))
+            # Проверяем, есть ли уже такой предмет в инвентаре
+            cur.execute('SELECT id, quantity FROM inventory WHERE pilot_id = ? AND item_id = ?', (pilot_db_id, item_id))
+            existing = cur.fetchone()
+
+            if existing:
+                # Увеличиваем количество
+                new_quantity = existing[1] + 1
+                cur.execute('UPDATE inventory SET quantity = ? WHERE id = ?', (new_quantity, existing[0]))
+            else:
+                # Добавляем новый предмет
+                cur.execute('INSERT INTO inventory (pilot_id, item_id, quantity) VALUES (?, ?, 1)',
+                            (pilot_db_id, item_id))
 
             conn.commit()
-            return True, f"✅ Вы купили: {item[1]}"
+            return True, f"✅ Вы купили: {item_name}", item_name
 
         except Exception as e:
             conn.rollback()
-            return False, f"Ошибка при покупке: {e}"
-
+            return False, f"❌ Ошибка при покупке: {str(e)}", None
         finally:
             conn.close()
 

@@ -8,21 +8,29 @@ import os
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes
 
-# Добавляем путь к корневой папке
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from database.repository import PilotRepository
+from utils.permissions import is_admin
 
 logger = logging.getLogger(__name__)
 
-# Клавиатура главного меню
+# Клавиатура главного меню (обычный игрок)
 MAIN_KEYBOARD = [
-    ["👤 Профиль", "❓ Помощь"]
+    ["👤 Профиль", "🛒 Магазин"],
+    ["❓ Помощь"]
 ]
 main_menu_markup = ReplyKeyboardMarkup(MAIN_KEYBOARD, resize_keyboard=True)
 
+# Клавиатура главного меню (администратор)
+MAIN_KEYBOARD_ADMIN = [
+    ["👤 Профиль", "🛒 Магазин"],
+    ["👑 Админ-панель", "❓ Помощь"]
+]
+main_menu_markup_admin = ReplyKeyboardMarkup(MAIN_KEYBOARD_ADMIN, resize_keyboard=True)
+
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /start - без Markdown"""
+    """Обработчик команды /start"""
 
     user = update.effective_user
 
@@ -35,13 +43,22 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         full_name=user.full_name
     )
 
-    # Приветственное сообщение БЕЗ Markdown разметки
+    # === ВЫБОР КЛАВИАТУРЫ ===
+    if is_admin(user.id):
+        reply_markup = main_menu_markup_admin
+        print(f"✅ Админ-клавиатура для ID {user.id}")
+    else:
+        reply_markup = main_menu_markup
+        print(f"✅ Обычная клавиатура для ID {user.id}")
+
+    # Приветственное сообщение
     welcome_text = (
-        "🛩 ДОБРО ПОЖАЛОВАТЬ В С.О.Д.Н.!\n\n"
+        "🛩 ДОБРО ПОЖАЛОВАТЬ В Нордхайм!\n\n"
         f"Пилот: {user.full_name}\n\n"
-        "Вы - пилот ВВС Нордхайма.\n\n"
+        "Вы - пилот ВВС Норхайма.\n\n"
         "Основные команды:\n"
         "• /profile - Ваш профиль\n"
+        "• /shop - Магазин\n"
         "• /help - Помощь\n\n"
         "Игровая валюта:\n"
         "• Нордмарки - основная валюта (нет лимита)\n"
@@ -49,23 +66,22 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Удачи в небе!"
     )
 
-
-
-    # Отправляем сообщение БЕЗ parse_mode
+    # Отправляем сообщение с клавиатурой
     await update.message.reply_text(
         welcome_text,
-        reply_markup=main_menu_markup
+        reply_markup=reply_markup
     )
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обработчик команды /help - без Markdown"""
+    """Обработчик команды /help"""
 
     help_text = (
-        "🛩 WARPLANE Nord BOT - ПОМОЩЬ\n\n"
+        "🛩 NordBOT - ПОМОЩЬ\n\n"
         "Основные команды:\n"
         "/start - Начать работу с ботом\n"
         "/profile - Ваш профиль и статистика\n"
+        "/shop - Магазин\n"
         "/help - Это сообщение\n\n"
         "Игровая валюта:\n"
         "• Нордмарки - основная валюта, нет лимита\n"

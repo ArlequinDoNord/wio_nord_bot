@@ -9,7 +9,9 @@ class Config:
     # ID администраторов (преобразуем строку в список чисел)
     ADMIN_IDS_STR = os.getenv("ADMIN_IDS","")
     ADMIN_IDS = [int(id.strip()) for id in ADMIN_IDS_STR.split(',') if id.strip()]
-    #Путь к базе данных
+    # 🆕 Задержка между запросами к Telegram (избегает флуда)
+    REQUEST_DELAY = 0.5  # полсекунды между запросами
+    # Путь к базе данных
     DATABASE_PATH = os.getenv("DATABASE_PATH",'database\wnordbot.db')
     #Настройка бота
     BOT_USERNAME = None #будет установлено при запуске
