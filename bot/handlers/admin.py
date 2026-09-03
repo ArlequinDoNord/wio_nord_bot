@@ -1,0 +1,694 @@
+"""
+Админ-панель: управление магазином, финансами, отчётами, ролями и логами.
+Доступ разграничен по ролям (см. utils/permissions.py).
+"""
+
+from aiogram import Router, F
+from aiogram.types import Message, CallbackQuery
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+
+from database.db import (
+    add_item, delete_item, update_item, get_available_items,
+    get_item, get_all_users, get_pending_reports, approve_report,
+    reject_report, add_nordmarks, remove_nordmarks, add_ap, remove_ap,
+)
+from keyboards.keyboards import cancel_keyboard
+from utils.permissions import (
+    is_admin, has_permission, get_user_role,
+    add_role, remove_role, ROLES, log_action,
+)
+from utils.helpers import plural_nordmark
+from config import RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES
+
+router = Router()
+
+
+# ============ FSM-СОСТОЯНИЯ ============
+
+class AdminAddItem(StatesGroup):
+    name = State()
+    desc = State()
+    price = State()
+    sell_price = State()
+    rarity = State()
+    category = State()
+    stock = State()
+
+
+class AdminEditItem(StatesGroup):
+    item_id = State()
+    field = State()
+    value = State()
+
+
+class AdminFinance(StatesGroup):
+    target = State()
+    currency = State()
+    amount = State()
+
+
+class AdminRoles(StatesGroup):
+    target = State()
+    action = State()
+    role = State()
+
+
+# ============ УТИЛИТЫ ============
+
+async def perm_flags(user_id: int) -> dict:
+    perms = ["can_manage_shop", "can_manage_finance", "can_view_reports",
+             "can_approve_reports", "can_manage_admins", "can_view_logs"]
+    return {p: await has_permission(user_id, p) for p in perms}
+
+
+async def find_user(text: str) -> dict:
+    """Найти пользователя по @username или числовому telegram_id."""
+    text = text.strip().lstrip("@")
+    users = await get_all_users()
+    if text.isdigit():
+        for u in users:
+            if str(u['user_id']) == text:
+                return u
+    for u in users:
+        if u['username'] and u['username'].lower() == text.lower():
+            return u
+    return None
+
+
+def rarity_choice_markup():
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = []
+    for key in RARITY_LEVELS:
+        rows.append([InlineKeyboardButton(
+            text=f"{RARITY_EMOJI[key]} {RARITY_LEVELS[key]}",
+            callback_data=f"rar:{key}"
+        )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def category_choice_markup():
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = []
+    for key, label in ITEM_CATEGORIES.items():
+        rows.append([InlineKeyboardButton(text=f"{label}", callback_data=f"cat:{key}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# ============ ВХОД В АДМИН-ПАНЕЛЬ ============
+
+async def show_admin_panel(user_id: int, to_edit: CallbackQuery = None, to_msg: Message = None):
+    from keyboards.keyboards import admin_panel_keyboard
+    flags = await perm_flags(user_id)
+    text = (
+        "👑 АДМИН-ПАНЕЛЬ\n\n"
+        "Выберите раздел. Доступные действия зависят от вашей роли:"
+    )
+    markup = admin_panel_keyboard(flags)
+    if to_edit is not None:
+        await to_edit.message.edit_text(text, reply_markup=markup)
+    else:
+        await to_msg.answer(text, reply_markup=markup)
+
+
+@router.message(F.text == "👑 Админ-панель")
+async def admin_panel(message: Message, state: FSMContext):
+    await state.clear()
+    user_id = message.from_user.id
+
+    if not await is_admin(user_id):
+        await message.answer("❌ У вас нет доступа к админ-панели.")
+        return
+
+    await show_admin_panel(user_id, to_msg=message)
+
+
+@router.callback_query(F.data == "admin:menu")
+async def admin_panel_cb(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    user_id = callback.from_user.id
+    if not await is_admin(user_id):
+        await callback.answer("❌ Нет доступа.", show_alert=True)
+        return
+    await show_admin_panel(user_id, to_edit=callback)
+
+
+# ============ УПРАВЛЕНИЕ МАГАЗИНОМ ============
+
+@router.callback_query(F.data == "admin:shop")
+async def admin_shop(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_shop"):
+        await callback.message.answer("❌ Нет прав для управления магазином.")
+        return
+
+    from keyboards.keyboards import shop_admin_keyboard
+    await callback.message.edit_text(
+        "🛒 УПРАВЛЕНИЕ МАГАЗИНОМ\n\nВыберите действие:",
+        reply_markup=shop_admin_keyboard()
+    )
+
+
+@router.callback_query(F.data == "shop_admin:add")
+async def shop_admin_add(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_add_items"):
+        await callback.message.answer("❌ Нет прав на добавление товаров.")
+        return
+    await state.set_state(AdminAddItem.name)
+    await callback.message.answer(
+        "🛒 Добавление товара. Шаг 1/7\n\nВведи название товара (или /cancel):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminAddItem.name)
+async def add_item_name(message: Message, state: FSMContext):
+    await state.update_data(name=message.text.strip())
+    await state.set_state(AdminAddItem.desc)
+    await message.answer("Шаг 2/7 — Описание товара (или «-» если нет):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminAddItem.desc)
+async def add_item_desc(message: Message, state: FSMContext):
+    text = message.text.strip()
+    await state.update_data(desc=None if text == "-" else text)
+    await state.set_state(AdminAddItem.price)
+    await message.answer("Шаг 3/7 — Цена в Нордмарках (целое число):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminAddItem.price)
+async def add_item_price(message: Message, state: FSMContext):
+    try:
+        price = int(message.text.strip())
+    except ValueError:
+        await message.answer("❌ Введи целое число.")
+        return
+    if price < 0:
+        await message.answer("❌ Цена не может быть отрицательной.")
+        return
+    await state.update_data(price=price)
+    await state.set_state(AdminAddItem.sell_price)
+    await message.answer(f"Шаг 4/7 — Цена продажи за {price}? Введи сумму (или «-» = половина):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminAddItem.sell_price)
+async def add_item_sell_price(message: Message, state: FSMContext):
+    data = await state.get_data()
+    text = message.text.strip()
+    if text == "-":
+        sell_price = int(data['price'] / 2)
+    else:
+        try:
+            sell_price = int(text)
+        except ValueError:
+            await message.answer("❌ Введи целое число или «-».")
+            return
+    await state.update_data(sell_price=sell_price)
+    await state.set_state(AdminAddItem.rarity)
+    await message.answer("Шаг 5/7 — Редкость:", reply_markup=rarity_choice_markup())
+
+
+@router.callback_query(F.data.startswith("rar:"))
+async def add_item_rarity(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    rarity = int(callback.data.split(":")[1])
+    await state.update_data(rarity=rarity)
+    await state.set_state(AdminAddItem.category)
+    await callback.message.answer("Шаг 6/7 — Категория:", reply_markup=category_choice_markup())
+
+
+@router.callback_query(F.data.startswith("cat:"))
+async def add_item_category(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    category = callback.data.split(":")[1]
+    await state.update_data(category=category)
+    await state.set_state(AdminAddItem.stock)
+    await callback.message.answer("Шаг 7/7 — Остаток на складе (или «-» = безлимит):",
+                                  reply_markup=cancel_keyboard())
+
+
+@router.message(AdminAddItem.stock)
+async def add_item_stock(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if text == "-":
+        stock = -1
+    else:
+        try:
+            stock = int(text)
+        except ValueError:
+            await message.answer("❌ Введи целое число или «-».")
+            return
+    data = await state.get_data()
+    admin_id = message.from_user.id
+
+    item_id = await add_item(
+        name=data['name'], description=data.get('desc'),
+        price=data['price'], sell_price=data['sell_price'],
+        rarity=data['rarity'], category=data['category'],
+        stock=stock, added_by=admin_id,
+    )
+    await log_action(admin_id, 'add_item', None, f"item={data['name']} id={item_id}")
+    await state.clear()
+    await message.answer(
+        f"✅ Товар добавлен!\n\n"
+        f"«{data['name']}»\n"
+        f"Цена: {data['price']} {plural_nordmark(data['price'])}\n"
+        f"Продажа: {data['sell_price']} {plural_nordmark(data['sell_price'])}\n"
+        f"Редкость: {RARITY_LEVELS.get(data['rarity'])}\n"
+        f"Категория: {ITEM_CATEGORIES.get(data['category'], data['category'])}\n"
+        f"Остаток: {'безлимит' if stock == -1 else stock}"
+    )
+
+
+@router.callback_query(F.data == "shop_admin:delete")
+async def shop_admin_delete(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_delete_items"):
+        await callback.message.answer("❌ Нет прав на удаление товаров.")
+        return
+    items = await get_available_items()
+    if not items:
+        await callback.message.answer("В магазине пока нет товаров.")
+        return
+
+    rows = []
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    for it in items:
+        rows.append([InlineKeyboardButton(
+            text=f"{it['name']} ({it['price']} НМ)",
+            callback_data=f"del_item:{it['id']}"
+        )])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:shop")])
+    await callback.message.edit_text(
+        "Выберите товар для удаления:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+@router.callback_query(F.data.startswith("del_item:"))
+async def delete_item_cb(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_delete_items"):
+        return
+    item_id = int(callback.data.split(":")[1])
+    item = await get_item(item_id)
+    if not item:
+        await callback.message.answer("Товар не найден.")
+        return
+    await delete_item(item_id)
+    await log_action(callback.from_user.id, 'delete_item', None, f"item={item['name']} id={item_id}")
+    await callback.message.answer(f"🗑 Товар «{item['name']}» удалён.")
+
+
+@router.callback_query(F.data == "shop_admin:edit")
+async def shop_admin_edit(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_edit_items"):
+        await callback.message.answer("❌ Нет прав на изменение товаров.")
+        return
+    items = await get_available_items()
+    if not items:
+        await callback.message.answer("В магазине пока нет товаров.")
+        return
+
+    rows = []
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    for it in items:
+        rows.append([InlineKeyboardButton(
+            text=f"{it['name']}",
+            callback_data=f"edit_item:{it['id']}"
+        )])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:shop")])
+    await callback.message.edit_text("Выберите товар для изменения:",
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("edit_item:"))
+async def edit_item_pick(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    item_id = int(callback.data.split(":")[1])
+    await state.update_data(item_id=item_id)
+    await state.set_state(AdminEditItem.field)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.edit_text(
+        "Что изменить?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Цену", callback_data="field:price")],
+            [InlineKeyboardButton(text="Продажу", callback_data="field:sell_price")],
+            [InlineKeyboardButton(text="Остаток", callback_data="field:stock")],
+            [InlineKeyboardButton(text="Описание", callback_data="field:description")],
+        ])
+    )
+
+
+@router.callback_query(F.data.startswith("field:"))
+async def edit_item_field(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    field = callback.data.split(":")[1]
+    await state.update_data(field=field)
+    await state.set_state(AdminEditItem.value)
+    await callback.message.answer("Введи новое значение (или «-» для очистки/безлимита):",
+                                  reply_markup=cancel_keyboard())
+
+
+@router.message(AdminEditItem.value)
+async def edit_item_value(message: Message, state: FSMContext):
+    text = message.text.strip()
+    data = await state.get_data()
+    field = data['field']
+    item_id = data['item_id']
+
+    if field in ("price", "sell_price"):
+        if text == "-":
+            await message.answer("❌ Цену/продажу нельзя очистить. Введи число:")
+            return
+        try:
+            value = int(text)
+        except ValueError:
+            await message.answer("❌ Введи целое число:")
+            return
+    elif field == "stock":
+        value = -1 if text == "-" else int(text)
+    else:
+        value = None if text == "-" else text
+
+    await update_item(item_id, **{field: value})
+    await log_action(message.from_user.id, 'edit_item', None, f"item_id={item_id} {field}={value}")
+    await state.clear()
+    await message.answer("✅ Изменения сохранены.")
+
+
+# ============ ФИНАНСЫ ============
+
+@router.callback_query(F.data == "admin:finance")
+async def admin_finance(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_finance"):
+        await callback.message.answer("❌ Нет прав для управления финансами.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.edit_text(
+        "💰 ФИНАНСЫ\n\nВыберите операцию:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Начислить НМ", callback_data="fin:nord:add")],
+            [InlineKeyboardButton(text="Списать НМ", callback_data="fin:nord:sub")],
+            [InlineKeyboardButton(text="Начислить AP", callback_data="fin:ap:add")],
+            [InlineKeyboardButton(text="Списать AP", callback_data="fin:ap:sub")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin:menu")]
+        ])
+    )
+
+
+@router.callback_query(F.data.startswith("fin:"))
+async def finance_pick(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    parts = callback.data.split(":")
+    currency = parts[1]
+    action = parts[2]
+    await state.update_data(currency=currency, action=action)
+    await state.set_state(AdminFinance.target)
+    await callback.message.answer(
+        "Введи получателя: @username или numeric ID игрока:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminFinance.target)
+async def finance_target(message: Message, state: FSMContext):
+    target = await find_user(message.text)
+    if not target:
+        await message.answer("❌ Игрок не найден. Попробуй ещё раз (или /cancel):")
+        return
+    await state.update_data(target_id=target['user_id'], target_name=target.get('first_name', ''))
+    await state.set_state(AdminFinance.amount)
+    await message.answer(f"Игрок: {target.get('first_name','')} (@{target.get('username','')})\nВведи сумму:",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminFinance.amount)
+async def finance_amount(message: Message, state: FSMContext):
+    try:
+        amount = int(message.text.strip())
+    except ValueError:
+        await message.answer("❌ Введи целое число.")
+        return
+    if amount <= 0:
+        await message.answer("❌ Сумма должна быть больше нуля.")
+        return
+
+    data = await state.get_data()
+    target_id = data['target_id']
+    currency = data['currency']
+    action = data['action']
+    admin = message.from_user.id
+
+    if currency == "nord":
+        if action == "add":
+            await add_nordmarks(target_id, amount, "admin", f"Начислено админом #{admin}")
+            verb = "начислено"
+        else:
+            await remove_nordmarks(target_id, amount, "admin", f"Списано админом #{admin}")
+            verb = "списано"
+        unit = plural_nordmark(amount)
+    else:
+        if action == "add":
+            await add_ap(target_id, amount)
+            verb = "начислено"
+        else:
+            ok = await remove_ap(target_id, amount)
+            if not ok:
+                await message.answer("❌ У игрока недостаточно AP.")
+                return
+            verb = "списано"
+        unit = "AP"
+
+    await log_action(admin, 'finance', target_id, f"{currency} {action} {amount}")
+    await state.clear()
+    await message.answer(
+        f"✅ Игроку {data['target_name']} {verb} {amount} {unit}."
+    )
+
+
+# ============ РОЛИ ============
+
+@router.callback_query(F.data == "admin:roles")
+async def admin_roles(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_admins"):
+        await callback.message.answer("❌ Нет прав для управления ролями.")
+        return
+    await state.set_state(AdminRoles.target)
+    await callback.message.answer(
+        "👑 УПРАВЛЕНИЕ РОЛЯМИ\n\n"
+        "Введи @username или числовой ID игрока:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminRoles.target)
+async def roles_target(message: Message, state: FSMContext):
+    target = await find_user(message.text)
+    if not target:
+        await message.answer("❌ Игрок не найден. Попробуй ещё раз (или /cancel):")
+        return
+    await state.update_data(target_id=target['user_id'], target_name=target.get('first_name',''))
+    await state.set_state(AdminRoles.action)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await message.answer(
+        f"Игрок: {target.get('first_name','')}\nТекущие роли: {', '.join(await get_user_role(target['user_id']))}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Выдать роль", callback_data="rolop:add")],
+            [InlineKeyboardButton(text="Снять роль", callback_data="rolop:remove")],
+        ])
+    )
+
+
+@router.callback_query(F.data.startswith("rolop:"))
+async def roles_action(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    action = callback.data.split(":")[1]
+    await state.update_data(action=action)
+    await state.set_state(AdminRoles.role)
+    rows = []
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    for role_name, perms in ROLES.items():
+        label = {
+            "super_admin": "Хранитель (полный доступ)",
+            "shop_admin": "Министр торговли (магазин)",
+            "finance_admin": "Министр финансов (банк)",
+            "moderator": "МВД (отчёты)",
+        }.get(role_name, role_name)
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"role:{role_name}")])
+    if action == "add":
+        rows.pop(0)  # super_admin выдаём только через отдельную команду — защита
+    await callback.message.edit_text(
+        f"Выбери роль для {'выдачи' if action == 'add' else 'снятия'}:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+@router.callback_query(F.data.startswith("role:"))
+async def roles_apply(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    role = callback.data.split(":")[1]
+    data = await state.get_data()
+    target_id = data['target_id']
+    admin = callback.from_user.id
+    action = data['action']
+
+    if role == "super_admin":
+        await callback.message.answer("❌ Роль «Хранитель» защищена от выдачи через панель.")
+        return
+
+    if action == "add":
+        ok, msg = await add_role(admin, target_id, role)
+    else:
+        ok, msg = await remove_role(admin, target_id, role)
+
+    await state.clear()
+    await callback.message.answer(("✅ " if ok else "❌ ") + msg)
+
+
+# ============ ОТЧЁТЫ ============
+
+@router.callback_query(F.data == "admin:reports")
+async def admin_reports(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_view_reports"):
+        await callback.message.answer("❌ Нет прав для просмотра отчётов.")
+        return
+    await show_pending_reports(callback.message)
+
+
+async def show_pending_reports(message):
+    reports = await get_pending_reports()
+    if not reports:
+        await message.answer("✅ В очереди нет отчётов на проверку.")
+        return
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    report = reports[0]
+    buttons = []
+    if await has_permission(message.chat.id, "can_approve_reports"):
+        buttons.append([
+            InlineKeyboardButton(text="✅ Принять", callback_data=f"rep_ok:{report['id']}"),
+            InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rep_no:{report['id']}"),
+        ])
+    buttons.append([InlineKeyboardButton(text="Следующий ▶️", callback_data="rep:next")])
+
+    await message.answer(
+        f"📋 ОТЧЁТ #{report['id']}\n\n"
+        f"Пилот: {report['first_name']} (@{report['username']})\n"
+        f"Войск заявлено: {report['troops_reported']}\n"
+        f"Регион: {report['region'] or '—'}\n"
+        f"Время: {report['created_at'][:16] if report['created_at'] else '—'}\n\n"
+        f"Проверьте скриншот и примите решение:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+
+
+@router.callback_query(F.data.startswith("rep_ok:"))
+async def report_approve(callback: CallbackQuery):
+    await callback.answer()
+    report_id = int(callback.data.split(":")[1])
+    if not await has_permission(callback.from_user.id, "can_approve_reports"):
+        await callback.message.answer("❌ Нет прав.")
+        return
+    report = await get_report_safe(report_id)
+    await approve_report(report_id, callback.from_user.id, report['troops_reported'])
+    await log_action(callback.from_user.id, 'approve_report', report['user_id'], f"report={report_id}")
+    await callback.message.answer("✅ Отчёт принят, войска начислены.")
+    await show_pending_reports(callback.message)
+
+
+@router.callback_query(F.data.startswith("rep_no:"))
+async def report_reject(callback: CallbackQuery):
+    await callback.answer()
+    report_id = int(callback.data.split(":")[1])
+    if not await has_permission(callback.from_user.id, "can_approve_reports"):
+        await callback.message.answer("❌ Нет прав.")
+        return
+    report = await get_report_safe(report_id)
+    await reject_report(report_id, callback.from_user.id)
+    await log_action(callback.from_user.id, 'reject_report', report['user_id'], f"report={report_id}")
+    await callback.message.answer("❌ Отчёт отклонён.")
+    await show_pending_reports(callback.message)
+
+
+@router.callback_query(F.data == "rep:next")
+async def report_next(callback: CallbackQuery):
+    await callback.answer()
+    await show_pending_reports(callback.message)
+
+
+async def get_report_safe(report_id: int):
+    reports = await get_pending_reports()
+    for r in reports:
+        if r['id'] == report_id:
+            return r
+    return {"id": report_id, "user_id": 0, "troops_reported": 0}
+
+
+# ============ ЛОГИ ============
+
+@router.callback_query(F.data == "admin:logs")
+async def admin_logs(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_view_logs"):
+        await callback.message.answer("❌ Нет прав для просмотра логов.")
+        return
+
+    from database.db import get_db
+    db = await get_db()
+    cursor = await db.execute(
+        "SELECT * FROM admin_logs ORDER BY id DESC LIMIT 15"
+    )
+    rows = await cursor.fetchall()
+
+    if not rows:
+        await callback.message.answer("Логи пока пусты.")
+        return
+
+    lines = []
+    for r in rows:
+        lines.append(
+            f"#{r['id']} [{r['created_at'][:16] if r['created_at'] else ''}]\n"
+            f"админ {r['admin_id']}: {r['action']}"
+            + (f" -> {r['target_id']}" if r['target_id'] else "")
+            + (f" ({r['details']})" if r['details'] else "")
+        )
+    await callback.message.answer("🧾 ПОСЛЕДНИЕ ДЕЙСТВИЯ АДМИНОВ:\n\n" + "\n\n".join(lines))
+
+
+# ============ ОТМЕНА ============
+
+@router.callback_query(F.data == "noop")
+async def noop(callback: CallbackQuery):
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back:main")
+async def back_main_cb(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.answer()
+    from keyboards.keyboards import main_menu_keyboard
+    await callback.message.answer("Главное меню:", reply_markup=main_menu_keyboard())
+
+
+@router.callback_query(F.data == "cancel")
+async def cancel_cb(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.clear()
+    from keyboards.keyboards import main_menu_keyboard
+    await callback.message.answer("Действие отменено.", reply_markup=main_menu_keyboard())
+
+
+@router.message(F.text == "/cancel")
+async def cancel_text(message: Message, state: FSMContext):
+    await state.clear()
+    from keyboards.keyboards import main_menu_keyboard
+    await message.answer("Действие отменено.", reply_markup=main_menu_keyboard())

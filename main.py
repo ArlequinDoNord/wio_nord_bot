@@ -10,6 +10,7 @@ from database.db import init_db, close_db, daily_ap_recovery
 from bot.handlers.start import router as start_router
 from bot.handlers.profile import router as profile_router
 from bot.handlers.bank import router as bank_router
+from bot.handlers.admin import router as admin_router
 
 load_dotenv()
 
@@ -36,7 +37,7 @@ async def scheduled_jobs(bot: Bot):
 
 async def main():
     logger.info("=" * 50)
-    logger.info("Запуск бота Нордмарк")
+    logger.info("Запуск бота N.O.R.D. 3.0")
     logger.info("=" * 50)
 
     await init_db()
@@ -48,6 +49,7 @@ async def main():
     dp.include_router(start_router)
     dp.include_router(profile_router)
     dp.include_router(bank_router)
+    dp.include_router(admin_router)
 
     logger.info("Хендлеры зарегистрированы")
 

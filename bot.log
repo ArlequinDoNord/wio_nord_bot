@@ -6,3 +6,13 @@
 2026-09-03 13:20:49,341 - aiogram.dispatcher - INFO - Start polling
 2026-09-03 13:20:49,345 - __main__ - INFO - Суточное восстановление AP выполнено
 2026-09-03 13:20:57,446 - aiogram.dispatcher - INFO - Run polling for bot @Nord_Wio_bot id=8398652430 - 'Nord Wio Bot'
+2026-09-03 13:21:38,509 - aiogram.event - INFO - Update id=11842241 is handled. Duration 4311 ms by bot id=8398652430
+2026-09-03 13:21:54,292 - aiogram.event - INFO - Update id=11842242 is handled. Duration 6656 ms by bot id=8398652430
+2026-09-03 13:22:09,336 - aiogram.event - INFO - Update id=11842243 is not handled. Duration 0 ms by bot id=8398652430
+2026-09-03 13:22:59,849 - aiogram.event - INFO - Update id=11842244 is handled. Duration 7030 ms by bot id=8398652430
+2026-09-03 13:23:03,598 - aiogram.event - INFO - Update id=11842245 is handled. Duration 5312 ms by bot id=8398652430
+2026-09-03 13:24:28,401 - aiogram.event - INFO - Update id=11842246 is not handled. Duration 0 ms by bot id=8398652430
+2026-09-03 13:28:03,799 - aiogram.event - INFO - Update id=11842247 is handled. Duration 6608 ms by bot id=8398652430
+2026-09-03 13:35:40,865 - aiogram.dispatcher - INFO - Polling stopped
+2026-09-03 13:35:41,138 - __main__ - INFO - Бот остановлен
+2026-09-03 13:35:41,141 - aiogram.dispatcher - INFO - Polling stopped for bot @Nord_Wio_bot id=8398652430 - 'Nord Wio Bot'

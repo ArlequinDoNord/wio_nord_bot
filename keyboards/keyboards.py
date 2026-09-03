@@ -1,15 +1,31 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
 
-def main_menu_keyboard():
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="Профиль")],
-            [KeyboardButton(text="Инвентарь"), KeyboardButton(text="Магазин")],
-            [KeyboardButton(text="Банк"), KeyboardButton(text="Город")],
-        ],
-        resize_keyboard=True
-    )
+def main_menu_keyboard(is_admin: bool = False):
+    keyboard = [
+        [KeyboardButton(text="Профиль")],
+        [KeyboardButton(text="Инвентарь"), KeyboardButton(text="Магазин")],
+        [KeyboardButton(text="Банк"), KeyboardButton(text="Город")],
+    ]
+    if is_admin:
+        keyboard.append([KeyboardButton(text="👑 Админ-панель")])
+    return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
+
+
+def admin_panel_keyboard(permissions: dict):
+    buttons = []
+    if permissions.get('can_manage_shop'):
+        buttons.append([InlineKeyboardButton(text="🛒 Управление магазином", callback_data="admin:shop")])
+    if permissions.get('can_manage_finance'):
+        buttons.append([InlineKeyboardButton(text="💰 Финансы", callback_data="admin:finance")])
+    if permissions.get('can_view_reports') or permissions.get('can_approve_reports'):
+        buttons.append([InlineKeyboardButton(text="📋 Отчёты на проверку", callback_data="admin:reports")])
+    if permissions.get('can_manage_admins'):
+        buttons.append([InlineKeyboardButton(text="👑 Управление ролями", callback_data="admin:roles")])
+    if permissions.get('can_view_logs'):
+        buttons.append([InlineKeyboardButton(text="🧾 Логи действий", callback_data="admin:logs")])
+    buttons.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def profile_keyboard():
@@ -29,11 +45,12 @@ def shop_keyboard():
 
 
 def shop_admin_keyboard():
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Добавить товар", callback_data="shop_admin:add")],
         [InlineKeyboardButton(text="Удалить товар", callback_data="shop_admin:delete")],
-        [InlineKeyboardButton(text="Изменить цену", callback_data="shop_admin:edit_price")],
-        [InlineKeyboardButton(text="Изменить остаток", callback_data="shop_admin:edit_stock")],
+        [InlineKeyboardButton(text="Изменить товар", callback_data="shop_admin:edit")],
+        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin:menu")],
     ])
 
 
