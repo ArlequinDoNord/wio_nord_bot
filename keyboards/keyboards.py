@@ -55,14 +55,11 @@ def shop_catalog_keyboard(available: dict):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def item_card_keyboard(item_id: int, price_nord: int, ap_cost: int, can_buy_nord: bool = True):
+def item_card_keyboard(item_id: int, price_nord: int, can_buy_nord: bool = True):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    row = []
+    buttons = []
     if price_nord > 0 and can_buy_nord:
-        row.append(InlineKeyboardButton(text=f"💰 Купить за {price_nord}", callback_data=f"buy_nord:{item_id}"))
-    if ap_cost > 0:
-        row.append(InlineKeyboardButton(text=f"⚡ Купить за {ap_cost} AP", callback_data=f"buy_ap:{item_id}"))
-    buttons = [row] if row else []
+        buttons.append([InlineKeyboardButton(text=f"💰 Купить за {price_nord}", callback_data=f"buy_nord:{item_id}")])
     buttons.append([InlineKeyboardButton(text="🔙 В каталог", callback_data="shop:catalog")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

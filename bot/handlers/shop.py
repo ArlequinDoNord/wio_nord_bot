@@ -5,10 +5,10 @@ from aiogram.types import Message, CallbackQuery
 
 from database.db import (
     get_available_items, get_item, add_inventory_item,
-    get_user, remove_nordmarks, remove_ap, get_db,
+    get_user, remove_nordmarks, get_db,
 )
 from keyboards.keyboards import (
-    shop_keyboard, shop_catalog_keyboard, item_card_keyboard, main_menu_keyboard,
+    shop_catalog_keyboard, item_card_keyboard,
 )
 from utils.helpers import rarity_emoji, rarity_label, plural_nordmark
 from config import ITEM_CATEGORIES
@@ -130,13 +130,11 @@ async def shop_item_view(callback: CallbackQuery):
     if item['description']:
         body += f"📝 {item['description']}\n\n"
     body += f"💰 Цена: {item['price']} {plural_nordmark(item['price'])}"
-    if item['ap_cost']:
-        body += f"\n⚡ или {item['ap_cost']} AP"
     stock_text = "безлимит" if item['stock'] == -1 else item['stock']
     body += f"\n📦 Остаток: {stock_text}"
 
     cannot_buy = (item['stock'] == 0)
-    markup = item_card_keyboard(item['id'], item['price'], item['ap_cost'], can_buy_nord=not cannot_buy)
+    markup = item_card_keyboard(item['id'], item['price'], can_buy_nord=not cannot_buy)
 
     await callback.message.edit_text(header + body, reply_markup=markup)
 
@@ -168,37 +166,6 @@ async def buy_nord(callback: CallbackQuery):
     await decrement_stock(item_id)
     await callback.message.answer(
         f"✅ Куплено: {item['name']} за {item['price']} {plural_nordmark(item['price'])}!"
-    )
-
-
-@router.callback_query(F.data.startswith("buy_ap:"))
-async def buy_ap(callback: CallbackQuery):
-    await callback.answer()
-    user_id = callback.from_user.id
-    item_id = int(callback.data.split(":")[1])
-    item = await get_item(item_id)
-
-    if not item or not item['is_available']:
-        await callback.message.answer("❌ Товар недоступен.")
-        return
-
-    if item['stock'] == 0:
-        await callback.message.answer("❌ Товар распродан.")
-        return
-
-    if not item['ap_cost']:
-        await callback.message.answer("❌ Этот товар нельзя купить за AP.")
-        return
-
-    ok = await remove_ap(user_id, item['ap_cost'])
-    if not ok:
-        await callback.message.answer(f"❌ Недостаточно AP. Нужно {item['ap_cost']} AP.")
-        return
-
-    await add_inventory_item(user_id, item_id, 1)
-    await decrement_stock(item_id)
-    await callback.message.answer(
-        f"✅ Куплено: {item['name']} за {item['ap_cost']} AP!"
     )
 
 
