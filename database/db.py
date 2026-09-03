@@ -787,6 +787,32 @@ async def create_status(name: str, access_tag: str = None, description: str = No
         return False, "Статус с таким названием уже существует"
 
 
+async def ensure_base_status(user_id: int):
+    """Базовый статус «Пилот»: создаёт при отсутствии и выдаёт игроку по умолчанию."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT id FROM statuses WHERE access_tag = 'pilot'")
+    row = await cursor.fetchone()
+    if row:
+        status_id = row['id']
+    else:
+        created, status_id = await create_status("Пилот", "pilot", "Базовый статус нового пилота")
+        if not created:
+            cursor = await conn.execute("SELECT id FROM statuses WHERE access_tag = 'pilot'")
+            status_id = (await cursor.fetchone())['id']
+
+    try:
+        await conn.execute(
+            "INSERT INTO user_statuses (user_id, status_id) VALUES (?, ?)",
+            (user_id, status_id)
+        )
+        await conn.commit()
+    except Exception:
+        pass
+
+    if not await get_selected_status(user_id):
+        await set_selected_status(user_id, status_id)
+
+
 async def delete_status(status_id: int):
     conn = await get_db()
     await conn.execute("DELETE FROM user_statuses WHERE status_id = ?", (status_id,))
