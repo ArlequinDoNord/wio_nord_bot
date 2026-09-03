@@ -1,29 +1,82 @@
 import os
 from dotenv import load_dotenv
-#Загружаем переменные из .env
+
 load_dotenv()
 
-class Config:
-    #Основной токен бота
-    BOT_TOKEN = os.getenv("BOT_TOKEN")
-    # ID администраторов (преобразуем строку в список чисел)
-    ADMIN_IDS_STR = os.getenv("ADMIN_IDS","")
-    ADMIN_IDS = [int(id.strip()) for id in ADMIN_IDS_STR.split(',') if id.strip()]
-    # 🆕 Задержка между запросами к Telegram (избегает флуда)
-    REQUEST_DELAY = 0.5  # полсекунды между запросами
-    # Путь к базе данных
-    DATABASE_PATH = os.getenv("DATABASE_PATH",'database\wnordbot.db')
-    #Настройка бота
-    BOT_USERNAME = None #будет установлено при запуске
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
 
-    #Проверка наличия токена
-    @classmethod
-    def validate(cls):
-        if not cls.BOT_TOKEN:
-            raise ValueError("BOT_TOKEN не найден в .env файле!")
-        if not cls.ADMIN_IDS:
-            print("Внимание: ADMIN_IDS не указаны в .env")
-        print(f"Конфигурация загружена")
-        print(f" DATABASE_PATH = {cls.DATABASE_PATH}")
-#Проверяем конфигурацию при импорте
-Config.validate()
+# Путь к базе данных (aiosqlite)
+DB_PATH = os.getenv("DATABASE_PATH", "database/nordmark.db")
+
+RANKS = [
+    ("Рекрут", 0),
+    ("Рядовой", 50),
+    ("Капрал", 150),
+    ("Сержант", 350),
+    ("Лейтенант", 700),
+    ("Капитан", 1200),
+    ("Майор", 2000),
+    ("Подполковник", 3500),
+    ("Полковник", 5500),
+    ("Генерал-майор", 8000),
+    ("Генерал-лейтенант", 12000),
+    ("Генерал", 20000),
+]
+
+RARITY_LEVELS = {
+    1: "Обычный",
+    2: "Качественный",
+    3: "Редкий",
+    4: "Шедевр",
+    5: "Легендарный",
+}
+
+RARITY_EMOJI = {
+    1: "⬜",
+    2: "🟩",
+    3: "🟦",
+    4: "🟪",
+    5: "🟧",
+}
+
+ITEM_CATEGORIES = {
+    "weapon": "Оружие",
+    "consumable": "Расходники",
+    "building": "Недвижимость",
+    "equipment": "Снаряжение",
+    "resource": "Ресурсы",
+    "special": "Особое",
+}
+
+AP_MAX = 150
+AP_DAILY_RECOVERY = 100
+AP_BONUS_FROM_CONSUMABLE = 50
+
+REPORT_AUTO_APPROVE_TROOPS = 500
+
+# --- Система званий (на основе войск) ---
+
+
+def get_rank(troops: int) -> str:
+    rank = RANKS[0][0]
+    for rank_name, required in RANKS:
+        if troops >= required:
+            rank = rank_name
+        else:
+            break
+    return rank
+
+
+def get_next_rank(troops: int) -> tuple:
+    for rank_name, required in RANKS:
+        if troops < required:
+            return rank_name, required
+    return RANKS[-1][0], RANKS[-1][1]
+
+
+def get_rank_index(troops: int) -> int:
+    for i, (rank_name, required) in enumerate(RANKS):
+        if troops < required:
+            return max(0, i - 1)
+    return len(RANKS) - 1

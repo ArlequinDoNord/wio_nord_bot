@@ -1,13 +1,14 @@
 """
-Система прав доступа
+Система прав доступа (роли)
+Работает с БД через aiosqlite и Config из config.py
 """
 
-import sqlite3
-from config import Config
+from config import ADMIN_IDS
+from database.db import get_db
 
 # Определение ролей и их прав
 ROLES = {
-    'super_admin': {  # Хранитель}
+    'super_admin': {  # Хранитель
         'can_manage_admins': True,
         'can_manage_shop': True,
         'can_manage_finance': True,
@@ -36,92 +37,80 @@ ROLES = {
 }
 
 
-def is_admin(telegram_id):
-    """Проверка, является ли пользователь админом (любой роли)"""
-    conn = sqlite3.connect(Config.DATABASE_PATH)
-    cur = conn.cursor()
-    cur.execute('SELECT 1 FROM user_roles WHERE telegram_id = ?', (telegram_id,))
-    result = cur.fetchone()
-    conn.close()
-    return result is not None
+async def is_admin(telegram_id: int) -> bool:
+    """Является ли пользователь админом (главный админ из .env или по ролям)"""
+    if telegram_id in ADMIN_IDS:
+        return True
+    db = await get_db()
+    cursor = await db.execute("SELECT 1 FROM user_roles WHERE telegram_id = ?", (telegram_id,))
+    return await cursor.fetchone() is not None
 
 
-def has_permission(telegram_id, permission):
+async def has_permission(telegram_id: int, permission: str) -> bool:
     """Проверка наличия конкретного права у пользователя"""
-    conn = sqlite3.connect(Config.DATABASE_PATH)
-    cur = conn.cursor()
+    if telegram_id in ADMIN_IDS:
+        return True
 
-    cur.execute('SELECT role FROM user_roles WHERE telegram_id = ?', (telegram_id,))
-    roles = cur.fetchall()
-    conn.close()
+    db = await get_db()
+    cursor = await db.execute("SELECT role FROM user_roles WHERE telegram_id = ?", (telegram_id,))
+    rows = await cursor.fetchall()
 
-    for role in roles:
-        role_name = role[0]
+    for role in rows:
+        role_name = role['role']
         if role_name in ROLES and ROLES[role_name].get(permission, False):
             return True
     return False
 
 
-def get_user_role(telegram_id):
+async def get_user_role(telegram_id: int) -> list:
     """Получить список ролей пользователя"""
-    conn = sqlite3.connect(Config.DATABASE_PATH)
-    cur = conn.cursor()
-    cur.execute('SELECT role FROM user_roles WHERE telegram_id = ?', (telegram_id,))
-    roles = [row[0] for row in cur.fetchall()]
-    conn.close()
+    if telegram_id in ADMIN_IDS:
+        return ['super_admin']
+
+    db = await get_db()
+    cursor = await db.execute("SELECT role FROM user_roles WHERE telegram_id = ?", (telegram_id,))
+    roles = [row['role'] for row in await cursor.fetchall()]
     return roles if roles else ['user']
 
 
-def add_role(admin_id, target_id, role):
+async def add_role(admin_id: int, target_id: int, role: str):
     """Добавить роль пользователю (только для суперадмина)"""
-    if not has_permission(admin_id, 'can_manage_admins'):
+    if not await has_permission(admin_id, 'can_manage_admins'):
         return False, "У вас нет прав для выдачи ролей"
 
-    conn = sqlite3.connect(Config.DATABASE_PATH)
-    cur = conn.cursor()
-
+    db = await get_db()
     try:
-        cur.execute('''
-        INSERT INTO user_roles (telegram_id, role, granted_by)
-        VALUES (?, ?, ?)
-        ''', (target_id, role, admin_id))
-        conn.commit()
-
-        # Логируем действие
-        log_action(admin_id, 'add_role', target_id, f'role={role}')
-
+        await db.execute(
+            "INSERT INTO user_roles (telegram_id, role, granted_by) VALUES (?, ?, ?)",
+            (target_id, role, admin_id)
+        )
+        await db.commit()
+        await log_action(admin_id, 'add_role', target_id, f'role={role}')
         return True, f"Роль {role} успешно выдана"
-    except sqlite3.IntegrityError:
-        return False, "Роль уже есть у пользователя"
-    finally:
-        conn.close()
+    except Exception:
+        return False, "Роль уже есть у пользователя или ошибка базы данных"
 
 
-def remove_role(admin_id, target_id, role):
+async def remove_role(admin_id: int, target_id: int, role: str):
     """Удалить роль у пользователя"""
-    if not has_permission(admin_id, 'can_manage_admins'):
+    if not await has_permission(admin_id, 'can_manage_admins'):
         return False, "У вас нет прав для удаления ролей"
 
-    conn = sqlite3.connect(Config.DATABASE_PATH)
-    cur = conn.cursor()
-
-    cur.execute('''
-    DELETE FROM user_roles WHERE telegram_id = ? AND role = ?
-    ''', (target_id, role))
-    conn.commit()
-    conn.close()
-
-    log_action(admin_id, 'remove_role', target_id, f'role={role}')
+    db = await get_db()
+    await db.execute(
+        "DELETE FROM user_roles WHERE telegram_id = ? AND role = ?",
+        (target_id, role)
+    )
+    await db.commit()
+    await log_action(admin_id, 'remove_role', target_id, f'role={role}')
     return True, f"Роль {role} удалена"
 
 
-def log_action(admin_id, action, target_id=None, details=None):
+async def log_action(admin_id: int, action: str, target_id: int = None, details: str = None):
     """Логирование действий админов"""
-    conn = sqlite3.connect(Config.DATABASE_PATH)
-    cur = conn.cursor()
-    cur.execute('''
-    INSERT INTO admin_logs (admin_id, action, target_id, details)
-    VALUES (?, ?, ?, ?)
-    ''', (admin_id, action, target_id, details))
-    conn.commit()
-    conn.close()
+    db = await get_db()
+    await db.execute(
+        "INSERT INTO admin_logs (admin_id, action, target_id, details) VALUES (?, ?, ?, ?)",
+        (admin_id, action, target_id, details)
+    )
+    await db.commit()

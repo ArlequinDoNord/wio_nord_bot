@@ -1,47 +1,67 @@
-print("===НордБОт для Wio===")
-print("Project structure is ready!")
-print("Virtual environment: OK")
-print("Git repository: OK")
-print("Next step: Create bot token with @BotFather")
-
-"""
-Главный файл для запуска Warplane RPG Telegram Bot
-"""
-
+import asyncio
+import logging
 import sys
-import os
-from bot.dispatcher import dispatcher
-from database.models import init_db, test_connection
+
+from aiogram import Bot, Dispatcher
+from dotenv import load_dotenv
+
+from config import BOT_TOKEN
+from database.db import init_db, close_db, daily_ap_recovery
+from bot.handlers.start import router as start_router
+from bot.handlers.profile import router as profile_router
+from bot.handlers.bank import router as bank_router
+
+load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("bot.log", encoding="utf-8")
+    ]
+)
+logger = logging.getLogger(__name__)
 
 
-def main():
-    """Основная функция запуска"""
+async def scheduled_jobs(bot: Bot):
+    while True:
+        try:
+            await daily_ap_recovery()
+            logger.info("Суточное восстановление AP выполнено")
+        except Exception as e:
+            logger.error(f"Ошибка восстановления AP: {e}", exc_info=True)
+        await asyncio.sleep(24 * 60 * 60)
 
-    print("=" * 60)
-    print("🛩 Warplane RPG Telegram Bot")
-    print("=" * 60)
 
-    # Проверяем базу данных
-    print("\n📊 Проверка базы данных...")
-    if not test_connection():
-        print("❌ Ошибка подключения к базе данных")
-        print("🔄 Пытаюсь пересоздать базу данных...")
-        init_db()
-        if not test_connection():
-            print("❌ Критическая ошибка базы данных")
-            return
+async def main():
+    logger.info("=" * 50)
+    logger.info("Запуск бота Нордмарк")
+    logger.info("=" * 50)
 
-    # Запуск бота
-    print("\n🤖 Запуск бота...")
+    await init_db()
+    logger.info("База данных инициализирована")
+
+    bot = Bot(token=BOT_TOKEN)
+    dp = Dispatcher()
+
+    dp.include_router(start_router)
+    dp.include_router(profile_router)
+    dp.include_router(bank_router)
+
+    logger.info("Хендлеры зарегистрированы")
+
+    job_task = asyncio.create_task(scheduled_jobs(bot))
+
     try:
-        dispatcher.run()
-    except KeyboardInterrupt:
-        print("\n👋 Бот остановлен пользователем")
+        await dp.start_polling(bot, skip_updates=True)
     except Exception as e:
-        print(f"\n❌ Критическая ошибка: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Ошибка в главном цикле: {e}", exc_info=True)
+    finally:
+        job_task.cancel()
+        await close_db()
+        logger.info("Бот остановлен")
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    asyncio.run(main())
