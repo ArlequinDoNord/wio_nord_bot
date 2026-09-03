@@ -44,6 +44,29 @@ def shop_keyboard():
     ])
 
 
+def shop_catalog_keyboard(available: dict):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = []
+    for key, count in available.items():
+        from config import ITEM_CATEGORIES
+        label = ITEM_CATEGORIES.get(key, key)
+        rows.append([InlineKeyboardButton(text=f"{label} ({count})", callback_data=f"shopcat:{key}")])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back:main")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def item_card_keyboard(item_id: int, price_nord: int, ap_cost: int, can_buy_nord: bool = True):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    row = []
+    if price_nord > 0 and can_buy_nord:
+        row.append(InlineKeyboardButton(text=f"💰 Купить за {price_nord}", callback_data=f"buy_nord:{item_id}"))
+    if ap_cost > 0:
+        row.append(InlineKeyboardButton(text=f"⚡ Купить за {ap_cost} AP", callback_data=f"buy_ap:{item_id}"))
+    buttons = [row] if row else []
+    buttons.append([InlineKeyboardButton(text="🔙 В каталог", callback_data="shop:catalog")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 def shop_admin_keyboard():
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[

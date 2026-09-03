@@ -6,11 +6,13 @@ from aiogram import Bot, Dispatcher
 from dotenv import load_dotenv
 
 from config import BOT_TOKEN
-from database.db import init_db, close_db, daily_ap_recovery
+from database.db import init_db, close_db, daily_ap_recovery, seed_default_items
 from bot.handlers.start import router as start_router
 from bot.handlers.profile import router as profile_router
 from bot.handlers.bank import router as bank_router
 from bot.handlers.admin import router as admin_router
+from bot.handlers.shop import router as shop_router
+from bot.handlers.inventory import router as inventory_router
 
 load_dotenv()
 
@@ -43,6 +45,10 @@ async def main():
     await init_db()
     logger.info("База данных инициализирована")
 
+    seeded = await seed_default_items()
+    if seeded:
+        logger.info("Магазин наполнен базовым набором товаров (тестовые заглушки)")
+
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
@@ -50,6 +56,8 @@ async def main():
     dp.include_router(profile_router)
     dp.include_router(bank_router)
     dp.include_router(admin_router)
+    dp.include_router(shop_router)
+    dp.include_router(inventory_router)
 
     logger.info("Хендлеры зарегистрированы")
 

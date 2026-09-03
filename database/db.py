@@ -735,3 +735,37 @@ async def harvest_resources(user_id: int):
 
     await conn.commit()
     return harvested
+
+
+# ============ СИД: ТЕСТОВЫЕ ТОВАРЫ ============
+
+DEFAULT_ITEMS = [
+    # (name, description, price, sell_price, rarity, category, stock, ap_cost)
+    ("Учебный истребитель", "Базовая учебная машина для новичков.", 250, 125, 2, "weapon", 5, 0),
+    ("Стандартный пулемёт", "Надёжное вооружение для воздушных боёв.", 150, 75, 1, "weapon", 10, 0),
+    ("Аптечка", "Восстанавливает силы. Использование даёт +AP.", 50, 25, 1, "consumable", 20, 50),
+    ("Топливо", "Запас топлива для вылетов. +AP при использовании.", 40, 20, 1, "consumable", 20, 30),
+    ("Ремкомплект", "Мелкий ремонт техники.", 80, 40, 2, "consumable", 15, 40),
+    ("Лётный шлем", "Защищает пилота в бою.", 120, 60, 2, "equipment", 10, 0),
+    ("Кислородная маска", "Для высотных полётов.", 90, 45, 1, "equipment", 10, 0),
+    ("Ангар-бокс", "Личное хранилище для техники.", 500, 250, 3, "building", 3, 0),
+    ("Металл", "Сырьё для производства.", 30, 15, 1, "resource", 50, 0),
+    ("Кристаллы", "Редкое сырьё, используется в производстве.", 200, 100, 4, "resource", 10, 0),
+    ("Медаль «Крыло»", "Особая награда за заслуги.", 1000, 500, 5, "special", 1, 0),
+]
+
+
+async def seed_default_items():
+    """Заполняет магазин базовым набором товаров, если он пуст и не было своих товаров."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT COUNT(*) as c FROM items")
+    row = await cursor.fetchone()
+    if row['c'] > 0:
+        return False
+
+    for (name, desc, price, sell_price, rarity, category, stock, ap_cost) in DEFAULT_ITEMS:
+        await add_item(
+            name=name, description=desc, price=price, sell_price=sell_price,
+            rarity=rarity, category=category, stock=stock, added_by=0, ap_cost=ap_cost,
+        )
+    return True
