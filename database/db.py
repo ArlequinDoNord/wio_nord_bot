@@ -242,6 +242,7 @@ async def init_db():
             name TEXT NOT NULL UNIQUE,
             access_tag TEXT,
             description TEXT,
+            sort_order INTEGER DEFAULT 0,
             created_by INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -260,9 +261,19 @@ async def init_db():
     """)
     await conn.commit()
 
-    # Миграция: колонка required_status для товаров и зданий (если нет)
+    # Миграция: колонки required_status и sort_order (если нет)
     await _ensure_column(conn, "items", "required_status", "TEXT")
     await _ensure_column(conn, "buildings", "required_status", "TEXT")
+    await _ensure_column(conn, "statuses", "sort_order", "INTEGER DEFAULT 0")
+    # Существующие статусы (созданные до введения уровней) с уровнем <= 0 —
+    # кроме базового «Пилот» — делаем сильнее Пилота, иначе иерархия ломается.
+    await conn.execute("""
+        UPDATE statuses SET sort_order = 100
+        WHERE (sort_order IS NULL OR sort_order <= 0)
+          AND (access_tag IS NOT 'pilot' OR access_tag IS NOT NULL)
+          AND LOWER(name) != 'пилот'
+          AND LOWER(name) != 'pilot'
+    """)
     await conn.commit()
 
 
@@ -774,12 +785,13 @@ async def harvest_resources(user_id: int):
 
 # ============ СТАТУСЫ ============
 
-async def create_status(name: str, access_tag: str = None, description: str = None, created_by: int = None):
+async def create_status(name: str, access_tag: str = None, description: str = None,
+                        created_by: int = None, sort_order: int = 0):
     conn = await get_db()
     try:
         cursor = await conn.execute(
-            "INSERT INTO statuses (name, access_tag, description, created_by) VALUES (?, ?, ?, ?)",
-            (name, access_tag, description, created_by)
+            "INSERT INTO statuses (name, access_tag, description, created_by, sort_order) VALUES (?, ?, ?, ?, ?)",
+            (name, access_tag, description, created_by, sort_order)
         )
         await conn.commit()
         return True, cursor.lastrowid
@@ -795,7 +807,8 @@ async def ensure_base_status(user_id: int):
     if row:
         status_id = row['id']
     else:
-        created, status_id = await create_status("Пилот", "pilot", "Базовый статус нового пилота")
+        created, status_id = await create_status("Пилот", "pilot", "Базовый статус нового пилота",
+                                                 sort_order=0)
         if not created:
             cursor = await conn.execute("SELECT id FROM statuses WHERE access_tag = 'pilot'")
             status_id = (await cursor.fetchone())['id']
@@ -900,18 +913,27 @@ async def set_selected_status(user_id: int, status_id: int):
     return True
 
 
-# Доступ по тегу: есть ли у игрока статус с данным access_tag
+# Доступ по рангу: открыт, если у игрока есть статус не слабее требуемого (sort_order >=)
 async def user_has_status_tag(user_id: int, tag: str) -> bool:
     if not tag:
         return True
     conn = await get_db()
+    # уровень (sort_order) требуемого тега
+    cursor = await conn.execute(
+        "SELECT sort_order FROM statuses WHERE access_tag = ?", (tag,))
+    req = await cursor.fetchone()
+    if not req:
+        return False
+    # самый сильный статус игрока
     cursor = await conn.execute("""
-        SELECT 1 FROM user_statuses us
+        SELECT MAX(s.sort_order) as top FROM user_statuses us
         JOIN statuses s ON us.status_id = s.id
-        WHERE us.user_id = ? AND s.access_tag = ?
-        LIMIT 1
-    """, (user_id, tag))
-    return await cursor.fetchone() is not None
+        WHERE us.user_id = ?
+    """, (user_id,))
+    top = (await cursor.fetchone())['top']
+    if top is None:
+        return False
+    return top >= req['sort_order']
 
 
 # ============ СИД: ТЕСТОВЫЕ ТОВАРЫ ============

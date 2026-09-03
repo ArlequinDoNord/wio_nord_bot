@@ -59,6 +59,7 @@ class AdminRoles(StatesGroup):
 class AdminStatuses(StatesGroup):
     name = State()
     tag = State()
+    level = State()
     desc = State()
     target = State()
     grant_action = State()
@@ -636,7 +637,7 @@ async def statuses_list(callback: CallbackQuery):
     lines = ["🎖️ ВСЕ СТАТУСЫ:\n"]
     for s in statuses:
         tag = f" ({s['access_tag']})" if s['access_tag'] else ""
-        lines.append(f"• {s['name']}{tag}")
+        lines.append(f"• {s['name']}{tag} — уровень {s['sort_order']}")
         if s['description']:
             lines.append(f"    — {s['description']}")
     from keyboards.keyboards import back_to_main
@@ -675,8 +676,26 @@ async def status_create_tag(message: Message, state: FSMContext):
     else:
         tag = "".join(c for c in text if c.isalnum())
         await state.update_data(tag=tag or None)
+    await state.set_state(AdminStatuses.level)
+    await message.answer(
+        "Шаг 3/4 — Уровень статуса (число). Чем больше, тем сильнее статус\n"
+        "Уровень открывает весь доступ более слабых статусов.\n"
+        "Базовый «Пилот» — 0. Введи уровень (например: 5):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminStatuses.level)
+async def status_create_level(message: Message, state: FSMContext):
+    text = message.text.strip()
+    try:
+        sort_order = int(text)
+    except ValueError:
+        await message.answer("❌ Введи целое число (уровень статуса):")
+        return
+    await state.update_data(sort_order=sort_order)
     await state.set_state(AdminStatuses.desc)
-    await message.answer("Шаг 3/3 — Описание (или «-» если нет):", reply_markup=cancel_keyboard())
+    await message.answer("Шаг 4/4 — Описание (или «-» если нет):", reply_markup=cancel_keyboard())
 
 
 @router.message(AdminStatuses.desc)
@@ -684,11 +703,13 @@ async def status_create_desc(message: Message, state: FSMContext):
     text = message.text.strip()
     data = await state.get_data()
     desc = None if text == "-" else text
-    ok, res = await create_status(data['name'], data.get('tag'), desc, message.from_user.id)
+    ok, res = await create_status(data['name'], data.get('tag'), desc, message.from_user.id,
+                                  sort_order=data.get('sort_order', 0))
     await state.clear()
     if ok:
-        await log_action(message.from_user.id, 'create_status', None, f"status={data['name']} id={res}")
-        await message.answer(f"✅ Статус «{data['name']}» создан!")
+        await log_action(message.from_user.id, 'create_status', None,
+                         f"status={data['name']} id={res} level={data.get('sort_order',0)}")
+        await message.answer(f"✅ Статус «{data['name']}» создан (уровень {data.get('sort_order',0)})!")
     else:
         await message.answer(f"❌ {res}")
 
