@@ -5,7 +5,7 @@ from aiogram.types import Message, CallbackQuery
 
 from database.db import (
     get_available_items, get_item, add_inventory_item,
-    get_user, remove_nordmarks, get_db,
+    get_user, remove_nordmarks, get_db, user_has_status_tag, get_status_by_tag,
 )
 from keyboards.keyboards import (
     shop_catalog_keyboard, item_card_keyboard,
@@ -19,6 +19,24 @@ CATEGORIES = ["weapon", "consumable", "equipment", "building", "resource", "spec
 PER_PAGE = 6
 
 
+async def visible_items(user_id: int, items) -> list:
+    """Отфильтровать товары: скрыть те, что требуют статус, которого нет у игрока."""
+    result = []
+    for it in items:
+        req = it['required_status']
+        if req and not await user_has_status_tag(user_id, req):
+            continue
+        result.append(it)
+    return result
+
+
+async def status_req_label(tag: str) -> str:
+    if not tag:
+        return ""
+    s = await get_status_by_tag(tag)
+    return s['name'] if s else tag
+
+
 @router.message(F.text == "Магазин")
 async def shop_menu(message: Message):
     user = await get_user(message.from_user.id)
@@ -26,12 +44,16 @@ async def shop_menu(message: Message):
         await message.answer("Сначала нажми /start")
         return
 
-    items = await get_available_items()
+    items = await visible_items(message.from_user.id, await get_available_items())
     counts = {c: 0 for c in CATEGORIES}
     for it in items:
         if it['category'] in counts:
             counts[it['category']] += 1
     counts = {k: v for k, v in counts.items() if v > 0}
+
+    if not counts:
+        await message.answer("🛒 Магазин временно пуст.")
+        return
 
     await message.answer(
         f"🛒 МАГАЗИН\n\n"
@@ -45,7 +67,7 @@ async def shop_menu(message: Message):
 @router.callback_query(F.data == "shop:catalog")
 async def shop_catalog(callback: CallbackQuery):
     await callback.answer()
-    items = await get_available_items()
+    items = await visible_items(callback.from_user.id, await get_available_items())
     counts = {c: 0 for c in CATEGORIES}
     for it in items:
         if it['category'] in counts:
@@ -61,9 +83,10 @@ async def shop_catalog(callback: CallbackQuery):
 async def shop_category(callback: CallbackQuery):
     await callback.answer()
     category = callback.data.split(":")[1]
-    items = await get_available_items(category=category)
+    items = await visible_items(callback.from_user.id, await get_available_items(category=category))
     if not items:
-        await callback.message.edit_text("В этой категории пока пусто.", reply_markup=None)
+        await callback.message.edit_text(
+            "В этой категории пока нет доступных товаров.", reply_markup=None)
         return
     await show_items_page(callback, category, items, 0)
 
@@ -108,7 +131,7 @@ async def show_items_page(callback: CallbackQuery, category: str, items, page: i
 async def shop_category_page(callback: CallbackQuery):
     await callback.answer()
     category, page = callback.data.split(":")[1], int(callback.data.split(":")[2])
-    items = await get_available_items(category=category)
+    items = await visible_items(callback.from_user.id, await get_available_items(category=category))
     await show_items_page(callback, category, items, page)
 
 
@@ -133,7 +156,12 @@ async def shop_item_view(callback: CallbackQuery):
     stock_text = "безлимит" if item['stock'] == -1 else item['stock']
     body += f"\n📦 Остаток: {stock_text}"
 
-    cannot_buy = (item['stock'] == 0)
+    req = await status_req_label(item['required_status'])
+    if req:
+        body += f"\n🔒 Требуется статус: {req}"
+
+    has_access = await user_has_status_tag(callback.from_user.id, item['required_status'])
+    cannot_buy = (item['stock'] == 0) or not has_access
     markup = item_card_keyboard(item['id'], item['price'], can_buy_nord=not cannot_buy)
 
     await callback.message.edit_text(header + body, reply_markup=markup)
@@ -148,6 +176,10 @@ async def buy_nord(callback: CallbackQuery):
 
     if not item or not item['is_available']:
         await callback.message.answer("❌ Товар недоступен.")
+        return
+
+    if not await user_has_status_tag(user_id, item['required_status']):
+        await callback.message.answer("❌ Тебе нужен статус, чтобы купить этот товар.")
         return
 
     if item['stock'] == 0:

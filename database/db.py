@@ -236,7 +236,42 @@ async def init_db():
             details TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS statuses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            access_tag TEXT,
+            description TEXT,
+            created_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS user_statuses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            status_id INTEGER NOT NULL,
+            granted_by INTEGER,
+            is_selected INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, status_id),
+            FOREIGN KEY (user_id) REFERENCES users(user_id),
+            FOREIGN KEY (status_id) REFERENCES statuses(id)
+        );
     """)
+    await conn.commit()
+
+    # Миграция: колонка required_status для товаров и зданий (если нет)
+    await _ensure_column(conn, "items", "required_status", "TEXT")
+    await _ensure_column(conn, "buildings", "required_status", "TEXT")
+    await conn.commit()
+
+
+async def _ensure_column(conn, table: str, column: str, coltype: str):
+    """Добавляет колонку в таблицу, если её ещё нет."""
+    cursor = await conn.execute(f"PRAGMA table_info({table})")
+    cols = [row['name'] for row in await cursor.fetchall()]
+    if column not in cols:
+        await conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
     await conn.commit()
 
 
@@ -735,6 +770,122 @@ async def harvest_resources(user_id: int):
 
     await conn.commit()
     return harvested
+
+
+# ============ СТАТУСЫ ============
+
+async def create_status(name: str, access_tag: str = None, description: str = None, created_by: int = None):
+    conn = await get_db()
+    try:
+        cursor = await conn.execute(
+            "INSERT INTO statuses (name, access_tag, description, created_by) VALUES (?, ?, ?, ?)",
+            (name, access_tag, description, created_by)
+        )
+        await conn.commit()
+        return True, cursor.lastrowid
+    except Exception:
+        return False, "Статус с таким названием уже существует"
+
+
+async def delete_status(status_id: int):
+    conn = await get_db()
+    await conn.execute("DELETE FROM user_statuses WHERE status_id = ?", (status_id,))
+    await conn.execute("DELETE FROM statuses WHERE id = ?", (status_id,))
+    await conn.commit()
+
+
+async def get_all_statuses():
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM statuses ORDER BY id")
+    return await cursor.fetchall()
+
+
+async def get_status(status_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM statuses WHERE id = ?", (status_id,))
+    return await cursor.fetchone()
+
+
+async def get_status_by_tag(tag: str):
+    if not tag:
+        return None
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM statuses WHERE access_tag = ?", (tag,))
+    return await cursor.fetchone()
+
+
+async def grant_status(user_id: int, status_id: int, granted_by: int = None):
+    conn = await get_db()
+    try:
+        await conn.execute(
+            "INSERT INTO user_statuses (user_id, status_id, granted_by) VALUES (?, ?, ?)",
+            (user_id, status_id, granted_by)
+        )
+        await conn.commit()
+        return True, "Статус выдан"
+    except Exception as e:
+        error = str(e).lower()
+        if "foreign key" in error:
+            return False, "Игрок не найден — выдавать статус можно только зарегистрированным участникам (нужно /start)"
+        return False, "У игрока уже есть этот статус"
+
+
+async def revoke_status(user_id: int, status_id: int):
+    conn = await get_db()
+    await conn.execute(
+        "DELETE FROM user_statuses WHERE user_id = ? AND status_id = ?",
+        (user_id, status_id)
+    )
+    await conn.commit()
+
+
+async def get_user_statuses(user_id: int):
+    """Все статусы игрока + флаг выбранного."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT s.*, us.is_selected
+        FROM user_statuses us
+        JOIN statuses s ON us.status_id = s.id
+        WHERE us.user_id = ?
+        ORDER BY s.id
+    """, (user_id,))
+    return await cursor.fetchall()
+
+
+async def get_selected_status(user_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT s.* FROM user_statuses us
+        JOIN statuses s ON us.status_id = s.id
+        WHERE us.user_id = ? AND us.is_selected = 1
+        LIMIT 1
+    """, (user_id,))
+    return await cursor.fetchone()
+
+
+async def set_selected_status(user_id: int, status_id: int):
+    conn = await get_db()
+    await conn.execute("UPDATE user_statuses SET is_selected = 0 WHERE user_id = ?", (user_id,))
+    await conn.execute(
+        "UPDATE user_statuses SET is_selected = 1 WHERE user_id = ? AND status_id = ?",
+        (user_id, status_id)
+    )
+    await conn.commit()
+    return True
+
+
+# Доступ по тегу: есть ли у игрока статус с данным access_tag
+async def user_has_status_tag(user_id: int, tag: str) -> bool:
+    if not tag:
+        return True
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT 1 FROM user_statuses us
+        JOIN statuses s ON us.status_id = s.id
+        WHERE us.user_id = ? AND s.access_tag = ?
+        LIMIT 1
+    """, (user_id, tag))
+    return await cursor.fetchone() is not None
 
 
 # ============ СИД: ТЕСТОВЫЕ ТОВАРЫ ============

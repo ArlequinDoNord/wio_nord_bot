@@ -22,6 +22,8 @@ def admin_panel_keyboard(permissions: dict):
         buttons.append([InlineKeyboardButton(text="📋 Отчёты на проверку", callback_data="admin:reports")])
     if permissions.get('can_manage_admins'):
         buttons.append([InlineKeyboardButton(text="👑 Управление ролями", callback_data="admin:roles")])
+    if permissions.get('can_manage_statuses') or permissions.get('can_grant_statuses'):
+        buttons.append([InlineKeyboardButton(text="🎖️ Статусы", callback_data="admin:statuses")])
     if permissions.get('can_view_logs'):
         buttons.append([InlineKeyboardButton(text="🧾 Логи действий", callback_data="admin:logs")])
     buttons.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])
@@ -31,7 +33,7 @@ def admin_panel_keyboard(permissions: dict):
 def profile_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Изменить фото", callback_data="profile:set_photo")],
-        [InlineKeyboardButton(text="Изменить статус", callback_data="profile:set_status")],
+        [InlineKeyboardButton(text="Выбрать статус", callback_data="profile:choose_status")],
         [InlineKeyboardButton(text="Карточка пилота", callback_data="profile:pilot_card")],
     ])
 

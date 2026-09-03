@@ -2,7 +2,9 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, ContentType
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from database.db import get_user, update_user
+from database.db import (
+    get_user, update_user, get_user_statuses, get_selected_status, set_selected_status,
+)
 from keyboards.keyboards import profile_keyboard, cancel_keyboard, main_menu_keyboard
 from config import get_rank, get_next_rank, get_rank_index, RANKS
 
@@ -11,7 +13,11 @@ router = Router()
 
 class ProfileStates(StatesGroup):
     waiting_photo = State()
-    waiting_status = State()
+
+
+async def selected_status_label(user_id: int) -> str:
+    sel = await get_selected_status(user_id)
+    return sel['name'] if sel else "—"
 
 
 @router.message(F.text == "Профиль")
@@ -42,11 +48,12 @@ async def show_profile(message: Message):
         filled = int(done / needed * bar_len) if needed > 0 else bar_len
         caption += f"До звания «{next_rank}»: [{'█' * filled}{'░' * (bar_len - filled)}] {done}/{needed}\n"
 
+    status = await selected_status_label(message.from_user.id)
     caption += (
         f"💰 Нордмарки: {user['nordmarks']}\n"
         f"⚡ Очки действия: {user['ap']}/{user['ap_max']}\n"
         f"❤️ Состояние: {user['state']}\n"
-        f"📝 Статус: {user['status_text']}\n\n"
+        f"🎖️ Статус: {status}\n\n"
         f"👇 Выберите действие:"
     )
 
@@ -81,31 +88,44 @@ async def process_photo(message: Message, state: FSMContext):
     )
 
 
-@router.callback_query(F.data == "profile:set_status")
-async def set_status(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data == "profile:choose_status")
+async def choose_status(callback: CallbackQuery):
     await callback.answer()
-    await state.set_state(ProfileStates.waiting_status)
+    statuses = await get_user_statuses(callback.from_user.id)
+    if not statuses:
+        await callback.message.answer(
+            "🎖️ У тебя пока нет статусов. Их выдают админы (например, МВД за заслуги)."
+        )
+        return
+
+    rows = []
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    for s in statuses:
+        mark = "✅ " if s['is_selected'] else ""
+        rows.append([InlineKeyboardButton(
+            text=f"{mark}{s['name']}",
+            callback_data=f"prof_sel_status:{s['id']}"
+        )])
+    rows.append([InlineKeyboardButton(text="🔙 В профиль", callback_data="prof:back")])
     await callback.message.answer(
-        "📝 Напиши новый статус (например: «В бою», «На задании», «Отдыхаю»):",
-        reply_markup=cancel_keyboard()
+        "🎖️ Выбери, какой статус отображать в профиле:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
 
 
-@router.message(ProfileStates.waiting_status)
-async def process_status(message: Message, state: FSMContext):
-    if message.content_type != ContentType.TEXT:
-        await message.answer("Отправь текстовое сообщение")
-        return
-    status_text = message.text.strip()
-    if len(status_text) > 60:
-        await message.answer("Статус слишком длинный (макс. 60 символов)")
-        return
-    await update_user(message.from_user.id, status_text=status_text)
-    await state.clear()
-    await message.answer(
-        "✅ Статус обновлён!",
-        reply_markup=main_menu_keyboard()
-    )
+@router.callback_query(F.data.startswith("prof_sel_status:"))
+async def select_status_cb(callback: CallbackQuery):
+    await callback.answer()
+    status_id = int(callback.data.split(":")[1])
+    await set_selected_status(callback.from_user.id, status_id)
+    await callback.message.answer("✅ Статус обновлён в профиле!")
+
+
+@router.callback_query(F.data == "prof:back")
+async def prof_back(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.delete()
+    await callback.message.answer("👇 Нажми «Профиль» в меню, чтобы открыть профиль.")
 
 
 @router.callback_query(F.data == "profile:pilot_card")
@@ -117,6 +137,7 @@ async def pilot_card(callback: CallbackQuery):
         return
 
     rank = get_rank(user['troops'])
+    status = await selected_status_label(callback.from_user.id)
 
     card = (
         f"═══════════════════════════\n"
@@ -130,7 +151,7 @@ async def pilot_card(callback: CallbackQuery):
         f"───────────────────────────\n"
         f"БОЕВАЯ СТАТИСТИКА\n"
         f"Войска: {user['troops']}\n"
-        f"Статус: {user['status_text']}\n"
+        f"Статус: {status}\n"
         f"───────────────────────────\n"
         f"ФИНАНСЫ\n"
         f"Нордмарки: {user['nordmarks']}\n"

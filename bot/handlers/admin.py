@@ -12,6 +12,8 @@ from database.db import (
     add_item, delete_item, update_item, get_available_items,
     get_item, get_all_users, get_pending_reports, approve_report,
     reject_report, add_nordmarks, remove_nordmarks, add_ap, remove_ap,
+    create_status, delete_status, get_all_statuses, get_status,
+    grant_status, revoke_status, get_user_statuses,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import (
@@ -54,11 +56,23 @@ class AdminRoles(StatesGroup):
     role = State()
 
 
+class AdminStatuses(StatesGroup):
+    name = State()
+    tag = State()
+    desc = State()
+    target = State()
+    grant_action = State()
+    status_pick = State()
+    item_pick = State()
+    item_status = State()
+
+
 # ============ УТИЛИТЫ ============
 
 async def perm_flags(user_id: int) -> dict:
     perms = ["can_manage_shop", "can_manage_finance", "can_view_reports",
-             "can_approve_reports", "can_manage_admins", "can_view_logs"]
+             "can_approve_reports", "can_manage_admins", "can_view_logs",
+             "can_manage_statuses", "can_grant_statuses"]
     return {p: await has_permission(user_id, p) for p in perms}
 
 
@@ -341,8 +355,41 @@ async def edit_item_pick(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text="Продажу", callback_data="field:sell_price")],
             [InlineKeyboardButton(text="Остаток", callback_data="field:stock")],
             [InlineKeyboardButton(text="Описание", callback_data="field:description")],
+            [InlineKeyboardButton(text="🔒 Требуемый статус", callback_data="field:required_status")],
         ])
     )
+
+
+@router.callback_query(F.data.startswith("field:required_status"))
+async def edit_item_field_status(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    statuses = await get_all_statuses()
+    rows = []
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    for s in statuses:
+        rows.append([InlineKeyboardButton(text=f"{s['name']}", callback_data=f"field_req:{s['id']}")])
+    rows.append([InlineKeyboardButton(text="➖ Без статуса", callback_data="field_req:none")])
+    await callback.message.edit_text(
+        "Выбери статус, требуемый для покупки этого товара:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+@router.callback_query(F.data.startswith("field_req:"))
+async def edit_item_field_req(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    data = await state.get_data()
+    item_id = data['item_id']
+    val = callback.data.split(":")[1]
+    if val == "none":
+        tag = None
+    else:
+        s = await get_status(int(val))
+        tag = s['access_tag'] if s else None
+    await update_item(item_id, required_status=tag)
+    await log_action(callback.from_user.id, 'edit_item', None, f"item_id={item_id} required_status={tag}")
+    await state.clear()
+    await callback.message.answer("✅ Требуемый статус обновлён.")
 
 
 @router.callback_query(F.data.startswith("field:"))
@@ -548,6 +595,204 @@ async def roles_apply(callback: CallbackQuery, state: FSMContext):
         ok, msg = await add_role(admin, target_id, role)
     else:
         ok, msg = await remove_role(admin, target_id, role)
+
+    await state.clear()
+    await callback.message.answer(("✅ " if ok else "❌ ") + msg)
+
+
+# ============ СТАТУСЫ ============
+
+@router.callback_query(F.data == "admin:statuses")
+async def admin_statuses(callback: CallbackQuery):
+    await callback.answer()
+    if not (await has_permission(callback.from_user.id, "can_manage_statuses")
+            or await has_permission(callback.from_user.id, "can_grant_statuses")):
+        await callback.message.answer("❌ Нет прав для управления статусами.")
+        return
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = []
+    if await has_permission(callback.from_user.id, "can_manage_statuses"):
+        rows.append([InlineKeyboardButton(text="➕ Создать статус", callback_data="st:create")])
+        rows.append([InlineKeyboardButton(text="❌ Удалить статус", callback_data="st:delete")])
+    if await has_permission(callback.from_user.id, "can_grant_statuses") or \
+       await has_permission(callback.from_user.id, "can_manage_statuses"):
+        rows.append([InlineKeyboardButton(text="🎁 Выдать статус игроку", callback_data="st:grant")])
+    rows.append([InlineKeyboardButton(text="📋 Список статусов", callback_data="st:list")])
+    rows.append([InlineKeyboardButton(text="🔙 В меню", callback_data="admin:menu")])
+    await callback.message.edit_text(
+        "🎖️ УПРАВЛЕНИЕ СТАТУСАМИ\n\nВыбери действие:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+@router.callback_query(F.data == "st:list")
+async def statuses_list(callback: CallbackQuery):
+    await callback.answer()
+    statuses = await get_all_statuses()
+    if not statuses:
+        await callback.message.edit_text("Статусы пока не созданы.", reply_markup=None)
+        return
+    lines = ["🎖️ ВСЕ СТАТУСЫ:\n"]
+    for s in statuses:
+        tag = f" ({s['access_tag']})" if s['access_tag'] else ""
+        lines.append(f"• {s['name']}{tag}")
+        if s['description']:
+            lines.append(f"    — {s['description']}")
+    from keyboards.keyboards import back_to_main
+    await callback.message.edit_text("\n".join(lines), reply_markup=back_to_main())
+
+
+@router.callback_query(F.data == "st:create")
+async def status_create_start(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_statuses"):
+        await callback.message.answer("❌ Нет прав.")
+        return
+    await state.set_state(AdminStatuses.name)
+    await callback.message.answer(
+        "🎖️ Создание статуса. Шаг 1/3\nВведи название (например: «Ветеран», «VIP»):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminStatuses.name)
+async def status_create_name(message: Message, state: FSMContext):
+    await state.update_data(name=message.text.strip())
+    await state.set_state(AdminStatuses.tag)
+    await message.answer(
+        "Шаг 2/3 — Ключ доступа (латиницей, без пробелов, например v i p — напиши как VIP):\n"
+        "Этот ключ используется, чтобы привязывать товары/здания. Или «-» если не нужен:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminStatuses.tag)
+async def status_create_tag(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if text == "-":
+        await state.update_data(tag=None)
+    else:
+        tag = "".join(c for c in text if c.isalnum())
+        await state.update_data(tag=tag or None)
+    await state.set_state(AdminStatuses.desc)
+    await message.answer("Шаг 3/3 — Описание (или «-» если нет):", reply_markup=cancel_keyboard())
+
+
+@router.message(AdminStatuses.desc)
+async def status_create_desc(message: Message, state: FSMContext):
+    text = message.text.strip()
+    data = await state.get_data()
+    desc = None if text == "-" else text
+    ok, res = await create_status(data['name'], data.get('tag'), desc, message.from_user.id)
+    await state.clear()
+    if ok:
+        await log_action(message.from_user.id, 'create_status', None, f"status={data['name']} id={res}")
+        await message.answer(f"✅ Статус «{data['name']}» создан!")
+    else:
+        await message.answer(f"❌ {res}")
+
+
+@router.callback_query(F.data == "st:delete")
+async def status_delete_menu(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_statuses"):
+        await callback.message.answer("❌ Нет прав.")
+        return
+    statuses = await get_all_statuses()
+    if not statuses:
+        await callback.message.answer("Статусы не созданы.")
+        return
+    rows = []
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    for s in statuses:
+        rows.append([InlineKeyboardButton(text=f"Удалить: {s['name']}", callback_data=f"st_del:{s['id']}")])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:statuses")])
+    await callback.message.edit_text("Выбери статус для удаления:",
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("st_del:"))
+async def status_delete_cb(callback: CallbackQuery):
+    await callback.answer()
+    status_id = int(callback.data.split(":")[1])
+    s = await get_status(status_id)
+    await delete_status(status_id)
+    await log_action(callback.from_user.id, 'delete_status', None, f"status_id={status_id}")
+    await callback.message.answer(f"🗑 Статус «{s['name']}» удалён." if s else "Удалено.")
+
+
+@router.callback_query(F.data == "st:grant")
+async def status_grant_target(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(AdminStatuses.target)
+    await callback.message.answer(
+        "Введи @username или числовой ID игрока, которому выдать/снять статус:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminStatuses.target)
+async def status_grant_target_msg(message: Message, state: FSMContext):
+    target = await find_user(message.text)
+    if not target:
+        await message.answer("❌ Игрок не найден. Попробуй ещё раз:")
+        return
+    await state.update_data(target_id=target['user_id'], target_name=target.get('first_name', ''))
+    await state.set_state(AdminStatuses.status_pick)
+
+    have = await get_user_statuses(target['user_id'])
+    have_names = ", ".join(s['name'] for s in have) if have else "нет"
+
+    statuses = await get_all_statuses()
+    if not statuses:
+        await message.answer("❌ Сначала создай хотя бы один статус.")
+        await state.clear()
+        return
+
+    rows = []
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    for s in statuses:
+        rows.append([InlineKeyboardButton(text=f"{s['name']}", callback_data=f"st_pick:{s['id']}")])
+    await message.answer(
+        f"Игрок: {target.get('first_name','')}\nТекущие статусы: {have_names}\n\nВыбери статус:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+@router.callback_query(F.data.startswith("st_pick:"))
+async def status_grant_pick(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    status_id = int(callback.data.split(":")[1])
+    await state.update_data(status_id=status_id)
+    await state.set_state(AdminStatuses.grant_action)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.edit_text(
+        "Что сделать?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Выдать статус", callback_data="st_op:grant")],
+            [InlineKeyboardButton(text="Снять статус", callback_data="st_op:revoke")],
+        ])
+    )
+
+
+@router.callback_query(F.data.startswith("st_op:"))
+async def status_grant_apply(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    op = callback.data.split(":")[1]
+    data = await state.get_data()
+    target_id = data['target_id']
+    status_id = data['status_id']
+    s = await get_status(status_id)
+    admin = callback.from_user.id
+
+    if op == "grant":
+        ok, msg = await grant_status(target_id, status_id, admin)
+        await log_action(admin, 'grant_status', target_id, f"status={s['name']}")
+    else:
+        await revoke_status(target_id, status_id)
+        ok, msg = True, "Статус снят"
+        await log_action(admin, 'revoke_status', target_id, f"status={s['name']}")
 
     await state.clear()
     await callback.message.answer(("✅ " if ok else "❌ ") + msg)

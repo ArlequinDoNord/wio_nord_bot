@@ -14,6 +14,7 @@ ROLES = {
         'can_manage_finance': True,
         'can_manage_users': True,
         'can_view_logs': True,
+        'can_manage_statuses': True,
         'level': 100
     },
     'shop_admin': {  # Министр торговли
@@ -32,6 +33,7 @@ ROLES = {
     'moderator': {  # МВД сотрудник
         'can_approve_reports': True,
         'can_view_reports': True,
+        'can_grant_statuses': True,
         'level': 30
     }
 }
