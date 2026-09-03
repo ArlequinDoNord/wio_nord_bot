@@ -36,6 +36,7 @@ async def init_db():
             ap_max INTEGER DEFAULT 150,
             state TEXT DEFAULT 'нормально',
             state_effects TEXT DEFAULT '{}',
+            promoted_rank TEXT,
             status_text TEXT DEFAULT 'Боевой пилот',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -265,6 +266,7 @@ async def init_db():
     await _ensure_column(conn, "items", "required_status", "TEXT")
     await _ensure_column(conn, "buildings", "required_status", "TEXT")
     await _ensure_column(conn, "statuses", "sort_order", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "users", "promoted_rank", "TEXT")
     # Существующие статусы (созданные до введения уровней) с уровнем <= 0 —
     # кроме базового «Пилот» — делаем сильнее Пилота, иначе иерархия ломается.
     await conn.execute("""
@@ -626,7 +628,7 @@ async def add_report(user_id: int, screenshot_file_id: str, troops_reported: int
     return cursor.lastrowid
 
 
-async def approve_report(report_id: int, reviewed_by: int, nordmarks_earned: int):
+async def approve_report(report_id: int, reviewed_by: int, troops: int):
     conn = await get_db()
     cursor = await conn.execute("SELECT user_id FROM reports WHERE id = ?", (report_id,))
     row = await cursor.fetchone()
@@ -634,11 +636,14 @@ async def approve_report(report_id: int, reviewed_by: int, nordmarks_earned: int
         return False
 
     user_id = row['user_id']
+    nordmarks_earned = troops
+
     await conn.execute(
-        "UPDATE reports SET status = 'approved', reviewed_by = ?, nordmarks_earned = ? WHERE id = ?",
-        (reviewed_by, nordmarks_earned, report_id)
+        "UPDATE reports SET status = 'approved', reviewed_by = ?, troops_reported = ?, nordmarks_earned = ? WHERE id = ?",
+        (reviewed_by, troops, nordmarks_earned, report_id)
     )
-    await conn.execute("UPDATE users SET troops = troops + ? WHERE user_id = ?", (nordmarks_earned, user_id))
+    await conn.execute("UPDATE users SET troops = troops + ? WHERE user_id = ?", (troops, user_id))
+    await conn.execute("UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?", (nordmarks_earned, user_id))
     await conn.execute(
         "INSERT INTO transactions (to_user, amount, tx_type, description) VALUES (?, ?, ?, ?)",
         (user_id, nordmarks_earned, "report", f"Начисление за отчёт #{report_id}")
@@ -664,6 +669,58 @@ async def get_pending_reports():
            WHERE r.status = 'pending' ORDER BY r.created_at"""
     )
     return await cursor.fetchall()
+
+
+async def get_user_reports(user_id: int):
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM reports WHERE user_id = ? ORDER BY created_at DESC",
+        (user_id,)
+    )
+    return await cursor.fetchall()
+
+
+async def get_users_for_rank_promotion():
+    """Игроки, чьи войска соответствуют званию выше Лейтенанта,
+    но звание ещё не присвоено через админку."""
+    from config import RANKS
+    lieutenant_troops = 1500
+    result = []
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT user_id, first_name, username, troops, promoted_rank FROM users WHERE troops >= ?",
+        (lieutenant_troops,)
+    )
+    for row in await cursor.fetchall():
+        if row['promoted_rank']:
+            continue
+        next_rank = None
+        for rank_name, required in RANKS:
+            if rank_name in ("Рекрут", "Рядовой", "Капрал", "Сержант", "Лейтенант"):
+                continue
+            if row['troops'] >= required:
+                next_rank = rank_name
+            else:
+                break
+        if next_rank:
+            result.append({
+                "user_id": row['user_id'],
+                "first_name": row['first_name'],
+                "username": row['username'],
+                "troops": row['troops'],
+                "next_rank": next_rank,
+            })
+    return result
+
+
+async def promote_user_rank(user_id: int, rank_name: str, promoted_by: int):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET promoted_rank = ? WHERE user_id = ?",
+        (rank_name, user_id)
+    )
+    await conn.commit()
+    await log_action(promoted_by, 'promote_rank', user_id, f"rank={rank_name}")
 
 
 async def add_building(name: str, description: str, price: int, category: str,

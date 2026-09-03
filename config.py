@@ -11,18 +11,22 @@ DB_PATH = os.getenv("DATABASE_PATH", "database/nordmark.db")
 
 RANKS = [
     ("Рекрут", 0),
-    ("Рядовой", 50),
-    ("Капрал", 150),
-    ("Сержант", 350),
-    ("Лейтенант", 700),
-    ("Капитан", 1200),
-    ("Майор", 2000),
-    ("Подполковник", 3500),
-    ("Полковник", 5500),
-    ("Генерал-майор", 8000),
-    ("Генерал-лейтенант", 12000),
-    ("Генерал", 20000),
+    ("Рядовой", 100),
+    ("Капрал", 250),
+    ("Сержант", 550),
+    ("Лейтенант", 1500),
+    ("Капитан", 3500),
+    ("Майор", 7000),
+    ("Подполковник", 11000),
+    ("Полковник", 15000),
+    ("Генерал-майор", 22000),
+    ("Генерал-лейтенант", 33000),
+    ("Генерал", 50000),
 ]
+
+# До этого звания (по войскам) пилот набирает войска через отчёты;
+# свыше — только ручная выдача главным админом/МВД.
+MAX_SELF_RANK_TROOPS = 1500
 
 RARITY_LEVELS = {
     1: "Обычный",
@@ -53,18 +57,38 @@ AP_MAX = 150
 AP_DAILY_RECOVERY = 100
 AP_BONUS_FROM_CONSUMABLE = 50
 
-REPORT_AUTO_APPROVE_TROOPS = 500
+REPORT_AUTO_APPROVE_TROOPS = 100
 
 # --- Система званий (на основе войск) ---
 
 
+AUTO_PROMOTE_MAX_TROOPS = 1500
+
+
 def get_rank(troops: int) -> str:
+    """Звание по войскам (автоматическое, до любого уровня)."""
     rank = RANKS[0][0]
     for rank_name, required in RANKS:
         if troops >= required:
             rank = rank_name
         else:
             break
+    return rank
+
+
+def get_effective_rank(troops: int, promoted_rank: str = None) -> str:
+    """Звание для отображения: если есть admin-назначение — используем его,
+    иначе автоматическое, но не выше Лейтенанта."""
+    if promoted_rank:
+        return promoted_rank
+    rank = RANKS[0][0]
+    for rank_name, required in RANKS:
+        if troops >= required:
+            rank = rank_name
+        else:
+            break
+    if rank not in ("Рекрут", "Рядовой", "Капрал", "Сержант", "Лейтенант"):
+        rank = "Лейтенант"
     return rank
 
 

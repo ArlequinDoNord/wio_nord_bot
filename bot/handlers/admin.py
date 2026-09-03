@@ -14,6 +14,7 @@ from database.db import (
     reject_report, add_nordmarks, remove_nordmarks, add_ap, remove_ap,
     create_status, delete_status, get_all_statuses, get_status,
     grant_status, revoke_status, get_user_statuses,
+    get_users_for_rank_promotion, promote_user_rank, get_user,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import (
@@ -73,7 +74,7 @@ class AdminStatuses(StatesGroup):
 async def perm_flags(user_id: int) -> dict:
     perms = ["can_manage_shop", "can_manage_finance", "can_view_reports",
              "can_approve_reports", "can_manage_admins", "can_view_logs",
-             "can_manage_statuses", "can_grant_statuses"]
+             "can_manage_statuses", "can_grant_statuses", "can_grant_troops"]
     return {p: await has_permission(user_id, p) for p in perms}
 
 
@@ -897,6 +898,79 @@ async def get_report_safe(report_id: int):
         if r['id'] == report_id:
             return r
     return {"id": report_id, "user_id": 0, "troops_reported": 0}
+
+
+# ============ ПОВЫШЕНИЕ В ЗВАНИИ ============
+
+@router.callback_query(F.data == "admin:ranks")
+async def admin_ranks(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_grant_troops"):
+        await callback.message.answer("❌ Нет прав.")
+        return
+
+    players = await get_users_for_rank_promotion()
+    if not players:
+        await callback.message.answer(
+            "📋 Нет игроков, готовых к повышению в звании.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data="admin:menu")]
+            ])
+        )
+        return
+
+    buttons = []
+    for p in players[:10]:
+        name = p['first_name'] or p['username'] or str(p['user_id'])
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"⭐ {name} — {p['troops']} войск → {p['next_rank']}",
+                callback_data=f"rank_promote:{p['user_id']}"
+            )
+        ])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:menu")])
+
+    await callback.message.edit_text(
+        "⭐ Повышение в звании\n\n"
+        "Игроки, чьи войска соответствуют званию выше Лейтенанта:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+
+
+@router.callback_query(F.data.startswith("rank_promote:"))
+async def rank_promote(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_grant_troops"):
+        await callback.message.answer("❌ Нет прав.")
+        return
+
+    user_id = int(callback.data.split(":")[1])
+    user = await get_user(user_id)
+    if not user:
+        await callback.message.answer("❌ Игрок не найден.")
+        return
+
+    from config import RANKS
+    troops = user['troops']
+    next_rank = None
+    for rank_name, required in RANKS:
+        if rank_name in ("Рекрут", "Рядовой", "Капрал", "Сержант", "Лейтенант"):
+            continue
+        if troops >= required:
+            next_rank = rank_name
+        else:
+            break
+
+    if not next_rank:
+        await callback.message.answer("❌ У игрока нет достаточного количества войск.")
+        return
+
+    await promote_user_rank(user_id, next_rank, callback.from_user.id)
+    name = user['first_name'] or user['username'] or str(user_id)
+    await callback.message.answer(
+        f"✅ {name} повышен до звания «{next_rank}» ({troops} войск)."
+    )
+    await admin_ranks(callback)
 
 
 # ============ ЛОГИ ============

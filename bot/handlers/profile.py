@@ -6,7 +6,7 @@ from database.db import (
     get_user, update_user, get_user_statuses, get_selected_status, set_selected_status,
 )
 from keyboards.keyboards import profile_keyboard, cancel_keyboard, main_menu_keyboard
-from config import get_rank, get_next_rank, get_rank_index, RANKS
+from config import get_rank, get_effective_rank, get_next_rank, get_rank_index, RANKS
 
 router = Router()
 
@@ -27,7 +27,7 @@ async def show_profile(message: Message):
         await message.answer("Сначала нажми /start")
         return
 
-    rank = get_rank(user['troops'])
+    rank = get_effective_rank(user['troops'], user.get('promoted_rank'))
     next_rank, next_troops = get_next_rank(user['troops'])
 
     photo = user['photo_file_id']
@@ -136,14 +136,14 @@ async def pilot_card(callback: CallbackQuery):
         await callback.message.answer("Сначала нажми /start")
         return
 
-    rank = get_rank(user['troops'])
+    rank = get_effective_rank(user['troops'], user.get('promoted_rank'))
     status = await selected_status_label(callback.from_user.id)
 
     card = (
         f"═══════════════════════════\n"
         f"      🪖 КАРТОЧКА ПИЛОТА 🪖\n"
         f"═══════════════════════════\n\n"
-        f"ШТАБНОЙ ОТДЕЛ НОРДМАРКА\n"
+        f"ШТАБНОЙ ОТДЕЛ НОРДХАЙМА\n"
         f"───────────────────────────\n"
         f"Имя: {user['first_name']} {user['last_name'] or ''}\n"
         f"Позывной: @{user['username']}\n"

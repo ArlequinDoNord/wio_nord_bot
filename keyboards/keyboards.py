@@ -6,6 +6,7 @@ def main_menu_keyboard(is_admin: bool = False):
         [KeyboardButton(text="Профиль")],
         [KeyboardButton(text="Инвентарь"), KeyboardButton(text="Магазин")],
         [KeyboardButton(text="Банк"), KeyboardButton(text="Город")],
+        [KeyboardButton(text="📝 Сдать отчёт")],
     ]
     if is_admin:
         keyboard.append([KeyboardButton(text="👑 Админ-панель")])
@@ -24,6 +25,8 @@ def admin_panel_keyboard(permissions: dict):
         buttons.append([InlineKeyboardButton(text="👑 Управление ролями", callback_data="admin:roles")])
     if permissions.get('can_manage_statuses') or permissions.get('can_grant_statuses'):
         buttons.append([InlineKeyboardButton(text="🎖️ Статусы", callback_data="admin:statuses")])
+    if permissions.get('can_grant_troops'):
+        buttons.append([InlineKeyboardButton(text="⭐ Повышение в звании", callback_data="admin:ranks")])
     if permissions.get('can_view_logs'):
         buttons.append([InlineKeyboardButton(text="🧾 Логи действий", callback_data="admin:logs")])
     buttons.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])

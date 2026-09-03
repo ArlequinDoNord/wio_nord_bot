@@ -13,6 +13,7 @@ from bot.handlers.bank import router as bank_router
 from bot.handlers.admin import router as admin_router
 from bot.handlers.shop import router as shop_router
 from bot.handlers.inventory import router as inventory_router
+from bot.handlers.reports import router as reports_router
 
 load_dotenv()
 
@@ -58,6 +59,7 @@ async def main():
     dp.include_router(admin_router)
     dp.include_router(shop_router)
     dp.include_router(inventory_router)
+    dp.include_router(reports_router)
 
     logger.info("Хендлеры зарегистрированы")
 
