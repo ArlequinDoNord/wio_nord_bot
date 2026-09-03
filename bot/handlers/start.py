@@ -24,4 +24,4 @@ async def cmd_start(message: Message):
 
 @router.message(F.text == "Город")
 async def show_city(message: Message):
-    await message.answer("Город Нордмарк:")
+    await message.answer("Город Аркхольм:")

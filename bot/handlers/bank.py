@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.db import get_user, transfer_nordmarks, get_transactions_history, get_all_users
 from keyboards.keyboards import bank_keyboard, cancel_keyboard, main_menu_keyboard
-from utils.helpers import format_amount
+from utils.helpers import format_amount, plural_nordmark
 
 router = Router()
 
@@ -39,7 +39,7 @@ async def show_bank(message: Message):
 
     await message.answer(
         f"🏦 НОРДБАНК\n\n"
-        f"💰 Баланс: {user['nordmarks']} Нордмарков\n"
+        f"💰 Баланс: {user['nordmarks']} {plural_nordmark(user['nordmarks'])}\n"
         f"⚡ Очки действия: {user['ap']}/{user['ap_max']}\n\n"
         f"────────────────────\n"
         f"Доступные операции:",
