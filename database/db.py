@@ -267,6 +267,7 @@ async def init_db():
     await _ensure_column(conn, "buildings", "required_status", "TEXT")
     await _ensure_column(conn, "statuses", "sort_order", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "promoted_rank", "TEXT")
+    await _ensure_column(conn, "reports", "total_troops", "INTEGER DEFAULT 0")
     # Существующие статусы (созданные до введения уровней) с уровнем <= 0 —
     # кроме базового «Пилот» — делаем сильнее Пилота, иначе иерархия ломается.
     await conn.execute("""
@@ -618,11 +619,11 @@ async def set_state(user_id: int, new_state: str, reason: str, caused_by: int = 
     await conn.commit()
 
 
-async def add_report(user_id: int, screenshot_file_id: str, troops_reported: int, region: str = ""):
+async def add_report(user_id: int, screenshot_file_id: str, troops_reported: int, total_troops: int = 0, region: str = ""):
     conn = await get_db()
     cursor = await conn.execute(
-        "INSERT INTO reports (user_id, screenshot_file_id, troops_reported, region) VALUES (?, ?, ?, ?)",
-        (user_id, screenshot_file_id, troops_reported, region)
+        "INSERT INTO reports (user_id, screenshot_file_id, troops_reported, total_troops, region) VALUES (?, ?, ?, ?, ?)",
+        (user_id, screenshot_file_id, troops_reported, total_troops, region)
     )
     await conn.commit()
     return cursor.lastrowid

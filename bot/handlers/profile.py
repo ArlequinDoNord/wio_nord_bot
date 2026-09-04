@@ -27,7 +27,7 @@ async def show_profile(message: Message):
         await message.answer("Сначала нажми /start")
         return
 
-    rank = get_effective_rank(user['troops'], user.get('promoted_rank'))
+    rank = get_effective_rank(user['troops'], user['promoted_rank'] if 'promoted_rank' in user.keys() else None)
     next_rank, next_troops = get_next_rank(user['troops'])
 
     photo = user['photo_file_id']
@@ -136,7 +136,7 @@ async def pilot_card(callback: CallbackQuery):
         await callback.message.answer("Сначала нажми /start")
         return
 
-    rank = get_effective_rank(user['troops'], user.get('promoted_rank'))
+    rank = get_effective_rank(user['troops'], user['promoted_rank'] if 'promoted_rank' in user.keys() else None)
     status = await selected_status_label(callback.from_user.id)
 
     card = (

@@ -847,15 +847,27 @@ async def show_pending_reports(message):
         ])
     buttons.append([InlineKeyboardButton(text="Следующий ▶️", callback_data="rep:next")])
 
-    await message.answer(
+    caption = (
         f"📋 ОТЧЁТ #{report['id']}\n\n"
         f"Пилот: {report['first_name']} (@{report['username']})\n"
-        f"Войск заявлено: {report['troops_reported']}\n"
+        f"Войск за сутки: {report['troops_reported']}\n"
+        f"Всего войск: {report['total_troops'] if 'total_troops' in report.keys() else '—'}\n"
         f"Регион: {report['region'] or '—'}\n"
         f"Время: {report['created_at'][:16] if report['created_at'] else '—'}\n\n"
-        f"Проверьте скриншот и примите решение:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        f"Проверьте скриншот и примите решение:"
     )
+
+    if 'screenshot_file_id' in report.keys() and report['screenshot_file_id']:
+        await message.answer_photo(
+            photo=report['screenshot_file_id'],
+            caption=caption,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
+    else:
+        await message.answer(
+            caption,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+        )
 
 
 @router.callback_query(F.data.startswith("rep_ok:"))

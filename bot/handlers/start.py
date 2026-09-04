@@ -17,13 +17,17 @@ async def cmd_start(message: Message):
     admin_flag = await is_admin(user.id)
 
     await message.answer(
-        f"Добро пожаловать в Нордхайм, {user.first_name}!\n\n"
-        "Ты — пилот в мире воздушных боёв.\n"
-        "Получай войск за отчёты, покупай снаряжение,\n"
-        "прокачивайся и сражайся!\n\n"
-        "Базовый статус: «Пилот» 🎖️\n"
-        "Используй меню ниже для навигации:",
-        reply_markup=main_menu_keyboard(is_admin=admin_flag)
+        "```\n"
+        "┌───────────────────────────────┐\n"
+        "│ Н.О.Р.Д. v3.0 [ACTIVATED]    │\n"
+        "│ Нордхаймский Органайзер       │\n"
+        "│ Регистрации Действий          │\n"
+        "└───────────────────────────────┘\n"
+        "C:\\НОРД> boot_sequence_complete\n"
+        ">> ДОСТУПНЫЕ ОПЕРАЦИИ:\n"
+        "```",
+        reply_markup=main_menu_keyboard(is_admin=admin_flag),
+        parse_mode="Markdown"
     )
 
 
