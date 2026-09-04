@@ -1,4 +1,6 @@
 .env
 __pycache__/
 database/nordmark.db
+database/nordmark.db-shm
+database/nordmark.db-wal
 bot.log
