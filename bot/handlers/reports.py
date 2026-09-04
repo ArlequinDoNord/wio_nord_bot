@@ -80,7 +80,7 @@ async def report_receive_total_troops(message: Message, state: FSMContext):
     map_photo = FSInputFile("data/map.jpg")
     await message.answer_photo(
         photo=map_photo,
-        caption="🌍 Карта регионов. Введи номер региона (0 = Нордхайм):"
+        caption="🌍 Карта регионов. Введи номер региона (0 = Столица):"
     )
 
 
@@ -126,7 +126,7 @@ async def report_receive_region(message: Message, state: FSMContext):
 
 @router.message(ReportSubmit.waiting_region)
 async def report_region_expected(message: Message):
-    await message.answer("❌ Введи номер региона цифрой. Например: 0 (Нордхайм)")
+    await message.answer("❌ Введи номер региона цифрой. Например: 0 (Столица)")
 
 
 @router.callback_query(F.data == "report:my_reports")

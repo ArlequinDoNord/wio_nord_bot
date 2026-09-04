@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher
 from dotenv import load_dotenv
 
 from config import BOT_TOKEN
-from database.db import init_db, close_db, daily_ap_recovery, seed_default_items
+from database.db import init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon
 from bot.handlers.start import router as start_router
 from bot.handlers.profile import router as profile_router
 from bot.handlers.bank import router as bank_router
@@ -14,6 +14,7 @@ from bot.handlers.admin import router as admin_router
 from bot.handlers.shop import router as shop_router
 from bot.handlers.inventory import router as inventory_router
 from bot.handlers.reports import router as reports_router
+from bot.handlers.dungeon import router as dungeon_router
 
 load_dotenv()
 
@@ -50,6 +51,10 @@ async def main():
     if seeded:
         logger.info("Магазин наполнен базовым набором товаров (тестовые заглушки)")
 
+    dungeon_seeded = await seed_dungeon()
+    if dungeon_seeded:
+        logger.info("Тестовый данж «Крысиный Подвал» создан")
+
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
@@ -60,6 +65,7 @@ async def main():
     dp.include_router(shop_router)
     dp.include_router(inventory_router)
     dp.include_router(reports_router)
+    dp.include_router(dungeon_router)
 
     logger.info("Хендлеры зарегистрированы")
 

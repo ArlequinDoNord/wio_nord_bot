@@ -185,6 +185,62 @@ async def init_db():
             FOREIGN KEY (item_id) REFERENCES items(id)
         );
 
+        CREATE TABLE IF NOT EXISTS dungeons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            floors_count INTEGER DEFAULT 1,
+            rooms_per_floor INTEGER DEFAULT 10,
+            is_active INTEGER DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS dungeon_enemies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dungeon_id INTEGER NOT NULL,
+            floor INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            hp INTEGER NOT NULL,
+            attack INTEGER NOT NULL,
+            reward_nm INTEGER DEFAULT 5,
+            is_boss INTEGER DEFAULT 0,
+            FOREIGN KEY (dungeon_id) REFERENCES dungeons(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS dungeon_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            dungeon_id INTEGER NOT NULL,
+            floor INTEGER NOT NULL,
+            item_id INTEGER NOT NULL,
+            drop_chance REAL DEFAULT 0.1,
+            FOREIGN KEY (dungeon_id) REFERENCES dungeons(id),
+            FOREIGN KEY (item_id) REFERENCES items(id)
+        );
+
+        CREATE TABLE IF NOT EXISTS player_dungeon_run (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            dungeon_id INTEGER NOT NULL,
+            floor INTEGER DEFAULT 1,
+            room_number INTEGER DEFAULT 0,
+            hp INTEGER DEFAULT 100,
+            hp_max INTEGER DEFAULT 100,
+            is_active INTEGER DEFAULT 1,
+            started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id),
+            FOREIGN KEY (dungeon_id) REFERENCES dungeons(id),
+            UNIQUE(user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS player_dungeon_inventory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            item_id INTEGER NOT NULL,
+            quantity INTEGER DEFAULT 1,
+            FOREIGN KEY (run_id) REFERENCES player_dungeon_run(id),
+            FOREIGN KEY (item_id) REFERENCES items(id),
+            UNIQUE(run_id, item_id)
+        );
+
         CREATE TABLE IF NOT EXISTS reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -268,6 +324,7 @@ async def init_db():
     await _ensure_column(conn, "statuses", "sort_order", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "promoted_rank", "TEXT")
     await _ensure_column(conn, "reports", "total_troops", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "items", "damage", "INTEGER DEFAULT 0")
     # Существующие статусы (созданные до введения уровней) с уровнем <= 0 —
     # кроме базового «Пилот» — делаем сильнее Пилота, иначе иерархия ломается.
     await conn.execute("""
@@ -373,14 +430,15 @@ async def daily_ap_recovery():
 async def add_item(name: str, description: str, price: int, sell_price: int,
                    rarity: int, category: str, stock: int, added_by: int,
                    photo_file_id: str = None, ap_cost: int = 0,
-                   production_time_hours: int = 0, produced_by: int = None):
+                   production_time_hours: int = 0, produced_by: int = None,
+                   damage: int = 0):
     conn = await get_db()
     cursor = await conn.execute(
         """INSERT INTO items (name, description, photo_file_id, price, sell_price,
-           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (name, description, photo_file_id, price, sell_price, rarity, category,
-         stock, added_by, ap_cost, production_time_hours, produced_by)
+         stock, added_by, ap_cost, production_time_hours, produced_by, damage)
     )
     await conn.commit()
     return cursor.lastrowid
@@ -997,18 +1055,18 @@ async def user_has_status_tag(user_id: int, tag: str) -> bool:
 # ============ СИД: ТЕСТОВЫЕ ТОВАРЫ ============
 
 DEFAULT_ITEMS = [
-    # (name, description, price, sell_price, rarity, category, stock, ap_cost)
-    ("Учебный истребитель", "Базовая учебная машина для новичков.", 250, 125, 2, "weapon", 5, 0),
-    ("Стандартный пулемёт", "Надёжное вооружение для воздушных боёв.", 150, 75, 1, "weapon", 10, 0),
-    ("Аптечка", "Восстанавливает силы. Использование даёт +AP.", 50, 25, 1, "consumable", 20, 50),
-    ("Топливо", "Запас топлива для вылетов. +AP при использовании.", 40, 20, 1, "consumable", 20, 30),
-    ("Ремкомплект", "Мелкий ремонт техники.", 80, 40, 2, "consumable", 15, 40),
-    ("Лётный шлем", "Защищает пилота в бою.", 120, 60, 2, "equipment", 10, 0),
-    ("Кислородная маска", "Для высотных полётов.", 90, 45, 1, "equipment", 10, 0),
-    ("Ангар-бокс", "Личное хранилище для техники.", 500, 250, 3, "building", 3, 0),
-    ("Металл", "Сырьё для производства.", 30, 15, 1, "resource", 50, 0),
-    ("Кристаллы", "Редкое сырьё, используется в производстве.", 200, 100, 4, "resource", 10, 0),
-    ("Медаль «Крыло»", "Особая награда за заслуги.", 1000, 500, 5, "special", 1, 0),
+    # (name, description, price, sell_price, rarity, category, stock, ap_cost, damage)
+    ("Учебный истребитель", "Базовая учебная машина для новичков.", 250, 125, 2, "weapon", 5, 0, 8),
+    ("Стандартный пулемёт", "Надёжное вооружение для воздушных боёв.", 150, 75, 1, "weapon", 10, 0, 5),
+    ("Аптечка", "Восстанавливает силы. Использование даёт +AP.", 50, 25, 1, "consumable", 20, 50, 0),
+    ("Топливо", "Запас топлива для вылетов. +AP при использовании.", 40, 20, 1, "consumable", 20, 30, 0),
+    ("Ремкомплект", "Мелкий ремонт техники.", 80, 40, 2, "consumable", 15, 40, 0),
+    ("Лётный шлем", "Защищает пилота в бою.", 120, 60, 2, "equipment", 10, 0, 3),
+    ("Кислородная маска", "Для высотных полётов.", 90, 45, 1, "equipment", 10, 0, 2),
+    ("Ангар-бокс", "Личное хранилище для техники.", 500, 250, 3, "building", 3, 0, 0),
+    ("Металл", "Сырьё для производства.", 30, 15, 1, "resource", 50, 0, 0),
+    ("Кристаллы", "Редкое сырьё, используется в производстве.", 200, 100, 4, "resource", 10, 0, 0),
+    ("Медаль «Крыло»", "Особая награда за заслуги.", 1000, 500, 5, "special", 1, 0, 0),
 ]
 
 
@@ -1020,9 +1078,164 @@ async def seed_default_items():
     if row['c'] > 0:
         return False
 
-    for (name, desc, price, sell_price, rarity, category, stock, ap_cost) in DEFAULT_ITEMS:
+    for (name, desc, price, sell_price, rarity, category, stock, ap_cost, damage) in DEFAULT_ITEMS:
         await add_item(
             name=name, description=desc, price=price, sell_price=sell_price,
             rarity=rarity, category=category, stock=stock, added_by=0, ap_cost=ap_cost,
+            damage=damage,
         )
     return True
+
+
+# ============ ДАНЖ: ТЕСТОВЫЙ ДАНЖ ============
+
+DEFAULT_DUNGEON = {
+    "name": "Крысиный Подвал",
+    "description": "Тёмный подвал под штабом. Крысы мутировали и захватили его.",
+    "floors": [
+        {
+            "enemies": [
+                ("Крыса", 15, 3, 5, False),
+                ("Паук", 12, 4, 5, False),
+                ("Ядовитая крыса", 20, 5, 8, False),
+            ],
+            "boss": ("Король крыс", 50, 8, 25, True),
+        },
+        {
+            "enemies": [
+                ("Бронированная крыса", 30, 6, 10, False),
+                ("Ядовитый паук", 25, 7, 10, False),
+                ("Крыса-вампир", 35, 8, 12, False),
+            ],
+            "boss": ("Крысокот", 80, 12, 50, True),
+        },
+    ],
+}
+
+
+async def seed_dungeon():
+    conn = await get_db()
+    cursor = await conn.execute("SELECT COUNT(*) as c FROM dungeons")
+    row = await cursor.fetchone()
+    if row['c'] > 0:
+        return False
+
+    cur = await conn.execute(
+        "INSERT INTO dungeons (name, description, floors_count, rooms_per_floor) VALUES (?, ?, ?, ?)",
+        (DEFAULT_DUNGEON["name"], DEFAULT_DUNGEON["description"],
+         len(DEFAULT_DUNGEON["floors"]), 10)
+    )
+    dungeon_id = cur.lastrowid
+
+    for floor_idx, floor_data in enumerate(DEFAULT_DUNGEON["floors"], 1):
+        for (name, hp, atk, reward, is_boss) in floor_data["enemies"]:
+            await conn.execute(
+                "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss) VALUES (?,?,?,?,?,?,?)",
+                (dungeon_id, floor_idx, name, hp, atk, reward, int(is_boss))
+            )
+        boss = floor_data["boss"]
+        await conn.execute(
+            "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss) VALUES (?,?,?,?,?,?,?)",
+            (dungeon_id, floor_idx, boss[0], boss[1], boss[2], boss[3], int(boss[4]))
+        )
+
+    await conn.commit()
+    return True
+
+
+async def get_all_dungeons():
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM dungeons WHERE is_active = 1")
+    return await cursor.fetchall()
+
+
+async def get_dungeon(dungeon_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM dungeons WHERE id = ?", (dungeon_id,))
+    return await cursor.fetchone()
+
+
+async def get_floor_enemies(dungeon_id: int, floor: int):
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM dungeon_enemies WHERE dungeon_id = ? AND floor = ?",
+        (dungeon_id, floor)
+    )
+    return await cursor.fetchall()
+
+
+async def start_dungeon_run(user_id: int, dungeon_id: int):
+    conn = await get_db()
+    await conn.execute(
+        "INSERT OR REPLACE INTO player_dungeon_run (user_id, dungeon_id, floor, room_number, hp, hp_max, is_active) VALUES (?,?,?,?,?,?,?)",
+        (user_id, dungeon_id, 1, 0, 100, 100, 1)
+    )
+    await conn.commit()
+
+
+async def get_active_run(user_id: int):
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM player_dungeon_run WHERE user_id = ? AND is_active = 1",
+        (user_id,)
+    )
+    return await cursor.fetchone()
+
+
+async def update_run_hp(run_id: int, hp: int):
+    conn = await get_db()
+    await conn.execute("UPDATE player_dungeon_run SET hp = ? WHERE id = ?", (hp, run_id))
+    await conn.commit()
+
+
+async def advance_room(run_id: int):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE player_dungeon_run SET room_number = room_number + 1 WHERE id = ?",
+        (run_id,)
+    )
+    await conn.commit()
+
+
+async def end_run(run_id: int, is_active: int = 0):
+    conn = await get_db()
+    await conn.execute("UPDATE player_dungeon_run SET is_active = ? WHERE id = ?", (is_active, run_id))
+    await conn.commit()
+
+
+async def add_run_item(run_id: int, item_id: int):
+    conn = await get_db()
+    await conn.execute("""
+        INSERT INTO player_dungeon_inventory (run_id, item_id, quantity)
+        VALUES (?, ?, 1)
+        ON CONFLICT(run_id, item_id) DO UPDATE SET quantity = quantity + 1
+    """, (run_id, item_id))
+    await conn.commit()
+
+
+async def get_run_items(run_id: int):
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT i.name, pdi.quantity FROM player_dungeon_inventory pdi JOIN items i ON pdi.item_id = i.id WHERE pdi.run_id = ?",
+        (run_id,)
+    )
+    return await cursor.fetchall()
+
+
+async def clear_run_items(run_id: int):
+    conn = await get_db()
+    await conn.execute("DELETE FROM player_dungeon_inventory WHERE run_id = ?", (run_id,))
+    await conn.commit()
+
+
+async def get_player_weapon_damage(user_id: int) -> int:
+    """Суммарный урон оружия в инвентаре игрока."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT COALESCE(SUM(i.damage * inv.quantity), 0) as total_damage
+        FROM inventory inv
+        JOIN items i ON inv.item_id = i.id
+        WHERE inv.user_id = ? AND i.category = 'weapon'
+    """, (user_id,))
+    row = await cursor.fetchone()
+    return row['total_damage'] if row else 0

@@ -33,4 +33,5 @@ async def cmd_start(message: Message):
 
 @router.message(F.text == "Город")
 async def show_city(message: Message):
-    await message.answer("Город Аркхольм:")
+    from keyboards.keyboards import city_keyboard
+    await message.answer("Город Аркхольм:", reply_markup=city_keyboard())
