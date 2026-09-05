@@ -104,6 +104,91 @@ def rarity_choice_markup():
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def pilot_picker_markup(next_step: str):
+    """Клавиатура выбора пилота из списка; next_step — куда переходить после выбора."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    users = await get_all_users()
+    rows = []
+    if users:
+        for u in users[:50]:
+            label = u['first_name'] or u['username'] or str(u['user_id'])
+            if u['username']:
+                label += f" (@{u['username']})"
+            rows.append([InlineKeyboardButton(
+                text=label,
+                callback_data=f"pickuser:{next_step}:{u['user_id']}"
+            )])
+    rows.append([InlineKeyboardButton(text="✍️ Ввести вручную", callback_data=f"pickuser:{next_step}:manual")])
+    rows.append([InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("pickuser:"))
+async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    _, next_step, raw = callback.data.split(":", 2)
+    if raw == "manual":
+        await callback.message.answer(
+            "Введи @username или числовой ID игрока:",
+            reply_markup=cancel_keyboard()
+        )
+        return
+
+    target = await get_user(int(raw))
+    if not target:
+        await callback.message.answer("❌ Игрок не найден.")
+        return
+    await state.update_data(target_id=target['user_id'], target_name=target['first_name'] if 'first_name' in target.keys() else '')
+    await callback.message.answer(f"Игрок: {target['first_name'] if 'first_name' in target.keys() else ''} (@{target['username'] if 'username' in target.keys() else ''})")
+
+    if next_step == "finance_amount":
+        await state.set_state(AdminFinance.amount)
+        await callback.message.answer("Введи сумму:", reply_markup=cancel_keyboard())
+    elif next_step == "roles_action":
+        await state.set_state(AdminRoles.action)
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        await callback.message.answer(
+            f"Текущие роли: {', '.join(await get_user_role(target['user_id']))}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="Выдать роль", callback_data="rolop:add")],
+                [InlineKeyboardButton(text="Снять роль", callback_data="rolop:remove")],
+            ])
+        )
+    elif next_step == "status_pick":
+        await state.set_state(AdminStatuses.status_pick)
+        have = await get_user_statuses(target['user_id'])
+        have_names = ", ".join(s['name'] for s in have) if have else "нет"
+        statuses = await get_all_statuses()
+        if not statuses:
+            await callback.message.answer("❌ Сначала создай хотя бы один статус.")
+            await state.clear()
+            return
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        rows = []
+        for s in statuses:
+            rows.append([InlineKeyboardButton(text=f"{s['name']}", callback_data=f"st_pick:{s['id']}")])
+        await callback.message.answer(
+            f"Текущие статусы: {have_names}\n\nВыбери статус:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+    elif next_step == "status_revoke":
+        await state.set_state(AdminStatuses.status_pick)
+        have = await get_user_statuses(target['user_id'])
+        if not have:
+            await callback.message.answer(f"У {target['first_name'] if 'first_name' in target.keys() else ''} нет статусов для снятия.")
+            await state.clear()
+            return
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        rows = []
+        for s in have:
+            mark = "✅ " if s['is_selected'] else ""
+            rows.append([InlineKeyboardButton(text=f"{mark}Снять: {s['name']}", callback_data=f"st_rev:{s['id']}")])
+        await callback.message.answer(
+            f"У {target['first_name'] if 'first_name' in target.keys() else ''}: {', '.join(s['name'] for s in have)}\n\nВыбери статус для снятия:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+
+
 def category_choice_markup():
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     rows = []
@@ -461,8 +546,47 @@ async def finance_pick(callback: CallbackQuery, state: FSMContext):
     action = parts[2]
     await state.update_data(currency=currency, action=action)
     await state.set_state(AdminFinance.target)
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    users = await get_all_users()
+    rows = []
+    if users:
+        for u in users[:50]:
+            label = u['first_name'] or u['username'] or str(u['user_id'])
+            if u['username']:
+                label += f" (@{u['username']})"
+            rows.append([InlineKeyboardButton(text=label, callback_data=f"finuser:{u['user_id']}")])
+    rows.append([InlineKeyboardButton(text="✍️ Ввести вручную", callback_data="fin:manual")])
+    rows.append([InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:menu")])
+
+    await callback.message.answer(
+        "Выбери пилота или введи @username/ID:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+@router.callback_query(F.data == "fin:manual")
+async def finance_manual(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(AdminFinance.target)
     await callback.message.answer(
         "Введи получателя: @username или numeric ID игрока:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.callback_query(F.data.startswith("finuser:"))
+async def finance_pick_user(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    user_id = int(callback.data.split(":")[1])
+    target = await get_user(user_id)
+    if not target:
+        await callback.message.answer("❌ Игрок не найден.")
+        return
+    await state.update_data(target_id=target['user_id'], target_name=target['first_name'] if 'first_name' in target.keys() else '')
+    await state.set_state(AdminFinance.amount)
+    await callback.message.answer(
+        f"Игрок: {target['first_name'] if 'first_name' in target.keys() else ''} (@{target['username'] if 'username' in target.keys() else ''})\nВведи сумму:",
         reply_markup=cancel_keyboard()
     )
 
@@ -532,10 +656,10 @@ async def admin_roles(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ Нет прав для управления ролями.")
         return
     await state.set_state(AdminRoles.target)
+    markup = await pilot_picker_markup("roles_action")
     await callback.message.answer(
-        "👑 УПРАВЛЕНИЕ РОЛЯМИ\n\n"
-        "Введи @username или числовой ID игрока:",
-        reply_markup=cancel_keyboard()
+        "👑 УПРАВЛЕНИЕ РОЛЯМИ\n\nВыбери пилота:",
+        reply_markup=markup
     )
 
 
@@ -621,6 +745,7 @@ async def admin_statuses(callback: CallbackQuery):
     if await has_permission(callback.from_user.id, "can_grant_statuses") or \
        await has_permission(callback.from_user.id, "can_manage_statuses"):
         rows.append([InlineKeyboardButton(text="🎁 Выдать статус игроку", callback_data="st:grant")])
+        rows.append([InlineKeyboardButton(text="🚫 Снять статус у игрока", callback_data="st:revoke")])
     rows.append([InlineKeyboardButton(text="📋 Список статусов", callback_data="st:list")])
     rows.append([InlineKeyboardButton(text="🔙 В меню", callback_data="admin:menu")])
     await callback.message.edit_text(
@@ -680,8 +805,8 @@ async def status_create_tag(message: Message, state: FSMContext):
         await state.update_data(tag=tag or None)
     await state.set_state(AdminStatuses.level)
     await message.answer(
-        "Шаг 3/4 — Уровень статуса (число). Чем больше, тем сильнее статус\n"
-        "Уровень открывает весь доступ более слабых статусов.\n"
+        "Шаг 3/4 — Уровень статуса (целое число от 0 до 20, макс. 20).\n"
+        "Чем больше, тем сильнее статус. Уровень открывает весь доступ более слабых статусов.\n"
         "Базовый «Пилот» — 0. Введи уровень (например: 5):",
         reply_markup=cancel_keyboard()
     )
@@ -694,6 +819,9 @@ async def status_create_level(message: Message, state: FSMContext):
         sort_order = int(text)
     except ValueError:
         await message.answer("❌ Введи целое число (уровень статуса):")
+        return
+    if not 0 <= sort_order <= 20:
+        await message.answer("❌ Уровень должен быть от 0 до 20 (макс. сейчас 20):")
         return
     await state.update_data(sort_order=sort_order)
     await state.set_state(AdminStatuses.desc)
@@ -749,10 +877,16 @@ async def status_delete_cb(callback: CallbackQuery):
 async def status_grant_target(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.set_state(AdminStatuses.target)
-    await callback.message.answer(
-        "Введи @username или числовой ID игрока, которому выдать/снять статус:",
-        reply_markup=cancel_keyboard()
-    )
+    markup = await pilot_picker_markup("status_pick")
+    await callback.message.answer("Выбери пилота для выдачи/снятия статуса:", reply_markup=markup)
+
+
+@router.callback_query(F.data == "st:revoke")
+async def status_revoke_target(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(AdminStatuses.target)
+    markup = await pilot_picker_markup("status_revoke")
+    await callback.message.answer("У кого снять статус? Выбери пилота:", reply_markup=markup)
 
 
 @router.message(AdminStatuses.target)
@@ -781,6 +915,22 @@ async def status_grant_target_msg(message: Message, state: FSMContext):
         f"Игрок: {target.get('first_name','')}\nТекущие статусы: {have_names}\n\nВыбери статус:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
+
+
+@router.callback_query(F.data.startswith("st_rev:"))
+async def status_revoke_pick(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    status_id = int(callback.data.split(":")[1])
+    data = await state.get_data()
+    target_id = data.get('target_id')
+    if not target_id:
+        await callback.message.answer("❌ Сессия устарела, начни заново.")
+        return
+    s = await get_status(status_id)
+    await revoke_status(target_id, status_id)
+    await log_action(callback.from_user.id, 'revoke_status', target_id, f"status={s['name']}" if s else f"status_id={status_id}")
+    await state.clear()
+    await callback.message.answer(f"🚫 Статус «{s['name']}» снят с игрока." if s else "Статус снят.")
 
 
 @router.callback_query(F.data.startswith("st_pick:"))

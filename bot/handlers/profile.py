@@ -1,5 +1,6 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, ContentType
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.db import (
@@ -20,11 +21,11 @@ async def selected_status_label(user_id: int) -> str:
     return sel['name'] if sel else "—"
 
 
-@router.message(F.text == "Профиль")
-async def show_profile(message: Message):
-    user = await get_user(message.from_user.id)
+async def render_profile(where, user_id: int):
+    out = where.message if hasattr(where, 'message') else where
+    user = await get_user(user_id)
     if not user:
-        await message.answer("Сначала нажми /start")
+        await out.answer("Сначала нажми /start")
         return
 
     rank = get_effective_rank(user['troops'], user['promoted_rank'] if 'promoted_rank' in user.keys() else None)
@@ -48,7 +49,7 @@ async def show_profile(message: Message):
         filled = int(done / needed * bar_len) if needed > 0 else bar_len
         caption += f"До звания «{next_rank}»: [{'█' * filled}{'░' * (bar_len - filled)}] {done}/{needed}\n"
 
-    status = await selected_status_label(message.from_user.id)
+    status = await selected_status_label(user_id)
     caption += (
         f"💰 Нордмарки: {user['nordmarks']}\n"
         f"⚡ Очки действия: {user['ap']}/{user['ap_max']}\n"
@@ -58,13 +59,23 @@ async def show_profile(message: Message):
     )
 
     if photo:
-        await message.answer_photo(
+        await out.answer_photo(
             photo=photo,
             caption=caption,
             reply_markup=profile_keyboard()
         )
     else:
-        await message.answer(caption, reply_markup=profile_keyboard())
+        await out.answer(caption, reply_markup=profile_keyboard())
+
+
+@router.message(Command("profile"))
+async def profile_cmd(message: Message):
+    await render_profile(message, message.from_user.id)
+
+
+@router.message(F.text == "Профиль")
+async def show_profile(message: Message):
+    await render_profile(message, message.from_user.id)
 
 
 @router.callback_query(F.data == "profile:set_photo")

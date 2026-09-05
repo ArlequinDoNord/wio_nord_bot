@@ -338,15 +338,9 @@ async def init_db():
     await _ensure_column(conn, "items", "heal", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "dungeon_enemies", "drops", "TEXT DEFAULT '[]'")
     await _ensure_column(conn, "dungeon_enemies", "image", "TEXT")
-    # Существующие статусы (созданные до введения уровней) с уровнем <= 0 —
-    # кроме базового «Пилот» — делаем сильнее Пилота, иначе иерархия ломается.
-    await conn.execute("""
-        UPDATE statuses SET sort_order = 100
-        WHERE (sort_order IS NULL OR sort_order <= 0)
-          AND (access_tag IS NOT 'pilot' OR access_tag IS NOT NULL)
-          AND LOWER(name) != 'пилот'
-          AND LOWER(name) != 'pilot'
-    """)
+    # Базовый статус «Пилот» всегда на самом низком уровне иерархии.
+    # (Раньше старый миграционный апдейт мог выставить ему высокий уровень.)
+    await conn.execute("UPDATE statuses SET sort_order = 0 WHERE access_tag = 'pilot'")
     await conn.commit()
 
 

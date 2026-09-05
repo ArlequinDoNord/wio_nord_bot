@@ -34,7 +34,6 @@ ROLES = {
     'moderator': {  # МВД сотрудник
         'can_approve_reports': True,
         'can_view_reports': True,
-        'can_grant_statuses': True,
         'can_grant_troops': True,
         'level': 30
     }
