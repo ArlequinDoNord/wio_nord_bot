@@ -1,8 +1,8 @@
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart
 from database.db import add_user, get_user, ensure_base_status
-from keyboards.keyboards import main_menu_keyboard
+from keyboards.keyboards import main_menu_keyboard, city_keyboard
 from utils.permissions import is_admin
 
 router = Router()
@@ -33,5 +33,10 @@ async def cmd_start(message: Message):
 
 @router.message(F.text == "Город")
 async def show_city(message: Message):
-    from keyboards.keyboards import city_keyboard
     await message.answer("Город Аркхольм:", reply_markup=city_keyboard())
+
+
+@router.callback_query(F.data == "city:menu")
+async def city_menu_cb(callback: CallbackQuery):
+    await callback.answer()
+    await callback.message.edit_text("Город Аркхольм:", reply_markup=city_keyboard())

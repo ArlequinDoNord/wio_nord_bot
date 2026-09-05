@@ -77,7 +77,7 @@ async def report_receive_total_troops(message: Message, state: FSMContext):
     await state.update_data(total_troops=total)
     await state.set_state(ReportSubmit.waiting_region)
     from aiogram.types import FSInputFile
-    map_photo = FSInputFile("data/map.jpg")
+    map_photo = FSInputFile("assets/img/maps/map.jpg")
     await message.answer_photo(
         photo=map_photo,
         caption="🌍 Карта регионов. Введи номер региона (0 = Столица):"

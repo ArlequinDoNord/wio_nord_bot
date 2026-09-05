@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher
 from dotenv import load_dotenv
 
 from config import BOT_TOKEN
-from database.db import init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon
+from database.db import init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon, ensure_dungeon_shop_items, ensure_dungeon_enemy_drops
 from bot.handlers.start import router as start_router
 from bot.handlers.profile import router as profile_router
 from bot.handlers.bank import router as bank_router
@@ -54,6 +54,12 @@ async def main():
     dungeon_seeded = await seed_dungeon()
     if dungeon_seeded:
         logger.info("Тестовый данж «Крысиный Подвал» создан")
+
+    await ensure_dungeon_shop_items()
+    logger.info("Предметы данжа (зелье, трофеи) проверены")
+
+    await ensure_dungeon_enemy_drops()
+    logger.info("Дропы врагов обновлены")
 
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
