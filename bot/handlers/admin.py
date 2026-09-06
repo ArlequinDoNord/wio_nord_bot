@@ -19,6 +19,7 @@ from database.db import (
     get_daily_spent, add_daily_spent,
     get_treasury_balance, transfer_from_treasury,
     get_report_tax_percent, set_report_tax_percent,
+    get_sale_tax_percent, set_sale_tax_percent,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import (
@@ -41,6 +42,13 @@ class AdminAddItem(StatesGroup):
     rarity = State()
     category = State()
     stock = State()
+    producer = State()
+    producer_user = State()
+    photo = State()
+
+
+class AdminSaleTax(StatesGroup):
+    percent = State()
 
 
 class AdminEditItem(StatesGroup):
@@ -283,7 +291,7 @@ async def shop_admin_add(callback: CallbackQuery, state: FSMContext):
         return
     await state.set_state(AdminAddItem.name)
     await callback.message.answer(
-        "🛒 Добавление товара. Шаг 1/7\n\nВведи название товара (или /cancel):",
+        "🛒 Добавление товара. Шаг 1/9\n\nВведи название товара (или /cancel):",
         reply_markup=cancel_keyboard()
     )
 
@@ -292,7 +300,7 @@ async def shop_admin_add(callback: CallbackQuery, state: FSMContext):
 async def add_item_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text.strip())
     await state.set_state(AdminAddItem.desc)
-    await message.answer("Шаг 2/7 — Описание товара (или «-» если нет):",
+    await message.answer("Шаг 2/9 — Описание товара (или «-» если нет):",
                          reply_markup=cancel_keyboard())
 
 
@@ -301,7 +309,7 @@ async def add_item_desc(message: Message, state: FSMContext):
     text = message.text.strip()
     await state.update_data(desc=None if text == "-" else text)
     await state.set_state(AdminAddItem.price)
-    await message.answer("Шаг 3/7 — Цена в Нордмарках (целое число):",
+    await message.answer("Шаг 3/9 — Цена в Нордмарках (целое число):",
                          reply_markup=cancel_keyboard())
 
 
@@ -317,7 +325,7 @@ async def add_item_price(message: Message, state: FSMContext):
         return
     await state.update_data(price=price)
     await state.set_state(AdminAddItem.sell_price)
-    await message.answer(f"Шаг 4/7 — Цена продажи за {price}? Введи сумму (или «-» = половина):",
+    await message.answer(f"Шаг 4/9 — Цена продажи за {price}? Введи сумму (или «-» = половина):",
                          reply_markup=cancel_keyboard())
 
 
@@ -335,7 +343,7 @@ async def add_item_sell_price(message: Message, state: FSMContext):
             return
     await state.update_data(sell_price=sell_price)
     await state.set_state(AdminAddItem.rarity)
-    await message.answer("Шаг 5/7 — Редкость:", reply_markup=rarity_choice_markup())
+    await message.answer("Шаг 5/9 — Редкость:", reply_markup=rarity_choice_markup())
 
 
 @router.callback_query(F.data.startswith("rar:"))
@@ -344,7 +352,7 @@ async def add_item_rarity(callback: CallbackQuery, state: FSMContext):
     rarity = int(callback.data.split(":")[1])
     await state.update_data(rarity=rarity)
     await state.set_state(AdminAddItem.category)
-    await callback.message.answer("Шаг 6/7 — Категория:", reply_markup=category_choice_markup())
+    await callback.message.answer("Шаг 6/9 — Категория:", reply_markup=category_choice_markup())
 
 
 @router.callback_query(F.data.startswith("cat:"))
@@ -353,7 +361,7 @@ async def add_item_category(callback: CallbackQuery, state: FSMContext):
     category = callback.data.split(":")[1]
     await state.update_data(category=category)
     await state.set_state(AdminAddItem.stock)
-    await callback.message.answer("Шаг 7/7 — Остаток на складе (или «-» = безлимит):",
+    await callback.message.answer("Шаг 7/9 — Остаток на складе (или «-» = безлимит):",
                                   reply_markup=cancel_keyboard())
 
 
@@ -368,16 +376,78 @@ async def add_item_stock(message: Message, state: FSMContext):
         except ValueError:
             await message.answer("❌ Введи целое число или «-».")
             return
+    await state.update_data(stock=stock)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await state.set_state(AdminAddItem.producer)
+    await message.answer(
+        "Шаг 8/9 — Кто продаёт этот товар?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🏛️ Гос. магазин", callback_data="prod:state")],
+            [InlineKeyboardButton(text="👤 Игрок-продавец", callback_data="prod:player")],
+        ])
+    )
+
+
+@router.callback_query(F.data.startswith("prod:"))
+async def add_item_producer(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    choice = callback.data.split(":")[1]
+    if choice == "player":
+        await state.set_state(AdminAddItem.producer_user)
+        await callback.message.answer(
+            "Шаг 8/9 — Введи @username или ID игрока, который продаёт этот товар "
+            "(выручка с налогом уйдёт ему):",
+            reply_markup=cancel_keyboard()
+        )
+        return
+    await state.update_data(produced_by=None)
+    await state.set_state(AdminAddItem.photo)
+    await callback.message.answer(
+        "Шаг 9/9 — Загрузи фото товара (или «-» если без фото):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminAddItem.producer_user)
+async def add_item_producer_user(message: Message, state: FSMContext):
+    producer = await find_user(message.text)
+    if not producer:
+        await message.answer("❌ Игрок не найден. Попробуй @username или ID (или /cancel):")
+        return
+    await state.update_data(produced_by=producer['user_id'])
+    await state.set_state(AdminAddItem.photo)
+    await message.answer(
+        "Шаг 9/9 — Загрузи фото товара (или «-» если без фото):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminAddItem.photo)
+async def add_item_photo(message: Message, state: FSMContext):
+    photo_file_id = None
+    if message.photo:
+        photo_file_id = message.photo[-1].file_id
+    else:
+        text = message.text.strip()
+        if text not in ("-", "—"):
+            await message.answer("❌ Отправь фото или «-»:")
+            return
+    await state.update_data(photo_file_id=photo_file_id)
+
     data = await state.get_data()
     admin_id = message.from_user.id
+    stock = data['stock']
 
     item_id = await add_item(
         name=data['name'], description=data.get('desc'),
         price=data['price'], sell_price=data['sell_price'],
         rarity=data['rarity'], category=data['category'],
         stock=stock, added_by=admin_id,
+        photo_file_id=data.get('photo_file_id'),
+        produced_by=data.get('produced_by'),
     )
-    await log_action(admin_id, 'add_item', None, f"item={data['name']} id={item_id}")
+    await log_action(admin_id, 'add_item', data.get('produced_by'),
+                     f"item={data['name']} id={item_id}")
     await state.clear()
     await message.answer(
         f"✅ Товар добавлен!\n\n"
@@ -567,6 +637,7 @@ async def admin_finance(callback: CallbackQuery):
     if can_full:
         buttons.append([InlineKeyboardButton(text="🏛️ Казна", callback_data="admin:treasury")])
         buttons.append([InlineKeyboardButton(text="📊 Налог на отчёты", callback_data="admin:tax")])
+        buttons.append([InlineKeyboardButton(text="📊 Налог на продажи", callback_data="admin:saletax")])
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:menu")])
 
     await callback.message.edit_text(
@@ -684,6 +755,45 @@ async def admin_tax_set(message: Message, state: FSMContext):
     await message.answer(
         f"✅ Налог на отчёты установлен: {percent}%.\n"
         f"Изменение действует сразу для всех граждан."
+    )
+
+
+@router.callback_query(F.data == "admin:saletax")
+async def admin_saletax_view(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_finance"):
+        await callback.message.answer("❌ Нет прав для управления налогом.")
+        return
+    current = await get_sale_tax_percent()
+    await state.set_state(AdminSaleTax.percent)
+    await callback.message.edit_text(
+        f"📊 НАЛОГ НА ПРОДАЖИ\n\n"
+        f"Текущая ставка: {current}%\n\n"
+        f"С продаж товаров игроков в магазине берётся этот процент "
+        f"(выручка продавцу приходит за вычетом налога).\n\n"
+        f"Введи новую ставку (0–100):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 В финансы", callback_data="admin:finance")]
+        ])
+    )
+
+
+@router.message(AdminSaleTax.percent)
+async def admin_saletax_set(message: Message, state: FSMContext):
+    try:
+        percent = int(message.text.strip())
+    except ValueError:
+        await message.answer("❌ Введи целое число от 0 до 100:")
+        return
+    if not 0 <= percent <= 100:
+        await message.answer("❌ Ставка должна быть от 0 до 100:")
+        return
+    await set_sale_tax_percent(percent)
+    await log_action(message.from_user.id, 'set_sale_tax', None, f"percent={percent}")
+    await state.clear()
+    await message.answer(
+        f"✅ Налог на продажи установлен: {percent}%.\n"
+        f"Изменение действует сразу для всех товаров игроков."
     )
 
 

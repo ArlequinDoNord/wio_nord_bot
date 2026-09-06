@@ -136,6 +136,7 @@ async def init_db():
         );
 
         INSERT OR IGNORE INTO settings (key, value) VALUES ('report_tax_percent', '15');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('sale_tax_percent', '15');
 
         CREATE TABLE IF NOT EXISTS library_cards (
             user_id INTEGER NOT NULL,
@@ -798,6 +799,31 @@ async def set_report_tax_percent(percent: int):
     conn = await get_db()
     await conn.execute(
         "INSERT INTO settings (key, value) VALUES ('report_tax_percent', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (str(percent),)
+    )
+    await conn.commit()
+
+
+# ============ НАЛОГ НА ПРОДАЖИ ============
+
+async def get_sale_tax_percent() -> int:
+    """Налог с продаж товаров игроков в процентах (по умолчанию 15)."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT value FROM settings WHERE key = 'sale_tax_percent'")
+    row = await cursor.fetchone()
+    if not row:
+        return 15
+    try:
+        return int(row['value'])
+    except (TypeError, ValueError):
+        return 15
+
+
+async def set_sale_tax_percent(percent: int):
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('sale_tax_percent', ?) "
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (str(percent),)
     )
@@ -1622,7 +1648,7 @@ async def get_user_potions(user_id: int):
     """Зелья здоровья в обычном инвентаре игрока."""
     conn = await get_db()
     cursor = await conn.execute("""
-        SELECT i.id, i.name, i.heal, inv.quantity
+        SELECT i.id, i.name, i.heal, i.photo_file_id, inv.quantity
         FROM inventory inv JOIN items i ON inv.item_id = i.id
         WHERE inv.user_id = ? AND i.category = 'consumable' AND i.heal > 0 AND inv.quantity > 0
         ORDER BY i.heal DESC

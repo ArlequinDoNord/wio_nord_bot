@@ -9,7 +9,7 @@ from aiogram.fsm.state import StatesGroup, State
 from database.db import (
     get_all_dungeons, get_dungeon, get_floor_enemies, start_dungeon_run,
     get_active_run, update_run_hp, advance_room, end_run, add_run_item,
-    get_run_items, clear_run_items, get_user, add_nordmarks, remove_nordmarks, get_db,
+    get_run_items, clear_run_items, get_user, add_nordmarks, remove_nordmarks, remove_ap, get_db,
     get_player_weapon_damage, get_user_potions, get_item_by_name, remove_inventory_item,
     get_user_contract_count,
 )
@@ -148,10 +148,24 @@ async def dungeon_enter(callback: CallbackQuery, state: FSMContext):
         )
         return
 
+    user = await get_user(user_id)
+    if user['ap'] < 30:
+        await callback.message.answer(
+            f"❌ Недостаточно очков действий для входа.\n"
+            f"Нужно 30 AP за попытку, у тебя {user['ap']} AP.\n\n"
+            f"⚡ Очки действий восстанавливаются раз в сутки.",
+        )
+        return
+
     contract = await get_item_by_name("Контракт на зачистку")
     ok = await remove_inventory_item(user_id, contract['id'], 1)
     if not ok:
         await callback.message.answer("❌ Не удалось списать контракт.")
+        return
+
+    ok = await remove_ap(user_id, 30)
+    if not ok:
+        await callback.message.answer("❌ Не удалось списать очки действий.")
         return
 
     dungeon = dungeons[0]
@@ -159,7 +173,7 @@ async def dungeon_enter(callback: CallbackQuery, state: FSMContext):
     run = await get_active_run(user_id)
 
     await callback.message.answer(
-        f"🎫 Контракт использован!\n"
+        f"🎫 Контракт использован! ⚡ −30 AP за вход\n"
         f"🏰 {dungeon['name']}\n"
         f"Этаж 1 | Комната 0/10\n"
         f"❤️ {_hp_bar(run['hp'], run['hp_max'])}\n\n"

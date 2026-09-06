@@ -5,8 +5,9 @@ from aiogram.types import Message, CallbackQuery
 
 from database.db import (
     get_available_items, get_item, add_inventory_item,
-    get_user, remove_nordmarks, get_db, user_has_status_tag, get_status_by_tag,
+    get_user, remove_nordmarks, add_nordmarks, get_db, user_has_status_tag, get_status_by_tag,
     activate_library_card, get_library_cards,
+    add_treasury, get_sale_tax_percent,
 )
 from keyboards.keyboards import (
     shop_catalog_keyboard, item_card_keyboard,
@@ -175,11 +176,37 @@ async def shop_item_view(callback: CallbackQuery):
     if req:
         body += f"\n🔒 Требуется статус: {req}"
 
+    producer = item.get('produced_by')
+    if producer:
+        sale_tax = await get_sale_tax_percent()
+        seller = await get_user(producer)
+        seller_name = f"@{seller['username']}" if seller and seller['username'] else f"#{producer}"
+        body += (
+            f"\n👨‍🏭 Продавец: {seller_name}\n"
+            f"📊 Налог с продажи: {sale_tax}% (выручка продавцу за вычетом налога)"
+        )
+
     has_access = await user_has_status_tag(callback.from_user.id, item['required_status'])
     cannot_buy = (item['stock'] == 0) or not has_access
     markup = item_card_keyboard(item['id'], item['price'], can_buy_nord=not cannot_buy)
 
-    await callback.message.edit_text(header + body, reply_markup=markup)
+    text = header + body
+    photo_id = item.get('photo_file_id')
+    if photo_id:
+        from aiogram.types import InputMediaPhoto
+        try:
+            if callback.message.photo:
+                await callback.message.edit_media(
+                    media=InputMediaPhoto(media=photo_id, caption=text),
+                    reply_markup=markup
+                )
+            else:
+                await callback.message.delete()
+                await callback.message.answer_photo(photo=photo_id, caption=text, reply_markup=markup)
+        except Exception:
+            await callback.message.answer_photo(photo=photo_id, caption=text, reply_markup=markup)
+    else:
+        await callback.message.edit_text(text, reply_markup=markup)
 
 
 @router.callback_query(F.data.startswith("buy_nord:"))
@@ -211,6 +238,18 @@ async def buy_nord(callback: CallbackQuery):
     await remove_nordmarks(user_id, item['price'], "shop_purchase", f"Покупка: {item['name']}")
     await add_inventory_item(user_id, item_id, 1)
     await decrement_stock(item_id)
+
+    await add_treasury(item['price'], f"Продажа: {item['name']}")
+
+    producer = item.get('produced_by')
+    if producer:
+        sale_tax = await get_sale_tax_percent()
+        tax_amount = int(item['price'] * sale_tax / 100)
+        seller_pay = item['price'] - tax_amount
+        await add_nordmarks(
+            producer, seller_pay, "shop_payout",
+            f"Продажа товара: {item['name']} ({sale_tax}% налог)"
+        )
 
     if item['category'] == "library_card":
         card_type = "silver" if "Серебряный" in item['name'] else "basic"
