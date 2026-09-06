@@ -1,10 +1,10 @@
 # Основной async-фреймворк бота
-aiogram==3.15.0
+aiogram==3.31.0
 # Асинхронная работа с SQLite
-aiosqlite==0.20.0
+aiosqlite==0.22.1
 # Переменные окружения
-python-dotenv==1.0.1
+python-dotenv==1.2.3
 # Работа с изображениями
-Pillow==11.1.0
+Pillow==12.3.0
 # OCR для сканирования скриншотов отчётов
 pytesseract==0.3.13

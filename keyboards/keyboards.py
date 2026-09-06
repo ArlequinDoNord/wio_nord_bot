@@ -1,13 +1,14 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
 
-def main_menu_keyboard(is_admin: bool = False):
+def main_menu_keyboard(is_admin: bool = False, is_pilot: bool = True):
     keyboard = [
         [KeyboardButton(text="Профиль")],
         [KeyboardButton(text="Инвентарь"), KeyboardButton(text="Магазин")],
         [KeyboardButton(text="Банк"), KeyboardButton(text="Город")],
-        [KeyboardButton(text="📝 Сдать отчёт")],
     ]
+    if is_pilot:
+        keyboard.append([KeyboardButton(text="📝 Сдать отчёт")])
     if is_admin:
         keyboard.append([KeyboardButton(text="👑 Админ-панель")])
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
@@ -17,7 +18,7 @@ def admin_panel_keyboard(permissions: dict):
     buttons = []
     if permissions.get('can_manage_shop'):
         buttons.append([InlineKeyboardButton(text="🛒 Управление магазином", callback_data="admin:shop")])
-    if permissions.get('can_manage_finance'):
+    if permissions.get('can_manage_finance') or permissions.get('can_add_currency') or permissions.get('can_remove_currency'):
         buttons.append([InlineKeyboardButton(text="💰 Финансы", callback_data="admin:finance")])
     if permissions.get('can_view_reports') or permissions.get('can_approve_reports'):
         buttons.append([InlineKeyboardButton(text="📋 Отчёты на проверку", callback_data="admin:reports")])
@@ -84,6 +85,7 @@ def bank_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Мой баланс", callback_data="bank:balance")],
         [InlineKeyboardButton(text="Перевести", callback_data="bank:transfer")],
+        [InlineKeyboardButton(text="🏛️ В казну", callback_data="bank:treasury")],
         [InlineKeyboardButton(text="История транзакций", callback_data="bank:history")],
     ])
 
@@ -125,12 +127,15 @@ def interaction_keyboard(user_id: int):
     ])
 
 
-def city_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Пилоты", callback_data="city:pilots")],
-        [InlineKeyboardButton(text="Голосование", callback_data="city:vote")],
-        [InlineKeyboardButton(text="Подземелье", callback_data="city:dungeon")],
-    ])
+def city_keyboard(is_pilot: bool = True):
+    buttons = [
+        [InlineKeyboardButton(text="🏛️ Ратуша", callback_data="city:pilots")],
+        [InlineKeyboardButton(text="📚 Библиотека", callback_data="city:library")],
+    ]
+    if is_pilot:
+        buttons.append([InlineKeyboardButton(text="Голосование", callback_data="city:vote")])
+        buttons.append([InlineKeyboardButton(text="Подземелье", callback_data="city:dungeon")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def pagination_keyboard(items: list, page: int, per_page: int, callback_prefix: str):

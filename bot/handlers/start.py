@@ -3,7 +3,7 @@ import os
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart
-from database.db import add_user, get_user, ensure_base_status
+from database.db import add_user, get_user, ensure_base_status, user_has_status_tag
 from keyboards.keyboards import main_menu_keyboard, city_keyboard
 from utils.permissions import is_admin
 from utils.helpers import resolve_image
@@ -21,6 +21,7 @@ async def cmd_start(message: Message):
     await ensure_base_status(user.id)
 
     admin_flag = await is_admin(user.id)
+    pilot_flag = await user_has_status_tag(user.id, "pilot")
 
     welcome_text = (
         "```\n"
@@ -48,16 +49,17 @@ async def cmd_start(message: Message):
     else:
         await message.answer(welcome_text, reply_markup=start_markup, parse_mode="Markdown")
 
-    await message.answer("Выберите действие:", reply_markup=main_menu_keyboard(is_admin=admin_flag))
+    await message.answer("Выберите действие:", reply_markup=main_menu_keyboard(is_admin=admin_flag, is_pilot=pilot_flag))
 
 
 @router.message(F.text == "Город")
 async def show_city(message: Message):
     city_view = resolve_image("city/arkholm")
+    is_here_pilot = await user_has_status_tag(message.from_user.id, "pilot")
     await message.answer_photo(
         photo=FSInputFile(city_view),
         caption="🏰 Город Аркхольм:",
-        reply_markup=city_keyboard()
+        reply_markup=city_keyboard(is_pilot=is_here_pilot)
     )
 
 
@@ -65,14 +67,16 @@ async def show_city(message: Message):
 async def city_menu_cb(callback: CallbackQuery):
     await callback.answer()
     city_view = resolve_image("city/arkholm")
+    is_here_pilot = await user_has_status_tag(callback.from_user.id, "pilot")
     if callback.message.photo:
-        await callback.message.edit_caption(
-            caption="🏰 Город Аркхольм:",
-            reply_markup=city_keyboard()
+        from aiogram.types import InputMediaPhoto
+        await callback.message.edit_media(
+            media=InputMediaPhoto(media=FSInputFile(city_view), caption="🏰 Город Аркхольм:"),
+            reply_markup=city_keyboard(is_pilot=is_here_pilot)
         )
     else:
         await callback.message.answer_photo(
             photo=FSInputFile(city_view),
             caption="🏰 Город Аркхольм:",
-            reply_markup=city_keyboard()
+            reply_markup=city_keyboard(is_pilot=is_here_pilot)
         )

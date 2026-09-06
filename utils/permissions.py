@@ -16,6 +16,7 @@ ROLES = {
         'can_view_logs': True,
         'can_manage_statuses': True,
         'can_grant_troops': True,
+        'can_manage_library': True,
         'level': 100
     },
     'shop_admin': {  # Министр торговли
@@ -26,18 +27,47 @@ ROLES = {
         'level': 50
     },
     'finance_admin': {  # Министр Финансов
+        'can_manage_finance': True,
         'can_add_currency': True,
         'can_remove_currency': True,
         'can_view_balances': True,
         'level': 50
     },
-    'moderator': {  # МВД сотрудник
+    'finance_helper': {  # Квестор (Quaestor) — помощник Минфина
+        'can_add_currency': True,
+        'level': 20
+    },
+    'moderator': {  # МВД сотрудник / глава МВД
         'can_approve_reports': True,
         'can_view_reports': True,
         'can_grant_troops': True,
         'level': 30
+    },
+    'mvd_helper': {  # Вице-доминус (Vicedominus) — помощник МВД
+        'can_approve_reports': True,
+        'can_view_reports': True,
+        'level': 20
+    },
+    'librarian': {  # Библиотекарь — управление книгами библиотеки
+        'can_manage_library': True,
+        'level': 40
     }
 }
+
+# Красивые названия ролей
+ROLE_LABELS = {
+    'super_admin': 'Хранитель',
+    'shop_admin': 'Министр торговли',
+    'finance_admin': 'Министр финансов',
+    'finance_helper': 'Квестор',
+    'moderator': 'МВД',
+    'mvd_helper': 'Вице-доминус',
+    'librarian': 'Библиотекарь',
+}
+
+
+def role_label(role: str) -> str:
+    return ROLE_LABELS.get(role, role)
 
 
 async def is_admin(telegram_id: int) -> bool:

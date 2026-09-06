@@ -51,6 +51,8 @@ ITEM_CATEGORIES = {
     "equipment": "Снаряжение",
     "resource": "Ресурсы",
     "special": "Особое",
+    "souvenirs": "Сувениры",
+    "library_card": "Читательские билеты",
 }
 
 AP_MAX = 150

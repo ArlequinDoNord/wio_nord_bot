@@ -16,11 +16,14 @@ from database.db import (
     grant_status, revoke_status, get_user_statuses,
     get_users_for_rank_promotion, promote_user_rank, get_user,
     recompute_region_stats, get_region_stats,
+    get_daily_spent, add_daily_spent,
+    get_treasury_balance, transfer_from_treasury,
+    get_report_tax_percent, set_report_tax_percent,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import (
     is_admin, has_permission, get_user_role,
-    add_role, remove_role, ROLES, log_action,
+    add_role, remove_role, ROLES, role_label, log_action,
 )
 from utils.helpers import plural_nordmark
 from config import RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES
@@ -50,6 +53,15 @@ class AdminFinance(StatesGroup):
     target = State()
     currency = State()
     amount = State()
+
+
+class AdminTreasury(StatesGroup):
+    amount = State()
+    target = State()
+
+
+class AdminTax(StatesGroup):
+    percent = State()
 
 
 class AdminRoles(StatesGroup):
@@ -141,14 +153,26 @@ async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
     await state.update_data(target_id=target['user_id'], target_name=target['first_name'] if 'first_name' in target.keys() else '')
     await callback.message.answer(f"Игрок: {target['first_name'] if 'first_name' in target.keys() else ''} (@{target['username'] if 'username' in target.keys() else ''})")
 
-    if next_step == "finance_amount":
+    if next_step == "treasury_target":
+        data = await state.get_data()
+        amount = data['amount']
+        await transfer_from_treasury(
+            target['user_id'],
+            amount,
+            f"Выдача из казны админом #{callback.from_user.id}"
+        )
+        await log_action(callback.from_user.id, 'treasury', target['user_id'], f"give {amount}")
+        await state.clear()
+        await callback.message.answer(f"✅ Из казны выдано {amount} {plural_nordmark(amount)}.")
+    elif next_step == "finance_amount":
         await state.set_state(AdminFinance.amount)
         await callback.message.answer("Введи сумму:", reply_markup=cancel_keyboard())
     elif next_step == "roles_action":
         await state.set_state(AdminRoles.action)
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        role_names = [role_label(r) for r in await get_user_role(target['user_id'])]
         await callback.message.answer(
-            f"Текущие роли: {', '.join(await get_user_role(target['user_id']))}",
+            f"Текущие роли: {', '.join(role_names)}",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="Выдать роль", callback_data="rolop:add")],
                 [InlineKeyboardButton(text="Снять роль", callback_data="rolop:remove")],
@@ -522,19 +546,154 @@ async def edit_item_value(message: Message, state: FSMContext):
 @router.callback_query(F.data == "admin:finance")
 async def admin_finance(callback: CallbackQuery):
     await callback.answer()
-    if not await has_permission(callback.from_user.id, "can_manage_finance"):
+    if not (await has_permission(callback.from_user.id, "can_manage_finance")
+            or await has_permission(callback.from_user.id, "can_add_currency")
+            or await has_permission(callback.from_user.id, "can_remove_currency")):
         await callback.message.answer("❌ Нет прав для управления финансами.")
         return
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    can_add = await has_permission(callback.from_user.id, "can_add_currency")
+    can_remove = await has_permission(callback.from_user.id, "can_remove_currency")
+    can_full = await has_permission(callback.from_user.id, "can_manage_finance")
+
+    buttons = []
+    if can_add:
+        buttons.append([InlineKeyboardButton(text="Начислить НМ", callback_data="fin:nord:add")])
+    if can_remove:
+        buttons.append([InlineKeyboardButton(text="Списать НМ", callback_data="fin:nord:sub")])
+    if can_full:
+        buttons.append([InlineKeyboardButton(text="Начислить AP", callback_data="fin:ap:add")])
+        buttons.append([InlineKeyboardButton(text="Списать AP", callback_data="fin:ap:sub")])
+    if can_full:
+        buttons.append([InlineKeyboardButton(text="🏛️ Казна", callback_data="admin:treasury")])
+        buttons.append([InlineKeyboardButton(text="📊 Налог на отчёты", callback_data="admin:tax")])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:menu")])
+
     await callback.message.edit_text(
         "💰 ФИНАНСЫ\n\nВыберите операцию:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+
+
+@router.callback_query(F.data == "admin:treasury")
+async def admin_treasury(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_finance"):
+        await callback.message.answer("❌ Нет прав для управления казной.")
+        return
+
+    balance = await get_treasury_balance()
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.edit_text(
+        f"🏛️ КАЗНА НОРДХАЙМА\n\n"
+        f"Баланс: {balance} {plural_nordmark(balance)}\n\n"
+        f"Налог с отчётов и пожертвования пополняют казну.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Начислить НМ", callback_data="fin:nord:add")],
-            [InlineKeyboardButton(text="Списать НМ", callback_data="fin:nord:sub")],
-            [InlineKeyboardButton(text="Начислить AP", callback_data="fin:ap:add")],
-            [InlineKeyboardButton(text="Списать AP", callback_data="fin:ap:sub")],
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin:menu")]
+            [InlineKeyboardButton(text="💸 Выдать из казны", callback_data="treasury:give")],
+            [InlineKeyboardButton(text="🔙 В финансы", callback_data="admin:finance")],
         ])
+    )
+
+
+@router.callback_query(F.data == "treasury:give")
+async def treasury_give(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_finance"):
+        await callback.message.answer("❌ Нет прав.")
+        return
+    await state.set_state(AdminTreasury.amount)
+    balance = await get_treasury_balance()
+    await callback.message.answer(
+        f"🏛️ Баланс казны: {balance} {plural_nordmark(balance)}\n"
+        f"Введи сумму для выдачи:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminTreasury.amount)
+async def treasury_amount(message: Message, state: FSMContext):
+    try:
+        amount = int(message.text.strip())
+    except ValueError:
+        await message.answer("❌ Введи целое число.")
+        return
+    if amount <= 0:
+        await message.answer("❌ Сумма должна быть больше нуля.")
+        return
+
+    balance = await get_treasury_balance()
+    if amount > balance:
+        await message.answer(f"❌ В казне недостаточно средств. Доступно: {balance} {plural_nordmark(balance)}.")
+        return
+
+    await state.update_data(amount=amount)
+    await state.set_state(AdminTreasury.target)
+    markup = await pilot_picker_markup("treasury_target")
+    await message.answer("Кому выдать из казны?", reply_markup=markup)
+
+
+@router.message(AdminTreasury.target)
+async def treasury_target_manual(message: Message, state: FSMContext):
+    target = await find_user(message.text)
+    if not target:
+        await message.answer("❌ Игрок не найден. Попробуй ещё раз (или /cancel):")
+        return
+    data = await state.get_data()
+    amount = data['amount']
+    await transfer_from_treasury(
+        target['user_id'],
+        amount,
+        f"Выдача из казны админом #{message.from_user.id}"
+    )
+    await log_action(message.from_user.id, 'treasury', target['user_id'], f"give {amount}")
+    await state.clear()
+    await message.answer(f"✅ Из казны выдано {amount} {plural_nordmark(amount)}.")
+
+
+@router.callback_query(F.data == "admin:tax")
+async def admin_tax_view(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_finance"):
+        await callback.message.answer("❌ Нет прав для управления налогом.")
+        return
+    current = await get_report_tax_percent()
+    await state.set_state(AdminTax.percent)
+    await callback.message.edit_text(
+        f"📊 НАЛОГ НА ОТЧЁТЫ\n\n"
+        f"Текущая ставка: {current}%\n\n"
+        f"Введи новую ставку налога (0–100) для всех граждан:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 В финансы", callback_data="admin:finance")]
+        ])
+    )
+
+
+@router.message(AdminTax.percent)
+async def admin_tax_set(message: Message, state: FSMContext):
+    try:
+        percent = int(message.text.strip())
+    except ValueError:
+        await message.answer("❌ Введи целое число от 0 до 100:")
+        return
+    if not 0 <= percent <= 100:
+        await message.answer("❌ Ставка должна быть от 0 до 100:")
+        return
+    await set_report_tax_percent(percent)
+    await log_action(message.from_user.id, 'set_tax', None, f"percent={percent}")
+    await state.clear()
+    await message.answer(
+        f"✅ Налог на отчёты установлен: {percent}%.\n"
+        f"Изменение действует сразу для всех граждан."
+    )
+
+
+@router.callback_query(F.data == "fin:manual")
+async def finance_manual(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(AdminFinance.target)
+    await callback.message.answer(
+        "Введи получателя: @username или numeric ID игрока:",
+        reply_markup=cancel_keyboard()
     )
 
 
@@ -542,6 +701,9 @@ async def admin_finance(callback: CallbackQuery):
 async def finance_pick(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     parts = callback.data.split(":")
+    if len(parts) < 3:
+        await callback.message.answer("❌ Некорректный вызов.")
+        return
     currency = parts[1]
     action = parts[2]
     await state.update_data(currency=currency, action=action)
@@ -562,16 +724,6 @@ async def finance_pick(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(
         "Выбери пилота или введи @username/ID:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
-    )
-
-
-@router.callback_query(F.data == "fin:manual")
-async def finance_manual(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    await state.set_state(AdminFinance.target)
-    await callback.message.answer(
-        "Введи получателя: @username или numeric ID игрока:",
-        reply_markup=cancel_keyboard()
     )
 
 
@@ -622,6 +774,20 @@ async def finance_amount(message: Message, state: FSMContext):
 
     if currency == "nord":
         if action == "add":
+            # Суточный лимит начислений для Квестора (5000 НМ/день)
+            roles = await get_user_role(admin)
+            if "finance_helper" in roles:
+                from datetime import date
+                today = date.today().isoformat()
+                spent = await get_daily_spent(admin, today)
+                remaining = 5000 - spent
+                if amount > remaining:
+                    await message.answer(
+                        f"❌ Превышен суточный лимит Квестора (5000 НМ).\n"
+                        f"Доступно сегодня: {remaining} {plural_nordmark(remaining)}."
+                    )
+                    return
+                await add_daily_spent(admin, today, amount)
             await add_nordmarks(target_id, amount, "admin", f"Начислено админом #{admin}")
             verb = "начислено"
         else:
@@ -672,8 +838,9 @@ async def roles_target(message: Message, state: FSMContext):
     await state.update_data(target_id=target['user_id'], target_name=target.get('first_name',''))
     await state.set_state(AdminRoles.action)
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    role_names = [role_label(r) for r in await get_user_role(target['user_id'])]
     await message.answer(
-        f"Игрок: {target.get('first_name','')}\nТекущие роли: {', '.join(await get_user_role(target['user_id']))}",
+        f"Игрок: {target.get('first_name','')}\nТекущие роли: {', '.join(role_names)}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="Выдать роль", callback_data="rolop:add")],
             [InlineKeyboardButton(text="Снять роль", callback_data="rolop:remove")],
@@ -690,12 +857,7 @@ async def roles_action(callback: CallbackQuery, state: FSMContext):
     rows = []
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     for role_name, perms in ROLES.items():
-        label = {
-            "super_admin": "Хранитель (полный доступ)",
-            "shop_admin": "Министр торговли (магазин)",
-            "finance_admin": "Министр финансов (банк)",
-            "moderator": "МВД (отчёты)",
-        }.get(role_name, role_name)
+        label = role_label(role_name)
         rows.append([InlineKeyboardButton(text=label, callback_data=f"role:{role_name}")])
     if action == "add":
         rows.pop(0)  # super_admin выдаём только через отдельную команду — защита
@@ -807,7 +969,7 @@ async def status_create_tag(message: Message, state: FSMContext):
     await message.answer(
         "Шаг 3/4 — Уровень статуса (целое число от 0 до 20, макс. 20).\n"
         "Чем больше, тем сильнее статус. Уровень открывает весь доступ более слабых статусов.\n"
-        "Базовый «Пилот» — 0. Введи уровень (например: 5):",
+        "Базовый «Пилот» — 0, «Турист» — -10. Введи уровень (например: 5):",
         reply_markup=cancel_keyboard()
     )
 
@@ -1029,9 +1191,14 @@ async def report_approve(callback: CallbackQuery):
         await callback.message.answer("❌ Нет прав.")
         return
     report = await get_report_safe(report_id)
-    await approve_report(report_id, callback.from_user.id, report['troops_reported'])
+    troops = report['troops_reported']
+    tax_percent = await get_report_tax_percent()
+    tax = int(troops * tax_percent / 100)
+    earned = troops - tax
+    await approve_report(report_id, callback.from_user.id, troops)
     await log_action(callback.from_user.id, 'approve_report', report['user_id'], f"report={report_id}")
-    await callback.message.answer("✅ Отчёт принят, войска начислены.")
+    tax_line = f" (налог {tax_percent}%: −{tax} в казну)" if tax > 0 else ""
+    await callback.message.answer(f"✅ Отчёт #{report_id} принят.\nНачислено: {troops} войск, {earned} НМ{tax_line}.")
     await show_pending_reports(callback.message)
 
 

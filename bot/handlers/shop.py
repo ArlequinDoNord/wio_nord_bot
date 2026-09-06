@@ -6,6 +6,7 @@ from aiogram.types import Message, CallbackQuery
 from database.db import (
     get_available_items, get_item, add_inventory_item,
     get_user, remove_nordmarks, get_db, user_has_status_tag, get_status_by_tag,
+    activate_library_card, get_library_cards,
 )
 from keyboards.keyboards import (
     shop_catalog_keyboard, item_card_keyboard,
@@ -15,14 +16,28 @@ from config import ITEM_CATEGORIES
 
 router = Router()
 
-CATEGORIES = ["weapon", "consumable", "equipment", "building", "resource", "special"]
+CATEGORIES = ["weapon", "consumable", "equipment", "building", "resource", "special", "souvenirs", "library_card"]
 PER_PAGE = 6
 
 
+async def is_pilot(user_id: int) -> bool:
+    """Гражданин ли (пилот и выше). Туристам доступен только раздел сувениров."""
+    return await user_has_status_tag(user_id, "pilot")
+
+
 async def visible_items(user_id: int, items) -> list:
-    """Отфильтровать товары: скрыть те, что требуют статус, которого нет у игрока."""
+    """Отфильтровать товары: скрыть те, что требуют статус, которого нет у игрока.
+
+    Туристы (без статуса «Пилот») видят только сувениры.
+    """
+    pilot = await is_pilot(user_id)
     result = []
     for it in items:
+        if it['category'] == "souvenirs":
+            result.append(it)
+            continue
+        if not pilot:
+            continue
         req = it['required_status']
         if req and not await user_has_status_tag(user_id, req):
             continue
@@ -196,9 +211,18 @@ async def buy_nord(callback: CallbackQuery):
     await remove_nordmarks(user_id, item['price'], "shop_purchase", f"Покупка: {item['name']}")
     await add_inventory_item(user_id, item_id, 1)
     await decrement_stock(item_id)
-    await callback.message.answer(
-        f"✅ Куплено: {item['name']} за {item['price']} {plural_nordmark(item['price'])}!"
-    )
+
+    if item['category'] == "library_card":
+        card_type = "silver" if "Серебряный" in item['name'] else "basic"
+        await activate_library_card(user_id, card_type)
+        await callback.message.answer(
+            f"✅ Читательский билет активирован на 30 дней!\n"
+            f"📚 Заходи в Библиотеку через Город."
+        )
+    else:
+        await callback.message.answer(
+            f"✅ Куплено: {item['name']} за {item['price']} {plural_nordmark(item['price'])}!"
+        )
 
 
 async def decrement_stock(item_id: int):

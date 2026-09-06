@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from database.db import get_user, transfer_nordmarks, get_transactions_history, get_all_users
+from database.db import get_user, transfer_nordmarks, get_transactions_history, get_all_users, transfer_to_treasury, get_treasury_balance
 from keyboards.keyboards import bank_keyboard, cancel_keyboard, main_menu_keyboard
 from utils.helpers import format_amount, plural_nordmark
 
@@ -12,6 +12,7 @@ router = Router()
 class BankStates(StatesGroup):
     waiting_recipient = State()
     waiting_amount = State()
+    waiting_treasury_amount = State()
 
 
 def tx_type_label(tx_type: str) -> str:
@@ -26,6 +27,7 @@ def tx_type_label(tx_type: str) -> str:
         "building_purchase": "🏠 Здание",
         "admin": "⚙️ Админ",
         "trade": "🤝 Обмен",
+        "treasury": "🏛️ Казна",
     }
     return labels.get(tx_type, tx_type)
 
@@ -68,6 +70,57 @@ async def bank_transfer(callback: CallbackQuery, state: FSMContext):
         "💸 Кому перевести? Введи username игрока (без @, например: Ivanov):\n\n"
         "Или нажми Отмена:",
         reply_markup=cancel_keyboard()
+    )
+
+
+@router.callback_query(F.data == "bank:treasury")
+async def bank_treasury(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    balance = await get_treasury_balance()
+    await state.set_state(BankStates.waiting_treasury_amount)
+    await callback.message.answer(
+        f"🏛️ КАЗНА НОРДХАЙМА\n\n"
+        f"Текущий баланс: {balance} {plural_nordmark(balance)}\n\n"
+        f"Пожертвовать в казну? Введи сумму:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(BankStates.waiting_treasury_amount)
+async def process_treasury_amount(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if text == "Отмена":
+        await state.clear()
+        await message.answer("Операция отменена", reply_markup=main_menu_keyboard())
+        return
+
+    try:
+        amount = int(text)
+    except ValueError:
+        await message.answer("❌ Введи число (целое количество Нордмарок):")
+        return
+
+    if amount <= 0:
+        await message.answer("❌ Сумма должна быть больше нуля")
+        return
+
+    sender = await get_user(message.from_user.id)
+    if sender['nordmarks'] < amount:
+        await message.answer(f"❌ Недостаточно средств. Баланс: {sender['nordmarks']} НМ")
+        return
+
+    await transfer_to_treasury(
+        message.from_user.id,
+        amount,
+        f"Пожертвование от {message.from_user.first_name}"
+    )
+    new_balance = await get_treasury_balance()
+    await state.clear()
+    await message.answer(
+        f"✅ Пожертвование принято!\n"
+        f"Сумма: {amount} НМ\n"
+        f"Баланс казны: {new_balance} НМ",
+        reply_markup=main_menu_keyboard()
     )
 
 
@@ -154,7 +207,7 @@ async def bank_history(callback: CallbackQuery):
     text = "📜 История транзакций:\n\n"
     for t in txns[:10]:
         sign = "+" if (t['to_user'] == callback.from_user.id and t['amount'] > 0) else ""
-        if t['to_user'] == callback.from_user.id and t['tx_type'] in ("transfer", "report", "salary", "bonus", "shop_sale"):
+        if t['to_user'] == callback.from_user.id and t['tx_type'] in ("transfer", "report", "salary", "bonus", "shop_sale", "treasury"):
             sign = "+"
         elif t['from_user'] == callback.from_user.id:
             sign = "-"

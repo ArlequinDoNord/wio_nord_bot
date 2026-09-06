@@ -15,6 +15,9 @@ from bot.handlers.shop import router as shop_router
 from bot.handlers.inventory import router as inventory_router
 from bot.handlers.reports import router as reports_router
 from bot.handlers.dungeon import router as dungeon_router
+from bot.handlers.pilots import router as pilots_router
+from bot.handlers.polls import router as polls_router
+from bot.handlers.library import router as library_router
 
 load_dotenv()
 
@@ -72,6 +75,9 @@ async def main():
     dp.include_router(inventory_router)
     dp.include_router(reports_router)
     dp.include_router(dungeon_router)
+    dp.include_router(pilots_router)
+    dp.include_router(polls_router)
+    dp.include_router(library_router)
 
     logger.info("Хендлеры зарегистрированы")
 

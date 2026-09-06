@@ -116,6 +116,48 @@ async def init_db():
             UNIQUE(poll_id, user_id)
         );
 
+        CREATE TABLE IF NOT EXISTS daily_limits (
+            admin_id INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            spent INTEGER DEFAULT 0,
+            PRIMARY KEY (admin_id, date)
+        );
+
+        CREATE TABLE IF NOT EXISTS treasury (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            balance INTEGER DEFAULT 0
+        );
+
+        INSERT OR IGNORE INTO treasury (id, balance) VALUES (1, 0);
+
+        CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT ''
+        );
+
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('report_tax_percent', '15');
+
+        CREATE TABLE IF NOT EXISTS library_cards (
+            user_id INTEGER NOT NULL,
+            card_type TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, card_type)
+        );
+
+        CREATE TABLE IF NOT EXISTS library_books (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            section TEXT NOT NULL,
+            title TEXT NOT NULL,
+            author TEXT DEFAULT '',
+            description TEXT DEFAULT '',
+            cover_file_id TEXT,
+            file_id TEXT,
+            file_type TEXT,
+            url TEXT,
+            added_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS interactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             from_user INTEGER NOT NULL,
@@ -338,9 +380,12 @@ async def init_db():
     await _ensure_column(conn, "items", "heal", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "dungeon_enemies", "drops", "TEXT DEFAULT '[]'")
     await _ensure_column(conn, "dungeon_enemies", "image", "TEXT")
-    # Базовый статус «Пилот» всегда на самом низком уровне иерархии.
-    # (Раньше старый миграционный апдейт мог выставить ему высокий уровень.)
+    # Базовые статусы иерархии: Пилот — гражданин (0), Турист — гость (-10).
+    # Старые записи Пилота, которым ранее могли поставить высокий уровень, возвращаем к 0.
     await conn.execute("UPDATE statuses SET sort_order = 0 WHERE access_tag = 'pilot'")
+    await conn.execute("UPDATE statuses SET sort_order = -10 WHERE access_tag = 'tourist'")
+    await conn.commit()
+    await ensure_base_statuses()
     await conn.commit()
 
 
@@ -629,6 +674,25 @@ async def get_poll_results(poll_id: int):
     return await cursor.fetchall()
 
 
+async def user_voted(poll_id: int, user_id: int) -> bool:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT 1 FROM poll_votes WHERE poll_id = ? AND user_id = ?",
+        (poll_id, user_id)
+    )
+    return await cursor.fetchone() is not None
+
+
+async def get_poll_vote_option(poll_id: int, user_id: int):
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT option_index FROM poll_votes WHERE poll_id = ? AND user_id = ?",
+        (poll_id, user_id)
+    )
+    row = await cursor.fetchone()
+    return row['option_index'] if row else None
+
+
 async def get_poll(poll_id: int):
     conn = await get_db()
     cursor = await conn.execute("SELECT * FROM polls WHERE id = ?", (poll_id,))
@@ -644,6 +708,191 @@ async def get_active_polls():
 async def close_poll(poll_id: int):
     conn = await get_db()
     await conn.execute("UPDATE polls SET is_active = 0 WHERE id = ?", (poll_id,))
+    await conn.commit()
+
+
+# ============ СУТОЧНЫЕ ЛИМИТЫ (Квестор: начисления) ============
+
+async def get_daily_spent(admin_id: int, date: str) -> int:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT spent FROM daily_limits WHERE admin_id = ? AND date = ?",
+        (admin_id, date)
+    )
+    row = await cursor.fetchone()
+    return row['spent'] if row else 0
+
+
+async def add_daily_spent(admin_id: int, date: str, amount: int):
+    conn = await get_db()
+    await conn.execute(
+        """INSERT INTO daily_limits (admin_id, date, spent) VALUES (?, ?, ?)
+           ON CONFLICT(admin_id, date) DO UPDATE SET spent = spent + ?""",
+        (admin_id, date, amount, amount)
+    )
+    await conn.commit()
+
+
+# ============ КАЗНА НОРДХАЙМА ============
+
+TREASURY_ID = 0  # служебный идентификатор казны в транзакциях
+
+async def get_treasury_balance() -> int:
+    conn = await get_db()
+    cursor = await conn.execute("SELECT balance FROM treasury WHERE id = 1")
+    row = await cursor.fetchone()
+    return row['balance'] if row else 0
+
+
+async def add_treasury(amount: int, description: str = ""):
+    """Начисление в казну (например, налог с отчёта)."""
+    conn = await get_db()
+    await conn.execute("UPDATE treasury SET balance = balance + ? WHERE id = 1", (amount,))
+    await conn.execute(
+        "INSERT INTO transactions (to_user, amount, tx_type, description) VALUES (?, ?, ?, ?)",
+        (TREASURY_ID, amount, "treasury", description)
+    )
+    await conn.commit()
+
+
+async def transfer_to_treasury(from_user: int, amount: int, description: str = ""):
+    """Перевод из кошелька игрока в казну."""
+    conn = await get_db()
+    await conn.execute("UPDATE users SET nordmarks = nordmarks - ? WHERE user_id = ?", (amount, from_user))
+    await conn.execute("UPDATE treasury SET balance = balance + ? WHERE id = 1", (amount,))
+    await conn.execute(
+        "INSERT INTO transactions (from_user, to_user, amount, tx_type, description) VALUES (?, ?, ?, ?, ?)",
+        (from_user, TREASURY_ID, amount, "treasury", description)
+    )
+    await conn.commit()
+
+
+async def transfer_from_treasury(to_user: int, amount: int, description: str = ""):
+    """Выплата из казны игроку (только глава Минфина)."""
+    conn = await get_db()
+    await conn.execute("UPDATE treasury SET balance = balance - ? WHERE id = 1", (amount,))
+    await conn.execute("UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?", (amount, to_user))
+    await conn.execute(
+        "INSERT INTO transactions (from_user, to_user, amount, tx_type, description) VALUES (?, ?, ?, ?, ?)",
+        (TREASURY_ID, to_user, amount, "treasury", description)
+    )
+    await conn.commit()
+
+
+# ============ НАЛОГ НА ОТЧЁТЫ ============
+
+async def get_report_tax_percent() -> int:
+    """Текущая ставка налога с отчётов в процентах (по умолчанию 15)."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT value FROM settings WHERE key = 'report_tax_percent'")
+    row = await cursor.fetchone()
+    if not row:
+        return 15
+    try:
+        return int(row['value'])
+    except (TypeError, ValueError):
+        return 15
+
+
+async def set_report_tax_percent(percent: int):
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO settings (key, value) VALUES ('report_tax_percent', ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (str(percent),)
+    )
+    await conn.commit()
+
+
+# ============ БИБЛИОТЕКА НОРДХАЙМА ============
+
+# Разделы библиотеки и типы карт
+LIBRARY_SECTIONS = ("history", "laws", "religion", "fiction", "encyclopedias")
+CARD_BASIC_SECTIONS = ("history", "laws", "fiction")   # обычный билет
+CARD_BASIC_COST = 300
+CARD_SILVER_COST = 1000
+CARD_SILVER_STATUS = "veteran"
+
+from datetime import datetime, timedelta
+from utils.helpers import MOSCOW_TZ
+
+
+async def activate_library_card(user_id: int, card_type: str, days: int = 30):
+    """Активирует (или продлевает) читательский билет пользователя."""
+    conn = await get_db()
+    now = datetime.now(MOSCOW_TZ)
+    expires = (now + timedelta(days=days)).isoformat()
+    await conn.execute(
+        """INSERT INTO library_cards (user_id, card_type, expires_at) VALUES (?, ?, ?)
+           ON CONFLICT(user_id, card_type) DO UPDATE SET expires_at = excluded.expires_at""",
+        (user_id, card_type, expires)
+    )
+    await conn.commit()
+
+
+async def get_library_cards(user_id: int) -> list:
+    """Активные карты пользователя (не просроченные)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM library_cards WHERE user_id = ? AND expires_at > ?",
+        (user_id, datetime.now(MOSCOW_TZ).isoformat())
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def can_access_sections(user_id: int) -> list:
+    """Какие разделы библиотеки открыты пользователю.
+
+    Без карты — пусто; обычная карта — история/законы/художественная;
+    серебряная карта — все разделы.
+    """
+    cards = await get_library_cards(user_id)
+    types = {c['card_type'] for c in cards}
+    if "silver" in types:
+        return list(LIBRARY_SECTIONS)
+    if "basic" in types:
+        return list(CARD_BASIC_SECTIONS)
+    return []
+
+
+async def has_library_access(user_id: int) -> bool:
+    """Есть ли у пользователя хоть какой-то активный читательский билет."""
+    return bool(await get_library_cards(user_id))
+
+
+async def add_library_book(section: str, title: str, author: str, description: str,
+                           cover_file_id: str = None, file_id: str = None,
+                           file_type: str = None, url: str = None, added_by: int = 0) -> int:
+    conn = await get_db()
+    cursor = await conn.execute(
+        """INSERT INTO library_books
+           (section, title, author, description, cover_file_id, file_id, file_type, url, added_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (section, title, author, description, cover_file_id, file_id, file_type, url, added_by)
+    )
+    await conn.commit()
+    return cursor.lastrowid
+
+
+async def get_library_books(section: str) -> list:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM library_books WHERE section = ? ORDER BY title",
+        (section,)
+    )
+    return await cursor.fetchall()
+
+
+async def get_library_book(book_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM library_books WHERE id = ?", (book_id,))
+    return await cursor.fetchone()
+
+
+async def delete_library_book(book_id: int):
+    conn = await get_db()
+    await conn.execute("DELETE FROM library_books WHERE id = ?", (book_id,))
     await conn.commit()
 
 
@@ -705,7 +954,10 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int):
         return False
 
     user_id = row['user_id']
-    nordmarks_earned = troops
+    # Налог в казну Нордхайма (ставка настраивается в админке)
+    tax_percent = await get_report_tax_percent()
+    tax = int(troops * tax_percent / 100)
+    nordmarks_earned = troops - tax
 
     await conn.execute(
         "UPDATE reports SET status = 'approved', reviewed_by = ?, troops_reported = ?, nordmarks_earned = ? WHERE id = ?",
@@ -715,8 +967,14 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int):
     await conn.execute("UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?", (nordmarks_earned, user_id))
     await conn.execute(
         "INSERT INTO transactions (to_user, amount, tx_type, description) VALUES (?, ?, ?, ?)",
-        (user_id, nordmarks_earned, "report", f"Начисление за отчёт #{report_id}")
+        (user_id, nordmarks_earned, "report", f"Начисление за отчёт #{report_id} (за вычетом налога)")
     )
+    await conn.execute("UPDATE treasury SET balance = balance + ? WHERE id = 1", (tax,))
+    if tax > 0:
+        await conn.execute(
+            "INSERT INTO transactions (to_user, amount, tx_type, description) VALUES (?, ?, ?, ?)",
+            (TREASURY_ID, tax, "treasury", f"Налог 15% с отчёта #{report_id}")
+        )
     await conn.commit()
     return True
 
@@ -970,18 +1228,42 @@ async def create_status(name: str, access_tag: str = None, description: str = No
         return False, "Статус с таким названием уже существует"
 
 
-async def ensure_base_status(user_id: int):
-    """Базовый статус «Пилот»: создаёт при отсутствии и выдаёт игроку по умолчанию."""
+async def ensure_base_statuses():
+    """Создаёт базовые статусы иерархии, если их нет.
+
+    Пилот (гражданин) — 0, Турист (гость) — -10, Ветеран — 5, VIP — 10.
+    """
+    base = [
+        ("Турист", "tourist", "Гость Нордхайма. Права ограничены.", -10),
+        ("Пилот", "pilot", "Гражданин Нордхайма. Базовый статус пилота.", 0),
+        ("Ветеран", "veteran", "Ветеран боевых действий.", 5),
+        ("VIP", "vip", "Особо важная персона.", 10),
+    ]
     conn = await get_db()
-    cursor = await conn.execute("SELECT id FROM statuses WHERE access_tag = 'pilot'")
+    for name, tag, desc, level in base:
+        cursor = await conn.execute("SELECT id FROM statuses WHERE access_tag = ?", (tag,))
+        if await cursor.fetchone():
+            continue
+        await create_status(name, tag, desc, sort_order=level)
+        await conn.commit()
+
+
+async def ensure_base_status(user_id: int):
+    """Базовый статус «Турист» для каждого нового игрока.
+
+    Гражданство «Пилот» выдаёт суперадмин вручную после проверки.
+    """
+    conn = await get_db()
+    cursor = await conn.execute("SELECT id FROM statuses WHERE access_tag = 'tourist'")
     row = await cursor.fetchone()
     if row:
         status_id = row['id']
     else:
-        created, status_id = await create_status("Пилот", "pilot", "Базовый статус нового пилота",
-                                                 sort_order=0)
+        created, status_id = await create_status(
+            "Турист", "tourist", "Гость Нордхайма. Права ограничены.",
+            sort_order=-10)
         if not created:
-            cursor = await conn.execute("SELECT id FROM statuses WHERE access_tag = 'pilot'")
+            cursor = await conn.execute("SELECT id FROM statuses WHERE access_tag = 'tourist'")
             status_id = (await cursor.fetchone())['id']
 
     try:
@@ -1373,15 +1655,23 @@ async def ensure_dungeon_shop_items():
         )
         added = True
 
-    for (tname, tdesc) in (("Паутина паука", "Редкий трофей с пауков подземелья. Используется в производстве."),
-                           ("Осколок кристалла", "Очень редкий трофей с кристальных пауков. Нужен для крафта.")):
-        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (tname,))
-        if (await cursor.fetchone())['c'] == 0:
-            await add_item(
-                name=tname, description=tdesc, price=15, sell_price=7, rarity=3,
-                category="resource", stock=-1, added_by=0, ap_cost=0, damage=0, heal=0,
-            )
-            added = True
+    cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", ("Паутина паука",))
+    if (await cursor.fetchone())['c'] == 0:
+        await add_item(
+            name="Паутина паука", description="Редкий трофей с пауков подземелья. Используется в производстве.",
+            price=15, sell_price=7, rarity=3,
+            category="resource", stock=-1, added_by=0, ap_cost=0, damage=0, heal=0,
+        )
+        added = True
+
+    cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", ("Осколок кристалла",))
+    if (await cursor.fetchone())['c'] == 0:
+        await add_item(
+            name="Осколок кристалла", description="Очень редкий трофей с кристальных пауков. Нужен для крафта.",
+            price=40, sell_price=20, rarity=3,
+            category="resource", stock=-1, added_by=0, ap_cost=0, damage=0, heal=0,
+        )
+        added = True
 
     cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", ("Контракт на зачистку",))
     if (await cursor.fetchone())['c'] == 0:
@@ -1392,6 +1682,41 @@ async def ensure_dungeon_shop_items():
             stock=50, added_by=0, ap_cost=0, damage=0, heal=0,
         )
         await update_item(contract_id, required_status="veteran")
+        added = True
+
+    for (sname, sdesc, sprice, srarity, sstock) in (
+        ("Магнит «Нордхайм»", "Сувенир с видами Нордхайма.", 15, 1, 50),
+        ("Кружка «Аркхольм»", "Сувенирная кружка с гербом города.", 25, 2, 30),
+        ("Открытка «Город Аркхольм»", "Почтовая открытка с панорамой Аркхольма.", 10, 1, 100),
+    ):
+        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (sname,))
+        if (await cursor.fetchone())['c'] == 0:
+            await add_item(
+                name=sname, description=sdesc, price=sprice, sell_price=sprice // 2, rarity=srarity,
+                category="souvenirs", stock=sstock, added_by=0, ap_cost=0, damage=0, heal=0,
+            )
+            added = True
+
+    # --- Читательские билеты библиотеки ---
+    cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", ("Читательский билет",))
+    if (await cursor.fetchone())['c'] == 0:
+        await add_item(
+            name="Читательский билет",
+            description="Даёт доступ к разделам «История», «Законы» и «Художественная литература» библиотеки на 30 дней.",
+            price=300, sell_price=0, rarity=2, category="library_card",
+            stock=-1, added_by=0, ap_cost=0, damage=0, heal=0,
+        )
+        added = True
+
+    cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", ("Серебряный читательский билет",))
+    if (await cursor.fetchone())['c'] == 0:
+        silver_id = await add_item(
+            name="Серебряный читательский билет",
+            description="Открывает ВСЕ разделы библиотеки на 30 дней. Только для Ветеранов.",
+            price=1000, sell_price=0, rarity=3, category="library_card",
+            stock=-1, added_by=0, ap_cost=0, damage=0, heal=0,
+        )
+        await update_item(silver_id, required_status="veteran")
         added = True
 
     return added

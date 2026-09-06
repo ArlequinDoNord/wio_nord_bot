@@ -1,3 +1,5 @@
+import os
+
 from datetime import datetime, timedelta, timezone
 
 from config import RARITY_LEVELS, RARITY_EMOJI
@@ -67,5 +69,14 @@ def resolve_image(base_key: str, now: datetime | None = None) -> str:
     """Собирает путь к картинке по базовому ключу и времени суток.
 
     Пример: "city/arkholm" -> "assets/img/city/arkholm_day.jpg"
+    Если файла для текущего времени нет — откат на _day, затем на базовое имя.
     """
-    return f"assets/img/{base_key}_{time_of_day_key(now)}.jpg"
+    candidates = [
+        f"assets/img/{base_key}_{time_of_day_key(now)}.jpg",
+        f"assets/img/{base_key}_day.jpg",
+        f"assets/img/{base_key}.jpg",
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return candidates[0]

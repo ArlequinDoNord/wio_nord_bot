@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from config import REPORT_AUTO_APPROVE_TROOPS, get_effective_rank
-from database.db import add_report, approve_report, get_user_reports, get_user
+from database.db import add_report, approve_report, get_user_reports, get_user, get_report_tax_percent
 from keyboards.keyboards import report_keyboard
 
 router = Router()
@@ -107,10 +107,14 @@ async def report_receive_region(message: Message, state: FSMContext):
         await approve_report(report_id, 0, daily_troops)
         user = await get_user(message.from_user.id)
         rank = get_effective_rank(user["troops"], user["promoted_rank"] if "promoted_rank" in user.keys() else None)
+        tax_percent = await get_report_tax_percent()
+        tax = int(daily_troops * tax_percent / 100)
+        nordmarks_earned = daily_troops - tax
+        tax_line = f"\nналог в казну: {tax_percent}% (−{tax} НМ)" if tax > 0 else ""
         await state.clear()
         await message.answer(
             f"✅ Отчёт #{report_id} автоматически принят!\n"
-            f"Начислено: {daily_troops} войск, {daily_troops} нордмарок.\n"
+            f"Начислено: {daily_troops} войск, {nordmarks_earned} нордмарок{tax_line}.\n"
             f"Текущее звание: {rank} ({user['troops']} войск)"
         )
     else:
