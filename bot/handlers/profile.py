@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.db import (
     get_user, update_user, get_user_statuses, get_selected_status, set_selected_status,
-    user_has_status_tag, get_equipment, get_item,
+    user_has_status_tag, get_equipment, get_item, get_equipment_slot_items,
 )
 from keyboards.keyboards import profile_keyboard, cancel_keyboard, main_menu_keyboard
 from config import get_rank, get_effective_rank, get_next_rank, get_rank_index, RANKS
@@ -64,6 +64,19 @@ async def render_profile(where, user_id: int):
         a = await get_item(eq['armor'])
         if a:
             eq_lines.append(f"🛡️ Броня: {a['name']} ({a['armor']} защ.)")
+
+    slot_by_name = {}
+    for s, r in await get_equipment_slot_items(user_id):
+        slot_by_name[s] = r
+    slot_labels = {'potion1': 'Слот 1', 'potion2': 'Слот 2'}
+    for s in ('potion1', 'potion2'):
+        if s in slot_by_name:
+            r = slot_by_name[s]
+            if r['cure_poison']:
+                eq_lines.append(f"⚗️ {slot_labels[s]}: {r['name']}")
+            else:
+                eq_lines.append(f"💊 {slot_labels[s]}: {r['name']}")
+
     if not eq_lines:
         eq_lines.append("— пусто —")
     caption += (

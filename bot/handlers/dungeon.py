@@ -12,7 +12,7 @@ from database.db import (
     get_run_items, clear_run_items, get_user, add_nordmarks, remove_nordmarks, remove_ap, get_db,
     get_player_weapon_damage, get_user_potions, get_item_by_name, remove_inventory_item,
     get_user_contract_count, get_player_armor, add_inventory_item,
-    transfer_run_items_to_inventory,
+    transfer_run_items_to_inventory, get_equipment_slot_items,
 )
 from utils.combat import (
     calculate_attack, calculate_enemy_damage,
@@ -39,24 +39,32 @@ def dungeon_main_keyboard():
     ])
 
 
-def dungeon_combat_keyboard(enemy_id: int, potions: int = 0):
+def _slot_button_label(row):
+    if row['cure_poison']:
+        return "⚗️ Антидот"
+    if row['heal'] > 0:
+        return f"💊 {row['name']}"
+    return f"🧪 {row['name']}"
+
+
+def dungeon_combat_keyboard(enemy_id: int, slot_items: list = None):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = [
         [InlineKeyboardButton(text="🗡️ Атаковать", callback_data=f"dungeon:attack:{enemy_id}")],
     ]
-    if potions > 0:
-        buttons.append([InlineKeyboardButton(text=f"💊 Зелье здоровья x{potions}", callback_data="dungeon:potion")])
+    for slot, row in (slot_items or []):
+        buttons.append([InlineKeyboardButton(text=_slot_button_label(row), callback_data=f"dungeon:use_slot:{slot}")])
     buttons.append([InlineKeyboardButton(text="🏃 Попытаться убежать", callback_data=f"dungeon:escape:{enemy_id}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def dungeon_boss_keyboard(boss_id: int, potions: int = 0):
+def dungeon_boss_keyboard(boss_id: int, slot_items: list = None):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = [
         [InlineKeyboardButton(text="🗡️ Атаковать", callback_data=f"dungeon:attack:{boss_id}")],
     ]
-    if potions > 0:
-        buttons.append([InlineKeyboardButton(text=f"💊 Зелье здоровья x{potions}", callback_data="dungeon:potion")])
+    for slot, row in (slot_items or []):
+        buttons.append([InlineKeyboardButton(text=_slot_button_label(row), callback_data=f"dungeon:use_slot:{slot}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -208,7 +216,8 @@ async def show_room(message, run, user_id, state: FSMContext):
     dungeon = await get_dungeon(run['dungeon_id'])
     room_type = room_type_roll()
     hp_text = _hp_bar(run['hp'], run['hp_max'])
-    potions = await count_potions(user_id)
+    slot_items = await get_equipment_slot_items(user_id)
+    poison = (await state.get_data()).get('active_poison')
 
     if room_type == "enemy":
         enemies = await get_floor_enemies(run['dungeon_id'], run['floor'])
@@ -217,15 +226,17 @@ async def show_room(message, run, user_id, state: FSMContext):
 
         await state.update_data(current_enemy_id=enemy['id'], current_enemy_hp=enemy['hp'])
 
+        poison_line = f"☠️ Ты отравлен! Яд: −{poison} HP каждый ход\n" if poison else ""
         text = (
             f"🏰 {dungeon['name']}\n"
             f"Этаж {run['floor']} | Комната {run['room_number']}/10\n"
-            f"❤️ {hp_text}\n\n"
+            f"❤️ {hp_text}\n"
+            f"{poison_line}\n"
             f"⚠️ Ты входишь в комнату и видишь врага!\n"
             f"👾 {enemy['name']} (HP: {enemy['hp']}, АТК: {enemy['attack']})\n\n"
             f"Что делаешь?"
         )
-        await answer_enemy_photo(message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], potions))
+        await answer_enemy_photo(message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items))
 
     elif room_type == "resource":
         nm = resource_amount(run['floor'])
@@ -271,6 +282,24 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
     data = await state.get_data()
     current_enemy_hp = data.get('current_enemy_hp', enemy['hp'])
+    poison = data.get('active_poison')
+    player_hp = run['hp']
+
+    # Тик яда в начале хода игрока
+    if poison:
+        player_hp = max(0, player_hp - poison)
+        await update_run_hp(run['id'], player_hp)
+        if player_hp <= 0:
+            nm_penalty = max(5, enemy['reward_nm'] * 2)
+            await remove_nordmarks(user_id, nm_penalty, "dungeon_death", "Штраф за смерть в подземелье")
+            text = (
+                f"☠️ Яд погубил тебя (−{poison} HP)\n"
+                f"💀 Ты погиб! −{nm_penalty} Нордмарок штраф.\nСобранный лут потерян."
+            )
+            await end_run(run['id'], 0)
+            await state.clear()
+            await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
+            return
 
     weapon_damage = await get_player_weapon_damage(user_id)
     damage_to_enemy = calculate_attack(0, weapon_damage)
@@ -278,7 +307,6 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     state_info = await get_state_info(user_id)
     mult = combat_multipliers(state_info['name'])
     am = mult.get('attack_mult', 1.0)
-    dm = mult.get('dodge_mult', 1.0)
     damage_to_enemy = max(1, int(damage_to_enemy * am))
     current_enemy_hp = max(0, current_enemy_hp - damage_to_enemy)
     await state.update_data(current_enemy_hp=current_enemy_hp)
@@ -309,7 +337,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
             pilot = await get_user(user_id)
             await notify(bot, f"🏆 Пилот {await player_display(pilot)} прошёл подземелье и победил босса «{enemy['name']}»!", user_id)
         else:
-            hp_text = _hp_bar(run['hp'], run['hp_max'])
+            hp_text = _hp_bar(player_hp, run['hp_max'])
             text = (
                 f"🏆 {enemy['name']} повержен!\n"
             )
@@ -337,70 +365,106 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     armor = await get_player_armor(user_id)
     reduced = max(1, enemy_dmg - armor)
     blocked_line = f"\n🛡️ Броня поглотила {enemy_dmg - reduced} урона!" if armor > 0 and reduced < enemy_dmg else ""
-    player_hp = max(0, run['hp'] - reduced)
+    player_hp = max(0, player_hp - reduced)
     await update_run_hp(run['id'], player_hp)
 
     from utils.combat import get_enemy_attack_text
     text += get_enemy_attack_text(enemy['name'], reduced, player_hp) + blocked_line
 
+    # Навесить яд при укусе врага
+    pc = enemy['poison_chance'] if 'poison_chance' in enemy.keys() else 0
+    poison_just_applied = False
+    if pc and enemy['poison_dmg'] and random.randint(1, 100) <= pc:
+        await state.update_data(active_poison=enemy['poison_dmg'])
+        text += f"\n☠️ {enemy['name']} отравил тебя! Яд: −{enemy['poison_dmg']} HP каждый ход."
+        poison_just_applied = True
+
+    # Показывать текущий статус отравления, пока игрок не снял его антидотом
+    data_after = await state.get_data()
+    active_poison = data_after.get('active_poison')
+    if active_poison and not poison_just_applied:
+        text += f"\n☠️ Ты отравлен! Яд: −{active_poison} HP каждый ход."
+
     if player_hp <= 0:
         nm_penalty = max(5, enemy['reward_nm'] * 2)
         await remove_nordmarks(user_id, nm_penalty, "dungeon_death", "Штраф за смерть в подземелье")
-        text += f"\n\n💀 Ты погиб! −{nm_penalty} Нордмарок штраф.\nПредметы сохранены."
+        text += f"\n\n💀 Ты погиб! −{nm_penalty} Нордмарок штраф.\nСобранный лут потерян."
         await end_run(run['id'], 0)
         await state.clear()
         await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
     else:
-        potions = await count_potions(user_id)
-        await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], potions))
+        slot_items = await get_equipment_slot_items(user_id)
+        await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items))
 
 
-@router.callback_query(F.data == "dungeon:potion")
-async def dungeon_use_potion(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data.startswith("dungeon:use_slot:"))
+async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     user_id = callback.from_user.id
+    slot = callback.data.split(":")[2]
     run = await get_active_run(user_id)
     if not run:
         await callback.message.answer("❌ Подземелье не найдено.")
         await state.clear()
         return
 
-    potions = await get_user_potions(user_id)
-    if not potions:
-        await callback.message.answer("💊 Зелий здоровья нет в инвентаре.")
-        return
-
-    if run['hp'] >= run['hp_max']:
-        await callback.message.answer("❤️ HP уже полное, зелье не нужно.")
-        return
-
-    potion = potions[0]
-    new_hp = min(run['hp_max'], run['hp'] + potion['heal'])
-    await update_run_hp(run['id'], new_hp)
-
-    ok = await remove_inventory_item(user_id, potion['id'], 1)
-    if not ok:
+    item = None
+    for s, row in await get_equipment_slot_items(user_id):
+        if s == slot:
+            item = row
+            break
+    if not item:
+        await callback.message.answer("❌ Этот слот пуст.")
         return
 
     data = await state.get_data()
+
+    if item['cure_poison'] and not data.get('active_poison'):
+        await callback.message.answer("Ты не отравлен, антидот бесполезен.")
+        return
+
+    if item['heal'] > 0 and run['hp'] >= run['hp_max']:
+        await callback.message.answer("❤️ HP уже полное, зелье не нужно.")
+        return
+
+    ok = await remove_inventory_item(user_id, item['id'], 1)
+    if not ok:
+        await callback.message.answer("❌ Не удалось списать предмет.")
+        return
+
     enemy_id = data.get('current_enemy_id')
-    remaining = await count_potions(user_id)
-
-    text = (
-        f"💊 {potion['name']} применено: +{potion['heal']} HP!\n"
-        f"❤️ {_hp_bar(new_hp, run['hp_max'])}\n\n"
-        f"Продолжай бой:"
-    )
-
+    is_boss = False
     if enemy_id is not None:
         conn = await get_db()
         cursor = await conn.execute("SELECT is_boss FROM dungeon_enemies WHERE id = ?", (enemy_id,))
-        enemy_row = await cursor.fetchone()
-        if enemy_row and enemy_row['is_boss']:
-            await callback.message.answer(text, reply_markup=dungeon_boss_keyboard(enemy_id, remaining))
-            return
+        erow = await cursor.fetchone()
+        is_boss = bool(erow and erow['is_boss'])
 
-    await callback.message.answer(text, reply_markup=dungeon_combat_keyboard(enemy_id, remaining))
+    slot_items = await get_equipment_slot_items(user_id)
+
+    if item['cure_poison']:
+        await state.update_data(active_poison=None)
+        text = (
+            f"⚗️ {item['name']} применён: отравление снято!\n"
+            f"Продолжай бой:"
+        )
+    elif item['heal'] > 0:
+        new_hp = min(run['hp_max'], run['hp'] + item['heal'])
+        await update_run_hp(run['id'], new_hp)
+        text = (
+            f"💊 {item['name']} применено: +{item['heal']} HP!\n"
+            f"❤️ {_hp_bar(new_hp, run['hp_max'])}\n\n"
+            f"Продолжай бой:"
+        )
+    else:
+        await add_inventory_item(user_id, item['id'], 1)
+        await callback.message.answer("❌ Этот предмет нельзя использовать в бою.")
+        return
+
+    if is_boss:
+        await callback.message.answer(text, reply_markup=dungeon_boss_keyboard(enemy_id, slot_items))
+    else:
+        await callback.message.answer(text, reply_markup=dungeon_combat_keyboard(enemy_id, slot_items))
 
 
 @router.callback_query(F.data.startswith("dungeon:escape:"))
@@ -442,13 +506,13 @@ async def dungeon_escape(callback: CallbackQuery, state: FSMContext):
         if player_hp <= 0:
             nm_penalty = max(5, enemy['reward_nm'] * 2)
             await remove_nordmarks(user_id, nm_penalty, "dungeon_death", "Штраф за смерть в подземелье")
-            text += f"\n\n💀 Ты погиб! −{nm_penalty} Нордмарок штраф.\nПредметы сохранены."
+            text += f"\n\n💀 Ты погиб! −{nm_penalty} Нордмарок штраф.\nСобранный лут потерян."
             await end_run(run['id'], 0)
             await state.clear()
             await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
         else:
-            potions = await count_potions(user_id)
-            await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], potions))
+            slot_items = await get_equipment_slot_items(user_id)
+            await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items))
 
 
 async def show_boss(message, run, user_id, state: FSMContext):
@@ -460,18 +524,21 @@ async def show_boss(message, run, user_id, state: FSMContext):
 
     boss = boss_list[0]
     hp_text = _hp_bar(run['hp'], run['hp_max'])
-    potions = await count_potions(user_id)
+    slot_items = await get_equipment_slot_items(user_id)
+    poison = (await state.get_data()).get('active_poison')
 
     await state.update_data(current_enemy_id=boss['id'], current_enemy_hp=boss['hp'])
 
+    poison_line = f"☠️ Ты отравлен! Яд: −{poison} HP каждый ход\n" if poison else ""
     text = (
         f"💀 КОМНАТА БОССА\n"
         f"Этаж {run['floor']} | БОСС\n"
-        f"❤️ {hp_text}\n\n"
+        f"❤️ {hp_text}\n"
+        f"{poison_line}\n"
         f"💀 {boss['name']} (HP: {boss['hp']}, АТК: {boss['attack']})\n\n"
         f"⚠️ Это решающий бой! Убежать нельзя!"
     )
-    await answer_enemy_photo(message, boss, text, reply_markup=dungeon_boss_keyboard(boss['id'], potions))
+    await answer_enemy_photo(message, boss, text, reply_markup=dungeon_boss_keyboard(boss['id'], slot_items))
     await state.set_state(DungeonFSM.in_boss)
 
 

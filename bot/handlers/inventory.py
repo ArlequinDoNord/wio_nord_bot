@@ -46,11 +46,22 @@ def inv_list_markup(items):
 
 
 def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equipped: bool = False,
-                    equip_slot: str = None):
+                    equip_slot: str = None, potion_slots: list = None):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = []
     if can_use:
         buttons.append([InlineKeyboardButton(text="✅ Использовать", callback_data=f"inv_use:{item_id}")])
+    if category == 'consumable' and potion_slots is not None:
+        slot_row = []
+        if 1 in potion_slots:
+            slot_row.append(InlineKeyboardButton(text="⚗️ Слот 1 ✓", callback_data=f"inv_unslot:potion1"))
+        else:
+            slot_row.append(InlineKeyboardButton(text="⚗️ В слот 1", callback_data=f"inv_slot:{item_id}:1"))
+        if 2 in potion_slots:
+            slot_row.append(InlineKeyboardButton(text="⚗️ Слот 2 ✓", callback_data=f"inv_unslot:potion2"))
+        else:
+            slot_row.append(InlineKeyboardButton(text="⚗️ В слот 2", callback_data=f"inv_slot:{item_id}:2"))
+        buttons.append(slot_row)
     if equip_slot:
         if is_equipped:
             buttons.append([InlineKeyboardButton(text="✖️ Снять с себя", callback_data=f"inv_unequip:{item_id}")])
@@ -125,9 +136,15 @@ async def inv_item_view(callback: CallbackQuery):
     if is_equipped:
         text += f"\n\n🔹 Экипировано: {'🔫' if equip_slot == 'weapon' else '🛡️'}"
 
+    # Активные слоты зелий (potion1/potion2) — в каких стоит этот предмет
+    potion_slots = [n for n, slot in ((1, 'potion1'), (2, 'potion2')) if eq.get(slot) == item_id]
+    if potion_slots:
+        text += f"\n\n⚗️ В активном слоте: {', '.join(str(n) for n in potion_slots)}"
+
     can_use = item['category'] == "consumable"
     markup = inv_item_markup(item_id, item['category'], can_use=can_use,
-                             is_equipped=is_equipped, equip_slot=equip_slot)
+                             is_equipped=is_equipped, equip_slot=equip_slot,
+                             potion_slots=potion_slots)
 
     photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
     if photo_id:
@@ -187,6 +204,42 @@ async def inv_unequip(callback: CallbackQuery):
         slot = 'armor'
     await clear_equipment_slot(user_id, slot)
     await callback.message.answer(f"✖️ Снято: {item['name']}")
+
+
+@router.callback_query(F.data.startswith("inv_slot:"))
+async def inv_potion_slot(callback: CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    _, item_id_s, slot_n = callback.data.split(":")
+    item_id = int(item_id_s)
+    item = await get_item(item_id)
+    inv = await get_inventory_item(user_id, item_id)
+    if not item or not inv or inv['quantity'] < 1:
+        await callback.message.answer("❌ У тебя нет этого предмета.")
+        return
+    if item['category'] != 'consumable':
+        await callback.message.answer("❌ В активный слот можно ставить только расходники (зелья/антидот).")
+        return
+
+    slot = f"potion{slot_n}"
+    await set_equipment_slot(user_id, slot, item_id)
+    await callback.message.answer(f"⚗️ {item['name']} поставлен в активный слот {slot_n}.")
+
+
+@router.callback_query(F.data.startswith("inv_unslot:"))
+async def inv_potion_unslot(callback: CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    slot = callback.data.split(":", 1)[1]
+    eq = await get_equipment(user_id)
+    item_id = eq.get(slot)
+    if not item_id:
+        await callback.message.answer("Этот слот пуст.")
+        return
+    item = await get_item(item_id)
+    await clear_equipment_slot(user_id, slot)
+    name = item['name'] if item else "Предмет"
+    await callback.message.answer(f"✖️ {name} снят из активного слота.")
 
 
 @router.callback_query(F.data.startswith("inv_use:"))
