@@ -11,7 +11,8 @@ from database.db import (
     get_active_run, update_run_hp, advance_room, end_run, add_run_item,
     get_run_items, clear_run_items, get_user, add_nordmarks, remove_nordmarks, remove_ap, get_db,
     get_player_weapon_damage, get_user_potions, get_item_by_name, remove_inventory_item,
-    get_user_contract_count, get_player_armor,
+    get_user_contract_count, get_player_armor, add_inventory_item,
+    transfer_run_items_to_inventory,
 )
 from utils.combat import (
     calculate_attack, calculate_enemy_damage,
@@ -297,10 +298,10 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
             text += "\n\n🎉 Поздравляем! Ты прошёл подземелье!"
 
-            run_items = await get_run_items(run['id'])
-            if run_items:
-                items_text = "\n".join([f"• {i['name']} x{i['quantity']}" for i in run_items])
-                text += f"\n\n📦 Найденные предметы:\n{items_text}"
+            transferred = await transfer_run_items_to_inventory(user_id, run['id'])
+            if transferred:
+                items_text = "\n".join([f"• {n} x{q}" for n, q in transferred])
+                text += f"\n\n📦 Найденные предметы отправлены в инвентарь:\n{items_text}"
 
             await end_run(run['id'], 0)
             await state.clear()
@@ -480,14 +481,13 @@ async def dungeon_exit(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     run = await get_active_run(user_id)
     if run:
-        items = await get_run_items(run['id'])
+        items = await transfer_run_items_to_inventory(user_id, run['id'])
         await end_run(run['id'], 0)
-        await clear_run_items(run['id'])
 
         if items:
-            text = "📦 Ты забрал с собой:\n"
-            for i in items:
-                text += f"• {i['name']} x{i['quantity']}\n"
+            text = "📦 Ты забрал с собой и получил в инвентарь:\n"
+            for n, q in items:
+                text += f"• {n} x{q}\n"
             text += "\nТы покидаешь подземелье."
         else:
             text = "Ты покидаешь подземелье ни с чем."

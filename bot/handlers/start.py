@@ -3,7 +3,7 @@ import os
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart
-from database.db import add_user, get_user, ensure_base_status, user_has_status_tag
+from database.db import add_user, get_user, ensure_base_status, user_has_status_tag, get_all_locations
 from keyboards.keyboards import main_menu_keyboard, city_keyboard
 from utils.permissions import is_admin
 from utils.helpers import resolve_image
@@ -56,10 +56,11 @@ async def cmd_start(message: Message):
 async def show_city(message: Message):
     city_view = resolve_image("city/arkholm")
     is_here_pilot = await user_has_status_tag(message.from_user.id, "pilot")
+    locations = await get_all_locations()
     await message.answer_photo(
         photo=FSInputFile(city_view),
         caption="🏰 Город Аркхольм:",
-        reply_markup=city_keyboard(is_pilot=is_here_pilot)
+        reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations)
     )
 
 
@@ -68,15 +69,16 @@ async def city_menu_cb(callback: CallbackQuery):
     await callback.answer()
     city_view = resolve_image("city/arkholm")
     is_here_pilot = await user_has_status_tag(callback.from_user.id, "pilot")
+    locations = await get_all_locations()
     if callback.message.photo:
         from aiogram.types import InputMediaPhoto
         await callback.message.edit_media(
             media=InputMediaPhoto(media=FSInputFile(city_view), caption="🏰 Город Аркхольм:"),
-            reply_markup=city_keyboard(is_pilot=is_here_pilot)
+            reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations)
         )
     else:
         await callback.message.answer_photo(
             photo=FSInputFile(city_view),
             caption="🏰 Город Аркхольм:",
-            reply_markup=city_keyboard(is_pilot=is_here_pilot)
+            reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations)
         )

@@ -5,7 +5,7 @@ import os
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
-from database.db import get_all_users, get_user, get_selected_status
+from database.db import get_all_users, get_user, get_selected_status, can_enter_location
 from config import get_effective_rank
 from utils.helpers import resolve_image
 
@@ -27,8 +27,7 @@ def town_hall_markup(users):
 @router.callback_query(F.data == "city:pilots")
 async def town_hall_menu(callback: CallbackQuery):
     await callback.answer()
-    from utils.states import is_place_blocked
-    if await is_place_blocked(callback.from_user.id, "townhall"):
+    if not await can_enter_location(callback.from_user.id, "townhall"):
         await callback.message.answer("🍺 Ты пьян! В Ратушу не пускают. Протрезвей сначала.")
         return
     users = await get_all_users()

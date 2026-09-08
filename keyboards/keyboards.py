@@ -31,6 +31,8 @@ def admin_panel_keyboard(permissions: dict):
         buttons.append([InlineKeyboardButton(text="⭐ Повышение в звании", callback_data="admin:ranks")])
     if permissions.get('can_manage_states'):
         buttons.append([InlineKeyboardButton(text="🎭 Состояния", callback_data="admin:states")])
+    if permissions.get('can_manage_locations'):
+        buttons.append([InlineKeyboardButton(text="📍 Локации", callback_data="admin:locations")])
     if permissions.get('can_view_logs'):
         buttons.append([InlineKeyboardButton(text="🧾 Логи действий", callback_data="admin:logs")])
     buttons.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])
@@ -133,11 +135,13 @@ def interaction_keyboard(user_id: int):
     ])
 
 
-def city_keyboard(is_pilot: bool = True):
-    buttons = [
-        [InlineKeyboardButton(text="🏛️ Ратуша", callback_data="city:pilots")],
-        [InlineKeyboardButton(text="📚 Библиотека", callback_data="city:library")],
-    ]
+def city_keyboard(is_pilot: bool = True, locations: list = None):
+    buttons = []
+    for loc in (locations or []):
+        buttons.append([InlineKeyboardButton(
+            text=f"📍 {loc['name']}",
+            callback_data=f"location:preview:{loc['key']}"
+        )])
     if is_pilot:
         buttons.append([InlineKeyboardButton(text="Голосование", callback_data="city:vote")])
         buttons.append([InlineKeyboardButton(text="Подземелье", callback_data="city:dungeon")])

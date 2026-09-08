@@ -20,6 +20,9 @@ from database.db import (
     get_treasury_balance, transfer_from_treasury, get_treasury_stats,
     get_report_tax_percent, set_report_tax_percent,
     get_sale_tax_percent, set_sale_tax_percent,
+    get_salaried_users, get_user_salary, set_user_salary, pay_salaries,
+    get_all_locations, get_location, create_location, update_location_access,
+    location_access_label,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import (
@@ -99,13 +102,31 @@ class AdminStates(StatesGroup):
     minutes = State()
 
 
+class AdminSalary(StatesGroup):
+    target = State()
+    amount = State()
+    period = State()
+
+
+class AdminLocation(StatesGroup):
+    action = State()        # create / edit
+    target_id = State()     # id локации для редактирования
+    key = State()
+    name = State()
+    description = State()
+    mode = State()
+    req_status = State()
+    blocking = State()
+    preview = State()
+
+
 # ============ УТИЛИТЫ ============
 
 async def perm_flags(user_id: int) -> dict:
     perms = ["can_manage_shop", "can_manage_finance", "can_view_reports",
              "can_approve_reports", "can_manage_admins", "can_view_logs",
              "can_manage_statuses", "can_grant_statuses", "can_grant_troops",
-             "can_manage_states"]
+             "can_manage_states", "can_manage_locations", "can_manage_salaries"]
     return {p: await has_permission(user_id, p) for p in perms}
 
 
@@ -240,6 +261,20 @@ async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🎭 Наложить состояние", callback_data="st_op:set")],
                 [InlineKeyboardButton(text="✨ Снять состояние", callback_data="st_op:clear")],
+            ])
+        )
+    elif next_step == "salary_set":
+        await state.set_state(AdminSalary.amount)
+        cur = await get_user_salary(target['user_id'])
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        await callback.message.answer(
+            f"💰 Назначение зарплаты\nИгрок: {target['first_name'] if 'first_name' in target.keys() else ''} "
+            f"(@{target['username'] if 'username' in target.keys() else ''})\n"
+            f"Текущая зарплата: {cur['salary']} {plural_nordmark(cur['salary'])} "
+            f"(период {cur['salary_period_days']} дн.)\n\n"
+            f"Введи сумму зарплаты за один период (цифрой). 0 — снять зарплату.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:salaries")],
             ])
         )
 
@@ -700,6 +735,7 @@ async def admin_finance(callback: CallbackQuery):
         buttons.append([InlineKeyboardButton(text="🏛️ Казна", callback_data="admin:treasury")])
         buttons.append([InlineKeyboardButton(text="📊 Налог на отчёты", callback_data="admin:tax")])
         buttons.append([InlineKeyboardButton(text="📊 Налог на продажи", callback_data="admin:saletax")])
+        buttons.append([InlineKeyboardButton(text="💰 Зарплаты", callback_data="admin:salaries")])
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:menu")])
 
     await callback.message.edit_text(
@@ -1760,3 +1796,369 @@ async def admin_states_minutes(message: Message, state: FSMContext):
 @router.message(AdminStates.minutes)
 async def admin_states_minutes_bad(message: Message):
     await message.answer("❌ Введи число цифрой (минуты). Или /cancel.")
+
+
+@router.callback_query(F.data == "admin:salaries")
+async def admin_salaries(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_salaries"):
+        await callback.message.answer("❌ Нет прав для управления зарплатами.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    balance = await get_treasury_balance()
+    salaried = await get_salaried_users()
+    lines = []
+    lines.append(f"🏛️ ЗАРПЛАТЫ ПИЛОТОВ\n\nКазна: {balance} {plural_nordmark(balance)}\n")
+    if salaried:
+        lines.append("💼 Получатели (еженедельно, в воскресенье):")
+        for u in salaried:
+            name = u['first_name'] or u['username'] or f"#{u['user_id']}"
+            line = f"  • {name} — {u['salary']} {plural_nordmark(u['salary'])}"
+            if u['salary_debt']:
+                line += f"  (долг {u['salary_debt']} {plural_nordmark(u['salary_debt'])})"
+            lines.append(line)
+    else:
+        lines.append("Получателей пока нет.")
+    lines.append("\nВыплата — один раз в неделю, в воскресенье.")
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Назначить/Изменить", callback_data="salary:choose")],
+            [InlineKeyboardButton(text="💸 Выплатить сейчас", callback_data="salary:pay")],
+            [InlineKeyboardButton(text="🔙 В финансы", callback_data="admin:finance")],
+        ])
+    )
+
+
+@router.callback_query(F.data == "salary:choose")
+async def salary_choose(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_salaries"):
+        return
+    markup = await pilot_picker_markup("salary_set")
+    await callback.message.edit_text(
+        "Выбери пилота, которому назначишь зарплату:",
+        reply_markup=markup
+    )
+
+
+@router.callback_query(F.data == "salary:pay")
+async def salary_pay(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_salaries"):
+        return
+    res = await pay_salaries()
+    parts = []
+    if res['paid']:
+        parts.append(f"✅ Выплачено зарплат: {len(res['paid'])}")
+        for uid, amt in res['paid']:
+            u = await get_user(uid)
+            name = (u['first_name'] if (u and 'first_name' in u.keys() and u['first_name'])
+                    else (u['username'] if u else f"#{uid}"))
+            parts.append(f"  • {name}: {amt} {plural_nordmark(amt)}")
+    else:
+        parts.append("ℹ️ Нет зарплат к выплате прямо сейчас.")
+    if res['debt']:
+        parts.append(
+            f"\n⚠️ Задолженность (не хватило казны): {len(res['debt'])} "
+            f"(всего {res['reserves']} {plural_nordmark(res['reserves'])}). "
+            f"Долг копится и будет выплачен при пополнении."
+        )
+    await callback.message.edit_text("\n".join(parts))
+
+
+@router.message(AdminSalary.amount)
+async def admin_salary_amount(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if text.lower() == "/cancel":
+        await message.answer("Отменено.")
+        await state.clear()
+        return
+    try:
+        amount = int(text)
+    except ValueError:
+        await message.answer("❌ Введи сумму цифрой (или /cancel).")
+        return
+    if amount < 0:
+        await message.answer("❌ Сумма не может быть отрицательной.")
+        return
+    data = await state.get_data()
+    target_id = data.get('target_id')
+    target_name = data.get('target_name', '')
+    if not target_id:
+        await message.answer("❌ Сессия не найдена, начни заново.")
+        await state.clear()
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    if amount == 0:
+        await set_user_salary(target_id, 0, 7, message.from_user.id)
+        await state.clear()
+        await message.answer(f"✅ Зарплата снята с игрока: {target_name}.")
+        return
+    await state.update_data(amount=amount)
+    await state.set_state(AdminSalary.period)
+    await message.answer(
+        f"💰 Сумма: {amount} {plural_nordmark(amount)}\n\n"
+        f"Введи период выплаты в днях (по умолчанию 7):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="7 дней", callback_data="salary_period:7")],
+            [InlineKeyboardButton(text="30 дней", callback_data="salary_period:30")],
+        ])
+    )
+
+
+@router.callback_query(AdminSalary.period, F.data.startswith("salary_period:"))
+async def admin_salary_period_cb(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    period = int(callback.data.split(":")[1])
+    data = await state.get_data()
+    target_id = data.get('target_id')
+    target_name = data.get('target_name', '')
+    amount = data.get('amount')
+    if not target_id or amount is None:
+        await state.clear()
+        await callback.message.answer("❌ Сессия не найдена, начни заново.")
+        return
+    await set_user_salary(target_id, amount, period, callback.from_user.id)
+    await state.clear()
+    await callback.message.edit_text(
+        f"✅ Зарплата назначена: {target_name} — {amount} {plural_nordmark(amount)} / {period} дн."
+    )
+
+
+@router.message(AdminSalary.period)
+async def admin_salary_period_text(message: Message, state: FSMContext):
+    text = message.text.strip()
+    try:
+        period = int(text)
+    except ValueError:
+        await message.answer("❌ Введи период цифрой (дни) или выбери кнопку.")
+        return
+    if period <= 0:
+        await message.answer("❌ Период должен быть больше 0.")
+        return
+    data = await state.get_data()
+    target_id = data.get('target_id')
+    target_name = data.get('target_name', '')
+    amount = data.get('amount')
+    if not target_id or amount is None:
+        await state.clear()
+        await message.answer("❌ Сессия не найдена, начни заново.")
+        return
+    await set_user_salary(target_id, amount, period, message.from_user.id)
+    await state.clear()
+    await message.answer(
+        f"✅ Зарплата назначена: {target_name} — {amount} {plural_nordmark(amount)} / {period} дн."
+    )
+
+@router.callback_query(F.data == "admin:locations")
+async def admin_locations(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        await callback.message.answer("❌ Нет прав для управления локациями.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    locs = await get_all_locations()
+    lines = ["📍 ЛОКАЦИИ ГОРОДА\n"]
+    if locs:
+        for l in locs:
+            acc = await location_access_label(l['access_mode'], l['required_status'])
+            lines.append(f"• {l['name']} — {acc}")
+    else:
+        lines.append("Локаций пока нет.")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Создать локацию", callback_data="loc:create")],
+        [InlineKeyboardButton(text="✏️ Редактировать доступ", callback_data="loc:edit_pick")],
+        [InlineKeyboardButton(text="🔙 В меню", callback_data="admin:menu")],
+    ])
+    await callback.message.edit_text("\n".join(lines), reply_markup=kb)
+
+
+@router.callback_query(F.data == "loc:create")
+async def loc_create(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    await state.update_data(action="create")
+    await state.set_state(AdminLocation.key)
+    await callback.message.edit_text(
+        "Создание локации. Шаг 1/7 — введи уникальный ключ локации латиницей\n"
+        "(например: bar, market). Без пробелов:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:locations")]
+        ])
+    )
+
+
+@router.callback_query(F.data == "loc:edit_pick")
+async def loc_edit_pick(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    locs = await get_all_locations()
+    if not locs:
+        await callback.message.edit_text("Локаций пока нет. Сначала создай.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = [[InlineKeyboardButton(text=l['name'], callback_data=f"loc:edit:{l['id']}")] for l in locs]
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:locations")])
+    await callback.message.edit_text("Выбери локацию для редактирования доступа:",
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("loc:edit:"))
+async def loc_edit(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    loc_id = int(callback.data.split(":")[2])
+    loc = await get_location(loc_id)
+    if not loc:
+        await callback.message.answer("❌ Локация не найдена.")
+        return
+    acc = await location_access_label(loc['access_mode'], loc['required_status'])
+    blocking = ", ".join(loc['blocking_states'] or "[]") or "нет"
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await state.update_data(action="edit", target_id=loc_id)
+    await callback.message.edit_text(
+        f"✏️ {loc['name']} (доступ: {acc})\nБлокируют состояния: {blocking}\n\nЧто изменить?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎚 Режим доступа", callback_data="loc:set_mode")],
+            [InlineKeyboardButton(text="🗂 Требуемый статус", callback_data="loc:set_status")],
+            [InlineKeyboardButton(text="🍺 Блокирующие состояния", callback_data="loc:set_blocking")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="loc:edit_pick")],
+        ])
+    )
+
+
+@router.callback_query(F.data == "loc:set_mode")
+async def loc_set_mode(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await state.set_state(AdminLocation.mode)
+    await callback.message.edit_text(
+        "Выбери режим доступа:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🌐 Всем", callback_data="loc:mode:all")],
+            [InlineKeyboardButton(text="📈 Статус и выше", callback_data="loc:mode:min")],
+            [InlineKeyboardButton(text="🎯 Только конкретному", callback_data="loc:mode:exact")],
+            [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:locations")],
+        ])
+    )
+
+
+@router.callback_query(AdminLocation.mode, F.data.startswith("loc:mode:"))
+async def loc_mode_chosen(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    mode = callback.data.split(":")[2]
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if data.get('action') == 'edit' and loc_id:
+        await update_location_access(loc_id, access_mode=mode)
+        await state.clear()
+        await callback.message.edit_text(f"✅ Режим доступа: {mode}")
+    else:
+        await state.update_data(mode=mode)
+        if mode == "all":
+            await state.update_data(req_status=None)
+            await AdminLocation.blocking.set()
+            await callback.message.edit_text("Какие состояния блокируют вход?\n(через запятую, напр.: пьян)")
+        else:
+            await AdminLocation.req_status.set()
+            await _loc_status_pick(callback, state)
+
+
+@router.callback_query(AdminLocation.req_status, F.data.startswith("loc:req_status:"))
+async def loc_req_status_chosen(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    tag = callback.data.split(":")[2]
+    data = await state.get_data()
+    if data.get('action') == 'edit' and data.get('target_id'):
+        await update_location_access(data['target_id'], required_status=tag)
+        await state.clear()
+        await callback.message.edit_text(f"✅ Требуемый статус: {tag}")
+    else:
+        await state.update_data(req_status=tag)
+        await AdminLocation.blocking.set()
+        await callback.message.edit_text("Какие состояния блокируют вход?\n(через запятую, напр.: пьян, или отправь „нет“)")
+
+
+@router.callback_query(AdminLocation.blocking, F.data.startswith("loc:blocking:"))
+async def loc_blocking_chosen(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    data = await state.get_data()
+    val = callback.data.split(":", 2)[2]
+    if val == "none":
+        blocking = []
+    else:
+        blocking = [s.strip() for s in val.split(",") if s.strip()]
+    if data.get('action') == 'edit' and data.get('target_id'):
+        await update_location_access(data['target_id'], blocking_states=blocking)
+        await state.clear()
+        await callback.message.edit_text("✅ Блокирующие состояния обновлены.")
+    else:
+        await state.update_data(blocking=blocking)
+        await _finish_loc_create(callback, state)
+
+
+async def _loc_status_pick(callback, state):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    statuses = await get_all_statuses()
+    rows = []
+    for s in statuses:
+        tag = s['access_tag'] or s['name']
+        rows.append([InlineKeyboardButton(text=s['name'], callback_data=f"loc:req_status:{tag}")])
+    rows.append([InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:locations")])
+    await callback.message.edit_text("Выбери требуемый статус:",
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+async def _finish_loc_create(callback, state):
+    data = await state.get_data()
+    mode = data.get('mode') or 'all'
+    req = data.get('req_status')
+    blocking = data.get('blocking') or []
+    ok, err = await create_location(
+        key=data['key'], name=data['name'], description=data.get('description'),
+        access_mode=mode, required_status=req, blocking_states=blocking
+    )
+    await state.clear()
+    if ok:
+        await callback.message.edit_text(f"✅ Локация «{data['name']}» создана.")
+    else:
+        await callback.message.edit_text(f"❌ Ошибка создания: {err}")
+
+
+# FSM: создание локации (шаги)
+@router.message(AdminLocation.key)
+async def loc_step_key(message: Message, state: FSMContext):
+    key = message.text.strip().lower()
+    if not key or not key.replace("_", "").isalnum():
+        await message.answer("❌ Ключ — латиница/цифры/подчёркивание без пробелов.")
+        return
+    await state.update_data(key=key)
+    await state.set_state(AdminLocation.name)
+    await message.answer("Шаг 2/7 — название локации:")
+
+
+@router.message(AdminLocation.name)
+async def loc_step_name(message: Message, state: FSMContext):
+    await state.update_data(name=message.text.strip())
+    await state.set_state(AdminLocation.description)
+    await message.answer("Шаг 3/7 — описание (или отправь «-»):")
+
+
+@router.message(AdminLocation.description)
+async def loc_step_desc(message: Message, state: FSMContext):
+    text = message.text.strip()
+    await state.update_data(description=None if text == "-" else text)
+    await state.set_state(AdminLocation.mode)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await message.answer(
+        "Шаг 4/7 — режим доступа:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🌐 Всем", callback_data="loc:mode:all")],
+            [InlineKeyboardButton(text="📈 Статус и выше", callback_data="loc:mode:min")],
+            [InlineKeyboardButton(text="🎯 Только конкретному", callback_data="loc:mode:exact")],
+        ])
+    )

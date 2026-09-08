@@ -41,6 +41,10 @@ async def init_db():
             status_text TEXT DEFAULT 'Боевой пилот',
             notify_enabled INTEGER DEFAULT 1,
             equipment TEXT DEFAULT '{}',
+            salary INTEGER DEFAULT 0,
+            salary_period_days INTEGER DEFAULT 7,
+            last_salary_date TIMESTAMP,
+            salary_debt INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -350,6 +354,19 @@ async def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS locations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            description TEXT,
+            access_mode TEXT NOT NULL DEFAULT 'all',
+            required_status TEXT,
+            blocking_states TEXT DEFAULT '[]',
+            preview_photo TEXT,
+            sort_order INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS statuses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -381,18 +398,45 @@ async def init_db():
     await _ensure_column(conn, "users", "promoted_rank", "TEXT")
     await _ensure_column(conn, "users", "notify_enabled", "INTEGER DEFAULT 1")
     await _ensure_column(conn, "users", "equipment", "TEXT DEFAULT '{}'")
+    await _ensure_column(conn, "users", "salary", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "users", "salary_period_days", "INTEGER DEFAULT 7")
+    await _ensure_column(conn, "users", "last_salary_date", "TIMESTAMP")
+    await _ensure_column(conn, "users", "salary_debt", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "armor", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "reports", "total_troops", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "damage", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "heal", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "dungeon_enemies", "drops", "TEXT DEFAULT '[]'")
     await _ensure_column(conn, "dungeon_enemies", "image", "TEXT")
+    await _ensure_column(conn, "locations", "preview_photo", "TEXT")
     # Базовые статусы иерархии: Пилот — гражданин (0), Турист — гость (-10).
     # Старые записи Пилота, которым ранее могли поставить высокий уровень, возвращаем к 0.
     await conn.execute("UPDATE statuses SET sort_order = 0 WHERE access_tag = 'pilot'")
     await conn.execute("UPDATE statuses SET sort_order = -10 WHERE access_tag = 'tourist'")
     await conn.commit()
     await ensure_base_statuses()
+    await conn.commit()
+    await seed_locations(conn)
+
+
+async def seed_locations(conn):
+    """Засеивает базовые локации города (Ратуша, Библиотека) как пример управляемого доступа.
+
+    Ратуша и Библиотека по умолчанию: режим 'all' (всем) + состояние «пьян»
+    блокирует вход (сохраняем текущее поведение).
+    """
+    base = [
+        ("townhall", "Ратуша", "Публичное здание города, где собираются пилоты и решаются вопросы города.",
+         "all", None, ["пьян"], "city/rathaus"),
+        ("library", "Библиотека", "Хранилище знаний Нордхайма. Вход по читательскому билету.",
+         "all", None, ["пьян"], "city/library"),
+    ]
+    for key, name, desc, mode, req_status, blocking, preview in base:
+        await conn.execute(
+            "INSERT OR IGNORE INTO locations (key, name, description, access_mode, required_status, blocking_states, preview_photo) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (key, name, desc, mode, req_status, json.dumps(blocking, ensure_ascii=False), preview)
+        )
     await conn.commit()
 
 
@@ -853,6 +897,162 @@ async def get_treasury_stats() -> dict:
         "by_from": by_from,
         "by_to": by_to,
     }
+
+
+# ============ ЗАРПЛАТЫ ============
+
+async def get_salaried_users():
+    """Все пилоты с назначенной зарплатой (salary > 0)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT user_id, username, first_name, salary, salary_period_days, last_salary_date, salary_debt "
+        "FROM users WHERE salary IS NOT NULL AND salary > 0 ORDER BY salary DESC"
+    )
+    return await cursor.fetchall()
+
+
+async def get_user_salary(user_id: int) -> dict:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT salary, salary_period_days, last_salary_date FROM users WHERE user_id = ?",
+        (user_id,)
+    )
+    row = await cursor.fetchone()
+    return dict(row) if row else {"salary": 0, "salary_period_days": 7, "last_salary_date": None}
+
+
+async def set_user_salary(user_id: int, amount: int, period_days: int = 7, admin_id: int = None):
+    """Назначить/изменить зарплату пилоту.
+
+    Выплата идёт по фиксированному календарному графику (воскресенье),
+    не зависит от даты назначения. last_salary_date не сбрасываем:
+    если в текущей неделе платёж уже прошёл — следующая выплата будет
+    в следующее воскресенье (защита от дублей).
+    """
+    conn = await get_db()
+    if amount <= 0:
+        await conn.execute(
+            "UPDATE users SET salary = 0 WHERE user_id = ?", (user_id,)
+        )
+    else:
+        await conn.execute(
+            "UPDATE users SET salary = ?, salary_period_days = ? WHERE user_id = ?",
+            (amount, period_days, user_id)
+        )
+    await conn.commit()
+
+
+async def get_salaries_due() -> list:
+    """Пилоты, которым пора выплатить зарплату.
+
+    Фиксированный календарный график: выплата один раз в неделю,
+    в воскресенье (UTC). Не зависит от даты назначения зарплаты.
+    Защита от дублей: платим, только если в текущей календарной
+    неделе выплата ещё не проводилась.
+    """
+    conn = await get_db()
+    # date('now','weekday 0','-6 days') — понедельник текущей календарной недели (UTC)
+    cursor = await conn.execute(
+        "SELECT user_id, username, first_name, salary, salary_debt FROM users "
+        "WHERE salary IS NOT NULL AND salary > 0 "
+        "AND strftime('%w', 'now') = '0' "
+        "AND (last_salary_date IS NULL OR "
+        "     date(last_salary_date) < date('now', 'weekday 0', '-6 days'))"
+    )
+    return await cursor.fetchall()
+
+
+async def mark_salary_paid(user_id: int):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET last_salary_date = datetime('now') WHERE user_id = ?", (user_id,)
+    )
+    await conn.commit()
+
+
+async def pay_salaries() -> dict:
+    """Выплачивает зарплаты всем, кому пора (календарное воскресенье).
+
+    Логика: оплачивается ставка за неделю + накопленный ранее долг.
+    Если казны не хватает — платим сколько возможно (если есть хоть что-то),
+    остаток копится в salary_debt, last_salary_date не меняется (долг растёт
+    каждую пропущенную неделю). Возвращает статистику для уведомления.
+    """
+    balance = await get_treasury_balance()
+    due = await get_salaries_due()
+    paid = []
+    debt = []
+    reserves = 0  # сколько всего не хватило
+
+    for u in due:
+        uid = u['user_id']
+        weekly = u['salary']
+        owed = weekly + (u['salary_debt'] or 0)  # ставка + накопленный долг
+
+        if owed <= 0:
+            continue
+
+        if balance >= owed:
+            # оплачиваем всё: ставка + долг
+            await add_treasury_move(owed, u)
+            balance -= owed
+            await clear_salary_debt(uid)
+            await mark_salary_paid(uid)
+            paid.append((uid, owed))
+        elif balance > 0:
+            # казны не хватает на всё — платим сколько есть, остаток в долг
+            await add_treasury_move(balance, u)
+            rest = owed - balance
+            await add_salary_debt(uid, rest)
+            reserves += rest
+            balance = 0
+            # last_salary_date не обновляем: долг продолжит накапливаться
+            debt.append((uid, rest))
+        else:
+            # казны совсем нет — вся сумма в долг
+            rest = owed
+            await add_salary_debt(uid, rest)
+            reserves += rest
+            debt.append((uid, rest))
+
+    return {
+        "paid": paid,
+        "debt": debt,
+        "reserves": reserves,
+    }
+
+
+async def add_salary_debt(user_id: int, amount: int):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET salary_debt = salary_debt + ? WHERE user_id = ?",
+        (amount, user_id)
+    )
+    await conn.commit()
+
+
+async def clear_salary_debt(user_id: int):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET salary_debt = 0 WHERE user_id = ?", (user_id,)
+    )
+    await conn.commit()
+
+
+async def add_treasury_move(amount: int, user_row):
+    """Выплата зарплаты игроку из казны (служебная) + транзакции."""
+    conn = await get_db()
+    await conn.execute("UPDATE treasury SET balance = balance - ? WHERE id = 1", (amount,))
+    await conn.execute(
+        "UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?",
+        (amount, user_row['user_id'])
+    )
+    await conn.execute(
+        "INSERT INTO transactions (from_user, to_user, amount, tx_type, description) VALUES (?, ?, ?, ?, ?)",
+        (TREASURY_ID, user_row['user_id'], amount, "salary",
+         f"Зарплата ({user_row['first_name'] or user_row['username'] or user_row['user_id']})")
+    )
+    await conn.commit()
 
 
 # ============ НАЛОГ НА ОТЧЁТЫ ============
@@ -1539,6 +1739,112 @@ async def user_has_status_tag(user_id: int, tag: str) -> bool:
     return top >= req['sort_order']
 
 
+# ============ ЛОКАЦИИ (статусный доступ + блокирующие состояния) ============
+
+async def get_location(location_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM locations WHERE id = ?", (location_id,))
+    return await cursor.fetchone()
+
+
+async def get_location_by_key(key: str):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM locations WHERE key = ?", (key,))
+    return await cursor.fetchone()
+
+
+async def get_all_locations():
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM locations ORDER BY sort_order, id")
+    return await cursor.fetchall()
+
+
+async def create_location(key: str, name: str, description: str = None,
+                          access_mode: str = "all", required_status: str = None,
+                          blocking_states: list = None):
+    conn = await get_db()
+    try:
+        await conn.execute(
+            "INSERT INTO locations (key, name, description, access_mode, required_status, blocking_states) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (key, name, description, access_mode, required_status,
+             json.dumps(blocking_states or [], ensure_ascii=False))
+        )
+        await conn.commit()
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+async def update_location_access(location_id: int, access_mode: str = None,
+                                 required_status: str = None,
+                                 blocking_states: list = None):
+    conn = await get_db()
+    loc = await get_location(location_id)
+    if not loc:
+        return False
+    cur_mode = access_mode if access_mode is not None else loc['access_mode']
+    cur_req = required_status if required_status is not None else loc['required_status']
+    cur_block = blocking_states if blocking_states is not None else json.loads(loc['blocking_states'] or '[]')
+    await conn.execute(
+        "UPDATE locations SET access_mode = ?, required_status = ?, blocking_states = ? WHERE id = ?",
+        (cur_mode, cur_req, json.dumps(cur_block, ensure_ascii=False), location_id)
+    )
+    await conn.commit()
+    return True
+
+
+async def user_has_exact_status(user_id: int, tag: str) -> bool:
+    """Игрок имеет ровно этот статус в списке своих статусов (по access_tag)."""
+    if not tag:
+        return False
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT 1 FROM user_statuses us
+        JOIN statuses s ON us.status_id = s.id
+        WHERE us.user_id = ? AND s.access_tag = ?
+    """, (user_id, tag))
+    return await cursor.fetchone() is not None
+
+
+async def can_enter_location(user_id: int, key: str) -> bool:
+    """Проверка доступа к локации: статусный режим + блокирующие состояния.
+
+    НЕ проверяет специфичные условия типа читательского билета (это делает
+    сам обработчик локации поверх этой функции).
+    """
+    loc = await get_location_by_key(key)
+    if not loc:
+        return True
+
+    # 1) Статусный доступ
+    mode = loc['access_mode']
+    status_ok = True
+    if mode == "min":
+        status_ok = await user_has_status_tag(user_id, loc['required_status'])
+    elif mode == "exact":
+        status_ok = await user_has_exact_status(user_id, loc['required_status'])
+    if not status_ok:
+        return False
+
+    # 2) Состояние не должно быть в блокирующих для этой локации
+    blocking = json.loads(loc['blocking_states'] or '[]')
+    if blocking:
+        from utils.states import get_state_info
+        info = await get_state_info(user_id)
+        if info['name'] in blocking:
+            return False
+    return True
+
+
+async def location_access_label(mode: str, req_status: str) -> str:
+    if mode == "all" or not mode:
+        return "🌐 Всем"
+    if mode == "exact":
+        return f"🎯 Только: {req_status}"
+    return f"📈 {req_status} и выше"
+
+
 # ============ СИД: ТЕСТОВЫЕ ТОВАРЫ ============
 
 DEFAULT_ITEMS = [
@@ -1585,15 +1891,15 @@ DEFAULT_DUNGEON = {
     "floors": [
         {
             "enemies": [
-                ("Крыса", 15, 3, 0, False, [{"item": "Хвост крысы", "chance": 0.2, "qty": 1}], "assets/img/enemies/rat.jpg"),
-                ("Ядовитая крыса", 20, 5, 0, False, [{"item": "Хвост крысы", "chance": 0.35, "qty": 1}], "assets/img/enemies/poison_rat.jpg"),
+                ("Крыса", 15, 3, 0, False, [{"item": "Хвост крысы", "chance": 0.15, "qty": 1}], "assets/img/enemies/rat.jpg"),
+                ("Ядовитая крыса", 20, 5, 0, False, [{"item": "Хвост крысы", "chance": 0.25, "qty": 1}], "assets/img/enemies/poison_rat.jpg"),
                 ("Кристальный паук", 18, 4, 0, False, [
-                    {"item": "Паутина паука", "chance": 0.2, "qty": 1},
+                    {"item": "Паутина паука", "chance": 0.15, "qty": 1},
                     {"item": "Осколок кристалла", "chance": 0.05, "qty": 1},
                 ], "assets/img/enemies/crystal_spider.jpg"),
             ],
             "boss": ("Король крыс", 50, 8, 15, True, [
-                {"item": "Хвост крысы", "chance": 0.5, "qty": 2},
+                {"item": "Хвост крысы", "chance": 0.4, "qty": 2},
                 {"item": "Осколок кристалла", "chance": 0.2, "qty": 1},
             ], "assets/img/enemies/rat_king.jpg"),
         },
@@ -1736,6 +2042,27 @@ async def get_run_items(run_id: int):
 async def clear_run_items(run_id: int):
     conn = await get_db()
     await conn.execute("DELETE FROM player_dungeon_inventory WHERE run_id = ?", (run_id,))
+
+
+async def transfer_run_items_to_inventory(user_id: int, run_id: int) -> list:
+    """Переносит найденный в забеге лут (player_dungeon_inventory) в реальный
+    инвентарь игрока и чистит временный. Возвращает [(название, кол-во)]."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT item_id, quantity FROM player_dungeon_inventory WHERE run_id = ?",
+        (run_id,)
+    )
+    rows = await cursor.fetchall()
+    transferred = []
+    for r in rows:
+        await add_inventory_item(user_id, r['item_id'], r['quantity'])
+        cur2 = await conn.execute("SELECT name FROM items WHERE id = ?", (r['item_id'],))
+        it = await cur2.fetchone()
+        name = it['name'] if it else f"#{r['item_id']}"
+        transferred.append((name, r['quantity']))
+    await conn.execute("DELETE FROM player_dungeon_inventory WHERE run_id = ?", (run_id,))
+    await conn.commit()
+    return transferred
     await conn.commit()
 
 

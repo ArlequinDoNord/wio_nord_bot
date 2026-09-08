@@ -6,7 +6,8 @@ from aiogram import Bot, Dispatcher
 from dotenv import load_dotenv
 
 from config import BOT_TOKEN
-from database.db import init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon, ensure_dungeon_shop_items, ensure_dungeon_enemy_drops
+from database.db import init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon, ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, pay_salaries
+from utils.notify import notify_treasury_shortage
 from bot.handlers.start import router as start_router
 from bot.handlers.profile import router as profile_router
 from bot.handlers.bank import router as bank_router
@@ -18,6 +19,7 @@ from bot.handlers.dungeon import router as dungeon_router
 from bot.handlers.pilots import router as pilots_router
 from bot.handlers.polls import router as polls_router
 from bot.handlers.library import router as library_router
+from bot.handlers.locations import router as locations_router
 
 load_dotenv()
 
@@ -39,6 +41,20 @@ async def scheduled_jobs(bot: Bot):
             logger.info("Суточное восстановление AP выполнено")
         except Exception as e:
             logger.error(f"Ошибка восстановления AP: {e}", exc_info=True)
+        try:
+            res = await pay_salaries()
+            if res['paid'] or res['debt']:
+                logger.info(
+                    f"Зарплаты: выплачено {len(res['paid'])}, долг {len(res['debt'])} "
+                    f"на {res['reserves']}"
+                )
+            if res['debt']:
+                await notify_treasury_shortage(
+                    bot, res['reserves'],
+                    [(uid, amt) for uid, amt in res['debt']]
+                )
+        except Exception as e:
+            logger.error(f"Ошибка выплаты зарплат: {e}", exc_info=True)
         await asyncio.sleep(24 * 60 * 60)
 
 
@@ -78,6 +94,7 @@ async def main():
     dp.include_router(pilots_router)
     dp.include_router(polls_router)
     dp.include_router(library_router)
+    dp.include_router(locations_router)
 
     logger.info("Хендлеры зарегистрированы")
 
