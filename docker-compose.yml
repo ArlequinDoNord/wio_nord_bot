@@ -1,0 +1,13 @@
+name: wio_nord_bot
+
+services:
+  wio_nord_bot:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - nordmark_data:/app/database
+
+volumes:
+  nordmark_data:

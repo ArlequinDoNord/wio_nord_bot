@@ -1,8 +1,13 @@
 .env
 __pycache__/
+*.pyc
 .venv/
 .idea/
+.git/
+.gitignore
+bot.log
 database/nordmark.db
 database/nordmark.db-shm
 database/nordmark.db-wal
-bot.log
+Dockerfile
+docker-compose.yml
