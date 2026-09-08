@@ -32,7 +32,7 @@ async def init_db():
             last_name TEXT,
             photo_file_id TEXT,
             troops INTEGER DEFAULT 0,
-            nordmarks INTEGER DEFAULT 100,
+            nordmarks INTEGER DEFAULT 10,
             ap INTEGER DEFAULT 100,
             ap_max INTEGER DEFAULT 150,
             state TEXT DEFAULT 'нормально',
@@ -455,8 +455,8 @@ async def _ensure_column(conn, table: str, column: str, coltype: str):
 async def add_user(user_id: int, username: str, first_name: str, last_name: str):
     conn = await get_db()
     await conn.execute("""
-        INSERT OR IGNORE INTO users (user_id, username, first_name, last_name)
-        VALUES (?, ?, ?, ?)
+        INSERT OR IGNORE INTO users (user_id, username, first_name, last_name, nordmarks)
+        VALUES (?, ?, ?, ?, 10)
     """, (user_id, username, first_name, last_name))
     await conn.commit()
 
