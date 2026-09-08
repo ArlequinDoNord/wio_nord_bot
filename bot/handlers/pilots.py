@@ -27,6 +27,10 @@ def town_hall_markup(users):
 @router.callback_query(F.data == "city:pilots")
 async def town_hall_menu(callback: CallbackQuery):
     await callback.answer()
+    from utils.states import is_place_blocked
+    if await is_place_blocked(callback.from_user.id, "townhall"):
+        await callback.message.answer("🍺 Ты пьян! В Ратушу не пускают. Протрезвей сначала.")
+        return
     users = await get_all_users()
     if not users:
         await callback.message.answer("🏛️ Ратуша пока пуста — загляни позже!")

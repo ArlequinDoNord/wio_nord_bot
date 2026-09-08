@@ -9,6 +9,7 @@ from database.db import (
     get_inventory, get_item, process_item_use, remove_inventory_item,
     add_nordmarks, get_user, get_inventory_item, get_all_users,
     add_inventory_item,
+    get_equipment, set_equipment_slot, clear_equipment_slot,
 )
 from utils.helpers import rarity_emoji, rarity_label, plural_nordmark
 
@@ -44,11 +45,17 @@ def inv_list_markup(items):
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def inv_item_markup(item_id: int, category: str, can_use: bool = False):
+def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equipped: bool = False,
+                    equip_slot: str = None):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = []
     if can_use:
         buttons.append([InlineKeyboardButton(text="✅ Использовать", callback_data=f"inv_use:{item_id}")])
+    if equip_slot:
+        if is_equipped:
+            buttons.append([InlineKeyboardButton(text="✖️ Снять с себя", callback_data=f"inv_unequip:{item_id}")])
+        else:
+            buttons.append([InlineKeyboardButton(text="🔫 Экипировать", callback_data=f"inv_equip:{item_id}")])
     buttons.append([InlineKeyboardButton(text="💵 Продать", callback_data=f"inv_sell:{item_id}")])
     buttons.append([InlineKeyboardButton(text="📤 Передать", callback_data=f"inv_transfer:{item_id}")])
     buttons.append([InlineKeyboardButton(text="🔙 В инвентарь", callback_data="inventory:list")])
@@ -88,19 +95,41 @@ async def inv_item_view(callback: CallbackQuery):
         await callback.message.edit_text("Предмет не найден.", reply_markup=None)
         return
 
+    eq = await get_equipment(callback.from_user.id)
+
     text = (
         f"{rarity_emoji(item['rarity'])} {item['name']} {rarity_emoji(item['rarity'])}\n"
         f"Редкость: {rarity_label(item['rarity'])}\n"
         f"В наличии: {inv['quantity']} шт.\n\n"
     )
+    dots = []
+    if item['category'] == 'weapon':
+        dots.append(f"⚔️ Урон: {item['damage']}")
+    if item['category'] == 'equipment' and item['armor']:
+        dots.append(f"🛡️ Защита: {item['armor']}")
+    if item['heal']:
+        dots.append(f"💚 Лечение: {item['heal']}")
+    if dots:
+        text += " • ".join(dots) + "\n\n"
     if item['description']:
         text += f"📝 {item['description']}\n\n"
     text += f"💵 Продажа: {item['sell_price']} {plural_nordmark(item['sell_price'])}"
 
-    can_use = item['category'] == "consumable"
-    markup = inv_item_markup(item_id, item['category'], can_use=can_use)
+    # Определяем слот снаряжения и статус экипировки
+    equip_slot = None
+    if item['category'] == 'weapon':
+        equip_slot = 'weapon'
+    elif item['category'] == 'equipment' and item['armor']:
+        equip_slot = 'armor'
+    is_equipped = eq.get(equip_slot) == item_id if equip_slot else False
+    if is_equipped:
+        text += f"\n\n🔹 Экипировано: {'🔫' if equip_slot == 'weapon' else '🛡️'}"
 
-    photo_id = item.get('photo_file_id')
+    can_use = item['category'] == "consumable"
+    markup = inv_item_markup(item_id, item['category'], can_use=can_use,
+                             is_equipped=is_equipped, equip_slot=equip_slot)
+
+    photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
     if photo_id:
         from aiogram.types import InputMediaPhoto
         try:
@@ -116,6 +145,48 @@ async def inv_item_view(callback: CallbackQuery):
             await callback.message.answer_photo(photo=photo_id, caption=text, reply_markup=markup)
     else:
         await callback.message.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("inv_equip:"))
+async def inv_equip(callback: CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    item_id = int(callback.data.split(":")[1])
+    item = await get_item(item_id)
+    inv = await get_inventory_item(user_id, item_id)
+    if not item or not inv or inv['quantity'] < 1:
+        await callback.message.answer("❌ У тебя нет этого предмета.")
+        return
+
+    if item['category'] == 'weapon':
+        slot = 'weapon'
+    elif item['category'] == 'equipment' and item['armor']:
+        slot = 'armor'
+    else:
+        await callback.message.answer("❌ Этот предмет нельзя экипировать.")
+        return
+
+    await set_equipment_slot(user_id, slot, item_id)
+    await callback.message.answer(
+        f"✅ Экипировано: {item['name']}"
+    )
+
+
+@router.callback_query(F.data.startswith("inv_unequip:"))
+async def inv_unequip(callback: CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    item_id = int(callback.data.split(":")[1])
+    item = await get_item(item_id)
+    if not item:
+        return
+
+    if item['category'] == 'weapon':
+        slot = 'weapon'
+    else:
+        slot = 'armor'
+    await clear_equipment_slot(user_id, slot)
+    await callback.message.answer(f"✖️ Снято: {item['name']}")
 
 
 @router.callback_query(F.data.startswith("inv_use:"))

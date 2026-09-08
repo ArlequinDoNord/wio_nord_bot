@@ -1,4 +1,4 @@
-"""Голосование: показ активных опросов, участие в них и создание новых (суперадмин)."""
+"""Голосование: показ активных опросов, участие в них и создание новых (Хранитель/Представитель)."""
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -8,10 +8,25 @@ from aiogram.fsm.state import State, StatesGroup
 from database.db import (
     get_active_polls, get_poll, get_poll_results, get_poll_vote_option,
     user_voted, vote_poll, create_poll, close_poll, user_has_status_tag,
+    get_polls_created_today,
 )
 from config import ADMIN_IDS
+from utils.permissions import has_permission
 
 router = Router()
+
+# Лимит создания опросов у «Представителя» в сутки
+REPRESENTATIVE_POLLS_PER_DAY = 2
+
+
+async def _can_create_polls(callback: CallbackQuery) -> bool:
+    return await has_permission(callback.from_user.id, "can_create_polls")
+
+
+async def _polls_left_today(telegram_id: int) -> int:
+    if telegram_id in ADMIN_IDS:
+        return float("inf")
+    return max(0, REPRESENTATIVE_POLLS_PER_DAY - await get_polls_created_today(telegram_id))
 
 
 class PollCreate(StatesGroup):
@@ -39,7 +54,7 @@ async def vote_menu(callback: CallbackQuery):
         short = question if len(question) <= 40 else question[:37] + "…"
         buttons.append([InlineKeyboardButton(text=f"🗳️ {short}", callback_data=f"vote:show:{p['id']}")])
 
-    if callback.from_user.id in ADMIN_IDS:
+    if await has_permission(callback.from_user.id, "can_create_polls"):
         buttons.append([InlineKeyboardButton(text="➕ Создать опрос", callback_data="vote:create")])
 
     buttons.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
@@ -148,13 +163,20 @@ async def vote_results(callback: CallbackQuery):
 @router.callback_query(F.data == "vote:create")
 async def vote_create(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    if callback.from_user.id not in ADMIN_IDS:
+    if not await _can_create_polls(callback):
         await callback.message.answer("⛔ У тебя нет прав создавать опросы.")
         return
+    if await _polls_left_today(callback.from_user.id) <= 0:
+        await callback.message.answer(
+            f"⛔ Лимит {REPRESENTATIVE_POLLS_PER_DAY} опроса в сутки исчерпан. Попробуй завтра."
+        )
+        return
     await state.set_state(PollCreate.question)
+    left = await _polls_left_today(callback.from_user.id)
+    limit_note = f"\nОсталось созданий сегодня: {left if left < float('inf') else '∞'}." if left != float("inf") else ""
     await callback.message.answer(
         "📝 Введи вопрос для опроса (например: «Какой новый данж хотите?»)\n"
-        "Отмена — /cancel"
+        "Отмена — /cancel" + limit_note
     )
 
 
@@ -175,6 +197,12 @@ async def poll_options_handler(message, state: FSMContext):
         return
 
     data = await state.get_data()
+    if await _polls_left_today(message.from_user.id) <= 0:
+        await state.clear()
+        await message.answer(
+            f"⛔ Лимит {REPRESENTATIVE_POLLS_PER_DAY} опроса в сутки исчерпан. Попробуй завтра."
+        )
+        return
     poll_id = await create_poll(message.from_user.id, data['question'], "\n".join(options))
     await state.clear()
     await message.answer(

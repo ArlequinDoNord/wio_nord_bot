@@ -176,7 +176,7 @@ async def shop_item_view(callback: CallbackQuery):
     if req:
         body += f"\n🔒 Требуется статус: {req}"
 
-    producer = item.get('produced_by')
+    producer = item['produced_by'] if 'produced_by' in item.keys() else None
     if producer:
         sale_tax = await get_sale_tax_percent()
         seller = await get_user(producer)
@@ -191,7 +191,7 @@ async def shop_item_view(callback: CallbackQuery):
     markup = item_card_keyboard(item['id'], item['price'], can_buy_nord=not cannot_buy)
 
     text = header + body
-    photo_id = item.get('photo_file_id')
+    photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
     if photo_id:
         from aiogram.types import InputMediaPhoto
         try:
@@ -241,7 +241,7 @@ async def buy_nord(callback: CallbackQuery):
 
     await add_treasury(item['price'], f"Продажа: {item['name']}")
 
-    producer = item.get('produced_by')
+    producer = item['produced_by'] if 'produced_by' in item.keys() else None
     if producer:
         sale_tax = await get_sale_tax_percent()
         tax_amount = int(item['price'] * sale_tax / 100)

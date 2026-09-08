@@ -39,6 +39,8 @@ async def init_db():
             state_effects TEXT DEFAULT '{}',
             promoted_rank TEXT,
             status_text TEXT DEFAULT 'Боевой пилот',
+            notify_enabled INTEGER DEFAULT 1,
+            equipment TEXT DEFAULT '{}',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -58,6 +60,7 @@ async def init_db():
             production_time_hours INTEGER DEFAULT 0,
             ap_cost INTEGER DEFAULT 0,
             heal INTEGER DEFAULT 0,
+            armor INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -376,6 +379,9 @@ async def init_db():
     await _ensure_column(conn, "buildings", "required_status", "TEXT")
     await _ensure_column(conn, "statuses", "sort_order", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "promoted_rank", "TEXT")
+    await _ensure_column(conn, "users", "notify_enabled", "INTEGER DEFAULT 1")
+    await _ensure_column(conn, "users", "equipment", "TEXT DEFAULT '{}'")
+    await _ensure_column(conn, "items", "armor", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "reports", "total_troops", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "damage", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "heal", "INTEGER DEFAULT 0")
@@ -484,14 +490,14 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
                    rarity: int, category: str, stock: int, added_by: int,
                    photo_file_id: str = None, ap_cost: int = 0,
                    production_time_hours: int = 0, produced_by: int = None,
-                   damage: int = 0, heal: int = 0):
+                   damage: int = 0, heal: int = 0, armor: int = 0):
     conn = await get_db()
     cursor = await conn.execute(
         """INSERT INTO items (name, description, photo_file_id, price, sell_price,
-           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (name, description, photo_file_id, price, sell_price, rarity, category,
-         stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal)
+         stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor)
     )
     await conn.commit()
     return cursor.lastrowid
@@ -653,6 +659,17 @@ async def create_poll(admin_id: int, question: str, options: str):
     return cursor.lastrowid
 
 
+async def get_polls_created_today(admin_id: int) -> int:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT COUNT(*) AS cnt FROM polls WHERE admin_id = ? "
+        "AND created_at >= datetime('now', 'start of day')",
+        (admin_id,)
+    )
+    row = await cursor.fetchone()
+    return row['cnt'] if row else 0
+
+
 async def vote_poll(poll_id: int, user_id: int, option_index: int) -> bool:
     conn = await get_db()
     try:
@@ -778,6 +795,64 @@ async def transfer_from_treasury(to_user: int, amount: int, description: str = "
         (TREASURY_ID, to_user, amount, "treasury", description)
     )
     await conn.commit()
+
+
+async def get_treasury_stats() -> dict:
+    """Статистика по казне: входящие (to_user = 0), исходящие (from_user = 0).
+
+    Входящие группируются по происхождению (description) и игроку-отправителю,
+    исходящие — по получателю.
+    """
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS cnt "
+        "FROM transactions WHERE to_user = ?",
+        (TREASURY_ID,)
+    )
+    incoming = await cur.fetchone()
+
+    cur = await conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS total "
+        "FROM transactions WHERE from_user = ?",
+        (TREASURY_ID,)
+    )
+    outgoing = await cur.fetchone()
+
+    # Входящие по описанию (источнику пополнения)
+    cur = await conn.execute(
+        "SELECT description, SUM(amount) AS total, COUNT(*) AS cnt "
+        "FROM transactions WHERE to_user = ? GROUP BY description "
+        "ORDER BY total DESC LIMIT 15",
+        (TREASURY_ID,)
+    )
+    by_desc = [dict(r) for r in await cur.fetchall()]
+
+    # Входящие по отправителю-игроку (пожертвования / переводы в казну)
+    cur = await conn.execute(
+        "SELECT from_user, SUM(amount) AS total, COUNT(*) AS cnt "
+        "FROM transactions WHERE to_user = ? AND from_user IS NOT NULL "
+        "GROUP BY from_user ORDER BY total DESC LIMIT 10",
+        (TREASURY_ID,)
+    )
+    by_from = [dict(r) for r in await cur.fetchall()]
+
+    # Исходящие по получателю (выплаты из казны)
+    cur = await conn.execute(
+        "SELECT to_user, SUM(amount) AS total, COUNT(*) AS cnt "
+        "FROM transactions WHERE from_user = ? "
+        "GROUP BY to_user ORDER BY total DESC LIMIT 10",
+        (TREASURY_ID,)
+    )
+    by_to = [dict(r) for r in await cur.fetchall()]
+
+    return {
+        "incoming_total": incoming['total'],
+        "incoming_count": incoming['cnt'],
+        "outgoing_total": outgoing['total'],
+        "by_desc": by_desc,
+        "by_from": by_from,
+        "by_to": by_to,
+    }
 
 
 # ============ НАЛОГ НА ОТЧЁТЫ ============
@@ -948,18 +1023,67 @@ async def add_interaction(from_user: int, to_user: int, interaction_type: str):
     return change
 
 
-async def set_state(user_id: int, new_state: str, reason: str, caused_by: int = None):
+async def set_user_state(user_id: int, state_text: str, minutes: int, caused_by: int = None, reason: str = "",
+                         meta: dict = None):
+    """Установить состояние игрока. Метаданные (срок действия и причина) — в state_effects JSON."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    effects = {"applied_at": now, "minutes": minutes, "caused_by": caused_by, "reason": reason}
+    if meta:
+        effects.update(meta)
     conn = await get_db()
     cursor = await conn.execute("SELECT state FROM users WHERE user_id = ?", (user_id,))
     row = await cursor.fetchone()
     old_state = row['state'] if row else "нормально"
 
-    await conn.execute("UPDATE users SET state = ? WHERE user_id = ?", (new_state, user_id))
+    await conn.execute(
+        "UPDATE users SET state = ?, state_effects = ? WHERE user_id = ?",
+        (state_text, json.dumps(effects, ensure_ascii=False), user_id)
+    )
     await conn.execute(
         "INSERT INTO state_log (user_id, old_state, new_state, reason, caused_by) VALUES (?, ?, ?, ?, ?)",
-        (user_id, old_state, new_state, reason, caused_by)
+        (user_id, old_state, state_text, reason or "изменение состояния", caused_by)
     )
     await conn.commit()
+
+
+async def clear_user_state(user_id: int, caused_by: int = None, reason: str = "состояние снято"):
+    """Снять состояние: вернуть игрока в «нормально»."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT state, state_effects FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    old_state = row['state'] if row else "нормально"
+    old_effects = row['state_effects'] if row else "{}"
+    if old_state == "нормально":
+        return
+
+    await conn.execute(
+        "UPDATE users SET state = 'нормально', state_effects = ? WHERE user_id = ?",
+        (json.dumps({}), user_id)
+    )
+    await conn.execute(
+        "INSERT INTO state_log (user_id, old_state, new_state, reason, caused_by) VALUES (?, ?, ?, ?, ?)",
+        (user_id, old_state, "нормально", reason, caused_by)
+    )
+    await conn.commit()
+
+
+async def drop_expired_state(user_id: int, state_text: str, state_effects: str) -> str:
+    """Если срок состояния истёк — снять его. Возвращает актуальный state_text.
+
+    state_effects — JSON вида {"applied_at": "2026-09-06 12:00:00", "minutes": 60, ...}.
+    """
+    if state_text == "нормально" or not state_effects:
+        return state_text
+    try:
+        effects = json.loads(state_effects)
+    except (ValueError, TypeError):
+        return state_text
+    applied = datetime.strptime(effects['applied_at'], "%Y-%m-%d %H:%M:%S")
+    minutes = int(effects.get('minutes', 0))
+    if applied + timedelta(minutes=minutes) <= datetime.now():
+        await clear_user_state(user_id, effects.get('caused_by'), f"срок действия истёк ({state_text})")
+        return "нормально"
+    return state_text
 
 
 async def add_report(user_id: int, screenshot_file_id: str, troops_reported: int, total_troops: int = 0, region: str = ""):
@@ -1424,8 +1548,8 @@ DEFAULT_ITEMS = [
     ("Аптечка", "Восстанавливает силы. Использование даёт +AP.", 50, 25, 1, "consumable", 20, 50, 0, 0),
     ("Топливо", "Запас топлива для вылетов. +AP при использовании.", 40, 20, 1, "consumable", 20, 30, 0, 0),
     ("Ремкомплект", "Мелкий ремонт техники.", 80, 40, 2, "consumable", 15, 40, 0, 0),
-    ("Лётный шлем", "Защищает пилота в бою.", 120, 60, 2, "equipment", 10, 0, 3, 0),
-    ("Кислородная маска", "Для высотных полётов.", 90, 45, 1, "equipment", 10, 0, 2, 0),
+    ("Лётный шлем", "Защищает пилота в бою.", 120, 60, 2, "equipment", 10, 0, 3, 0, 4),
+    ("Кислородная маска", "Для высотных полётов.", 90, 45, 1, "equipment", 10, 0, 2, 0, 2),
     ("Ангар-бокс", "Личное хранилище для техники.", 500, 250, 3, "building", 3, 0, 0, 0),
     ("Металл", "Сырьё для производства.", 30, 15, 1, "resource", 50, 0, 0, 0),
     ("Кристаллы", "Редкое сырьё, используется в производстве.", 200, 100, 4, "resource", 10, 0, 0, 0),
@@ -1442,11 +1566,13 @@ async def seed_default_items():
     if row['c'] > 0:
         return False
 
-    for (name, desc, price, sell_price, rarity, category, stock, ap_cost, damage, heal) in DEFAULT_ITEMS:
+    for entry in DEFAULT_ITEMS:
+        name, desc, price, sell_price, rarity, category, stock, ap_cost, damage, heal = entry[:10]
+        armor = entry[10] if len(entry) > 10 else 0
         await add_item(
             name=name, description=desc, price=price, sell_price=sell_price,
             rarity=rarity, category=category, stock=stock, added_by=0, ap_cost=ap_cost,
-            damage=damage, heal=heal,
+            damage=damage, heal=heal, armor=armor,
         )
     return True
 
@@ -1614,16 +1740,72 @@ async def clear_run_items(run_id: int):
 
 
 async def get_player_weapon_damage(user_id: int) -> int:
-    """Суммарный урон оружия в инвентаре игрока."""
+    """Урон активного оружия игрока (слот 'weapon' в equipment)."""
+    eq = await get_equipment(user_id)
+    weapon_id = eq.get('weapon')
+    if not weapon_id:
+        return 0
     conn = await get_db()
-    cursor = await conn.execute("""
-        SELECT COALESCE(SUM(i.damage * inv.quantity), 0) as total_damage
-        FROM inventory inv
-        JOIN items i ON inv.item_id = i.id
-        WHERE inv.user_id = ? AND i.category = 'weapon'
-    """, (user_id,))
+    cursor = await conn.execute(
+        "SELECT damage FROM items WHERE id = ? AND category = 'weapon'",
+        (weapon_id,)
+    )
     row = await cursor.fetchone()
-    return row['total_damage'] if row else 0
+    return row['damage'] if row else 0
+
+
+async def get_player_armor(user_id: int) -> int:
+    """Защита активного снаряжения игрока (слот 'armor' в equipment)."""
+    eq = await get_equipment(user_id)
+    armor_id = eq.get('armor')
+    if not armor_id:
+        return 0
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT armor FROM items WHERE id = ?",
+        (armor_id,)
+    )
+    row = await cursor.fetchone()
+    return row['armor'] if row else 0
+
+
+async def get_equipment(user_id: int) -> dict:
+    """Возвращает активное снаряжение игрока: {"weapon": id, "armor": id}."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT equipment FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    if not row or not row['equipment']:
+        return {}
+    try:
+        eq = json.loads(row['equipment'])
+        if not isinstance(eq, dict):
+            return {}
+        return {slot: v for slot, v in eq.items() if v}
+    except (ValueError, TypeError):
+        return {}
+
+
+async def set_equipment_slot(user_id: int, slot: str, item_id: int):
+    """Устанавливает предмет в слот снаряжения. slot: 'weapon' | 'armor'."""
+    eq = await get_equipment(user_id)
+    eq[slot] = item_id
+    await conn_update_equipment(user_id, eq)
+
+
+async def clear_equipment_slot(user_id: int, slot: str):
+    """Снимает предмет из слота снаряжения."""
+    eq = await get_equipment(user_id)
+    eq.pop(slot, None)
+    await conn_update_equipment(user_id, eq)
+
+
+async def conn_update_equipment(user_id: int, eq: dict):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET equipment = ? WHERE user_id = ?",
+        (json.dumps(eq, ensure_ascii=False), user_id)
+    )
+    await conn.commit()
 
 
 async def get_item_by_name(name: str):

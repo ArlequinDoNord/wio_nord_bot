@@ -1,7 +1,7 @@
 import os
 import random
 import json
-from aiogram import Router, F
+from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
@@ -11,13 +11,14 @@ from database.db import (
     get_active_run, update_run_hp, advance_room, end_run, add_run_item,
     get_run_items, clear_run_items, get_user, add_nordmarks, remove_nordmarks, remove_ap, get_db,
     get_player_weapon_damage, get_user_potions, get_item_by_name, remove_inventory_item,
-    get_user_contract_count,
+    get_user_contract_count, get_player_armor,
 )
 from utils.combat import (
     calculate_attack, calculate_enemy_damage,
     escape_chance, calculate_escape_damage, room_type_roll, resource_amount,
     _hp_bar,
 )
+from utils.notify import notify, player_display
 
 
 class DungeonFSM(StatesGroup):
@@ -251,7 +252,7 @@ async def show_room(message, run, user_id, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("dungeon:attack:"))
-async def dungeon_attack(callback: CallbackQuery, state: FSMContext):
+async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     await callback.answer()
     user_id = callback.from_user.id
     run = await get_active_run(user_id)
@@ -272,6 +273,12 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext):
 
     weapon_damage = await get_player_weapon_damage(user_id)
     damage_to_enemy = calculate_attack(0, weapon_damage)
+    from utils.states import get_state_info, combat_multipliers
+    state_info = await get_state_info(user_id)
+    mult = combat_multipliers(state_info['name'])
+    am = mult.get('attack_mult', 1.0)
+    dm = mult.get('dodge_mult', 1.0)
+    damage_to_enemy = max(1, int(damage_to_enemy * am))
     current_enemy_hp = max(0, current_enemy_hp - damage_to_enemy)
     await state.update_data(current_enemy_hp=current_enemy_hp)
 
@@ -298,6 +305,8 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext):
             await end_run(run['id'], 0)
             await state.clear()
             await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
+            pilot = await get_user(user_id)
+            await notify(bot, f"🏆 Пилот {await player_display(pilot)} прошёл подземелье и победил босса «{enemy['name']}»!", user_id)
         else:
             hp_text = _hp_bar(run['hp'], run['hp_max'])
             text = (
@@ -324,11 +333,14 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext):
     )
 
     enemy_dmg = calculate_enemy_damage(enemy['attack'])
-    player_hp = max(0, run['hp'] - enemy_dmg)
+    armor = await get_player_armor(user_id)
+    reduced = max(1, enemy_dmg - armor)
+    blocked_line = f"\n🛡️ Броня поглотила {enemy_dmg - reduced} урона!" if armor > 0 and reduced < enemy_dmg else ""
+    player_hp = max(0, run['hp'] - reduced)
     await update_run_hp(run['id'], player_hp)
 
     from utils.combat import get_enemy_attack_text
-    text += get_enemy_attack_text(enemy['name'], enemy_dmg, player_hp)
+    text += get_enemy_attack_text(enemy['name'], reduced, player_hp) + blocked_line
 
     if player_hp <= 0:
         nm_penalty = max(5, enemy['reward_nm'] * 2)

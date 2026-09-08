@@ -1,10 +1,12 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram import Bot
+from aiogram.types import Message, CallbackQuery, ContentType
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-
 from config import REPORT_AUTO_APPROVE_TROOPS, get_effective_rank
 from database.db import add_report, approve_report, get_user_reports, get_user, get_report_tax_percent
+from utils.notify import notify, player_display
 from keyboards.keyboards import report_keyboard
 
 router = Router()
@@ -90,7 +92,7 @@ async def report_total_troops_expected(message: Message):
 
 
 @router.message(ReportSubmit.waiting_region, F.text.regexp(r"^\d+$"))
-async def report_receive_region(message: Message, state: FSMContext):
+async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
     region_code = message.text.strip()
 
     data = await state.get_data()
@@ -104,6 +106,9 @@ async def report_receive_region(message: Message, state: FSMContext):
     )
 
     if daily_troops <= REPORT_AUTO_APPROVE_TROOPS:
+        user_before = await get_user(message.from_user.id)
+        promoted = user_before["promoted_rank"] if "promoted_rank" in user_before.keys() else None
+        rank_before = get_effective_rank(user_before["troops"], promoted)
         await approve_report(report_id, 0, daily_troops)
         user = await get_user(message.from_user.id)
         rank = get_effective_rank(user["troops"], user["promoted_rank"] if "promoted_rank" in user.keys() else None)
@@ -117,6 +122,8 @@ async def report_receive_region(message: Message, state: FSMContext):
             f"Начислено: {daily_troops} войск, {nordmarks_earned} нордмарок{tax_line}.\n"
             f"Текущее звание: {rank} ({user['troops']} войск)"
         )
+        if rank != rank_before:
+            await notify(bot, f"⭐ Пилот {await player_display(user)} получил звание «{rank}»!", user['user_id'])
     else:
         await state.clear()
         await message.answer(

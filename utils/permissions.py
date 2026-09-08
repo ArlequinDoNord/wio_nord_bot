@@ -17,6 +17,8 @@ ROLES = {
         'can_manage_statuses': True,
         'can_grant_troops': True,
         'can_manage_library': True,
+        'can_create_polls': True,
+        'can_manage_states': True,
         'level': 100
     },
     'shop_admin': {  # Министр торговли
@@ -51,6 +53,10 @@ ROLES = {
     'librarian': {  # Библиотекарь — управление книгами библиотеки
         'can_manage_library': True,
         'level': 40
+    },
+    'representative': {  # Представитель — создаёт опросы (лимит 2 в сутки)
+        'can_create_polls': True,
+        'level': 15
     }
 }
 
@@ -63,6 +69,7 @@ ROLE_LABELS = {
     'moderator': 'МВД',
     'mvd_helper': 'Вице-доминус',
     'librarian': 'Библиотекарь',
+    'representative': 'Представитель',
 }
 
 

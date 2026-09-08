@@ -29,17 +29,23 @@ def admin_panel_keyboard(permissions: dict):
         buttons.append([InlineKeyboardButton(text="🎖️ Статусы", callback_data="admin:statuses")])
     if permissions.get('can_grant_troops'):
         buttons.append([InlineKeyboardButton(text="⭐ Повышение в звании", callback_data="admin:ranks")])
+    if permissions.get('can_manage_states'):
+        buttons.append([InlineKeyboardButton(text="🎭 Состояния", callback_data="admin:states")])
     if permissions.get('can_view_logs'):
         buttons.append([InlineKeyboardButton(text="🧾 Логи действий", callback_data="admin:logs")])
     buttons.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def profile_keyboard():
+def profile_keyboard(notify_enabled: bool = True):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Изменить фото", callback_data="profile:set_photo")],
         [InlineKeyboardButton(text="Выбрать статус", callback_data="profile:choose_status")],
         [InlineKeyboardButton(text="Карточка пилота", callback_data="profile:pilot_card")],
+        [InlineKeyboardButton(
+            text="🔔 Оповещения: вкл" if notify_enabled else "🔕 Оповещения: выкл",
+            callback_data="profile:notify_toggle"
+        )],
     ])
 
 

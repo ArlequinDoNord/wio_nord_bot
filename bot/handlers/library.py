@@ -77,6 +77,10 @@ async def manager_markup(user_id: int):
 @router.callback_query(F.data == "city:library")
 async def library_enter(callback: CallbackQuery):
     await callback.answer()
+    from utils.states import is_place_blocked
+    if await is_place_blocked(callback.from_user.id, "library"):
+        await callback.message.answer("🍺 Ты пьян! В Библиотеку не пускают. Протрезвей сначала.")
+        return
     photo = library_photo()
     is_manager = await manager_markup(callback.from_user.id)
     if not await has_library_access(callback.from_user.id):

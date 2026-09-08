@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.db import (
     get_user, update_user, get_user_statuses, get_selected_status, set_selected_status,
+    user_has_status_tag, get_equipment, get_item,
 )
 from keyboards.keyboards import profile_keyboard, cancel_keyboard, main_menu_keyboard
 from config import get_rank, get_effective_rank, get_next_rank, get_rank_index, RANKS
@@ -50,22 +51,40 @@ async def render_profile(where, user_id: int):
         caption += f"До звания «{next_rank}»: [{'█' * filled}{'░' * (bar_len - filled)}] {done}/{needed}\n"
 
     status = await selected_status_label(user_id)
+    notify = bool(user['notify_enabled'] if 'notify_enabled' in user.keys() else 1)
+    from utils.states import get_state_info, format_state_line
+    state_line = format_state_line(await get_state_info(user_id))
+    eq = await get_equipment(user_id)
+    eq_lines = []
+    if eq.get('weapon'):
+        w = await get_item(eq['weapon'])
+        if w:
+            eq_lines.append(f"🔫 Оружие: {w['name']} ({w['damage']} ур.)")
+    if eq.get('armor'):
+        a = await get_item(eq['armor'])
+        if a:
+            eq_lines.append(f"🛡️ Броня: {a['name']} ({a['armor']} защ.)")
+    if not eq_lines:
+        eq_lines.append("— пусто —")
     caption += (
         f"💰 Нордмарки: {user['nordmarks']}\n"
         f"⚡ Очки действия: {user['ap']}/{user['ap_max']}\n"
         f"❤️ Состояние: {user['state']}\n"
-        f"🎖️ Статус: {status}\n\n"
-        f"👇 Выберите действие:"
+        + (f"{state_line}\n" if state_line else "")
+        + f"🎖️ Статус: {status}\n"
+        + f"🔔 Оповещения в группе: {'вкл' if notify else 'выкл'}\n\n"
+        + "Экипировка:\n" + "\n".join(f"  {l}" for l in eq_lines) + "\n\n"
+        + f"👇 Выберите действие:"
     )
 
     if photo:
         await out.answer_photo(
             photo=photo,
             caption=caption,
-            reply_markup=profile_keyboard()
+            reply_markup=profile_keyboard(notify)
         )
     else:
-        await out.answer(caption, reply_markup=profile_keyboard())
+        await out.answer(caption, reply_markup=profile_keyboard(notify))
 
 
 @router.message(Command("profile"))
@@ -139,6 +158,26 @@ async def prof_back(callback: CallbackQuery):
     await callback.message.answer("👇 Нажми «Профиль» в меню, чтобы открыть профиль.")
 
 
+@router.callback_query(F.data == "profile:notify_toggle")
+async def notify_toggle(callback: CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    is_veteran = await user_has_status_tag(user_id, "veteran")
+    if not is_veteran:
+        await callback.message.answer(
+            "🔕 Отключение оповещений доступно только со статуса «Ветеран» и выше."
+        )
+        return
+
+    user = await get_user(user_id)
+    current = bool(user['notify_enabled'] if 'notify_enabled' in user.keys() else 1)
+    await update_user(user_id, notify_enabled=0 if current else 1)
+    if current:
+        await callback.message.answer("✅ Отключил оповещение о своих действиях!")
+    else:
+        await callback.message.answer("✅ Оповещения снова включены!")
+
+
 @router.callback_query(F.data == "profile:pilot_card")
 async def pilot_card(callback: CallbackQuery):
     await callback.answer()
@@ -149,6 +188,8 @@ async def pilot_card(callback: CallbackQuery):
 
     rank = get_effective_rank(user['troops'], user['promoted_rank'] if 'promoted_rank' in user.keys() else None)
     status = await selected_status_label(callback.from_user.id)
+    from utils.states import get_state_info, format_state_line
+    state_line = format_state_line(await get_state_info(callback.from_user.id))
 
     card = (
         f"═══════════════════════════\n"
@@ -163,7 +204,8 @@ async def pilot_card(callback: CallbackQuery):
         f"БОЕВАЯ СТАТИСТИКА\n"
         f"Войска: {user['troops']}\n"
         f"Статус: {status}\n"
-        f"───────────────────────────\n"
+        + (f"{state_line}\n" if state_line else "")
+        + f"───────────────────────────\n"
         f"ФИНАНСЫ\n"
         f"Нордмарки: {user['nordmarks']}\n"
         f"Очки действия: {user['ap']}/{user['ap_max']}\n"

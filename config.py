@@ -6,6 +6,10 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
 
+# Чат для игровых оповещений (группа), если задан
+_news_raw = os.getenv("NEWS_CHAT_ID", "").strip()
+NEWS_CHAT_ID = int(_news_raw) if _news_raw.lstrip("-").isdigit() else None
+
 # Путь к базе данных (aiosqlite)
 DB_PATH = os.getenv("DATABASE_PATH", "database/nordmark.db")
 
