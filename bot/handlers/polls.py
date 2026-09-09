@@ -12,6 +12,7 @@ from database.db import (
 )
 from config import ADMIN_IDS
 from utils.permissions import has_permission
+from utils.helpers import is_main_menu_text
 
 router = Router()
 
@@ -180,7 +181,7 @@ async def vote_create(callback: CallbackQuery, state: FSMContext):
     )
 
 
-@router.message(PollCreate.question, F.text)
+@router.message(PollCreate.question, F.text, ~F.text.func(is_main_menu_text))
 async def poll_question_handler(message, state: FSMContext):
     await state.update_data(question=message.text.strip())
     await state.set_state(PollCreate.options)
@@ -189,7 +190,7 @@ async def poll_question_handler(message, state: FSMContext):
     )
 
 
-@router.message(PollCreate.options, F.text)
+@router.message(PollCreate.options, F.text, ~F.text.func(is_main_menu_text))
 async def poll_options_handler(message, state: FSMContext):
     options = [o.strip() for o in message.text.split("\n") if o.strip()]
     if len(options) < 2 or len(options) > 10:

@@ -6,6 +6,22 @@ from config import RARITY_LEVELS, RARITY_EMOJI
 
 MOSCOW_TZ = timezone(timedelta(hours=3))
 
+# Тексты reply-кнопок главного меню — нужны, чтобы FSM-хендлеры
+# не перехватывали нажатия этих кнопок как ввод данных.
+MAIN_MENU_TEXTS = {
+    "Профиль",
+    "Инвентарь",
+    "Магазин",
+    "Банк",
+    "Город",
+    "📝 Сдать отчёт",
+    "👑 Админ-панель",
+}
+
+
+def is_main_menu_text(text: str) -> bool:
+    return text in MAIN_MENU_TEXTS
+
 # Периоды времени суток (по московскому времени):
 DAWN = (8, 0, 8, 10)    # рассвет: 08:00–08:10
 SUNSET = (19, 0, 19, 10)  # закат: 19:00–19:10

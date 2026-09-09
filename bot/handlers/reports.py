@@ -7,6 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 from config import REPORT_AUTO_APPROVE_TROOPS, REPORT_MAX_TROOPS, REPORT_MAX_REGION, get_effective_rank
 from database.db import add_report, approve_report, get_user_reports, get_user, get_report_tax_percent, log_activity, user_has_status_tag
 from utils.notify import notify, player_display
+from utils.helpers import is_main_menu_text
 from keyboards.keyboards import report_keyboard
 
 router = Router()
@@ -64,7 +65,7 @@ async def report_receive_photo(message: Message, state: FSMContext):
     )
 
 
-@router.message(ReportSubmit.waiting_photo)
+@router.message(ReportSubmit.waiting_photo, ~F.text.func(is_main_menu_text))
 async def report_photo_expected(message: Message):
     await message.answer("❌ Нужно отправить именно фото. Попробуй ещё раз.")
 
@@ -89,7 +90,7 @@ async def report_receive_daily_troops(message: Message, state: FSMContext):
     )
 
 
-@router.message(ReportSubmit.waiting_daily_troops)
+@router.message(ReportSubmit.waiting_daily_troops, ~F.text.func(is_main_menu_text))
 async def report_daily_troops_expected(message: Message):
     await message.answer("❌ Введи число цифрой. Например: 150")
 
@@ -116,7 +117,7 @@ async def report_receive_total_troops(message: Message, state: FSMContext):
     )
 
 
-@router.message(ReportSubmit.waiting_total_troops)
+@router.message(ReportSubmit.waiting_total_troops, ~F.text.func(is_main_menu_text))
 async def report_total_troops_expected(message: Message):
     await message.answer("❌ Введи число цифрой. Например: 500")
 
@@ -174,7 +175,7 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
         )
 
 
-@router.message(ReportSubmit.waiting_region)
+@router.message(ReportSubmit.waiting_region, ~F.text.func(is_main_menu_text))
 async def report_region_expected(message: Message):
     await message.answer("❌ Введи номер региона цифрой. Например: 0 (Столица)")
 

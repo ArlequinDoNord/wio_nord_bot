@@ -4,7 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.db import get_user, transfer_nordmarks, get_transactions_history, get_all_users, transfer_to_treasury, get_treasury_balance, log_activity
 from keyboards.keyboards import bank_keyboard, cancel_keyboard, main_menu_keyboard
-from utils.helpers import format_amount, plural_nordmark
+from utils.helpers import format_amount, plural_nordmark, is_main_menu_text
 
 router = Router()
 
@@ -63,7 +63,7 @@ async def bank_balance(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "bank:transfer")
-async def bank_transfer(callback: CallbackQuery, state: FSMContext):
+async def bank_transfer(callback: CallbackQuery):
     await callback.answer()
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     rows = [[InlineKeyboardButton(text="✍️ Ввести username вручную", callback_data="bank:transfer_manual")]]
@@ -80,7 +80,6 @@ async def bank_transfer(callback: CallbackQuery, state: FSMContext):
         if shown >= 50:
             break
     rows.append([InlineKeyboardButton(text="🔙 В банк", callback_data="bank:menu")])
-    await state.set_state(BankStates.waiting_recipient)
     await callback.message.answer(
         "💸 Кому перевести? Выбери пилота из списка или введи username вручную:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
@@ -154,7 +153,7 @@ async def bank_treasury(callback: CallbackQuery, state: FSMContext):
     )
 
 
-@router.message(BankStates.waiting_treasury_amount)
+@router.message(BankStates.waiting_treasury_amount, ~F.text.func(is_main_menu_text))
 async def process_treasury_amount(message: Message, state: FSMContext):
     text = message.text.strip()
     if text == "Отмена":
@@ -193,7 +192,7 @@ async def process_treasury_amount(message: Message, state: FSMContext):
     )
 
 
-@router.message(BankStates.waiting_recipient)
+@router.message(BankStates.waiting_recipient, ~F.text.func(is_main_menu_text))
 async def process_recipient(message: Message, state: FSMContext):
     username = message.text.strip()
     if not username or username == "Отмена":
@@ -215,7 +214,7 @@ async def process_recipient(message: Message, state: FSMContext):
     await set_recipient(message, state, target)
 
 
-@router.message(BankStates.waiting_amount)
+@router.message(BankStates.waiting_amount, ~F.text.func(is_main_menu_text))
 async def process_amount(message: Message, state: FSMContext):
     text = message.text.strip()
     if text == "Отмена":

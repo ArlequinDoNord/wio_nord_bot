@@ -11,7 +11,7 @@ from database.db import (
     add_inventory_item,
     get_equipment, set_equipment_slot, clear_equipment_slot, log_activity,
 )
-from utils.helpers import rarity_emoji, rarity_label, plural_nordmark
+from utils.helpers import rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text
 
 router = Router()
 
@@ -293,7 +293,7 @@ async def inv_transfer_start(callback: CallbackQuery, state: FSMContext):
     )
 
 
-@router.message(TransferItem.target)
+@router.message(TransferItem.target, ~F.text.func(is_main_menu_text))
 async def inv_transfer_target(message: Message, state: FSMContext):
     target = await find_user(message.text)
     if not target:
@@ -308,7 +308,7 @@ async def inv_transfer_target(message: Message, state: FSMContext):
     )
 
 
-@router.message(TransferItem.amount)
+@router.message(TransferItem.amount, ~F.text.func(is_main_menu_text))
 async def inv_transfer_amount(message: Message, state: FSMContext):
     text = message.text.strip()
     if text == "-":
