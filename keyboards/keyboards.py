@@ -37,6 +37,9 @@ def admin_panel_keyboard(permissions: dict):
         buttons.append([InlineKeyboardButton(text="📍 Локации", callback_data="admin:locations")])
     if permissions.get('can_view_logs'):
         buttons.append([InlineKeyboardButton(text="🧾 Логи действий", callback_data="admin:logs")])
+        buttons.append([InlineKeyboardButton(text="📒 Лог игрока", callback_data="admin:player_log")])
+    if permissions.get('can_manage_users'):
+        buttons.append([InlineKeyboardButton(text="🗑 Удалить фото пилота", callback_data="admin:del_photo")])
     buttons.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

@@ -2,7 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from database.db import get_user, transfer_nordmarks, get_transactions_history, get_all_users, transfer_to_treasury, get_treasury_balance
+from database.db import get_user, transfer_nordmarks, get_transactions_history, get_all_users, transfer_to_treasury, get_treasury_balance, log_activity
 from keyboards.keyboards import bank_keyboard, cancel_keyboard, main_menu_keyboard
 from utils.helpers import format_amount, plural_nordmark
 
@@ -114,6 +114,7 @@ async def process_treasury_amount(message: Message, state: FSMContext):
         amount,
         f"Пожертвование от {message.from_user.first_name}"
     )
+    await log_activity(message.from_user.id, "treasury_donate", f"{amount} НМ в казну")
     new_balance = await get_treasury_balance()
     await state.clear()
     await message.answer(
@@ -186,6 +187,10 @@ async def process_amount(message: Message, state: FSMContext):
         amount,
         f"Перевод от {message.from_user.first_name}"
     )
+    await log_activity(message.from_user.id, "bank_transfer_out",
+                       f"{amount} НМ -> @{data.get('recipient_name', data['recipient_id'])}")
+    await log_activity(data['recipient_id'], "bank_transfer_in",
+                       f"+{amount} НМ от @{message.from_user.username or message.from_user.id}")
     await state.clear()
     await message.answer(
         f"✅ Перевод выполнен!\n"

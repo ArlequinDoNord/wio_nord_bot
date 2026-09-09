@@ -9,7 +9,7 @@ from database.db import (
     get_inventory, get_item, process_item_use, remove_inventory_item,
     add_nordmarks, get_user, get_inventory_item, get_all_users,
     add_inventory_item,
-    get_equipment, set_equipment_slot, clear_equipment_slot,
+    get_equipment, set_equipment_slot, clear_equipment_slot, log_activity,
 )
 from utils.helpers import rarity_emoji, rarity_label, plural_nordmark
 
@@ -247,6 +247,10 @@ async def inv_use(callback: CallbackQuery):
     await callback.answer()
     item_id = int(callback.data.split(":")[1])
     ok, msg = await process_item_use(callback.from_user.id, item_id)
+    if ok:
+        item = await get_item(item_id)
+        await log_activity(callback.from_user.id, "item_use",
+                           f"Использовал «{item['name']}»" if item else f"item #{item_id}")
     await callback.message.answer(("✅ " if ok else "❌ ") + msg)
 
 
@@ -263,6 +267,7 @@ async def inv_sell(callback: CallbackQuery):
 
     await remove_inventory_item(user_id, item_id, 1)
     await add_nordmarks(user_id, item['sell_price'], "shop_sale", f"Продажа: {item['name']}")
+    await log_activity(user_id, "shop_sale", f"Продал «{item['name']}» за {item['sell_price']} НМ")
     await callback.message.answer(
         f"💵 Ты продал {item['name']} за {item['sell_price']} {plural_nordmark(item['sell_price'])}!"
     )

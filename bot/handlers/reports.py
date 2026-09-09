@@ -5,7 +5,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from config import REPORT_AUTO_APPROVE_TROOPS, get_effective_rank
-from database.db import add_report, approve_report, get_user_reports, get_user, get_report_tax_percent
+from database.db import add_report, approve_report, get_user_reports, get_user, get_report_tax_percent, log_activity
 from utils.notify import notify, player_display
 from keyboards.keyboards import report_keyboard
 
@@ -104,6 +104,8 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
         message.from_user.id, screenshot_file_id,
         daily_troops, total_troops, region_code
     )
+    await log_activity(message.from_user.id, "report_submit",
+                       f"Сдал отчёт #{report_id}: {daily_troops} войск, регион {region_code or '—'}")
 
     if daily_troops <= REPORT_AUTO_APPROVE_TROOPS:
         user_before = await get_user(message.from_user.id)

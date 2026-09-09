@@ -8,7 +8,7 @@ load_dotenv()
 # - MINOR (x.1.x): новая функциональность (обратно совместимая)
 # - MAJOR (1.x.x): крупные ломающие изменения (до 1.0 — на усмотрение)
 # Стартуем с 0.1.0 (нестабильная фаза).
-VERSION = "0.3.1"
+VERSION = "0.4.0"
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]

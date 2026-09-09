@@ -12,7 +12,7 @@ from database.db import (
     get_run_items, clear_run_items, get_user, add_nordmarks, remove_nordmarks, remove_ap, get_db,
     get_player_weapon_damage, get_user_potions, get_item_by_name, remove_inventory_item,
     get_user_contract_count, get_player_armor, add_inventory_item,
-    transfer_run_items_to_inventory, get_equipment_slot_items,
+    transfer_run_items_to_inventory, get_equipment_slot_items, log_activity,
 )
 from utils.combat import (
     calculate_attack, calculate_enemy_damage,
@@ -228,6 +228,7 @@ async def dungeon_enter_confirm(callback: CallbackQuery, state: FSMContext):
 
     await start_dungeon_run(user_id, dungeon['id'])
     run = await get_active_run(user_id)
+    await log_activity(user_id, "dungeon_enter", f"Вошел в «{dungeon['name']}»")
 
     await callback.message.answer(
         f"🎫 Контракт использован! ⚡ −30 AP за вход\n"
@@ -380,6 +381,8 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
             await end_run(run['id'], 0)
             await state.clear()
+            await log_activity(user_id, "dungeon_win",
+                               f"Прошёл «{enemy['name']}»/подземелье на {run['floor']} этаже")
             await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
             pilot = await get_user(user_id)
             await notify(bot, f"🏆 Пилот {await player_display(pilot)} прошёл подземелье и победил босса «{enemy['name']}»!", user_id)
@@ -438,6 +441,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         text += f"\n\n💀 Ты погиб! −{nm_penalty} Нордмарок штраф.\nСобранный лут потерян."
         await end_run(run['id'], 0)
         await state.clear()
+        await log_activity(user_id, "dungeon_death", f"Погиб в подземелье от «{enemy['name']}»")
         await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
     else:
         slot_items = await get_equipment_slot_items(user_id)
@@ -556,6 +560,7 @@ async def dungeon_escape(callback: CallbackQuery, state: FSMContext):
             text += f"\n\n💀 Ты погиб! −{nm_penalty} Нордмарок штраф.\nСобранный лут потерян."
             await end_run(run['id'], 0)
             await state.clear()
+            await log_activity(user_id, "dungeon_death", f"Погиб от босса в подземелье")
             await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
         else:
             slot_items = await get_equipment_slot_items(user_id)
@@ -597,6 +602,7 @@ async def dungeon_exit(callback: CallbackQuery, state: FSMContext):
     if run:
         items = await transfer_run_items_to_inventory(user_id, run['id'])
         await end_run(run['id'], 0)
+        await log_activity(user_id, "dungeon_exit", "Покинул подземелье (досрочный выход)")
 
         if items:
             text = "📦 Ты забрал с собой и получил в инвентарь:\n"

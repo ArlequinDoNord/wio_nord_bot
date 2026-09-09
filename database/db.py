@@ -354,6 +354,16 @@ async def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS activity_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            action TEXT NOT NULL,
+            details TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user_id, id);
+
         CREATE TABLE IF NOT EXISTS locations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             key TEXT NOT NULL UNIQUE,
@@ -692,13 +702,23 @@ async def create_trade(from_user: int, to_user: int, from_item_id: int, from_ite
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (from_user, to_user, from_item_id, from_item_qty, from_nordmarks, to_item_id, to_item_qty, to_nordmarks))
     await conn.commit()
-    return cursor.lastrowid
+    trade_id = cursor.lastrowid
+    await log_activity(from_user, "trade_create", f"Предложил обмен #{trade_id} игроку {to_user}")
+    return trade_id
 
 
 async def update_trade(trade_id: int, status: str):
     conn = await get_db()
     await conn.execute("UPDATE trades SET status = ? WHERE id = ?", (status, trade_id))
     await conn.commit()
+    trade = await get_trade(trade_id)
+    if not trade:
+        return
+    if status == "accepted":
+        await log_activity(trade['from_user'], "trade_accepted", f"Обмен #{trade_id} принят")
+        await log_activity(trade['to_user'], "trade_accepted", f"Обмен #{trade_id} принят")
+    elif status == "declined":
+        await log_activity(trade['to_user'], "trade_declined", f"Обмен #{trade_id} отклонён")
 
 
 async def get_pending_trades(user_id: int):
@@ -2485,3 +2505,58 @@ async def ensure_dungeon_enemy_drops():
     # этажей в данже = 1
     await conn.execute("UPDATE dungeons SET floors_count = ? WHERE id = ?", (len(DEFAULT_DUNGEON["floors"]), dungeon_id))
     await conn.commit()
+
+
+# ============ ЛОГ АКТИВНОСТИ ИГРОКОВ ============
+
+async def log_activity(user_id: int, action: str, details: str = None):
+    """Записать событие из жизни игрока (для просмотра админом)."""
+    conn = await get_db()
+    try:
+        await conn.execute(
+            "INSERT INTO activity_log (user_id, action, details) VALUES (?, ?, ?)",
+            (user_id, action, details)
+        )
+        await conn.commit()
+    except Exception:
+        pass
+
+
+async def get_user_activity(user_id: int, limit: int = 50):
+    """Последние действия игрока."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id, action, details, created_at FROM activity_log "
+        "WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+        (user_id, limit)
+    )
+    return await cursor.fetchall()
+
+
+async def get_recent_activity(limit: int = 30):
+    """Последние действия всех игроков (общий поток)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id, user_id, action, details, created_at FROM activity_log "
+        "ORDER BY id DESC LIMIT ?",
+        (limit,)
+    )
+    return await cursor.fetchall()
+
+
+async def clear_user_photo(user_id: int):
+    """Удалить фото профиля игрока (фото установлено заново нельзя — через /profile)."""
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET photo_file_id = NULL WHERE user_id = ?", (user_id,))
+    await conn.commit()
+
+
+async def get_user_photo(user_id: int):
+    """Фото профиля игрока (file_id) или None."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT photo_file_id FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    if not row:
+        return None
+    return row['photo_file_id']

@@ -7,7 +7,7 @@ from database.db import (
     get_available_items, get_item, add_inventory_item,
     get_user, remove_nordmarks, add_nordmarks, get_db, user_has_status_tag, get_status_by_tag,
     activate_library_card, get_library_cards,
-    add_treasury, get_sale_tax_percent,
+    add_treasury, get_sale_tax_percent, log_activity,
 )
 from keyboards.keyboards import (
     shop_catalog_keyboard, item_card_keyboard,
@@ -238,6 +238,7 @@ async def buy_nord(callback: CallbackQuery):
     await remove_nordmarks(user_id, item['price'], "shop_purchase", f"Покупка: {item['name']}")
     await add_inventory_item(user_id, item_id, 1)
     await decrement_stock(item_id)
+    await log_activity(user_id, "shop_purchase", f"Купил «{item['name']}» за {item['price']} НМ")
 
     await add_treasury(item['price'], f"Продажа: {item['name']}")
 

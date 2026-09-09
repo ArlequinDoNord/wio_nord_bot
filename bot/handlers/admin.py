@@ -25,6 +25,7 @@ from database.db import (
     location_access_label,
     create_award, get_all_awards, get_award, delete_award, grant_award,
     get_user_awards, revoke_award,
+    log_activity, get_user_activity, clear_user_photo,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import (
@@ -321,6 +322,44 @@ async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
                 [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:salaries")],
             ])
         )
+    elif next_step == "delphoto":
+        from database.db import get_user_photo
+        photo = await get_user_photo(target['user_id'])
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        if photo:
+            await callback.message.answer(
+                f"🗑 Удаление фото профиля\nИгрок: {target['first_name'] if 'first_name' in target.keys() else ''} "
+                f"(@{target['username'] if 'username' in target.keys() else ''})\n\n"
+                f"Подтверди удаление фото:",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_del_photo:{target['user_id']}")],
+                    [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:menu")],
+                ])
+            )
+        else:
+            await callback.message.answer("📷 У этого игрока нет установленного фото.")
+            await state.clear()
+    elif next_step == "player_log":
+        await state.clear()
+        entries = await get_user_activity(target['user_id'], 80)
+        if not entries:
+            await callback.message.answer(
+                f"📒 Лог игрока\nИгрок: {target['first_name'] if 'first_name' in target.keys() else ''} "
+                f"(@{target['username'] if 'username' in target.keys() else ''})\n\n"
+                f"Событий нет."
+            )
+            return
+        lines = []
+        for e in entries:
+            dt = e['created_at'][:16] if e['created_at'] else ""
+            details = e['details'] or ""
+            lines.append(f"{dt} {details}")
+        text = (
+            f"📒 ЛОГ ИГРОКА\nИгрок: {target['first_name'] if 'first_name' in target.keys() else ''} "
+            f"(@{target['username'] if 'username' in target.keys() else ''})\n"
+            f"Последних событий: {len(entries)}\n\n" + "\n".join(lines)
+        )
+        await callback.message.answer(text[:4000])
 
 
 def category_choice_markup():
@@ -368,6 +407,49 @@ async def admin_panel_cb(callback: CallbackQuery, state: FSMContext):
         await callback.answer("❌ Нет доступа.", show_alert=True)
         return
     await show_admin_panel(user_id, to_edit=callback)
+
+
+@router.callback_query(F.data == "admin:del_photo")
+async def admin_del_photo_start(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_users"):
+        await callback.message.answer("❌ Нет прав для удаления фото.")
+        return
+    await callback.message.answer(
+        "🗑 Выбери пилота, у которого нужно удалить фото профиля:",
+        reply_markup=await pilot_picker_markup("delphoto")
+    )
+
+
+@router.callback_query(F.data == "admin:player_log")
+async def admin_player_log_start(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_view_logs"):
+        await callback.message.answer("❌ Нет прав для просмотра логов.")
+        return
+    await callback.message.answer(
+        "📒 Выбери игрока, чей лог взаимодействий показать:",
+        reply_markup=await pilot_picker_markup("player_log")
+    )
+
+
+@router.callback_query(F.data.startswith("confirm_del_photo:"))
+async def confirm_del_photo(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_users"):
+        await callback.message.answer("❌ Нет прав для удаления фото.")
+        return
+    target_id = int(callback.data.split(":")[1])
+    target = await get_user(target_id)
+    if not target:
+        await callback.message.answer("❌ Игрок не найден.")
+        return
+    await clear_user_photo(target_id)
+    await log_action(callback.from_user.id, 'del_photo', target_id, "Удалено фото профиля")
+    await log_activity(target_id, "photo_deleted", "Админ удалил фото профиля")
+    await callback.message.answer(
+        f"✅ Фото профиля удалено у {target['first_name'] if 'first_name' in target.keys() else ''}."
+    )
 
 
 # ============ УПРАВЛЕНИЕ МАГАЗИНОМ ============
