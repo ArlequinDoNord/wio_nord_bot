@@ -16,19 +16,34 @@ NOTIFY_REPORT_MIN_TROOPS = 300
 
 async def player_display(user) -> str:
     """Имя или позывной пилота для красивой подписи."""
-    if user and user.get('username'):
-        return f"@{user['username']}"
-    name = ((user or {}).get('first_name') or '').strip()
+    if user is None:
+        return "пилот"
+    keys = user.keys() if hasattr(user, 'keys') else []
+    try:
+        username = user['username'] if 'username' in keys else None
+    except (KeyError, IndexError):
+        username = None
+    if username:
+        return f"@{username}"
+    try:
+        name = (user['first_name'] if 'first_name' in keys else '') or ''
+    except (KeyError, IndexError):
+        name = ''
+    name = name.strip()
     if name:
         return name
-    return f"#{user.get('user_id')}" if user else "пилот"
+    try:
+        uid = user['user_id'] if 'user_id' in keys else None
+    except (KeyError, IndexError):
+        uid = None
+    return f"#{uid}" if uid is not None else "пилот"
 
 
 async def notifications_enabled(user_id: int) -> bool:
     user = await get_user(user_id)
     if not user:
         return True
-    return bool(user.get('notify_enabled', 1))
+    return bool(user['notify_enabled'] if 'notify_enabled' in user.keys() else 1)
 
 
 async def notify(bot: Bot, text: str, user_id: int = None):

@@ -31,17 +31,19 @@ async def render_profile(where, user_id: int):
 
     rank = get_effective_rank(user['troops'], user['promoted_rank'] if 'promoted_rank' in user.keys() else None)
     next_rank, next_troops = get_next_rank(user['troops'])
+    is_pilot = await user_has_status_tag(user_id, "pilot")
 
     photo = user['photo_file_id']
 
     caption = (
         f"🪪 Пилот: {user['first_name']} {user['last_name'] or ''}\n"
         f"Позывной: @{user['username']}\n"
-        f"⭐ Звание: {rank}\n"
-        f"💂 Войска: {user['troops']}\n"
     )
+    if is_pilot:
+        caption += f"⭐ Звание: {rank}\n"
+    caption += f"💂 Войска: {user['troops']}\n"
 
-    if user['troops'] < RANKS[-1][1]:
+    if is_pilot and user['troops'] < RANKS[-1][1]:
         current_idx = get_rank_index(user['troops'])
         current_min = RANKS[current_idx][1]
         needed = next_troops - current_min
@@ -200,9 +202,12 @@ async def pilot_card(callback: CallbackQuery):
         return
 
     rank = get_effective_rank(user['troops'], user['promoted_rank'] if 'promoted_rank' in user.keys() else None)
+    is_pilot = await user_has_status_tag(callback.from_user.id, "pilot")
     status = await selected_status_label(callback.from_user.id)
     from utils.states import get_state_info, format_state_line
     state_line = format_state_line(await get_state_info(callback.from_user.id))
+
+    rank_line = f"Звание: {rank}\n" if is_pilot else ""
 
     card = (
         f"═══════════════════════════\n"
@@ -212,8 +217,8 @@ async def pilot_card(callback: CallbackQuery):
         f"───────────────────────────\n"
         f"Имя: {user['first_name']} {user['last_name'] or ''}\n"
         f"Позывной: @{user['username']}\n"
-        f"Звание: {rank}\n"
-        f"───────────────────────────\n"
+        + rank_line
+        + f"───────────────────────────\n"
         f"БОЕВАЯ СТАТИСТИКА\n"
         f"Войска: {user['troops']}\n"
         f"Статус: {status}\n"

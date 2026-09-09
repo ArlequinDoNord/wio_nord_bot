@@ -4,8 +4,8 @@ from aiogram.types import Message, CallbackQuery, ContentType
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from config import REPORT_AUTO_APPROVE_TROOPS, REPORT_MAX_TROOPS, get_effective_rank
-from database.db import add_report, approve_report, get_user_reports, get_user, get_report_tax_percent, log_activity
+from config import REPORT_AUTO_APPROVE_TROOPS, REPORT_MAX_TROOPS, REPORT_MAX_REGION, get_effective_rank
+from database.db import add_report, approve_report, get_user_reports, get_user, get_report_tax_percent, log_activity, user_has_status_tag
 from utils.notify import notify, player_display
 from keyboards.keyboards import report_keyboard
 
@@ -21,6 +21,12 @@ class ReportSubmit(StatesGroup):
 
 @router.message(F.text == "📝 Сдать отчёт")
 async def report_menu(message: Message):
+    if not await user_has_status_tag(message.from_user.id, "pilot"):
+        await message.answer(
+            "❌ Сдавать отчёты могут только пилоты.\n"
+            "Статус «Пилот» выдают после проверки — напиши об этом администраторам."
+        )
+        return
     await message.answer(
         "📋 Меню отчётов",
         reply_markup=report_keyboard()
@@ -30,6 +36,13 @@ async def report_menu(message: Message):
 @router.callback_query(F.data == "report:submit")
 async def report_submit_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    if not await user_has_status_tag(callback.from_user.id, "pilot"):
+        await callback.message.answer(
+            "❌ Сдавать отчёты могут только пилоты.\n"
+            "Статус «Пилот» выдают после проверки — напиши об этом администраторам."
+        )
+        await state.clear()
+        return
     await state.set_state(ReportSubmit.waiting_photo)
     await callback.message.answer(
         "📸 Прикрепи скриншот боя.\n"
@@ -39,6 +52,9 @@ async def report_submit_start(callback: CallbackQuery, state: FSMContext):
 
 @router.message(ReportSubmit.waiting_photo, F.photo)
 async def report_receive_photo(message: Message, state: FSMContext):
+    if message.media_group_id:
+        await message.answer("❌ К отчёту прикрепляется только один файл. Отправь одно фото.")
+        return
     photo = message.photo[-1]
     await state.update_data(screenshot_file_id=photo.file_id)
     await state.set_state(ReportSubmit.waiting_daily_troops)
@@ -96,7 +112,7 @@ async def report_receive_total_troops(message: Message, state: FSMContext):
     map_photo = FSInputFile("assets/img/maps/map.jpg")
     await message.answer_photo(
         photo=map_photo,
-        caption="🌍 Карта регионов. Введи номер региона (0 = Столица):"
+        caption=f"🌍 Карта регионов. Введи номер региона от 0 (Столица) до {REPORT_MAX_REGION}:"
     )
 
 
@@ -108,6 +124,13 @@ async def report_total_troops_expected(message: Message):
 @router.message(ReportSubmit.waiting_region, F.text.regexp(r"^\d+$"))
 async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
     region_code = message.text.strip()
+
+    region_int = int(region_code)
+    if region_int > REPORT_MAX_REGION:
+        await message.answer(
+            f"❌ Регион {region_int} не существует. Введи номер от 0 (Столица) до {REPORT_MAX_REGION}:"
+        )
+        return
 
     data = await state.get_data()
     screenshot_file_id = data["screenshot_file_id"]

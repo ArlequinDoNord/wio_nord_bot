@@ -1144,9 +1144,9 @@ async def finance_target(message: Message, state: FSMContext):
     if not target:
         await message.answer("❌ Игрок не найден. Попробуй ещё раз (или /cancel):")
         return
-    await state.update_data(target_id=target['user_id'], target_name=target.get('first_name', ''))
+    await state.update_data(target_id=target['user_id'], target_name=target['first_name'] if 'first_name' in target.keys() else '')
     await state.set_state(AdminFinance.amount)
-    await message.answer(f"Игрок: {target.get('first_name','')} (@{target.get('username','')})\nВведи сумму:",
+    await message.answer(f"Игрок: {target['first_name'] if 'first_name' in target.keys() else ''} (@{target['username'] if 'username' in target.keys() else ''})\nВведи сумму:",
                          reply_markup=cancel_keyboard())
 
 
@@ -1230,12 +1230,12 @@ async def roles_target(message: Message, state: FSMContext):
     if not target:
         await message.answer("❌ Игрок не найден. Попробуй ещё раз (или /cancel):")
         return
-    await state.update_data(target_id=target['user_id'], target_name=target.get('first_name',''))
+    await state.update_data(target_id=target['user_id'], target_name=target['first_name'] if 'first_name' in target.keys() else '')
     await state.set_state(AdminRoles.action)
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     role_names = [role_label(r) for r in await get_user_role(target['user_id'])]
     await message.answer(
-        f"Игрок: {target.get('first_name','')}\nТекущие роли: {', '.join(role_names)}",
+        f"Игрок: {target['first_name'] if 'first_name' in target.keys() else ''}\nТекущие роли: {', '.join(role_names)}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="Выдать роль", callback_data="rolop:add")],
             [InlineKeyboardButton(text="Снять роль", callback_data="rolop:remove")],
@@ -1452,7 +1452,7 @@ async def status_grant_target_msg(message: Message, state: FSMContext):
     if not target:
         await message.answer("❌ Игрок не найден. Попробуй ещё раз:")
         return
-    await state.update_data(target_id=target['user_id'], target_name=target.get('first_name', ''))
+    await state.update_data(target_id=target['user_id'], target_name=target['first_name'] if 'first_name' in target.keys() else '')
     await state.set_state(AdminStatuses.status_pick)
 
     have = await get_user_statuses(target['user_id'])
@@ -1469,7 +1469,7 @@ async def status_grant_target_msg(message: Message, state: FSMContext):
     for s in statuses:
         rows.append([InlineKeyboardButton(text=f"{s['name']}", callback_data=f"st_pick:{s['id']}")])
     await message.answer(
-        f"Игрок: {target.get('first_name','')}\nТекущие статусы: {have_names}\n\nВыбери статус:",
+        f"Игрок: {target['first_name'] if 'first_name' in target.keys() else ''}\nТекущие статусы: {have_names}\n\nВыбери статус:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
 
@@ -1663,7 +1663,7 @@ async def award_grant_target_msg(message: Message, state: FSMContext):
     if not target:
         await message.answer("❌ Игрок не найден. Попробуй ещё раз:")
         return
-    await state.update_data(target_id=target['user_id'], target_name=target.get('first_name', ''))
+    await state.update_data(target_id=target['user_id'], target_name=target['first_name'] if 'first_name' in target.keys() else '')
     awards = await get_all_awards()
     if not awards:
         await message.answer("❌ Сначала создай хотя бы одну награду.")
@@ -1676,7 +1676,7 @@ async def award_grant_target_msg(message: Message, state: FSMContext):
         rows.append([InlineKeyboardButton(text=f"{emoji} {a['name']}",
                                           callback_data=f"aw_pick:{a['id']}")])
     await message.answer(
-        f"Игрок: {target.get('first_name', '')}\n\nВыбери награду:",
+        f"Игрок: {target['first_name'] if 'first_name' in target.keys() else ''}\n\nВыбери награду:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
 
@@ -2091,7 +2091,7 @@ async def admin_states_target_text(message: Message, state: FSMContext):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     info = await get_state_info(target['user_id'])
     await message.answer(
-        f"🎭 Игрок: {target.get('first_name','')} (@{target.get('username','')})\n"
+        f"🎭 Игрок: {target['first_name'] if 'first_name' in target.keys() else ''} (@{target['username'] if 'username' in target.keys() else ''})\n"
         f"Текущее состояние: {info['name']}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🎭 Наложить состояние", callback_data="st_op:set")],

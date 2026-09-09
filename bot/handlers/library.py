@@ -10,6 +10,7 @@ from aiogram.fsm.state import State, StatesGroup
 from database.db import (
     get_library_cards, can_access_sections, has_library_access,
     get_library_books, get_library_book, add_library_book, delete_library_book,
+    can_enter_location,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import has_permission, log_action

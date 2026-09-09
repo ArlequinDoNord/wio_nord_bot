@@ -485,8 +485,12 @@ async def _ensure_column(conn, table: str, column: str, coltype: str):
 async def add_user(user_id: int, username: str, first_name: str, last_name: str):
     conn = await get_db()
     await conn.execute("""
-        INSERT OR IGNORE INTO users (user_id, username, first_name, last_name, nordmarks)
+        INSERT INTO users (user_id, username, first_name, last_name, nordmarks)
         VALUES (?, ?, ?, ?, 10)
+        ON CONFLICT(user_id) DO UPDATE SET
+            username = excluded.username,
+            first_name = excluded.first_name,
+            last_name = excluded.last_name
     """, (user_id, username, first_name, last_name))
     await conn.commit()
 
