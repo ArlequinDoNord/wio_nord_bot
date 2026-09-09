@@ -7,7 +7,7 @@ services:
     env_file:
       - .env
     volumes:
-      - nordmark_data:/app/database
+      - nordmark_data:/app/data
 
 volumes:
   nordmark_data:
