@@ -30,7 +30,7 @@ from utils.permissions import (
     add_role, remove_role, ROLES, role_label, log_action,
 )
 from utils.helpers import plural_nordmark
-from config import RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES, get_effective_rank
+from config import RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES, get_effective_rank, VERSION
 from utils.notify import notify, player_display, NOTIFY_REPORT_MIN_TROOPS
 
 router = Router()
@@ -294,7 +294,8 @@ async def show_admin_panel(user_id: int, to_edit: CallbackQuery = None, to_msg: 
     flags = await perm_flags(user_id)
     text = (
         "👑 АДМИН-ПАНЕЛЬ\n\n"
-        "Выберите раздел. Доступные действия зависят от вашей роли:"
+        "Выберите раздел. Доступные действия зависят от вашей роли:\n\n"
+        f"Версия сборки: {VERSION}"
     )
     markup = admin_panel_keyboard(flags)
     if to_edit is not None:
