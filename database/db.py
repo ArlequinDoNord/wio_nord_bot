@@ -388,6 +388,26 @@ async def init_db():
             FOREIGN KEY (user_id) REFERENCES users(user_id),
             FOREIGN KEY (status_id) REFERENCES statuses(id)
         );
+
+        CREATE TABLE IF NOT EXISTS awards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL UNIQUE,
+            description TEXT,
+            emoji TEXT DEFAULT '🏅',
+            created_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS user_awards (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            award_id INTEGER NOT NULL,
+            granted_by INTEGER,
+            comment TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id),
+            FOREIGN KEY (award_id) REFERENCES awards(id)
+        );
     """)
     await conn.commit()
 
@@ -1721,6 +1741,108 @@ async def set_selected_status(user_id: int, status_id: int):
 
 # Доступ по рангу: открыт, если у игрока есть статус не слабее требуемого (sort_order >=)
 async def user_has_status_tag(user_id: int, tag: str) -> bool:
+    if not tag:
+        return True
+    conn = await get_db()
+    # уровень (sort_order) требуемого тега
+    cursor = await conn.execute(
+        "SELECT sort_order FROM statuses WHERE access_tag = ?", (tag,))
+    req = await cursor.fetchone()
+    if not req:
+        return False
+    # самый сильный статус игрока
+    cursor = await conn.execute("""
+        SELECT MAX(s.sort_order) as top FROM user_statuses us
+        JOIN statuses s ON us.status_id = s.id
+        WHERE us.user_id = ?
+    """, (user_id,))
+    top = (await cursor.fetchone())['top']
+    if top is None:
+        return False
+    return top >= req['sort_order']
+
+
+async def create_award(name: str, description: str = None, emoji: str = "🏅",
+                       created_by: int = None):
+    conn = await get_db()
+    try:
+        cursor = await conn.execute(
+            "INSERT INTO awards (name, description, emoji, created_by) VALUES (?, ?, ?, ?)",
+            (name, description, emoji, created_by)
+        )
+        await conn.commit()
+        return True, cursor.lastrowid
+    except Exception:
+        return False, "Награда с таким названием уже существует"
+
+
+async def get_all_awards():
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM awards ORDER BY id")
+    return await cursor.fetchall()
+
+
+async def get_award(award_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM awards WHERE id = ?", (award_id,))
+    return await cursor.fetchone()
+
+
+async def delete_award(award_id: int):
+    conn = await get_db()
+    await conn.execute("DELETE FROM user_awards WHERE award_id = ?", (award_id,))
+    await conn.execute("DELETE FROM awards WHERE id = ?", (award_id,))
+    await conn.commit()
+
+
+async def grant_award(user_id: int, award_id: int, granted_by: int = None,
+                      comment: str = None):
+    conn = await get_db()
+    try:
+        await conn.execute(
+            "INSERT INTO user_awards (user_id, award_id, granted_by, comment) VALUES (?, ?, ?, ?)",
+            (user_id, award_id, granted_by, comment)
+        )
+        await conn.commit()
+        return True, "Награда выдана"
+    except Exception as e:
+        error = str(e).lower()
+        if "foreign key" in error:
+            return False, "Игрок не найден — регистрация нужна через /start"
+        return False, "Не удалось выдать награду"
+
+
+async def revoke_award(user_award_id: int):
+    conn = await get_db()
+    await conn.execute("DELETE FROM user_awards WHERE id = ?", (user_award_id,))
+    await conn.commit()
+
+
+async def get_user_awards(user_id: int):
+    """Награды игрока (с данными награды и датой выдачи)."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT ua.id as grant_id, ua.comment, ua.created_at AS granted_at,
+               a.id AS award_id, a.name, a.description, a.emoji
+        FROM user_awards ua
+        JOIN awards a ON ua.award_id = a.id
+        WHERE ua.user_id = ?
+        ORDER BY ua.created_at DESC
+    """, (user_id,))
+    return await cursor.fetchall()
+
+
+async def get_award_recipients(award_id: int):
+    """Кому выдали конкретную награду."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT u.user_id, u.username, u.first_name, ua.comment, ua.created_at AS granted_at
+        FROM user_awards ua
+        JOIN users u ON ua.user_id = u.user_id
+        WHERE ua.award_id = ?
+        ORDER BY ua.created_at DESC
+    """, (award_id,))
+    return await cursor.fetchall()
     if not tag:
         return True
     conn = await get_db()

@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.db import (
     get_user, update_user, get_user_statuses, get_selected_status, set_selected_status,
-    user_has_status_tag, get_equipment, get_item, get_equipment_slot_items,
+    user_has_status_tag, get_equipment, get_item, get_equipment_slot_items, get_user_awards,
 )
 from keyboards.keyboards import profile_keyboard, cancel_keyboard, main_menu_keyboard
 from config import get_rank, get_effective_rank, get_next_rank, get_rank_index, RANKS
@@ -229,3 +229,31 @@ async def pilot_card(callback: CallbackQuery):
     )
 
     await callback.message.answer(card, reply_markup=profile_keyboard())
+
+
+@router.callback_query(F.data == "profile:awards")
+async def profile_awards(callback: CallbackQuery):
+    await callback.answer()
+    awards = await get_user_awards(callback.from_user.id)
+    if not awards:
+        await callback.message.answer(
+            "🎖️ У тебя пока нет наград.\n\n"
+            "Награды выдаются админами за особые заслуги.",
+            reply_markup=profile_keyboard()
+        )
+        return
+
+    lines = ["🎖️ ТВОИ НАГРАДЫ:\n"]
+    for a in awards:
+        emoji = a['emoji'] or '🏅'
+        lines.append(f"{emoji} {a['name']}")
+        if a['description']:
+            lines.append(f"   — {a['description']}")
+        lines.append(f"   📅 {a['granted_at']}")
+        if a['comment']:
+            lines.append(f"   💬 {a['comment']}")
+        lines.append("")
+    await callback.message.answer(
+        "\n".join(lines),
+        reply_markup=profile_keyboard()
+    )

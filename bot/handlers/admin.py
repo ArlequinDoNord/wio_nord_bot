@@ -23,6 +23,8 @@ from database.db import (
     get_salaried_users, get_user_salary, set_user_salary, pay_salaries,
     get_all_locations, get_location, create_location, update_location_access,
     location_access_label,
+    create_award, get_all_awards, get_award, delete_award, grant_award,
+    get_user_awards, revoke_award,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import (
@@ -95,6 +97,15 @@ class AdminStatuses(StatesGroup):
     item_status = State()
 
 
+class AdminAwards(StatesGroup):
+    name = State()
+    desc = State()
+    emoji = State()
+    target = State()
+    award_pick = State()
+    comment = State()
+
+
 class AdminStates(StatesGroup):
     target = State()
     action = State()
@@ -126,7 +137,8 @@ async def perm_flags(user_id: int) -> dict:
     perms = ["can_manage_shop", "can_manage_finance", "can_view_reports",
              "can_approve_reports", "can_manage_admins", "can_view_logs",
              "can_manage_statuses", "can_grant_statuses", "can_grant_troops",
-             "can_manage_states", "can_manage_locations", "can_manage_salaries"]
+             "can_manage_states", "can_manage_locations", "can_manage_salaries",
+             "can_manage_awards", "can_grant_awards"]
     return {p: await has_permission(user_id, p) for p in perms}
 
 
@@ -248,6 +260,38 @@ async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
             rows.append([InlineKeyboardButton(text=f"{mark}Снять: {s['name']}", callback_data=f"st_rev:{s['id']}")])
         await callback.message.answer(
             f"У {target['first_name'] if 'first_name' in target.keys() else ''}: {', '.join(s['name'] for s in have)}\n\nВыбери статус для снятия:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+    elif next_step == "awgrant":
+        awards = await get_all_awards()
+        if not awards:
+            await callback.message.answer("❌ Сначала создай хотя бы одну награду.")
+            await state.clear()
+            return
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        rows = []
+        for a in awards:
+            emoji = a['emoji'] or '🏅'
+            rows.append([InlineKeyboardButton(text=f"{emoji} {a['name']}",
+                                              callback_data=f"aw_pick:{a['id']}")])
+        await callback.message.answer(
+            f"Текущие награды: {', '.join(g['name'] for g in await get_user_awards(target['user_id'])) or 'нет'}\n\nВыбери награду:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
+    elif next_step == "awrevoke":
+        have = await get_user_awards(target['user_id'])
+        if not have:
+            await callback.message.answer(f"У {target['first_name'] if 'first_name' in target.keys() else ''} нет наград для снятия.")
+            await state.clear()
+            return
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        rows = []
+        for grant in have:
+            emoji = grant['emoji'] or '🏅'
+            rows.append([InlineKeyboardButton(text=f"{emoji} Снять: {grant['name']}",
+                                              callback_data=f"awr_grant:{grant['grant_id']}")])
+        await callback.message.answer(
+            f"У {target['first_name'] if 'first_name' in target.keys() else ''}: {', '.join(g['name'] for g in have)}\n\nВыбери награду для снятия:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
         )
     elif next_step == "state_target":
@@ -1400,6 +1444,245 @@ async def status_grant_apply(callback: CallbackQuery, state: FSMContext):
 
     await state.clear()
     await callback.message.answer(("✅ " if ok else "❌ ") + msg)
+
+
+# ============ НАГРАДЫ ============
+
+@router.callback_query(F.data == "admin:awards")
+async def admin_awards(callback: CallbackQuery):
+    await callback.answer()
+    if not (await has_permission(callback.from_user.id, "can_manage_awards")
+            or await has_permission(callback.from_user.id, "can_grant_awards")):
+        await callback.message.answer("❌ Нет прав для управления наградами.")
+        return
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = []
+    if await has_permission(callback.from_user.id, "can_manage_awards"):
+        rows.append([InlineKeyboardButton(text="➕ Создать награду", callback_data="aw:create")])
+        rows.append([InlineKeyboardButton(text="❌ Удалить награду", callback_data="aw:delete")])
+    if await has_permission(callback.from_user.id, "can_grant_awards") or \
+       await has_permission(callback.from_user.id, "can_manage_awards"):
+        rows.append([InlineKeyboardButton(text="🎁 Выдать награду игроку", callback_data="aw:grant")])
+        rows.append([InlineKeyboardButton(text="🗑 Снять награду у игрока", callback_data="aw:revoke")])
+    rows.append([InlineKeyboardButton(text="📋 Список наград", callback_data="aw:list")])
+    rows.append([InlineKeyboardButton(text="🔙 В меню", callback_data="admin:menu")])
+    await callback.message.edit_text(
+        "🏅 УПРАВЛЕНИЕ НАГРАДАМИ\n\nВыбери действие:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+@router.callback_query(F.data == "aw:list")
+async def awards_list(callback: CallbackQuery):
+    await callback.answer()
+    awards = await get_all_awards()
+    if not awards:
+        await callback.message.edit_text("Награды пока не созданы.", reply_markup=None)
+        return
+    lines = ["🏅 ВСЕ НАГРАДЫ:\n"]
+    for a in awards:
+        emoji = a['emoji'] or '🏅'
+        lines.append(f"{emoji} {a['name']}")
+        if a['description']:
+            lines.append(f"    — {a['description']}")
+        lines.append("")
+    from keyboards.keyboards import back_to_main
+    await callback.message.edit_text("\n".join(lines), reply_markup=back_to_main())
+
+
+@router.callback_query(F.data == "aw:create")
+async def award_create_start(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_awards"):
+        await callback.message.answer("❌ Нет прав.")
+        return
+    await state.set_state(AdminAwards.name)
+    await callback.message.answer(
+        "🏅 Создание награды. Шаг 1/3\nВведи название (например: «За отвагу», «Герой Нордхайма»):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminAwards.name)
+async def award_create_name(message: Message, state: FSMContext):
+    await state.update_data(name=message.text.strip())
+    await state.set_state(AdminAwards.desc)
+    await message.answer("Шаг 2/3 — Описание награды (или «-» если нет):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminAwards.desc)
+async def award_create_desc(message: Message, state: FSMContext):
+    text = message.text.strip()
+    await state.update_data(desc=None if text == "-" else text)
+    await state.set_state(AdminAwards.emoji)
+    await message.answer("Шаг 3/3 — Эмодзи награды (один символ, например 🏅, ⭐, 🎖️). Или «-» для 🏅:",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminAwards.emoji)
+async def award_create_emoji(message: Message, state: FSMContext):
+    text = message.text.strip()
+    emoji = text if text and text != "-" else "🏅"
+    data = await state.get_data()
+    ok, res = await create_award(data['name'], data.get('desc'), emoji, message.from_user.id)
+    await state.clear()
+    if ok:
+        await log_action(message.from_user.id, 'create_award', None,
+                         f"award={data['name']} id={res}")
+        await message.answer(f"✅ Награда «{emoji} {data['name']}» создана!")
+    else:
+        await message.answer(f"❌ {res}")
+
+
+@router.callback_query(F.data == "aw:delete")
+async def award_delete_menu(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_awards"):
+        await callback.message.answer("❌ Нет прав.")
+        return
+    awards = await get_all_awards()
+    if not awards:
+        await callback.message.answer("Награды не созданы.")
+        return
+    rows = []
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    for a in awards:
+        emoji = a['emoji'] or '🏅'
+        rows.append([InlineKeyboardButton(text=f"Удалить: {emoji} {a['name']}",
+                                          callback_data=f"aw_del:{a['id']}")])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:awards")])
+    await callback.message.edit_text("Выбери награду для удаления:",
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("aw_del:"))
+async def award_delete_cb(callback: CallbackQuery):
+    await callback.answer()
+    award_id = int(callback.data.split(":")[1])
+    a = await get_award(award_id)
+    await delete_award(award_id)
+    await log_action(callback.from_user.id, 'delete_award', None, f"award_id={award_id}")
+    await callback.message.answer(f"🗑 Награда «{a['name']}» удалена." if a else "Удалено.")
+
+
+@router.callback_query(F.data == "aw:grant")
+async def award_grant_target(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(AdminAwards.target)
+    markup = await pilot_picker_markup("awgrant")
+    await callback.message.answer("Кому выдать награду? Выбери пилота:", reply_markup=markup)
+
+
+@router.message(AdminAwards.target)
+async def award_grant_target_msg(message: Message, state: FSMContext):
+    target = await find_user(message.text)
+    if not target:
+        await message.answer("❌ Игрок не найден. Попробуй ещё раз:")
+        return
+    await state.update_data(target_id=target['user_id'], target_name=target.get('first_name', ''))
+    awards = await get_all_awards()
+    if not awards:
+        await message.answer("❌ Сначала создай хотя бы одну награду.")
+        await state.clear()
+        return
+    rows = []
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    for a in awards:
+        emoji = a['emoji'] or '🏅'
+        rows.append([InlineKeyboardButton(text=f"{emoji} {a['name']}",
+                                          callback_data=f"aw_pick:{a['id']}")])
+    await message.answer(
+        f"Игрок: {target.get('first_name', '')}\n\nВыбери награду:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+@router.callback_query(F.data.startswith("aw_pick:"))
+async def award_grant_pick(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    award_id = int(callback.data.split(":")[1])
+    await state.update_data(award_id=award_id)
+    await state.set_state(AdminAwards.comment)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.edit_text(
+        "Напиши комментарий к награде (или «-» если без него):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬜ Пропустить", callback_data="aw_comment:skip")],
+            [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:awards")],
+        ])
+    )
+
+
+@router.callback_query(F.data == "aw_comment:skip")
+async def award_grant_skip(callback: CallbackQuery, state: FSMContext):
+    await award_grant_finish(callback, state, None)
+
+
+@router.message(AdminAwards.comment)
+async def award_grant_comment(message: Message, state: FSMContext):
+    text = message.text.strip()
+    comment = None if text == "-" else text
+    data = await state.get_data()
+    target_id = data['target_id']
+    award_id = data['award_id']
+    a = await get_award(award_id)
+    admin = message.from_user.id
+    ok, msg = await grant_award(target_id, award_id, admin, comment)
+    await log_action(admin, 'grant_award', target_id, f"award={a['name']}" if a else f"award_id={award_id}")
+    await state.clear()
+    await message.answer(("✅ " if ok else "❌ ") + msg)
+    if ok and a:
+        from utils.notify import notify as notify_group
+        await notify_group(
+            message.bot,
+            f"🏅 {a['emoji'] or '🏅'} {a['name']} выдана игроку {data.get('target_name', '') or target_id}"
+            + (f"\n💬 {comment}" if comment else ""),
+            user_id=target_id
+        )
+
+
+async def award_grant_finish(callback: CallbackQuery, state: FSMContext, comment):
+    data = await state.get_data()
+    target_id = data.get('target_id')
+    award_id = data.get('award_id')
+    if not target_id or not award_id:
+        await callback.message.answer("❌ Сессия устарела, начни заново.")
+        await state.clear()
+        return
+    a = await get_award(award_id)
+    ok, msg = await grant_award(target_id, award_id, callback.from_user.id, comment)
+    await log_action(callback.from_user.id, 'grant_award', target_id,
+                     f"award={a['name']}" if a else f"award_id={award_id}")
+    await state.clear()
+    await callback.message.answer(("✅ " if ok else "❌ ") + msg)
+    if ok and a:
+        from utils.notify import notify as notify_group
+        await notify_group(
+            callback.message.bot,
+            f"🏅 {a['emoji'] or '🏅'} {a['name']} выдана игроку {data.get('target_name', '') or target_id}"
+            + (f"\n💬 {comment}" if comment else ""),
+            user_id=target_id
+        )
+
+
+@router.callback_query(F.data == "aw:revoke")
+async def award_revoke_pick_user(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(AdminAwards.award_pick)
+    markup = await pilot_picker_markup("awrevoke")
+    await callback.message.answer("У кого снять награду? Выбери пилота:", reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("awr_grant:"))
+async def award_revoke_apply(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    grant_id = int(callback.data.split(":")[1])
+    await revoke_award(grant_id)
+    await log_action(callback.from_user.id, 'revoke_award', None, f"grant_id={grant_id}")
+    await state.clear()
+    await callback.message.answer("🗑 Награда снята.")
 
 
 # ============ ОТЧЁТЫ ============
