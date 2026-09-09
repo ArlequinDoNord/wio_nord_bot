@@ -3,6 +3,7 @@ import logging
 import sys
 
 from aiogram import Bot, Dispatcher
+from aiogram.types import BotCommand
 from dotenv import load_dotenv
 
 from config import BOT_TOKEN
@@ -82,6 +83,13 @@ async def main():
 
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
+
+    await bot.set_my_commands([
+        BotCommand(command="start", description="Вход в систему"),
+        BotCommand(command="profile", description="Мой профиль"),
+        BotCommand(command="shop", description="Магазин товаров"),
+        BotCommand(command="help", description="Справочник"),
+    ])
 
     dp.include_router(start_router)
     dp.include_router(profile_router)

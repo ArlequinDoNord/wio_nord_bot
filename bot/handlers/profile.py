@@ -41,7 +41,7 @@ async def render_profile(where, user_id: int):
     )
     if is_pilot:
         caption += f"⭐ Звание: {rank}\n"
-    caption += f"💂 Войска: {user['troops']}\n"
+        caption += f"💂 Войска: {user['troops']}\n"
 
     if is_pilot and user['troops'] < RANKS[-1][1]:
         current_idx = get_rank_index(user['troops'])
@@ -208,6 +208,7 @@ async def pilot_card(callback: CallbackQuery):
     state_line = format_state_line(await get_state_info(callback.from_user.id))
 
     rank_line = f"Звание: {rank}\n" if is_pilot else ""
+    troops_line = f"Войска: {user['troops']}\n" if is_pilot else ""
 
     card = (
         f"═══════════════════════════\n"
@@ -220,8 +221,8 @@ async def pilot_card(callback: CallbackQuery):
         + rank_line
         + f"───────────────────────────\n"
         f"БОЕВАЯ СТАТИСТИКА\n"
-        f"Войска: {user['troops']}\n"
-        f"Статус: {status}\n"
+        + troops_line
+        + f"Статус: {status}\n"
         + (f"{state_line}\n" if state_line else "")
         + f"───────────────────────────\n"
         f"ФИНАНСЫ\n"

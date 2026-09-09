@@ -2,6 +2,7 @@
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
+from aiogram.filters import Command
 
 from database.db import (
     get_available_items, get_item, add_inventory_item,
@@ -51,6 +52,11 @@ async def status_req_label(tag: str) -> str:
         return ""
     s = await get_status_by_tag(tag)
     return s['name'] if s else tag
+
+
+@router.message(Command("shop"))
+async def shop_cmd(message: Message):
+    await shop_menu(message)
 
 
 @router.message(F.text == "Магазин")

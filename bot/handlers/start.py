@@ -2,7 +2,7 @@ import os
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.filters import CommandStart
+from aiogram.filters import CommandStart, Command
 from database.db import add_user, get_user, ensure_base_status, user_has_status_tag, get_all_locations
 from keyboards.keyboards import main_menu_keyboard, city_keyboard
 from utils.permissions import is_admin
@@ -53,6 +53,28 @@ async def cmd_start(message: Message):
         await message.answer(welcome_text, reply_markup=start_markup, parse_mode="Markdown")
 
     await message.answer("Выберите действие:", reply_markup=main_menu_keyboard(is_admin=admin_flag, is_pilot=pilot_flag))
+
+
+@router.message(Command("help"))
+async def cmd_help(message: Message):
+    await message.answer(
+        "📚 СПРАВОЧНИК Н.О.Р.Д.\n"
+        "Нордхаймский Органайзер Регистрации Действий\n\n"
+        "⚙️ КОМАНДЫ:\n"
+        "/start — вход в систему и главное меню\n"
+        "/profile — твой профиль (звание, войска, валюта, экипировка)\n"
+        "/shop — магазин товаров\n"
+        "/help — этот справочник\n\n"
+        "🗺️ ИГРА ИДЁТ ЧЕРЕЗ ГЛАВНОЕ МЕНЮ:\n"
+        "Профиль — данные пилота, звание, статус, экипировка\n"
+        "Инвентарь — твои предметы, передача и использование\n"
+        "Магазин — покупка товаров за Нордмарки и ОД\n"
+        "Банк — счета, переводы, казна\n"
+        "Город — локации: Ратуша, Библиотека и другие\n"
+        "📝 Сдать отчёт — отчёт о войсках (только для Пилота)\n\n"
+        "👑 Админ-панель — управление (для администраторов)\n\n"
+        "Туристам доступен ограниченный функционал. Статус «Пилот» выдаётся администраторами после проверки."
+    )
 
 
 @router.message(F.text == "Город")
