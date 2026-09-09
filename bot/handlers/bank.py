@@ -65,11 +65,79 @@ async def bank_balance(callback: CallbackQuery):
 @router.callback_query(F.data == "bank:transfer")
 async def bank_transfer(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = [[InlineKeyboardButton(text="✍️ Ввести username вручную", callback_data="bank:transfer_manual")]]
+    me = callback.from_user.id
+    shown = 0
+    for u in await get_all_users():
+        if u['user_id'] == me:
+            continue
+        label = u['first_name'] or u['username'] or str(u['user_id'])
+        if u['username']:
+            label += f" (@{u['username']})"
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"bank:pickrecipient:{u['user_id']}")])
+        shown += 1
+        if shown >= 50:
+            break
+    rows.append([InlineKeyboardButton(text="🔙 В банк", callback_data="bank:menu")])
     await state.set_state(BankStates.waiting_recipient)
     await callback.message.answer(
-        "💸 Кому перевести? Введи username игрока (без @, например: Ivanov):\n\n"
-        "Или нажми Отмена:",
+        "💸 Кому перевести? Выбери пилота из списка или введи username вручную:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+@router.callback_query(F.data == "bank:transfer_manual")
+async def bank_transfer_manual(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(BankStates.waiting_recipient)
+    await callback.message.answer(
+        "💸 Введи username игрока (без @, например: Ivanov):",
         reply_markup=cancel_keyboard()
+    )
+
+
+async def set_recipient(message, state, target):
+    if target['user_id'] == message.from_user.id:
+        await message.answer("❌ Нельзя перевести самому себе")
+        return
+    await state.update_data(recipient_id=target['user_id'], recipient_name=target['first_name'])
+    await state.set_state(BankStates.waiting_amount)
+    await message.answer(
+        f"Получатель: {target['first_name']} (@{target['username']})\n"
+        f"Введи сумму в Нордмарках:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.callback_query(F.data.startswith("bank:pickrecipient:"))
+async def bank_pick_recipient(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    user_id = int(callback.data.split(":")[2])
+    if user_id == callback.from_user.id:
+        await callback.message.answer("❌ Нельзя перевести самому себе")
+        return
+    target = await get_user(user_id)
+    if not target:
+        await callback.message.answer("❌ Пользователь не найден.")
+        return
+    await set_recipient(callback.message, state, target)
+
+
+@router.callback_query(F.data == "bank:menu")
+async def bank_menu_cb(callback: CallbackQuery):
+    await callback.answer()
+    user = await get_user(callback.from_user.id)
+    if not user:
+        await callback.message.answer("Сначала нажми /start")
+        return
+    await callback.message.answer(
+        f"🏦 НОРДБАНК\n\n"
+        f"💰 Баланс: {user['nordmarks']} {plural_nordmark(user['nordmarks'])}\n"
+        f"⚡ Очки действия: {user['ap']}/{user['ap_max']}\n\n"
+        f"────────────────────\n"
+        f"Доступные операции:",
+        reply_markup=bank_keyboard()
     )
 
 
@@ -144,17 +212,7 @@ async def process_recipient(message: Message, state: FSMContext):
         await message.answer("❌ Пользователь не найден. Попробуй ещё раз:")
         return
 
-    if target['user_id'] == message.from_user.id:
-        await message.answer("❌ Нельзя перевести самому себе")
-        return
-
-    await state.update_data(recipient_id=target['user_id'], recipient_name=target['first_name'])
-    await state.set_state(BankStates.waiting_amount)
-    await message.answer(
-        f"Получатель: {target['first_name']} (@{target['username']})\n"
-        f"Введи сумму в Нордмарках:",
-        reply_markup=cancel_keyboard()
-    )
+    await set_recipient(message, state, target)
 
 
 @router.message(BankStates.waiting_amount)
