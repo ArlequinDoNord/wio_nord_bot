@@ -32,10 +32,23 @@ class DungeonFSM(StatesGroup):
 router = Router()
 
 
-def dungeon_main_keyboard():
+async def dungeon_current_step(state: FSMContext) -> int:
+    """Текущий шаг подземелья (для защиты от повторного нажатия старых кнопок)."""
+    data = await state.get_data()
+    return int(data.get('dungeon_step', 0) or 0)
+
+
+async def dungeon_new_step(state: FSMContext) -> int:
+    """Выдаёт следующий шаг и сохраняет его в FSM (новая кнопка перебивает старые)."""
+    step = await dungeon_current_step(state) + 1
+    await state.update_data(dungeon_step=step)
+    return step
+
+
+def dungeon_main_keyboard(step: int = 0):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏃 Продолжить путь", callback_data="dungeon:continue")],
+        [InlineKeyboardButton(text="🏃 Продолжить путь", callback_data=f"dungeon:continue:{step}")],
         [InlineKeyboardButton(text="🚪 Выйти из подземелья", callback_data="dungeon:exit")],
     ])
 
@@ -48,24 +61,24 @@ def _slot_button_label(row):
     return f"🧪 {row['name']}"
 
 
-def dungeon_combat_keyboard(enemy_id: int, slot_items: list = None):
+def dungeon_combat_keyboard(enemy_id: int, slot_items: list = None, step: int = 0):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = [
-        [InlineKeyboardButton(text="🗡️ Атаковать", callback_data=f"dungeon:attack:{enemy_id}")],
+        [InlineKeyboardButton(text="🗡️ Атаковать", callback_data=f"dungeon:attack:{enemy_id}:{step}")],
     ]
     for slot, row in (slot_items or []):
-        buttons.append([InlineKeyboardButton(text=_slot_button_label(row), callback_data=f"dungeon:use_slot:{slot}")])
-    buttons.append([InlineKeyboardButton(text="🏃 Попытаться убежать", callback_data=f"dungeon:escape:{enemy_id}")])
+        buttons.append([InlineKeyboardButton(text=_slot_button_label(row), callback_data=f"dungeon:use_slot:{slot}:{step}")])
+    buttons.append([InlineKeyboardButton(text="🏃 Попытаться убежать", callback_data=f"dungeon:escape:{enemy_id}:{step}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def dungeon_boss_keyboard(boss_id: int, slot_items: list = None):
+def dungeon_boss_keyboard(boss_id: int, slot_items: list = None, step: int = 0):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = [
-        [InlineKeyboardButton(text="🗡️ Атаковать", callback_data=f"dungeon:attack:{boss_id}")],
+        [InlineKeyboardButton(text="🗡️ Атаковать", callback_data=f"dungeon:attack:{boss_id}:{step}")],
     ]
     for slot, row in (slot_items or []):
-        buttons.append([InlineKeyboardButton(text=_slot_button_label(row), callback_data=f"dungeon:use_slot:{slot}")])
+        buttons.append([InlineKeyboardButton(text=_slot_button_label(row), callback_data=f"dungeon:use_slot:{slot}:{step}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -241,7 +254,7 @@ async def dungeon_enter_confirm(callback: CallbackQuery, state: FSMContext):
     await show_room(callback.message, run, user_id, state)
 
 
-@router.callback_query(F.data == "dungeon:continue")
+@router.callback_query(F.data.startswith("dungeon:continue:"))
 async def dungeon_continue(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     user_id = callback.from_user.id
@@ -249,6 +262,11 @@ async def dungeon_continue(callback: CallbackQuery, state: FSMContext):
     if not run:
         await callback.message.answer("❌ Активное подземелье не найдено.")
         await state.clear()
+        return
+
+    parts = callback.data.split(":")
+    if len(parts) < 3 or int(parts[2]) != await dungeon_current_step(state):
+        await callback.message.answer("⚠️ Это устаревшая кнопка. Открой подземелье заново и продолжай с последнего сообщения.")
         return
 
     if run['room_number'] >= 10:
@@ -266,6 +284,7 @@ async def show_room(message, run, user_id, state: FSMContext):
     hp_text = _hp_bar(run['hp'], run['hp_max'])
     slot_items = await get_equipment_slot_items(user_id)
     poison = (await state.get_data()).get('active_poison')
+    step = await dungeon_new_step(state)
 
     if room_type == "enemy":
         enemies = await get_floor_enemies(run['dungeon_id'], run['floor'])
@@ -284,7 +303,7 @@ async def show_room(message, run, user_id, state: FSMContext):
             f"👾 {enemy['name']} (HP: {enemy['hp']}, АТК: {enemy['attack']})\n\n"
             f"Что делаешь?"
         )
-        await answer_enemy_photo(message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items))
+        await answer_enemy_photo(message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items, step))
 
     elif room_type == "resource":
         nm = resource_amount(run['floor'])
@@ -298,7 +317,7 @@ async def show_room(message, run, user_id, state: FSMContext):
             f"+{nm} Нордмарок\n\n"
             f"Нажми «Продолжить путь» чтобы идти дальше."
         )
-        await message.answer(text, reply_markup=dungeon_main_keyboard())
+        await message.answer(text, reply_markup=dungeon_main_keyboard(step))
 
     else:
         text = (
@@ -308,7 +327,7 @@ async def show_room(message, run, user_id, state: FSMContext):
             f"🪨 Комната пуста. Здесь ничего нет.\n\n"
             f"Нажми «Продолжить путь» чтобы идти дальше."
         )
-        await message.answer(text, reply_markup=dungeon_main_keyboard())
+        await message.answer(text, reply_markup=dungeon_main_keyboard(step))
 
 
 @router.callback_query(F.data.startswith("dungeon:attack:"))
@@ -321,14 +340,27 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         await state.clear()
         return
 
-    enemy_id = int(callback.data.split(":")[2])
+    parts = callback.data.split(":")
+    if len(parts) < 4:
+        return
+    enemy_id = int(parts[2])
+    encoded_step = int(parts[3])
+
+    data = await state.get_data()
+    if encoded_step != await dungeon_current_step(state):
+        await callback.message.answer("⚠️ Это устаревшая кнопка. Используй кнопки из последнего сообщения боя.")
+        return
+    current_enemy_id = data.get('current_enemy_id')
+    if current_enemy_id is not None and current_enemy_id != enemy_id:
+        await callback.message.answer("⚠️ Этого врага уже нет в текущей комнате.")
+        return
+
     conn = await get_db()
     cursor = await conn.execute("SELECT * FROM dungeon_enemies WHERE id = ?", (enemy_id,))
     enemy = await cursor.fetchone()
     if not enemy:
         return
 
-    data = await state.get_data()
     current_enemy_hp = data.get('current_enemy_hp', enemy['hp'])
     poison = data.get('active_poison')
     player_hp = run['hp']
@@ -400,7 +432,8 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
             text += f"❤️ {hp_text}\n"
             text += f"Нажми «Продолжить путь» чтобы идти дальше."
-            await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_main_keyboard())
+            next_step = await dungeon_new_step(state)
+            await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_main_keyboard(next_step))
         return
 
     from utils.combat import get_enemy_bar
@@ -445,14 +478,25 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
     else:
         slot_items = await get_equipment_slot_items(user_id)
-        await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items))
+        next_step = await dungeon_new_step(state)
+        await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items, next_step))
 
 
 @router.callback_query(F.data.startswith("dungeon:use_slot:"))
 async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     user_id = callback.from_user.id
-    slot = callback.data.split(":")[2]
+    parts = callback.data.split(":")
+    if len(parts) < 4:
+        return
+    slot = parts[2]
+    encoded_step = int(parts[3])
+
+    data = await state.get_data()
+    if encoded_step != await dungeon_current_step(state):
+        await callback.message.answer("⚠️ Это устаревшая кнопка. Используй кнопки из последнего сообщения боя.")
+        return
+
     run = await get_active_run(user_id)
     if not run:
         await callback.message.answer("❌ Подземелье не найдено.")
@@ -467,8 +511,6 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
     if not item:
         await callback.message.answer("❌ Этот слот пуст.")
         return
-
-    data = await state.get_data()
 
     if item['cure_poison'] and not data.get('active_poison'):
         await callback.message.answer("Ты не отравлен, антидот бесполезен.")
@@ -512,10 +554,11 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ Этот предмет нельзя использовать в бою.")
         return
 
+    next_step = await dungeon_new_step(state)
     if is_boss:
-        await callback.message.answer(text, reply_markup=dungeon_boss_keyboard(enemy_id, slot_items))
+        await callback.message.answer(text, reply_markup=dungeon_boss_keyboard(enemy_id, slot_items, next_step))
     else:
-        await callback.message.answer(text, reply_markup=dungeon_combat_keyboard(enemy_id, slot_items))
+        await callback.message.answer(text, reply_markup=dungeon_combat_keyboard(enemy_id, slot_items, next_step))
 
 
 @router.callback_query(F.data.startswith("dungeon:escape:"))
@@ -527,7 +570,21 @@ async def dungeon_escape(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         return
 
-    enemy_id = int(callback.data.split(":")[2])
+    parts = callback.data.split(":")
+    if len(parts) < 4:
+        return
+    enemy_id = int(parts[2])
+    encoded_step = int(parts[3])
+
+    data = await state.get_data()
+    if encoded_step != await dungeon_current_step(state):
+        await callback.message.answer("⚠️ Это устаревшая кнопка. Используй кнопки из последнего сообщения боя.")
+        return
+    current_enemy_id = data.get('current_enemy_id')
+    if current_enemy_id is not None and current_enemy_id != enemy_id:
+        await callback.message.answer("⚠️ Этого врага уже нет в текущей комнате.")
+        return
+
     conn = await get_db()
     cursor = await conn.execute("SELECT * FROM dungeon_enemies WHERE id = ?", (enemy_id,))
     enemy = await cursor.fetchone()
@@ -537,11 +594,12 @@ async def dungeon_escape(callback: CallbackQuery, state: FSMContext):
     hp_percent = run['hp'] / run['hp_max'] if run['hp_max'] > 0 else 1.0
 
     if escape_chance(hp_percent):
+        next_step = await dungeon_new_step(state)
         text = (
             f"🏃 Ты успешно убежал от {enemy['name']}!\n"
             f"Нажми «Продолжить путь» чтобы идти дальше."
         )
-        await callback.message.answer(text, reply_markup=dungeon_main_keyboard())
+        await callback.message.answer(text, reply_markup=dungeon_main_keyboard(next_step))
     else:
         penalty = calculate_escape_damage()
         player_hp = max(0, run['hp'] - penalty)
@@ -564,7 +622,8 @@ async def dungeon_escape(callback: CallbackQuery, state: FSMContext):
             await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
         else:
             slot_items = await get_equipment_slot_items(user_id)
-            await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items))
+            next_step = await dungeon_new_step(state)
+            await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items, next_step))
 
 
 async def show_boss(message, run, user_id, state: FSMContext):
@@ -578,6 +637,7 @@ async def show_boss(message, run, user_id, state: FSMContext):
     hp_text = _hp_bar(run['hp'], run['hp_max'])
     slot_items = await get_equipment_slot_items(user_id)
     poison = (await state.get_data()).get('active_poison')
+    step = await dungeon_new_step(state)
 
     await state.update_data(current_enemy_id=boss['id'], current_enemy_hp=boss['hp'])
 
@@ -590,7 +650,7 @@ async def show_boss(message, run, user_id, state: FSMContext):
         f"💀 {boss['name']} (HP: {boss['hp']}, АТК: {boss['attack']})\n\n"
         f"⚠️ Это решающий бой! Убежать нельзя!"
     )
-    await answer_enemy_photo(message, boss, text, reply_markup=dungeon_boss_keyboard(boss['id'], slot_items))
+    await answer_enemy_photo(message, boss, text, reply_markup=dungeon_boss_keyboard(boss['id'], slot_items, step))
     await state.set_state(DungeonFSM.in_boss)
 
 
