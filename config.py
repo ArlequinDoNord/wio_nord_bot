@@ -3,6 +3,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Семантическое версионирование (SemVer): MAJOR.MINOR.PATCH
+# - PATCH (x.x.1): исправление ошибок / мелкие правки
+# - MINOR (x.1.x): новая функциональность (обратно совместимая)
+# - MAJOR (1.x.x): крупные ломающие изменения (до 1.0 — на усмотрение)
+# Стартуем с 0.1.0 (нестабильная фаза).
+VERSION = "0.1.0"
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
 
