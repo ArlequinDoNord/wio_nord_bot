@@ -26,6 +26,7 @@ class DungeonFSM(StatesGroup):
     in_dungeon = State()
     in_combat = State()
     in_boss = State()
+    confirm_enter = State()
 
 
 router = Router()
@@ -167,18 +168,64 @@ async def dungeon_enter(callback: CallbackQuery, state: FSMContext):
         )
         return
 
+    dungeon = dungeons[0]
+    await state.update_data(dungeon_id=dungeon['id'])
+    await state.set_state(DungeonFSM.confirm_enter)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.answer(
+        f"⚠️ ЗА ПОПЫТКУ ВХОДА БУДУТ СПИСАНЫ:\n\n"
+        f"🎫 1 «Контракт на зачистку» (у тебя: {contracts})\n"
+        f"⚡ 30 очков действий (у тебя: {user['ap']})\n\n"
+        f"Эти ресурсы потратятся сразу, даже если ты выйдешь из подземелья. Продолжить?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, войти", callback_data="dungeon:enter:confirm")],
+            [InlineKeyboardButton(text="↩️ Отмена", callback_data="city:dungeon")],
+        ])
+    )
+
+
+@router.callback_query(F.data == "dungeon:enter:confirm")
+async def dungeon_enter_confirm(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    user_id = callback.from_user.id
+    data = await state.get_data()
+    dungeon_id = data.get('dungeon_id')
+    dungeon = await get_dungeon(dungeon_id) if dungeon_id else None
+    if not dungeon:
+        dungeon = (await get_all_dungeons() or [None])[0]
+        if not dungeon:
+            return
+
+    contracts = await get_user_contract_count(user_id)
+    if contracts <= 0:
+        await state.clear()
+        await callback.message.answer(
+            "❌ У тебя нет «Контракта на зачистку».",
+            reply_markup=contract_missing_keyboard()
+        )
+        return
+
+    user = await get_user(user_id)
+    if user['ap'] < 30:
+        await state.clear()
+        await callback.message.answer(
+            f"❌ Недостаточно очков действий. Нужно 30 AP, у тебя {user['ap']} AP."
+        )
+        return
+
     contract = await get_item_by_name("Контракт на зачистку")
     ok = await remove_inventory_item(user_id, contract['id'], 1)
     if not ok:
+        await state.clear()
         await callback.message.answer("❌ Не удалось списать контракт.")
         return
 
     ok = await remove_ap(user_id, 30)
     if not ok:
+        await state.clear()
         await callback.message.answer("❌ Не удалось списать очки действий.")
         return
 
-    dungeon = dungeons[0]
     await start_dungeon_run(user_id, dungeon['id'])
     run = await get_active_run(user_id)
 

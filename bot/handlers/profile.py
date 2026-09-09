@@ -59,7 +59,7 @@ async def render_profile(where, user_id: int):
     if eq.get('weapon'):
         w = await get_item(eq['weapon'])
         if w:
-            eq_lines.append(f"🔫 Оружие: {w['name']} ({w['damage']} ур.)")
+            eq_lines.append(f"⚔️ Оружие: {w['name']} ({w['damage']} ур.)")
     if eq.get('armor'):
         a = await get_item(eq['armor'])
         if a:

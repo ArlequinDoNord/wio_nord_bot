@@ -630,11 +630,18 @@ async def edit_item_pick(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         "Что изменить?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Название", callback_data="field:name")],
             [InlineKeyboardButton(text="Цену", callback_data="field:price")],
             [InlineKeyboardButton(text="Продажу", callback_data="field:sell_price")],
             [InlineKeyboardButton(text="Остаток", callback_data="field:stock")],
+            [InlineKeyboardButton(text="Категория", callback_data="field:category")],
             [InlineKeyboardButton(text="Описание", callback_data="field:description")],
+            [InlineKeyboardButton(text="⚔️ Урон (оружие)", callback_data="field:damage")],
+            [InlineKeyboardButton(text="❤️ Лечение", callback_data="field:heal")],
+            [InlineKeyboardButton(text="🛡️ Броня", callback_data="field:armor")],
+            [InlineKeyboardButton(text="⚡ AP за использование", callback_data="field:ap_cost")],
             [InlineKeyboardButton(text="🔒 Требуемый статус", callback_data="field:required_status")],
+            [InlineKeyboardButton(text="🚧 Вкл/выкл продажу", callback_data="field:is_available")],
         ])
     )
 
@@ -697,8 +704,8 @@ async def edit_item_value(message: Message, state: FSMContext):
         except ValueError:
             await message.answer("❌ Введи целое число:")
             return
-    elif field == "stock":
-        value = -1 if text == "-" else int(text)
+    elif field in ("stock", "damage", "heal", "armor", "ap_cost", "is_available"):
+        value = -1 if (text == "-" and field == "stock") else int(text)
     else:
         value = None if text == "-" else text
 

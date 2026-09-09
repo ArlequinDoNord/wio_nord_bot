@@ -66,7 +66,7 @@ def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equip
         if is_equipped:
             buttons.append([InlineKeyboardButton(text="✖️ Снять с себя", callback_data=f"inv_unequip:{item_id}")])
         else:
-            buttons.append([InlineKeyboardButton(text="🔫 Экипировать", callback_data=f"inv_equip:{item_id}")])
+            buttons.append([InlineKeyboardButton(text="⚔️ Экипировать", callback_data=f"inv_equip:{item_id}")])
     buttons.append([InlineKeyboardButton(text="💵 Продать", callback_data=f"inv_sell:{item_id}")])
     buttons.append([InlineKeyboardButton(text="📤 Передать", callback_data=f"inv_transfer:{item_id}")])
     buttons.append([InlineKeyboardButton(text="🔙 В инвентарь", callback_data="inventory:list")])
@@ -134,7 +134,7 @@ async def inv_item_view(callback: CallbackQuery):
         equip_slot = 'armor'
     is_equipped = eq.get(equip_slot) == item_id if equip_slot else False
     if is_equipped:
-        text += f"\n\n🔹 Экипировано: {'🔫' if equip_slot == 'weapon' else '🛡️'}"
+        text += f"\n\n🔹 Экипировано: {'⚔️' if equip_slot == 'weapon' else '🛡️'}"
 
     # Активные слоты зелий (potion1/potion2) — в каких стоит этот предмет
     potion_slots = [n for n, slot in ((1, 'potion1'), (2, 'potion2')) if eq.get(slot) == item_id]

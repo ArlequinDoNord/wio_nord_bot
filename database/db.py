@@ -8,7 +8,7 @@ db: aiosqlite.Connection | None = None
 async def get_db() -> aiosqlite.Connection:
     global db
     if db is None:
-        db = await aiosqlite.connect(DB_PATH)
+        db = await aiosqlite.connect(DB_PATH, isolation_level=None)
         db.row_factory = aiosqlite.Row
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA foreign_keys=ON")
