@@ -4,7 +4,7 @@ from aiogram.types import Message, CallbackQuery, ContentType
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from config import REPORT_AUTO_APPROVE_TROOPS, get_effective_rank
+from config import REPORT_AUTO_APPROVE_TROOPS, REPORT_MAX_TROOPS, get_effective_rank
 from database.db import add_report, approve_report, get_user_reports, get_user, get_report_tax_percent, log_activity
 from utils.notify import notify, player_display
 from keyboards.keyboards import report_keyboard
@@ -43,7 +43,8 @@ async def report_receive_photo(message: Message, state: FSMContext):
     await state.update_data(screenshot_file_id=photo.file_id)
     await state.set_state(ReportSubmit.waiting_daily_troops)
     await message.answer(
-        "✍️ Сколько войск ты заработал за сутки? (цифрами)"
+        f"✍️ Сколько войск ты заработал за сутки? (цифрами, до {REPORT_MAX_TROOPS:,})"
+        .replace(",", " ")
     )
 
 
@@ -52,16 +53,23 @@ async def report_photo_expected(message: Message):
     await message.answer("❌ Нужно отправить именно фото. Попробуй ещё раз.")
 
 
-@router.message(ReportSubmit.waiting_daily_troops, F.text.regexp(r"^\d+$"))
+@router.message(ReportSubmit.waiting_daily_troops, F.text.regexp(r"^\d{1,7}$"))
 async def report_receive_daily_troops(message: Message, state: FSMContext):
     troops = int(message.text)
     if troops <= 0:
         await message.answer("❌ Число должно быть больше 0.")
         return
+    if troops > REPORT_MAX_TROOPS:
+        await message.answer(
+            f"❌ Слишком большое число. Максимум для одного отчёта: {REPORT_MAX_TROOPS:,} войск."
+            .replace(",", " ")
+        )
+        return
     await state.update_data(daily_troops=troops)
     await state.set_state(ReportSubmit.waiting_total_troops)
     await message.answer(
-        "📊 Сколько у тебя всего войск на данный момент? (цифрами)"
+        f"📊 Сколько у тебя всего войск на данный момент? (цифрами, до {REPORT_MAX_TROOPS:,})"
+        .replace(",", " ")
     )
 
 
@@ -70,11 +78,17 @@ async def report_daily_troops_expected(message: Message):
     await message.answer("❌ Введи число цифрой. Например: 150")
 
 
-@router.message(ReportSubmit.waiting_total_troops, F.text.regexp(r"^\d+$"))
+@router.message(ReportSubmit.waiting_total_troops, F.text.regexp(r"^\d{1,7}$"))
 async def report_receive_total_troops(message: Message, state: FSMContext):
     total = int(message.text)
     if total < 0:
         await message.answer("❌ Число не может быть отрицательным.")
+        return
+    if total > REPORT_MAX_TROOPS:
+        await message.answer(
+            f"❌ Слишком большое число. Максимум для одного отчёта: {REPORT_MAX_TROOPS:,} войск."
+            .replace(",", " ")
+        )
         return
     await state.update_data(total_troops=total)
     await state.set_state(ReportSubmit.waiting_region)
