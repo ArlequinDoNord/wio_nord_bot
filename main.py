@@ -7,7 +7,7 @@ from aiogram.types import BotCommand
 from dotenv import load_dotenv
 
 from config import BOT_TOKEN
-from database.db import init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon, ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, pay_salaries
+from database.db import init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon, ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, pay_salaries, payout_reports
 from utils.notify import notify_treasury_shortage
 from bot.handlers.start import router as start_router
 from bot.handlers.profile import router as profile_router
@@ -56,6 +56,25 @@ async def scheduled_jobs(bot: Bot):
                 )
         except Exception as e:
             logger.error(f"Ошибка выплаты зарплат: {e}", exc_info=True)
+        try:
+            payouts = await payout_reports()
+            if payouts:
+                for p in payouts:
+                    try:
+                        await bot.send_message(
+                            p['user_id'],
+                            "💰 ОПЛАТА ЗА ОТЧЁТЫ\n\n"
+                            f"Одобрено отчётов: {p['count']}\n"
+                            f"⚔️ Войска: +{p['troops']}\n"
+                            f"💰 Нордмарки: +{p['nordmarks']} (налог {p['tax']} НМ в казну)\n"
+                            f"──────────────\n"
+                            f"Итого у тебя: {p['total_troops']} войск, {p['total_nordmarks']} нордмарок"
+                        )
+                    except Exception:
+                        pass
+                logger.info(f"Оплата отчётов: выплачено игрокам {len(payouts)}")
+        except Exception as e:
+            logger.error(f"Ошибка выплаты по отчётам: {e}", exc_info=True)
         await asyncio.sleep(24 * 60 * 60)
 
 

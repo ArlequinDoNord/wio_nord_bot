@@ -4,9 +4,8 @@ from aiogram.types import Message, CallbackQuery, ContentType
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from config import REPORT_AUTO_APPROVE_TROOPS, REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT, get_effective_rank
-from database.db import add_report, approve_report, get_user_reports, get_user, get_report_tax_percent, count_reports_today, log_activity, user_has_status_tag
-from utils.notify import notify, player_display
+from config import REPORT_AUTO_APPROVE_TROOPS, REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT
+from database.db import add_report, approve_report, get_user_reports, get_report_tax_percent, count_reports_today, log_activity, user_has_status_tag
 from utils.helpers import is_main_menu_text
 from keyboards.keyboards import report_keyboard, cancel_keyboard
 
@@ -182,32 +181,21 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
         reminder = "\n📊 Это последний отчёт за сегодня (лимит 3)."
 
     if daily_troops <= REPORT_AUTO_APPROVE_TROOPS:
-        user_before = await get_user(message.from_user.id)
-        promoted = user_before["promoted_rank"] if "promoted_rank" in user_before.keys() else None
-        rank_before = get_effective_rank(user_before["troops"], promoted)
-        if credited <= 0:
-            await approve_report(report_id, 0, credited)
+        actual = await approve_report(report_id, 0, credited)
+        if actual <= 0:
             await state.clear()
             await message.answer(
                 f"✅ Отчёт #{report_id} принят.\n"
                 f"Новых войск за сутки нет (значение {daily_troops} уже засчитано ранее) — доплата не начислена.{reminder}"
             )
             return
-        await approve_report(report_id, 0, credited)
-        user = await get_user(message.from_user.id)
-        rank = get_effective_rank(user["troops"], user["promoted_rank"] if "promoted_rank" in user.keys() else None)
         tax_percent = await get_report_tax_percent()
-        tax = int(credited * tax_percent / 100)
-        nordmarks_earned = credited - tax
-        tax_line = f"\nналог в казну: {tax_percent}% (−{tax} НМ)" if tax > 0 else ""
         await state.clear()
         await message.answer(
             f"✅ Отчёт #{report_id} автоматически принят!\n"
-            f"Начислено: {credited} войск, {nordmarks_earned} нордмарок{tax_line}.\n"
-            f"Текущее звание: {rank} ({user['troops']} войск){reminder}"
+            f"⚔️ К начислению: {actual} войск (налог {tax_percent}% — в казну).\n"
+            f"💰 Оплата по отчётам производится раз в сутки — придёт в начале следующих суток.{reminder}"
         )
-        if rank != rank_before:
-            await notify(bot, f"⭐ Пилот {await player_display(user)} получил звание «{rank}»!", user['user_id'])
     else:
         await state.clear()
         await message.answer(

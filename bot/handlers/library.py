@@ -14,7 +14,7 @@ from database.db import (
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import has_permission, log_action
-from utils.helpers import resolve_image
+from utils.helpers import resolve_image, edit_message_safe
 
 router = Router()
 
@@ -181,14 +181,16 @@ async def library_section(callback: CallbackQuery):
 
     books = await get_library_books(section)
     if not books:
-        await callback.message.edit_text(
+        await edit_message_safe(
+            callback.message,
             f"{SECTION_LABELS.get(section, section)}\n\nПока нет книг в этом разделе.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="🔙 В библиотеку", callback_data="lib:menu")]
             ])
         )
         return
-    await callback.message.edit_text(
+    await edit_message_safe(
+        callback.message,
         f"{SECTION_LABELS.get(section, section)}:",
         reply_markup=books_markup(books, section)
     )
@@ -200,7 +202,7 @@ async def library_book(callback: CallbackQuery):
     book_id = int(callback.data.split(":")[1])
     book = await get_library_book(book_id)
     if not book:
-        await callback.message.edit_text("Книга не найдена.", reply_markup=None)
+        await edit_message_safe(callback.message, "Книга не найдена.", reply_markup=None)
         return
 
     open_list = await can_access_sections(callback.from_user.id)
@@ -234,7 +236,7 @@ async def library_book(callback: CallbackQuery):
         else:
             await callback.message.answer_photo(photo=cover, caption=text, reply_markup=kb)
     else:
-        await callback.message.edit_text(text, reply_markup=kb)
+        await edit_message_safe(callback.message, text, reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("libdl:"))
@@ -265,7 +267,8 @@ async def library_admin_menu(callback: CallbackQuery):
     if not await has_permission(callback.from_user.id, "can_manage_library"):
         await callback.message.answer("❌ Нет прав для управления книгами.")
         return
-    await callback.message.edit_text(
+    await edit_message_safe(
+        callback.message,
         "🛠 УПРАВЛЕНИЕ БИБЛИОТЕКОЙ\n\nВыбери действие:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="➕ Добавить книгу", callback_data="libadmin:add")],
@@ -389,7 +392,8 @@ async def book_list(callback: CallbackQuery):
             callback_data=f"libadmin_del:{b['id']}"
         )])
     rows.append([InlineKeyboardButton(text="🔙 В библиотеку", callback_data="libadmin:menu")])
-    await callback.message.edit_text(
+    await edit_message_safe(
+        callback.message,
         "📚 Книги в библиотеке (выбери для удаления):",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )

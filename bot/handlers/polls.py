@@ -12,7 +12,7 @@ from database.db import (
 )
 from config import ADMIN_IDS
 from utils.permissions import has_permission
-from utils.helpers import is_main_menu_text
+from utils.helpers import is_main_menu_text, edit_message_safe
 
 router = Router()
 
@@ -106,7 +106,7 @@ async def vote_show(callback: CallbackQuery):
         f"🗳️ {poll['question']}\n\n"
         + ("Выбери вариант:" if not already else "Ты уже проголосовал. Варианты:")
     )
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    await edit_message_safe(callback.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 
 
 @router.callback_query(F.data.startswith("vote:cast:"))
@@ -158,7 +158,7 @@ async def vote_results(callback: CallbackQuery):
         f"Всего голосов: {total}\n\n" + "\n".join(lines)
     )
     buttons = [[InlineKeyboardButton(text="🔙 К опросам", callback_data="city:vote")]]
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    await edit_message_safe(callback.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 
 
 @router.callback_query(F.data == "vote:create")

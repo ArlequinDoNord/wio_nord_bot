@@ -122,6 +122,8 @@ async def inv_item_view(callback: CallbackQuery):
         dots.append(f"💚 Лечение: {item['heal']}")
     if dots:
         text += " • ".join(dots) + "\n\n"
+    if item['heal']:
+        text += "💊 Применяется в бою подземелья: поставь в слот 1/2 (кнопки ниже) и жми в бою.\n\n"
     if item['description']:
         text += f"📝 {item['description']}\n\n"
     text += f"💵 Продажа: {item['sell_price']} {plural_nordmark(item['sell_price'])}"
@@ -141,7 +143,7 @@ async def inv_item_view(callback: CallbackQuery):
     if potion_slots:
         text += f"\n\n⚗️ В активном слоте: {', '.join(str(n) for n in potion_slots)}"
 
-    can_use = item['category'] == "consumable"
+    can_use = item['category'] == "consumable" and not (item['heal'] or 0)
     markup = inv_item_markup(item_id, item['category'], can_use=can_use,
                              is_equipped=is_equipped, equip_slot=equip_slot,
                              potion_slots=potion_slots)

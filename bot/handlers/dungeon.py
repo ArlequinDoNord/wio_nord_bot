@@ -8,7 +8,7 @@ from aiogram.fsm.state import StatesGroup, State
 
 from database.db import (
     get_all_dungeons, get_dungeon, get_floor_enemies, start_dungeon_run,
-    get_active_run, update_run_hp, advance_room, end_run, add_run_item,
+    get_active_run, update_run_hp, advance_room, end_run, add_run_item, add_run_nordmarks,
     get_run_items, clear_run_items, get_user, add_nordmarks, remove_nordmarks, remove_ap, get_db,
     get_player_weapon_damage, get_user_potions, get_item_by_name, remove_inventory_item,
     get_user_contract_count, get_player_armor, add_inventory_item,
@@ -307,14 +307,14 @@ async def show_room(message, run, user_id, state: FSMContext):
 
     elif room_type == "resource":
         nm = resource_amount(run['floor'])
-        await add_nordmarks(user_id, nm, "dungeon_loot", "Найдено в подземелье")
+        await add_run_nordmarks(run['id'], nm)
 
         text = (
             f"🏰 {dungeon['name']}\n"
             f"Этаж {run['floor']} | Комната {run['room_number']}/10\n"
             f"❤️ {hp_text}\n\n"
             f"📦 Ты нашёл хранилище с припасами!\n"
-            f"+{nm} Нордмарок\n\n"
+            f"+{nm} Нордмарок (заберёшь при выходе)\n\n"
             f"Нажми «Продолжить путь» чтобы идти дальше."
         )
         await message.answer(text, reply_markup=dungeon_main_keyboard(step))
@@ -393,23 +393,25 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
     if current_enemy_hp <= 0:
         if enemy['is_boss']:
-            await add_nordmarks(user_id, enemy['reward_nm'], "dungeon_kill", f"Убил босса {enemy['name']}")
-            text = (
-                f"🏆 БОСС ПОБЕЖДЁН!\n"
-                f"💀 {enemy['name']} повержен!\n"
-                f"+{enemy['reward_nm']} Нордмарок"
-            )
-
-            boss_dropped = await roll_enemy_drops(run['id'], enemy)
-            if boss_dropped:
-                text += "\n\n🎁 Лут:\n" + "\n".join(f"• {name} x{qty}" for name, qty in boss_dropped)
-
-            text += "\n\n🎉 Поздравляем! Ты прошёл подземелье!"
+            loot_nm = (run['loot_nm'] or 0) + enemy['reward_nm']
+            await add_run_nordmarks(run['id'], enemy['reward_nm'])
+            if loot_nm > 0:
+                await add_nordmarks(user_id, loot_nm, "dungeon_win", "Вынесено из подземелья")
 
             transferred = await transfer_run_items_to_inventory(user_id, run['id'])
-            if transferred:
-                items_text = "\n".join([f"• {n} x{q}" for n, q in transferred])
-                text += f"\n\n📦 Найденные предметы отправлены в инвентарь:\n{items_text}"
+
+            text = (
+                f"🏆 БОСС ПОБЕЖДЁН!\n"
+                f"💀 {enemy['name']} повержен!\n\n"
+                f"🎉 Поздравляем! Ты прошёл подземелье!\n\n"
+                f"📦 Ты выносишь из подземелья:\n"
+            )
+            if loot_nm > 0:
+                text += f"💰 {loot_nm} Нордмарок\n"
+            for name, qty in transferred:
+                text += f"🎁 {name} x{qty}\n"
+            if loot_nm <= 0 and not transferred:
+                text += "… пусто."
 
             await end_run(run['id'], 0)
             await state.clear()
@@ -479,7 +481,10 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     else:
         slot_items = await get_equipment_slot_items(user_id)
         next_step = await dungeon_new_step(state)
-        await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items, next_step))
+        if enemy['is_boss']:
+            await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_boss_keyboard(enemy['id'], slot_items, next_step))
+        else:
+            await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items, next_step))
 
 
 @router.callback_query(F.data.startswith("dungeon:use_slot:"))
@@ -517,7 +522,10 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         return
 
     if item['heal'] > 0 and run['hp'] >= run['hp_max']:
-        await callback.message.answer("❤️ HP уже полное, зелье не нужно.")
+        await callback.message.answer(
+            f"❤️ HP уже полное ({run['hp']}/{run['hp_max']}), зелье не нужно.\n"
+            f"Примени его в бою, когда потеряешь HP."
+        )
         return
 
     ok = await remove_inventory_item(user_id, item['id'], 1)
@@ -591,6 +599,15 @@ async def dungeon_escape(callback: CallbackQuery, state: FSMContext):
     if not enemy:
         return
 
+    if enemy['is_boss']:
+        slot_items = await get_equipment_slot_items(user_id)
+        next_step = await dungeon_new_step(state)
+        await callback.message.answer(
+            "⚠️ От босса не убежать! Бой продолжается.",
+            reply_markup=dungeon_boss_keyboard(enemy['id'], slot_items, next_step)
+        )
+        return
+
     hp_percent = run['hp'] / run['hp_max'] if run['hp_max'] > 0 else 1.0
 
     if escape_chance(hp_percent):
@@ -660,15 +677,20 @@ async def dungeon_exit(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     run = await get_active_run(user_id)
     if run:
+        loot_nm = run['loot_nm'] or 0
         items = await transfer_run_items_to_inventory(user_id, run['id'])
+        if loot_nm > 0:
+            await add_nordmarks(user_id, loot_nm, "dungeon_exit", "Вынесено из подземелья")
         await end_run(run['id'], 0)
         await log_activity(user_id, "dungeon_exit", "Покинул подземелье (досрочный выход)")
 
-        if items:
-            text = "📦 Ты забрал с собой и получил в инвентарь:\n"
-            for n, q in items:
-                text += f"• {n} x{q}\n"
-            text += "\nТы покидаешь подземелье."
+        parts = []
+        if loot_nm > 0:
+            parts.append(f"💰 {loot_nm} Нордмарок")
+        parts.extend(f"🎁 {n} x{q}" for n, q in items)
+
+        if parts:
+            text = "📦 Ты выносишь из подземелья:\n" + "\n".join(parts) + "\n\nТы покидаешь подземелье."
         else:
             text = "Ты покидаешь подземелье ни с чем."
 

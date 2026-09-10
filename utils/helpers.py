@@ -22,6 +22,19 @@ MAIN_MENU_TEXTS = {
 def is_main_menu_text(text: str) -> bool:
     return text in MAIN_MENU_TEXTS
 
+
+async def edit_message_safe(message, text: str, reply_markup=None):
+    """Редактирует сообщение с учётом его типа.
+
+    Для фото-сообщения меняет подпись (caption), иначе пытается
+    заменить текст. Иначе Telegram падает с «there is no text in
+    the message to edit», когда на фото-сообщении вызывают edit_text.
+    """
+    if message.photo:
+        await message.edit_caption(caption=text, reply_markup=reply_markup)
+    else:
+        await message.edit_text(text, reply_markup=reply_markup)
+
 # Периоды времени суток (по московскому времени):
 DAWN = (8, 0, 8, 10)    # рассвет: 08:00–08:10
 SUNSET = (19, 0, 19, 10)  # закат: 19:00–19:10

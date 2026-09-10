@@ -436,6 +436,12 @@ async def init_db():
     await _ensure_column(conn, "reports", "total_troops", "INTEGER DEFAULT 0")
     # credited_troops без DEFAULT: у старых отчётов (до миграции) будет NULL
     await _ensure_column(conn, "reports", "credited_troops", "INTEGER")
+    # paid=1 — отчёт оплачен суточным начислением; старые одобренные уже оплачены
+    await _ensure_column(conn, "reports", "paid", "INTEGER DEFAULT 0")
+    await conn.execute("UPDATE reports SET paid = 1 WHERE status = 'approved'")
+    await _ensure_column(conn, "player_dungeon_run", "loot_nm", "INTEGER DEFAULT 0")
+    # «Аптечка» — это +AP (энергетик); лечит HP в данже «Малая настойка здоровья»
+    await conn.execute("UPDATE items SET name = 'Энергетик', description = 'Восстанавливает силы: даёт +AP при использовании.' WHERE name = 'Аптечка'")
     await _ensure_column(conn, "users", "ap_restored_day", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "users", "ap_restored_today", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "damage", "INTEGER DEFAULT 0")
@@ -1456,6 +1462,19 @@ async def add_report(user_id: int, screenshot_file_id: str, troops_reported: int
 
 
 async def approve_report(report_id: int, reviewed_by: int, troops: int):
+    """Одобрить отчёт. Возвращает дельту к начислению (войск) или False,
+    если отчёт не найден.
+
+    Дельту пересчитываем на момент одобрения: база — максимальное заявленное значение
+    среди УЖЕ одобренных за сегодня отчётов (этот ещё не одобрен). Это исключает двойную
+    оплату, когда отчёт ждёт проверки, а пилот параллельно сдал и получил оплату за
+    больший отчёт. Итог за сутки всегда = максимум заявки, а не сумма.
+
+    Начисление здесь НЕ производится: допущенные отчёты копятся, а оплата выполняется
+    раз в сутки функцией payout_reports() (в начале следующих суток).
+
+    Для старых отчётов (credited_troops IS NULL, до введения дельты) — вся заявка целиком.
+    """
     conn = await get_db()
     cursor = await conn.execute(
         "SELECT user_id, troops_reported, credited_troops FROM reports WHERE id = ?", (report_id,)
@@ -1465,34 +1484,90 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int):
         return False
 
     user_id = row['user_id']
-    # troops — сумма к оплате (дельта). Для старых отчётов без колонки (NULL) — вся заявка.
-    if troops is None:
+    if troops is not None and row['credited_troops'] is not None:
+        cursor = await conn.execute(
+            "SELECT COALESCE(MAX(troops_reported), 0) AS approved_today FROM reports "
+            "WHERE user_id = ? AND status = 'approved' AND id != ? "
+            "AND date(created_at) = date('now')",
+            (user_id, report_id)
+        )
+        base_row = await cursor.fetchone()
+        base = base_row['approved_today'] if base_row else 0
+        troops = max(0, row['troops_reported'] - base)
+    else:
         troops = row['credited_troops'] if row['credited_troops'] is not None else row['troops_reported']
 
-    # Налог в казну Нордхайма (ставка настраивается в админке)
-    tax_percent = await get_report_tax_percent()
-    tax = int(troops * tax_percent / 100)
-    nordmarks_earned = troops - tax
+    await conn.execute(
+        "UPDATE reports SET status = 'approved', reviewed_by = ?, credited_troops = ?, paid = 0 WHERE id = ?",
+        (reviewed_by, troops, report_id)
+    )
+    await conn.commit()
+    return troops
 
-    await conn.execute(
-        "UPDATE reports SET status = 'approved', reviewed_by = ?, credited_troops = ?, "
-        "nordmarks_earned = ? WHERE id = ?",
-        (reviewed_by, troops, nordmarks_earned, report_id)
+
+async def payout_reports() -> list:
+    """Суточное начисление за одобренные отчёты (раз в начале следующих суток).
+
+    Собирает все одобренные, ещё не оплаченные отчёты (paid = 0), одной суммой
+    начисляет войска и нордмарки (за вычетом налога в казну), помечает их
+    оплаченными. Возвращает итоги для уведомлений:
+    [{'user_id', 'troops', 'nordmarks', 'tax', 'count', 'total_troops', 'total_nordmarks'}]
+    """
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT r.user_id, r.id AS report_id, COALESCE(r.credited_troops, r.troops_reported) AS troops "
+        "FROM reports r WHERE r.status = 'approved' AND r.paid = 0"
     )
-    await conn.execute("UPDATE users SET troops = troops + ? WHERE user_id = ?", (troops, user_id))
-    await conn.execute("UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?", (nordmarks_earned, user_id))
-    await conn.execute(
-        "INSERT INTO transactions (to_user, amount, tx_type, description) VALUES (?, ?, ?, ?)",
-        (user_id, nordmarks_earned, "report", f"Начисление за отчёт #{report_id} (за вычетом налога)")
-    )
-    await conn.execute("UPDATE treasury SET balance = balance + ? WHERE id = 1", (tax,))
-    if tax > 0:
+    rows = await cursor.fetchall()
+    if not rows:
+        return []
+
+    agg = {}
+    for r in rows:
+        entry = agg.setdefault(r['user_id'], {'report_ids': [], 'troops': 0})
+        entry['report_ids'].append(r['report_id'])
+        entry['troops'] += r['troops']
+
+    tax_percent = await get_report_tax_percent()
+    results = []
+    for uid, data in agg.items():
+        troops_total = data['troops']
+        report_ids = data['report_ids']
+        placeholders = ", ".join("?" * len(report_ids))
+        if troops_total <= 0:
+            await conn.execute(f"UPDATE reports SET paid = 1 WHERE id IN ({placeholders})", report_ids)
+            continue
+        tax = int(troops_total * tax_percent / 100)
+        nordmarks = troops_total - tax
+        await conn.execute("UPDATE users SET troops = troops + ? WHERE user_id = ?", (troops_total, uid))
+        await conn.execute("UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?", (nordmarks, uid))
         await conn.execute(
             "INSERT INTO transactions (to_user, amount, tx_type, description) VALUES (?, ?, ?, ?)",
-            (TREASURY_ID, tax, "treasury", f"Налог 15% с отчёта #{report_id}")
+            (uid, nordmarks, "report",
+             f"Оплата по отчётам (шт: {len(report_ids)}, за вычетом налога)")
         )
+        await conn.execute("UPDATE treasury SET balance = balance + ? WHERE id = 1", (tax,))
+        if tax > 0:
+            await conn.execute(
+                "INSERT INTO transactions (to_user, amount, tx_type, description) VALUES (?, ?, ?, ?)",
+                (TREASURY_ID, tax, "treasury", f"Налог {tax_percent}% с отчётов")
+            )
+        await conn.execute(f"UPDATE reports SET paid = 1 WHERE id IN ({placeholders})", report_ids)
+        cur = await conn.execute(
+            "SELECT troops, nordmarks FROM users WHERE user_id = ?", (uid,)
+        )
+        u = await cur.fetchone()
+        results.append({
+            'user_id': uid,
+            'troops': troops_total,
+            'nordmarks': nordmarks,
+            'tax': tax,
+            'count': len(report_ids),
+            'total_troops': u['troops'] if u else troops_total,
+            'total_nordmarks': u['nordmarks'] if u else nordmarks,
+        })
     await conn.commit()
-    return True
+    return results
 
 
 async def reject_report(report_id: int, reviewed_by: int):
@@ -2132,7 +2207,7 @@ DEFAULT_ITEMS = [
     # (name, description, price, sell_price, rarity, category, stock, ap_cost, damage, heal)
     ("Учебный истребитель", "Базовая учебная машина для новичков.", 250, 125, 2, "weapon", 5, 0, 8, 0),
     ("Стандартный пулемёт", "Надёжное вооружение для воздушных боёв.", 150, 75, 1, "weapon", 10, 0, 5, 0),
-    ("Аптечка", "Восстанавливает силы. Использование даёт +AP.", 50, 25, 1, "consumable", 20, 50, 0, 0),
+    ("Энергетик", "Восстанавливает силы: даёт +AP при использовании.", 50, 25, 1, "consumable", 20, 50, 0, 0),
     ("Топливо", "Запас топлива для вылетов. +AP при использовании.", 40, 20, 1, "consumable", 20, 30, 0, 0),
     ("Ремкомплект", "Мелкий ремонт техники.", 80, 40, 2, "consumable", 15, 40, 0, 0),
     ("Лётный шлем", "Защищает пилота в бою.", 120, 60, 2, "equipment", 10, 0, 3, 0, 4),
@@ -2312,6 +2387,18 @@ async def add_run_item(run_id: int, item_id: int, quantity: int = 1):
         VALUES (?, ?, ?)
         ON CONFLICT(run_id, item_id) DO UPDATE SET quantity = quantity + excluded.quantity
     """, (run_id, item_id, quantity))
+    await conn.commit()
+
+
+async def add_run_nordmarks(run_id: int, amount: int):
+    """Копит найденные в забеге нордмарки (начисляются при выходе из подземелья)."""
+    if amount <= 0:
+        return
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE player_dungeon_run SET loot_nm = loot_nm + ? WHERE id = ?",
+        (amount, run_id)
+    )
     await conn.commit()
 
 

@@ -1832,24 +1832,16 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
     else:
         troops = report['troops_reported']
     pilot = await get_user(report['user_id'])
-    promoted = pilot["promoted_rank"] if "promoted_rank" in pilot.keys() else None
-    rank_before = get_effective_rank(pilot["troops"], promoted)
-    tax_percent = await get_report_tax_percent()
-    tax = int(troops * tax_percent / 100)
-    earned = troops - tax
-    await approve_report(report_id, callback.from_user.id, troops)
+    amount = await approve_report(report_id, callback.from_user.id, troops)
     await log_action(callback.from_user.id, 'approve_report', report['user_id'], f"report={report_id}")
-    tax_line = f" (налог {tax_percent}%: −{tax} в казну)" if tax > 0 else ""
-    await callback.message.answer(f"✅ Отчёт #{report_id} принят.\nНачислено: {troops} войск, {earned} НМ{tax_line}.")
+    await callback.message.answer(
+        f"✅ Отчёт #{report_id} принят.\n"
+        f"⚔️ К начислению: {amount} войск (выплата раз в сутки — в начале следующих суток)."
+    )
     await show_pending_reports(callback.message)
 
-    if pilot and troops >= NOTIFY_REPORT_MIN_TROOPS:
-        await notify(bot, f"⚡ Пилот {await player_display(pilot)} сдал отчёт на {troops} очков!", pilot['user_id'])
-
-    if pilot:
-        rank_after = get_effective_rank(pilot["troops"] + troops, promoted)
-        if rank_after != rank_before:
-            await notify(bot, f"⭐ Пилот {await player_display(pilot)} получил звание «{rank_after}»!", pilot['user_id'])
+    if pilot and amount >= NOTIFY_REPORT_MIN_TROOPS:
+        await notify(bot, f"⚡ Пилот {await player_display(pilot)} сдал отчёт на {amount} очков!", pilot['user_id'])
 
 
 @router.callback_query(F.data.startswith("rep_no:"))
