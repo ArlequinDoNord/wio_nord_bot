@@ -2431,10 +2431,10 @@ async def loc_mode_chosen(callback: CallbackQuery, state: FSMContext):
         await state.update_data(mode=mode)
         if mode == "all":
             await state.update_data(req_status=None)
-            await AdminLocation.blocking.set()
+            await state.set_state(AdminLocation.blocking)
             await callback.message.edit_text("Какие состояния блокируют вход?\n(через запятую, напр.: пьян)")
         else:
-            await AdminLocation.req_status.set()
+            await state.set_state(AdminLocation.req_status)
             await _loc_status_pick(callback, state)
 
 
@@ -2449,7 +2449,7 @@ async def loc_req_status_chosen(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_text(f"✅ Требуемый статус: {tag}")
     else:
         await state.update_data(req_status=tag)
-        await AdminLocation.blocking.set()
+        await state.set_state(AdminLocation.blocking)
         await callback.message.edit_text("Какие состояния блокируют вход?\n(через запятую, напр.: пьян, или отправь „нет“)")
 
 

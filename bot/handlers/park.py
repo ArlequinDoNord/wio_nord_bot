@@ -210,7 +210,7 @@ async def statue_name(message: Message, state: FSMContext):
 @router.message(AdminStatue.description, ~F.text.func(is_main_menu_text))
 async def statue_description(message: Message, state: FSMContext):
     await state.update_data(description=(message.text or "").strip())
-    await AdminStatue.image_day.set()
+    await state.set_state(AdminStatue.image_day)
     await _ask_statue_image(message, "day", required=True)
 
 
@@ -242,7 +242,7 @@ async def _collect_statue_image(message, state, key: str, required: bool = False
 async def statue_img_day(message: Message, state: FSMContext):
     if not await _collect_statue_image(message, state, "day", required=True):
         return
-    await AdminStatue.image_dawn.set()
+    await state.set_state(AdminStatue.image_dawn)
     await _ask_statue_image(message, "dawn")
 
 
@@ -250,7 +250,7 @@ async def statue_img_day(message: Message, state: FSMContext):
 async def statue_img_dawn(message: Message, state: FSMContext):
     if not await _collect_statue_image(message, state, "dawn"):
         return
-    await AdminStatue.image_sunset.set()
+    await state.set_state(AdminStatue.image_sunset)
     await _ask_statue_image(message, "sunset")
 
 
@@ -258,7 +258,7 @@ async def statue_img_dawn(message: Message, state: FSMContext):
 async def statue_img_sunset(message: Message, state: FSMContext):
     if not await _collect_statue_image(message, state, "sunset"):
         return
-    await AdminStatue.image_night.set()
+    await state.set_state(AdminStatue.image_night)
     await _ask_statue_image(message, "night")
 
 
