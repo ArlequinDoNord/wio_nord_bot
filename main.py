@@ -2,13 +2,15 @@ import asyncio
 import logging
 import sys
 
-from aiogram import Bot, Dispatcher
-from aiogram.types import BotCommand
+from aiogram import Bot, Dispatcher, BaseMiddleware
+from aiogram.fsm.context import FSMContext
+from aiogram.types import BotCommand, Message
 from dotenv import load_dotenv
 
 from config import BOT_TOKEN
 from database.db import init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon, ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, pay_salaries, payout_reports
 from utils.notify import notify_treasury_shortage
+from utils.helpers import is_main_menu_text
 from bot.handlers.start import router as start_router
 from bot.handlers.profile import router as profile_router
 from bot.handlers.bank import router as bank_router
@@ -35,6 +37,22 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+
+class MainMenuFSMReset(BaseMiddleware):
+    """Если приходит нажатие reply-кнопки главного меню, сбрасывает активное
+    FSM-состояние. Иначе FSM-хендлеры (админ-панель, передача и т.д.) перехватывают
+    «Магазин»/«Инвентарь»/«Сдать отчёт» как ввод числа и отвечают мусором."""
+
+    async def __call__(self, handler, event, data):
+        if isinstance(event, Message) and event.text and is_main_menu_text(event.text):
+            state: FSMContext | None = data.get('state')
+            if state is not None:
+                try:
+                    await state.clear()
+                except Exception:
+                    pass
+        return await handler(event, data)
 
 
 async def scheduled_jobs(bot: Bot):
@@ -126,6 +144,12 @@ async def main():
     dp.include_router(locations_router)
     dp.include_router(park_router)
     dp.include_router(fishing_router)
+
+    for r in (start_router, profile_router, bank_router, admin_router, shop_router,
+              inventory_router, reports_router, dungeon_router, pilots_router,
+              polls_router, library_router, locations_router, park_router,
+              fishing_router):
+        r.message.middleware(MainMenuFSMReset())
 
     logger.info("Хендлеры зарегистрированы")
 
