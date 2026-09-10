@@ -452,6 +452,9 @@ async def init_db():
     await _ensure_column(conn, "dungeon_enemies", "poison_dmg", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "cure_poison", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "locations", "preview_photo", "TEXT")
+    # Опросы: кто и когда закрыл (для архива закрытых голосований)
+    await _ensure_column(conn, "polls", "closed_by", "INTEGER")
+    await _ensure_column(conn, "polls", "closed_at", "TIMESTAMP")
     # Базовые статусы иерархии: Пилот — гражданин (0), Турист — гость (-10).
     # Старые записи Пилота, которым ранее могли поставить высокий уровень, возвращаем к 0.
     await conn.execute("UPDATE statuses SET sort_order = 0 WHERE access_tag = 'pilot'")
@@ -906,10 +909,23 @@ async def get_active_polls():
     return await cursor.fetchall()
 
 
-async def close_poll(poll_id: int):
+async def close_poll(poll_id: int, closed_by: int = None):
     conn = await get_db()
-    await conn.execute("UPDATE polls SET is_active = 0 WHERE id = ?", (poll_id,))
+    await conn.execute(
+        "UPDATE polls SET is_active = 0, closed_by = COALESCE(?, closed_by), "
+        "closed_at = datetime('now') WHERE id = ? AND is_active = 1",
+        (closed_by, poll_id)
+    )
     await conn.commit()
+
+
+async def get_closed_polls():
+    """Закрытые опросы (архив), свежие сверху."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM polls WHERE is_active = 0 ORDER BY COALESCE(closed_at, created_at) DESC"
+    )
+    return await cursor.fetchall()
 
 
 # ============ СУТОЧНЫЕ ЛИМИТЫ (Квестор: начисления) ============
