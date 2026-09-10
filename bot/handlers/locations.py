@@ -77,6 +77,9 @@ async def location_enter(callback: CallbackQuery):
     elif key == "library":
         from bot.handlers.library import library_enter
         await library_enter(callback)
+    elif key == "park":
+        from bot.handlers.park import park_enter
+        await park_enter(callback)
     else:
         await callback.message.answer(
             f"📍 {loc['name']}\nДоступ разрешён. Функционал этой локации ещё в разработке."

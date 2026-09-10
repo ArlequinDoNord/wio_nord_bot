@@ -377,6 +377,19 @@ async def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS park_statues (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            image_dawn TEXT,
+            image_day TEXT,
+            image_sunset TEXT,
+            image_night TEXT,
+            created_by INTEGER,
+            sort_order INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS statuses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -484,6 +497,8 @@ async def seed_locations(conn):
          "all", None, ["пьян"], "city/rathaus"),
         ("library", "Библиотека", "Хранилище знаний Нордхайма. Вход по читательскому билету.",
          "all", None, ["пьян"], "city/library"),
+        ("park", "Городской парк", "Тенистые аллеи, пруд и статуи. Открыт для всех — и для пилотов, и для туристов.",
+         "all", None, ["пьян"], "city/park"),
     ]
     for key, name, desc, mode, req_status, blocking, preview in base:
         await conn.execute(
@@ -2223,6 +2238,47 @@ async def location_access_label(mode: str, req_status: str) -> str:
     if mode == "exact":
         return f"🎯 Только: {req_status}"
     return f"📈 {req_status} и выше"
+
+
+# ============ ГОРОДСКОЙ ПАРК (статуи) ============
+
+# Порядок вариантов картинки статуи по времени суток.
+PARK_TOD_KEYS = ("dawn", "day", "sunset", "night")
+
+
+async def get_park_statues():
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM park_statues ORDER BY sort_order, id")
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def get_park_statue(statue_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM park_statues WHERE id = ?", (statue_id,))
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def add_park_statue(name: str, description: str, images: dict, created_by: int):
+    """Добавляет статую. images: {'dawn': file_id|None, 'day': ..., 'sunset': ..., 'night': ...}."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM park_statues")
+    row = await cursor.fetchone()
+    await conn.execute(
+        "INSERT INTO park_statues (name, description, image_dawn, image_day, image_sunset, image_night, created_by, sort_order) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (name, description,
+         images.get('dawn'), images.get('day'), images.get('sunset'), images.get('night'),
+         created_by, row['n'])
+    )
+    await conn.commit()
+
+
+async def delete_park_statue(statue_id: int):
+    conn = await get_db()
+    await conn.execute("DELETE FROM park_statues WHERE id = ?", (statue_id,))
+    await conn.commit()
 
 
 # ============ СИД: ТЕСТОВЫЕ ТОВАРЫ ============
