@@ -8,7 +8,7 @@ load_dotenv()
 # - MINOR (x.1.x): новая функциональность (обратно совместимая)
 # - MAJOR (1.x.x): крупные ломающие изменения (до 1.0 — на усмотрение)
 # Стартуем с 0.1.0 (нестабильная фаза).
-VERSION = "0.4.13"
+VERSION = "0.4.14"
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
@@ -64,6 +64,7 @@ ITEM_CATEGORIES = {
     "special": "Особое",
     "souvenirs": "Сувениры",
     "library_card": "Читательские билеты",
+    "fishing": "Рыбалка",
 }
 
 AP_MAX = 150
@@ -77,6 +78,9 @@ AP_DAILY_RESTORE_LIMIT = 150
 AP_EXHAUSTED_MINUTES = 2880          # 2 суток
 AP_EXHAUSTED_DAILY_RECOVERY = 75     # суточное восстановление в «истощении»
 AP_EXHAUSTED_MAX_AP = 90             # максимум ОД в «истощении»
+
+# Рыбалка
+FISH_AP_COST = 3                     # стоимость одного заброса удочки
 
 REPORT_DAILY_LIMIT = 3
 REPORT_AUTO_APPROVE_TROOPS = 100

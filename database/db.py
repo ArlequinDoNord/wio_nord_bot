@@ -465,6 +465,8 @@ async def init_db():
     await _ensure_column(conn, "dungeon_enemies", "poison_dmg", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "cure_poison", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "locations", "preview_photo", "TEXT")
+    # Рыбалка: выбранная игроком наживка ('worms'/'spider'/'none', '' = авто)
+    await _ensure_column(conn, "users", "fishing_bait", "TEXT DEFAULT ''")
     # Опросы: кто и когда закрыл (для архива закрытых голосований)
     await _ensure_column(conn, "polls", "closed_by", "INTEGER")
     await _ensure_column(conn, "polls", "closed_at", "TIMESTAMP")
@@ -659,6 +661,12 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
 async def get_item(item_id: int):
     conn = await get_db()
     cursor = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+    return await cursor.fetchone()
+
+
+async def get_item_by_name(name: str):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM items WHERE name = ?", (name,))
     return await cursor.fetchone()
 
 
@@ -2326,6 +2334,7 @@ DEFAULT_DUNGEON = {
                 ("Кристальный паук", 18, 4, 0, False, [
                     {"item": "Паутина паука", "chance": 0.15, "qty": 1},
                     {"item": "Осколок кристалла", "chance": 0.05, "qty": 1},
+                    {"item": "Лапка кристального паука", "chance": 0.05, "qty": 1},
                 ], "assets/img/enemies/crystal_spider.jpg", 0, 0),
             ],
             "boss": ("Король крыс", 50, 8, 15, True, [
@@ -2689,6 +2698,48 @@ async def ensure_dungeon_shop_items():
     # Продажа игроком добавляет stock (+1) и включает is_available; при остатке 0 товар снова скрыт.
     await conn.execute("UPDATE items SET is_available = 0, stock = 0 WHERE name IN "
                        "('Хвост крысы','Паутина паука','Осколок кристалла')")
+
+    # --- Рыбалка ---
+    for (fname, fdesc, fprice, fsell, frarity) in (
+        ("Удочка из орешника", "Простая лёгкая удочка. Ранг 1: +10% к шансу улова.", 200, 100, 1),
+        ("Черви", "Наживка для рыбалки: +15% к шансу улова. Расходуется при забросе, используется только для рыбалки.", 10, 5, 1),
+    ):
+        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (fname,))
+        if (await cursor.fetchone())['c'] == 0:
+            await add_item(
+                name=fname, description=fdesc, price=fprice, sell_price=fsell, rarity=frarity,
+                category="fishing", stock=-1, added_by=0, ap_cost=0, damage=0, heal=0,
+            )
+            added = True
+
+    cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", ("Лапка кристального паука",))
+    if (await cursor.fetchone())['c'] == 0:
+        await add_item(
+            name="Лапка кристального паука",
+            description="Редкий дроп с кристальных пауков. Наживка для рыбалки: +25% к шансу улова.",
+            price=60, sell_price=30, rarity=3,
+            category="fishing", stock=0, added_by=0, ap_cost=0, damage=0, heal=0,
+        )
+        added = True
+
+    for (fname, fdesc, fsell, frarity) in (
+        ("Сиг", "Обычная рыба из паркового озера. Сырьё для будущей готовки.", 15, 1),
+        ("Муксун", "Редкая рыба из паркового озера. Ценится на рынке.", 35, 2),
+        ("Чир", "Очень редкая рыба из паркового озера. Деликатес.", 80, 3),
+        ("Налим", "Ночная рыба из паркового озера. Очень редкий улов.", 120, 3),
+    ):
+        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (fname,))
+        if (await cursor.fetchone())['c'] == 0:
+            await add_item(
+                name=fname, description=fdesc, price=fsell * 2, sell_price=fsell, rarity=frarity,
+                category="fishing", stock=0, added_by=0, ap_cost=0, damage=0, heal=0,
+            )
+            added = True
+
+    # Рыба и лапка — на рынке появляются только когда игрок продаёт их из инвентаря,
+    # как трофеи данжа. Удочка и черви — обычные товары магазина.
+    await conn.execute("UPDATE items SET is_available = 0, stock = 0 WHERE name IN "
+                       "('Сиг','Муксун','Чир','Налим','Лапка кристального паука')")
 
     cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", ("Контракт на зачистку",))
     if (await cursor.fetchone())['c'] == 0:

@@ -25,7 +25,6 @@ from utils.helpers import resolve_image, time_of_day_key, edit_message_safe, is_
 router = Router()
 
 PARK_PHOTO = "city/park"
-LAKE_PHOTO = "city/lake"
 
 TOD_LABEL = {
     "dawn": "🌅 Рассвет",
@@ -48,13 +47,6 @@ def park_photo() -> FSInputFile:
     path = resolve_image(PARK_PHOTO)
     if not os.path.isfile(path):
         path = resolve_image("city/arkholm")
-    return FSInputFile(path)
-
-
-def lake_photo() -> FSInputFile:
-    path = resolve_image(LAKE_PHOTO)
-    if not os.path.isfile(path):
-        path = resolve_image(PARK_PHOTO)
     return FSInputFile(path)
 
 
@@ -107,16 +99,8 @@ async def park_menu_cb(callback: CallbackQuery):
 
 @router.callback_query(F.data == "park:lake")
 async def park_lake(callback: CallbackQuery):
-    await callback.answer()
-    caption = (
-        "🌊 ОЗЕРО В ПАРКЕ\n\n"
-        "Зеркальная гладь среди деревьев. Говорят, тут водятся крупные рыбы,\n"
-        "но удочек ни у кого пока нет — рыбалка откроется позже."
-    )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 В парк", callback_data="park:menu")]
-    ])
-    await _show(callback.message, lake_photo(), caption, kb)
+    from bot.handlers.fishing import fishing_lake_menu
+    await fishing_lake_menu(callback)
 
 
 # ============ АЛЛЕЯ СТАТУЙ ============

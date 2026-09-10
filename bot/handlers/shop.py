@@ -18,7 +18,7 @@ from config import ITEM_CATEGORIES
 
 router = Router()
 
-CATEGORIES = ["weapon", "consumable", "equipment", "building", "resource", "special", "souvenirs", "library_card"]
+CATEGORIES = ["weapon", "consumable", "equipment", "building", "resource", "special", "souvenirs", "library_card", "fishing"]
 PER_PAGE = 6
 
 

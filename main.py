@@ -22,6 +22,7 @@ from bot.handlers.polls import router as polls_router
 from bot.handlers.library import router as library_router
 from bot.handlers.locations import router as locations_router
 from bot.handlers.park import router as park_router
+from bot.handlers.fishing import router as fishing_router
 
 load_dotenv()
 
@@ -124,6 +125,7 @@ async def main():
     dp.include_router(library_router)
     dp.include_router(locations_router)
     dp.include_router(park_router)
+    dp.include_router(fishing_router)
 
     logger.info("Хендлеры зарегистрированы")
 
