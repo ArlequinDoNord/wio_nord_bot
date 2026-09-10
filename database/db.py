@@ -390,6 +390,18 @@ async def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS fish_catches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            item_id INTEGER NOT NULL,
+            weight INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            sold_at TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id),
+            FOREIGN KEY (item_id) REFERENCES items(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_fish_catches_user ON fish_catches(user_id, sold_at);
+
         CREATE TABLE IF NOT EXISTS statuses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -2289,6 +2301,59 @@ async def delete_park_statue(statue_id: int):
     await conn.commit()
 
 
+# ============ УЛОВ (рыбалка): рыба с весом ============
+
+async def add_fish_catch(user_id: int, item_id: int, weight: int = 1) -> int:
+    """Записывает пойманную рыбу с весом (отдельный экземпляр)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "INSERT INTO fish_catches (user_id, item_id, weight) VALUES (?, ?, ?)",
+        (user_id, item_id, weight)
+    )
+    await conn.commit()
+    return cursor.lastrowid
+
+
+async def get_fish_catches(user_id: int):
+    """Все непроданные уловы игрока вместе с данными предмета."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT fc.id, fc.user_id, fc.item_id, fc.weight, fc.created_at,
+               i.name, i.sell_price, i.rarity, i.description
+        FROM fish_catches fc
+        JOIN items i ON i.id = fc.item_id
+        WHERE fc.user_id = ? AND fc.sold_at IS NULL
+        ORDER BY fc.id
+    """, (user_id,))
+    return await cursor.fetchall()
+
+
+async def get_fish_catch(catch_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT fc.*, i.name, i.sell_price, i.rarity
+        FROM fish_catches fc JOIN items i ON i.id = fc.item_id
+        WHERE fc.id = ?
+    """, (catch_id,))
+    return await cursor.fetchone()
+
+
+async def sell_one_fish_catch(user_id: int, item_id: int, weight: int) -> bool:
+    """Списывает один непроданный улов рыбы с данным весом. True — если был."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id FROM fish_catches WHERE user_id = ? AND item_id = ? AND weight = ? "
+        "AND sold_at IS NULL ORDER BY id LIMIT 1",
+        (user_id, item_id, weight)
+    )
+    row = await cursor.fetchone()
+    if not row:
+        return False
+    await conn.execute("DELETE FROM fish_catches WHERE id = ?", (row['id'],))
+    await conn.commit()
+    return True
+
+
 # ============ СИД: ТЕСТОВЫЕ ТОВАРЫ ============
 
 DEFAULT_ITEMS = [
@@ -2732,13 +2797,14 @@ async def ensure_dungeon_shop_items():
         if (await cursor.fetchone())['c'] == 0:
             await add_item(
                 name=fname, description=fdesc, price=fsell * 2, sell_price=fsell, rarity=frarity,
-                category="fishing", stock=0, added_by=0, ap_cost=0, damage=0, heal=0,
+                category="fishing", stock=-1, added_by=0, ap_cost=0, damage=0, heal=0,
             )
             added = True
 
-    # Рыба и лапка — на рынке появляются только когда игрок продаёт их из инвентаря,
-    # как трофеи данжа. Удочка и черви — обычные товары магазина.
-    await conn.execute("UPDATE items SET is_available = 0, stock = 0 WHERE name IN "
+    # Рыба — только из рыбалки, в магазин не попадает (stock=-1 безлимит, но
+    # is_available=0). Лапка — трофей: появляется на рынке после продажи, как и
+    # остальные трофеи данжа.
+    await conn.execute("UPDATE items SET is_available = 0 WHERE name IN "
                        "('Сиг','Муксун','Чир','Налим','Лапка кристального паука')")
 
     cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", ("Контракт на зачистку",))

@@ -128,3 +128,17 @@ def item_local_photo(name: str):
     if path and os.path.isfile(path):
         return path
     return None
+
+
+def fish_weight_tier(weight: int) -> dict:
+    """Параметры веса улова по индексу в БД (1=Мелкая, 2=Средняя, 3=Большая)."""
+    from config import FISH_WEIGHTS
+    tiers = FISH_WEIGHTS
+    i = max(1, min(int(weight), len(tiers))) - 1
+    return tiers[i]
+
+
+def fish_sell_price(base_price: int, weight: int) -> int:
+    """Цена продажи рыбы с учётом веса."""
+    tier = fish_weight_tier(weight)
+    return round(base_price * tier['mult'])

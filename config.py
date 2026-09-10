@@ -8,7 +8,7 @@ load_dotenv()
 # - MINOR (x.1.x): новая функциональность (обратно совместимая)
 # - MAJOR (1.x.x): крупные ломающие изменения (до 1.0 — на усмотрение)
 # Стартуем с 0.1.0 (нестабильная фаза).
-VERSION = "0.4.16"
+VERSION = "0.4.17"
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
@@ -81,6 +81,15 @@ AP_EXHAUSTED_MAX_AP = 90             # максимум ОД в «истощен
 
 # Рыбалка
 FISH_AP_COST = 3                     # стоимость одного заброса удочки
+
+# Вес улова: от него зависит цена продажи (множитель к базовой цене).
+# Разница между «Мелкой» и «Большой» — 30% стоимости. key хранится в БД как
+# индекс +1 (small=1, medium=2, large=3).
+FISH_WEIGHTS = [
+    {"key": "small",  "label": "Мелкая",  "mult": 1.00, "chance": 40},
+    {"key": "medium", "label": "Средняя", "mult": 1.15, "chance": 40},
+    {"key": "large",  "label": "Большая", "mult": 1.30, "chance": 20},
+]
 
 REPORT_DAILY_LIMIT = 3
 REPORT_AUTO_APPROVE_TROOPS = 100

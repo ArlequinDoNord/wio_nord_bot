@@ -16,10 +16,10 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.db import (
     get_item_by_name, get_inventory_item, remove_inventory_item,
-    add_inventory_item, get_user, update_user, remove_ap, log_activity,
+    add_fish_catch, get_user, update_user, remove_ap, log_activity,
 )
-from utils.helpers import resolve_image, time_of_day_key, edit_message_safe, plural_nordmark, item_local_photo
-from config import FISH_AP_COST
+from utils.helpers import resolve_image, time_of_day_key, edit_message_safe, plural_nordmark, item_local_photo, fish_weight_tier, fish_sell_price
+from config import FISH_AP_COST, FISH_WEIGHTS
 
 router = Router()
 
@@ -111,6 +111,18 @@ def _pick_fish() -> str:
         if r < acc:
             return name
     return pool[-1][0]
+
+
+def _roll_fish_weight() -> int:
+    """Случайный вес улова (индекс в FISH_WEIGHTS: 1=мелкая..3=большая)."""
+    total = sum(t['chance'] for t in FISH_WEIGHTS)
+    r = random.random() * total
+    acc = 0
+    for idx, tier in enumerate(FISH_WEIGHTS, 1):
+        acc += tier['chance']
+        if r < acc:
+            return idx
+    return len(FISH_WEIGHTS)
 
 
 async def _bait_label(user_id: int, chosen: str):
@@ -300,14 +312,17 @@ async def fish_cast(callback: CallbackQuery):
             fish_name = _pick_fish()
             fish_item = await get_item_by_name(fish_name)
             if fish_item:
-                await add_inventory_item(user_id, fish_item['id'], 1)
-                await log_activity(user_id, "fishing", f"Поймал «{fish_name}»")
+                weight_idx = _roll_fish_weight()
+                tier = fish_weight_tier(weight_idx)
+                sell = fish_sell_price(fish_item['sell_price'], weight_idx)
+                await add_fish_catch(user_id, fish_item['id'], weight_idx)
+                await log_activity(user_id, "fishing", f"Поймал «{fish_name}» ({tier['label']})")
                 text = (
                     f"{FISH_EMOJI.get(fish_name, '🐟')} РЫБАЛКА\n\n"
                     f"Поплавок дёрнулся — поклёвка!\n"
-                    f"Ты поймал: «{fish_name}»!\n\n"
-                    f"🎒 {fish_name} отправлен в инвентарь.\n"
-                    f"Продать можно за {fish_item['sell_price']} {plural_nordmark(fish_item['sell_price'])}."
+                    f"Ты поймал: «{fish_name}» — {tier['label'].lower()}!\n\n"
+                    f"🎒 Улов отправлен в инвентарь.\n"
+                    f"Вес влияет на цену: продажа за {sell} {plural_nordmark(sell)}."
                 )
                 local_photo = item_local_photo(fish_name)
                 if local_photo:

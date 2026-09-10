@@ -10,8 +10,12 @@ from database.db import (
     add_nordmarks, get_user, get_inventory_item, get_all_users,
     add_inventory_item, update_item, get_db,
     get_equipment, set_equipment_slot, clear_equipment_slot, log_activity,
+    get_fish_catches, sell_one_fish_catch,
 )
-from utils.helpers import rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text, item_local_photo
+from utils.helpers import (
+    rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text,
+    item_local_photo, fish_weight_tier, fish_sell_price,
+)
 
 router = Router()
 
@@ -32,7 +36,19 @@ async def find_user(text: str):
     return None
 
 
-def inv_list_markup(items):
+def _fish_groups(catches):
+    """Уловы рыбы, сгруппированные по (предмет, вес) с подсчётом."""
+    from collections import OrderedDict
+    groups = OrderedDict()
+    for c in catches:
+        key = (c['item_id'], c['weight'])
+        if key not in groups:
+            groups[key] = {"count": 0, "name": c['name'], "rarity": c['rarity']}
+        groups[key]["count"] += 1
+    return groups
+
+
+def inv_list_markup(items, catches=None):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = []
     for it in items:
@@ -40,6 +56,14 @@ def inv_list_markup(items):
         buttons.append([InlineKeyboardButton(
             text=f"{emoji} {it['name']} x{it['quantity']}",
             callback_data=f"invitem:{it['id']}"
+        )])
+    for key, g in _fish_groups(catches or []).items():
+        item_id, weight = key
+        tier = fish_weight_tier(weight)
+        emoji = rarity_emoji(g['rarity'])
+        buttons.append([InlineKeyboardButton(
+            text=f"{emoji} {g['name']} — {tier['label']} x{g['count']}",
+            callback_data=f"fishcatch:{item_id}:{weight}"
         )])
     buttons.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -76,12 +100,13 @@ def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equip
 @router.message(F.text == "Инвентарь")
 async def inventory_menu(message: Message):
     items = await get_inventory(message.from_user.id)
-    if not items:
+    catches = await get_fish_catches(message.from_user.id)
+    if not items and not catches:
         await message.answer("Твой инвентарь пуст.")
         return
     await message.answer(
         "🎒 ИНВЕНТАРЬ\n\nВыбери предмет:",
-        reply_markup=inv_list_markup(items)
+        reply_markup=inv_list_markup(items, catches)
     )
 
 
@@ -89,11 +114,12 @@ async def inventory_menu(message: Message):
 async def inventory_list_cb(callback: CallbackQuery):
     await callback.answer()
     items = await get_inventory(callback.from_user.id)
-    if not items:
+    catches = await get_fish_catches(callback.from_user.id)
+    if not items and not catches:
         await callback.message.edit_text("Твой инвентарь пуст.", reply_markup=None)
         return
     await callback.message.edit_text("🎒 ИНВЕНТАРЬ\n\nВыбери предмет:",
-                                     reply_markup=inv_list_markup(items))
+                                     reply_markup=inv_list_markup(items, catches))
 
 
 @router.callback_query(F.data.startswith("invitem:"))
@@ -284,6 +310,84 @@ async def inv_sell(callback: CallbackQuery):
     await callback.message.answer(
         f"💵 Ты продал {item['name']} за {item['sell_price']} {plural_nordmark(item['sell_price'])}!"
     )
+
+
+@router.callback_query(F.data.startswith("fishcatch:"))
+async def fish_catch_view(callback: CallbackQuery):
+    await callback.answer()
+    _, item_id_s, weight_s = callback.data.split(":")
+    await _show_fish_catch(callback.message, callback.from_user.id,
+                           int(item_id_s), int(weight_s))
+
+
+async def _show_fish_catch(message, user_id: int, item_id: int, weight: int):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    item = await get_item(item_id)
+    if not item:
+        await message.edit_text("Рыба не найдена.", reply_markup=None)
+        return
+    catches = await get_fish_catches(user_id)
+    count = sum(1 for c in catches if c['item_id'] == item_id and c['weight'] == weight)
+    if count < 1:
+        await message.edit_text("Такой рыбы у тебя больше нет.", reply_markup=None)
+        return
+
+    tier = fish_weight_tier(weight)
+    sell = fish_sell_price(item['sell_price'], weight)
+    sell_text = f"{sell} {plural_nordmark(sell)}"
+    text = (
+        f"{rarity_emoji(item['rarity'])} {item['name']} {rarity_emoji(item['rarity'])}\n"
+        f"Редкость: {rarity_label(item['rarity'])}\n\n"
+        f"⚖️ Вес: {tier['label']}\n"
+        f"В наличии: {count} шт.\n\n"
+        f"{item['description']}\n\n"
+        f"💵 Цена продажи (с учётом веса): {sell_text}"
+    )
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"💵 Продать одну (за {sell_text})",
+                              callback_data=f"fishsell:{item_id}:{weight}")],
+        [InlineKeyboardButton(text="🔙 В инвентарь", callback_data="inventory:list")],
+    ])
+
+    photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
+    local_photo = None if photo_id else item_local_photo(item['name'])
+    if photo_id or local_photo:
+        media = photo_id or FSInputFile(local_photo)
+        from aiogram.types import InputMediaPhoto
+        try:
+            if message.photo:
+                await message.edit_media(media=InputMediaPhoto(media=media, caption=text),
+                                         reply_markup=markup)
+            else:
+                await message.delete()
+                await message.answer_photo(photo=media, caption=text, reply_markup=markup)
+        except Exception:
+            await message.answer_photo(photo=media, caption=text, reply_markup=markup)
+    else:
+        await message.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("fishsell:"))
+async def fish_sell(callback: CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    _, item_id_s, weight_s = callback.data.split(":")
+    item_id, weight = int(item_id_s), int(weight_s)
+    item = await get_item(item_id)
+    if not item:
+        return
+    ok = await sell_one_fish_catch(user_id, item_id, weight)
+    if not ok:
+        await callback.message.answer("❌ Такого улова уже нет.")
+        return
+    sell = fish_sell_price(item['sell_price'], weight)
+    await add_nordmarks(user_id, sell, "shop_sale", f"Продажа: {item['name']}")
+    await log_activity(user_id, "shop_sale", f"Продал «{item['name']}» за {sell} НМ")
+    await callback.message.answer(
+        f"💵 Ты продал {item['name']} за {sell} {plural_nordmark(sell)}!"
+    )
+    # Обновляем карточку (или показываем, что рыбы не осталось)
+    await _show_fish_catch(callback.message, user_id, item_id, weight)
 
 
 @router.callback_query(F.data.startswith("inv_transfer:"))
