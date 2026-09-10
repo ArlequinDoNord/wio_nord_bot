@@ -16,9 +16,10 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.db import (
     get_item_by_name, get_inventory_item, remove_inventory_item,
-    add_fish_catch, get_user, update_user, remove_ap, log_activity,
+    add_fish_catch, add_inventory_item, get_user, update_user,
+    remove_ap, log_activity,
 )
-from utils.helpers import resolve_image, time_of_day_key, edit_message_safe, edit_or_replace, plural_nordmark, item_local_photo, fish_weight_tier, fish_sell_price
+from utils.helpers import resolve_image, time_of_day_key, plural_nordmark, item_local_photo, fish_weight_tier, fish_sell_price
 from config import FISH_AP_COST, FISH_WEIGHTS
 
 router = Router()
@@ -26,6 +27,8 @@ router = Router()
 ROD_NAME = "Удочка из орешника"
 WORMS_NAME = "Черви"
 SPIDER_LEG_NAME = "Лапка кристального паука"
+SEAWEED_NAME = "Кусочек водорослей"
+BOOT_NAME = "Старый сапог"
 LAKE_PHOTO = "city/lake"
 
 # Пользователи, чей заброс ещё не завершён (защита от повторного клика)
@@ -48,12 +51,73 @@ FISH_EMOJI = {
 FISH_POOL_DAY = [("Сиг", 65), ("Муксун", 25), ("Чир", 10)]
 FISH_POOL_NIGHT = [("Сиг", 63), ("Муксун", 23), ("Чир", 9), ("Налим", 5)]
 
+# Без наживки рыба не клюёт: с дна достаются только мусорные находки.
+JUNK_SEAWEED_CHANCE = 15   # кусочек водорослей (крафт энергетиков)
+JUNK_BOOT_CHANCE = 2       # старый сапог (продажа за 15 НМ)
 
-def _lake_photo() -> FSInputFile:
+
+def _pick_junk():
+    """Случайная находка со дна без наживки: None — ничего."""
+    r = random.random() * 100
+    if r < JUNK_BOOT_CHANCE:
+        return BOOT_NAME
+    if r < JUNK_BOOT_CHANCE + JUNK_SEAWEED_CHANCE:
+        return SEAWEED_NAME
+    return None
+
+
+def _lake_path() -> str:
     path = resolve_image(LAKE_PHOTO)
     if not os.path.isfile(path):
         path = resolve_image("city/park")
-    return FSInputFile(path)
+    return path
+
+
+# Отслеживаемое сообщение окна рыбалки: user_id -> (chat_id, message_id).
+# Все отрисовки переиспользуют одно сообщение, чтобы не копились старые
+# кнопки «Забросить/Ещё раз», которые можно спамить.
+FISH_MSG: dict = {}
+
+
+async def _paint(callback, *, text: str = None, media_path: str = None, kb=None):
+    """Единая отрисовка окна рыбалки в одном сообщении на игрока.
+
+    media_path — локальный файл фото (озеро/рыба); иначе обычный текст.
+    Если сообщение не удаётся отредактировать (другой тип медиа / удалено),
+    создаём новое и запоминаем его, старое — удаляем.
+    """
+    bot = callback.message.bot
+    chat_id = callback.message.chat.id
+    user_id = callback.from_user.id
+    entry = FISH_MSG.get(user_id)
+    target_id = entry[1] if entry and entry[0] == chat_id else None
+
+    if target_id is not None:
+        try:
+            if media_path:
+                from aiogram.types import InputMediaPhoto
+                await bot.edit_message_media(
+                    chat_id, target_id,
+                    media=InputMediaPhoto(media=FSInputFile(media_path), caption=text),
+                    reply_markup=kb,
+                )
+            else:
+                await bot.edit_message_text(chat_id, target_id, text=text, reply_markup=kb)
+            return
+        except Exception:
+            pass
+
+    # Не получилось отредактировать: убираем старую версию и шлём новую.
+    if target_id is not None and target_id != callback.message.message_id:
+        try:
+            await bot.delete_message(chat_id, target_id)
+        except Exception:
+            pass
+    if media_path:
+        sent = await bot.send_photo(chat_id, FSInputFile(media_path), caption=text, reply_markup=kb)
+    else:
+        sent = await bot.send_message(chat_id, text, reply_markup=kb)
+    FISH_MSG[user_id] = (chat_id, sent.message_id)
 
 
 async def _rod_for(user_id: int):
@@ -190,7 +254,11 @@ async def fishing_lake_menu(callback: CallbackQuery):
         bait_line = f"🪱 Наживка: {bait_label}"
         chance_line = f"⚡ Шанс улова: {chance}%"
         if not bait_name:
-            chance_line += " (без наживки)"
+            chance_line = (
+                f"⚡ Без наживки рыба НЕ клюёт.\n"
+                f"Со дна можно выловить только мусор: водоросли {JUNK_SEAWEED_CHANCE}%, "
+                f"старый сапог {JUNK_BOOT_CHANCE}%."
+            )
     else:
         rod_line = "🎣 Удочка: нет — купи «Удочка из орешника» (магазин → Рыбалка)"
         bait_line = "🪱 Наживка: нужна удочка"
@@ -205,20 +273,7 @@ async def fishing_lake_menu(callback: CallbackQuery):
         f"{chance_line}\n\n"
         f"Заброс стоит {FISH_AP_COST} ОД, результат через 7–15 секунд."
     )
-    await _show_lake(callback.message, caption, _lake_markup())
-
-
-async def _show_lake(message, caption: str, kb):
-    if message.photo:
-        try:
-            from aiogram.types import InputMediaPhoto
-            await message.edit_media(
-                media=InputMediaPhoto(media=_lake_photo(), caption=caption), reply_markup=kb
-            )
-            return
-        except Exception:
-            pass
-    await message.answer_photo(photo=_lake_photo(), caption=caption, reply_markup=kb)
+    await _paint(callback, text=caption, media_path=_lake_path(), kb=_lake_markup())
 
 
 @router.callback_query(F.data == "fish:lake")
@@ -252,9 +307,11 @@ async def fish_bait_menu(callback: CallbackQuery):
         "🪱 НАЖИВКА\n\n"
         f"Сейчас: {selected or chosen}\n"
         "Наживка расходуется при каждом забросе.\n"
-        "«Авто»: сначала черви, при их отсутствии — лапка."
+        "«Авто»: сначала черви, при их отсутствии — лапка.\n\n"
+        f"⚠️ Без наживки рыба не клюёт: со дна только мусор "
+        f"(водоросли {JUNK_SEAWEED_CHANCE}%, сапог {JUNK_BOOT_CHANCE}%)."
     )
-    await edit_message_safe(callback.message, text, _bait_markup(callback.from_user.id, chosen, worms_qty, spider_qty))
+    await _paint(callback, text=text, kb=_bait_markup(callback.from_user.id, chosen, worms_qty, spider_qty))
 
 
 @router.callback_query(F.data.startswith("fish:bait:set:"))
@@ -279,18 +336,18 @@ async def fish_cast(callback: CallbackQuery):
 
     rod = await _rod_for(user_id)
     if not rod:
-        await edit_message_safe(
-            callback.message,
-            "❌ У тебя нет удочки. Купи «Удочка из орешника» в магазине (категория «Рыбалка»).",
-            _lake_markup(),
+        await _paint(
+            callback,
+            text="❌ У тебя нет удочки. Купи «Удочка из орешника» в магазине (категория «Рыбалка»).",
+            kb=_lake_markup(),
         )
         return
 
     if not await remove_ap(user_id, FISH_AP_COST):
-        await edit_message_safe(
-            callback.message,
-            f"❌ Не хватает ОД: нужно {FISH_AP_COST}, доступно меньше. Восстановление — в новые сутки.",
-            _lake_markup(),
+        await _paint(
+            callback,
+            text=f"❌ Не хватает ОД: нужно {FISH_AP_COST}, доступно меньше. Восстановление — в новые сутки.",
+            kb=_lake_markup(),
         )
         return
 
@@ -310,67 +367,70 @@ async def fish_cast(callback: CallbackQuery):
             f"🎣 Ты забросил удочку{bait_part}...\n"
             f"Результат через {delay} секунд. Наберись терпения!"
         )
-        try:
-            from aiogram.types import InputMediaPhoto
-            if callback.message.photo:
-                await callback.message.edit_media(
-                    media=InputMediaPhoto(media=_lake_photo(), caption=cast_text),
-                    reply_markup=None,
-                )
-            else:
-                await callback.message.answer_photo(
-                    photo=_lake_photo(), caption=cast_text, reply_markup=None,
-                )
-        except Exception:
-            pass
+        await _paint(callback, text=cast_text, media_path=_lake_path(), kb=None)
         await log_activity(user_id, "fishing",
                            f"Заброс: наживка={'—' if not bait_name else bait_name}, шанс {chance}%")
         await asyncio.sleep(delay)
-        if random.random() * 100 < chance:
-            fish_name = _pick_fish()
-            fish_item = await get_item_by_name(fish_name)
-            if fish_item:
-                weight_idx = _roll_fish_weight()
-                tier = fish_weight_tier(weight_idx)
-                sell = fish_sell_price(fish_item['sell_price'], weight_idx)
-                await add_fish_catch(user_id, fish_item['id'], weight_idx)
-                await log_activity(user_id, "fishing", f"Поймал «{fish_name}» ({tier['label']})")
-                text = (
-                    f"{FISH_EMOJI.get(fish_name, '🐟')} РЫБАЛКА\n\n"
-                    f"Поплавок дёрнулся — поклёвка!\n"
-                    f"Ты поймал: «{fish_name}» — {tier['label'].lower()}!\n\n"
-                    f"🎒 Улов отправлен в инвентарь.\n"
-                    f"Вес влияет на цену: продажа за {sell} {plural_nordmark(sell)}."
-                )
-                local_photo = item_local_photo(fish_name)
-                if local_photo:
-                    from aiogram.types import InputMediaPhoto
-                    try:
-                        if callback.message.photo:
-                            await callback.message.edit_media(
-                                media=InputMediaPhoto(media=FSInputFile(local_photo), caption=text),
-                                reply_markup=_result_markup(),
-                            )
-                        else:
-                            await callback.message.delete()
-                            await callback.message.answer_photo(
-                                photo=FSInputFile(local_photo), caption=text,
-                                reply_markup=_result_markup(),
-                            )
+
+        if bait_name:
+            # С наживкой — рыбалка как раньше.
+            caught = random.random() * 100 < chance
+            if caught:
+                fish_name = _pick_fish()
+                fish_item = await get_item_by_name(fish_name)
+                if fish_item:
+                    weight_idx = _roll_fish_weight()
+                    tier = fish_weight_tier(weight_idx)
+                    sell = fish_sell_price(fish_item['sell_price'], weight_idx)
+                    await add_fish_catch(user_id, fish_item['id'], weight_idx)
+                    await log_activity(user_id, "fishing", f"Поймал «{fish_name}» ({tier['label']})")
+                    text = (
+                        f"{FISH_EMOJI.get(fish_name, '🐟')} РЫБАЛКА\n\n"
+                        f"Поплавок дёрнулся — поклёвка!\n"
+                        f"Ты поймал: «{fish_name}» — {tier['label'].lower()}!\n\n"
+                        f"🎒 Улов отправлен в инвентарь.\n"
+                        f"Вес влияет на цену: продажа за {sell} {plural_nordmark(sell)}."
+                    )
+                    local_photo = item_local_photo(fish_name)
+                    if local_photo:
+                        await _paint(callback, text=text, media_path=local_photo, kb=_result_markup())
                         return
-                    except Exception:
-                        pass
+                else:
+                    text = "🎣 Рыбалка\n\n🐟 Что-то поймал, но предмет потерялся. Сообщи хранителю."
             else:
-                text = "🎣 Рыбалка\n\n🐟 Что-то поймал, но предмет потерялся. Сообщи хранителю."
+                text = (
+                    "🎣 РЫБАЛКА\n\n"
+                    "Поплавок дёрнулся, ты подсекаешь... и вдруг пусто.\n"
+                    "Сорвалось. Но рыба никуда не денется — пробуй ещё!"
+                )
         else:
-            text = (
-                "🎣 РЫБАЛКА\n\n"
-                "Поплавок дёрнулся, ты подсекаешь... и вдруг пусто.\n"
-                "Сорвалось. Но рыба никуда не денется — пробуй ещё!"
-            )
-        try:
-            await edit_or_replace(callback.message, text, _result_markup())
-        except Exception:
-            pass
+            # Без наживки рыба не клюёт — из дна достаётся только мусор.
+            junk_name = _pick_junk()
+            if junk_name:
+                junk_item = await get_item_by_name(junk_name)
+                if junk_item:
+                    await add_inventory_item(user_id, junk_item['id'], 1)
+                    await log_activity(user_id, "fishing", f"Выловил «{junk_name}»")
+                    sell_line = ""
+                    if junk_item['sell_price'] > 0:
+                        sell_line = (
+                            f"\nПродать можно за {junk_item['sell_price']} "
+                            f"{plural_nordmark(junk_item['sell_price'])}."
+                        )
+                    text = (
+                        f"🎣 РЫБАЛКА\n\n"
+                        f"Поплавок дёрнулся, ты подсекаешь...\n"
+                        f"Из воды появляется: «{junk_name}»!\n\n"
+                        f"🎒 Предмет отправлен в инвентарь.{sell_line}"
+                    )
+                else:
+                    text = "🎣 Рыбалка\n\n🐟 Что-то выловил, но предмет потерялся. Сообщи хранителю."
+            else:
+                text = (
+                    "🎣 РЫБАЛКА\n\n"
+                    "Поплавок даже не дрогнул. Без наживки рыба не клюёт — "
+                    "с дна достаётся только мусор. Попробуй с наживкой!"
+                )
+        await _paint(callback, text=text, kb=_result_markup())
     finally:
         FISHING_CASTING.discard(user_id)

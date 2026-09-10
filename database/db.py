@@ -2801,11 +2801,28 @@ async def ensure_dungeon_shop_items():
             )
             added = True
 
+    # Мусор со дна озера (без наживки): водоросли — крафт энергетиков,
+    # появляются в магазине, когда их продаёт пилот (рыночный товар: stock=0);
+    # сапог — продажа за 15 НМ, в магазин не попадает.
+    for (jname, jdesc, jprice, jsell, jstock) in (
+            ("Кусочек водорослей", "Сырьё для будущих энергетиков. Улов без наживки.", 5, 3, 0),
+            ("Старый сапог", "Проржавевший сапог со дна паркового озера. Продаётся за гроши.", 0, 15, -1),
+    ):
+        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (jname,))
+        if (await cursor.fetchone())['c'] == 0:
+            await add_item(
+                name=jname, description=jdesc, price=jprice, sell_price=jsell, rarity=1,
+                category="resource", stock=jstock, added_by=0, ap_cost=0, damage=0, heal=0,
+            )
+            added = True
+
     # Рыба — только из рыбалки, в магазин не попадает (stock=-1 безлимит, но
-    # is_available=0). Лапка — трофей: появляется на рынке после продажи, как и
-    # остальные трофеи данжа.
+    # is_available=0). Лапка и водоросли — трофей: появляются на рынке после
+    # продажи игроком (is_available поднимается в inv_sell). Сапог — безлимит,
+    # в магазине не нужен.
     await conn.execute("UPDATE items SET is_available = 0 WHERE name IN "
-                       "('Сиг','Муксун','Чир','Налим','Лапка кристального паука')")
+                       "('Сиг','Муксун','Чир','Налим','Лапка кристального паука',"
+                       "'Кусочек водорослей','Старый сапог')")
 
     cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", ("Контракт на зачистку",))
     if (await cursor.fetchone())['c'] == 0:

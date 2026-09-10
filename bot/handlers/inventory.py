@@ -70,7 +70,7 @@ def inv_list_markup(items, catches=None):
 
 
 def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equipped: bool = False,
-                    equip_slot: str = None, potion_slots: list = None):
+                    equip_slot: str = None, potion_slots: list = None, sellable: bool = True):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = []
     if can_use:
@@ -91,7 +91,8 @@ def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equip
             buttons.append([InlineKeyboardButton(text="✖️ Снять с себя", callback_data=f"inv_unequip:{item_id}")])
         else:
             buttons.append([InlineKeyboardButton(text="⚔️ Экипировать", callback_data=f"inv_equip:{item_id}")])
-    buttons.append([InlineKeyboardButton(text="💵 Продать", callback_data=f"inv_sell:{item_id}")])
+    if sellable:
+        buttons.append([InlineKeyboardButton(text="💵 Продать", callback_data=f"inv_sell:{item_id}")])
     buttons.append([InlineKeyboardButton(text="📤 Передать", callback_data=f"inv_transfer:{item_id}")])
     buttons.append([InlineKeyboardButton(text="🔙 В инвентарь", callback_data="inventory:list")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -175,7 +176,8 @@ async def inv_item_view(callback: CallbackQuery):
     can_use = item['category'] == "consumable" and not (item['heal'] or 0)
     markup = inv_item_markup(item_id, item['category'], can_use=can_use,
                              is_equipped=is_equipped, equip_slot=equip_slot,
-                             potion_slots=potion_slots)
+                             potion_slots=potion_slots,
+                             sellable=(item['sell_price'] or 0) > 0)
 
     photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
     local_photo = None if photo_id else item_local_photo(item['name'])
