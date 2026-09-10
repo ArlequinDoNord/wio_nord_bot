@@ -8,7 +8,7 @@ from aiogram.fsm.state import State, StatesGroup
 from database.db import (
     get_inventory, get_item, process_item_use, remove_inventory_item,
     add_nordmarks, get_user, get_inventory_item, get_all_users,
-    add_inventory_item,
+    add_inventory_item, update_item, get_db,
     get_equipment, set_equipment_slot, clear_equipment_slot, log_activity,
 )
 from utils.helpers import rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text
@@ -270,6 +270,15 @@ async def inv_sell(callback: CallbackQuery):
     await remove_inventory_item(user_id, item_id, 1)
     await add_nordmarks(user_id, item['sell_price'], "shop_sale", f"Продажа: {item['name']}")
     await log_activity(user_id, "shop_sale", f"Продал «{item['name']}» за {item['sell_price']} НМ")
+
+    # Маркетплейс: товар с ограниченным остатком (не -1 «безлимит») после продажи игроком
+    # возвращается в магазин — сколько продали, столько и появилось к покупке.
+    if item['stock'] != -1:
+        await update_item(item_id, is_available=1)
+        db = await get_db()
+        await db.execute("UPDATE items SET stock = stock + 1 WHERE id = ?", (item_id,))
+        await db.commit()
+
     await callback.message.answer(
         f"💵 Ты продал {item['name']} за {item['sell_price']} {plural_nordmark(item['sell_price'])}!"
     )
