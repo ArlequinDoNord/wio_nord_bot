@@ -35,6 +35,19 @@ async def edit_message_safe(message, text: str, reply_markup=None):
     else:
         await message.edit_text(text, reply_markup=reply_markup)
 
+
+async def edit_or_replace(message, text: str, markup=None):
+    """Возврат к текстовому меню из фото-карточки: фото-сообщение нельзя
+    превратить в текстовое через edit_text, поэтому удаляем его и шлём новое."""
+    if getattr(message, 'photo', None):
+        try:
+            await message.delete()
+        except Exception:
+            pass
+        await message.answer(text, reply_markup=markup)
+        return
+    await message.edit_text(text, reply_markup=markup)
+
 # Периоды времени суток (по московскому времени):
 DAWN = (8, 0, 8, 10)    # рассвет: 08:00–08:10
 SUNSET = (19, 0, 19, 10)  # закат: 19:00–19:10

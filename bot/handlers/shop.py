@@ -13,7 +13,7 @@ from database.db import (
 from keyboards.keyboards import (
     shop_catalog_keyboard, item_card_keyboard,
 )
-from utils.helpers import rarity_emoji, rarity_label, plural_nordmark, item_local_photo
+from utils.helpers import rarity_emoji, rarity_label, plural_nordmark, item_local_photo, edit_or_replace
 from config import ITEM_CATEGORIES
 
 router = Router()
@@ -95,9 +95,10 @@ async def shop_catalog(callback: CallbackQuery):
         if it['category'] in counts:
             counts[it['category']] += 1
     counts = {k: v for k, v in counts.items() if v > 0}
-    await callback.message.edit_text(
+    await edit_or_replace(
+        callback.message,
         "🛒 Каталог — выбери категорию:",
-        reply_markup=shop_catalog_keyboard(counts)
+        shop_catalog_keyboard(counts)
     )
 
 
@@ -163,7 +164,7 @@ async def shop_item_view(callback: CallbackQuery):
     item_id = int(callback.data.split(":")[1])
     item = await get_item(item_id)
     if not item:
-        await callback.message.edit_text("Товар не найден.", reply_markup=None)
+        await edit_or_replace(callback.message, "Товар не найден.", None)
         return
 
     header = (

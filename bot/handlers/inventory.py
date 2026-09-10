@@ -14,7 +14,7 @@ from database.db import (
 )
 from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text,
-    item_local_photo, fish_weight_tier, fish_sell_price,
+    item_local_photo, fish_weight_tier, fish_sell_price, edit_or_replace,
 )
 
 router = Router()
@@ -116,10 +116,13 @@ async def inventory_list_cb(callback: CallbackQuery):
     items = await get_inventory(callback.from_user.id)
     catches = await get_fish_catches(callback.from_user.id)
     if not items and not catches:
-        await callback.message.edit_text("Твой инвентарь пуст.", reply_markup=None)
+        await edit_or_replace(callback.message, "Твой инвентарь пуст.", None)
         return
-    await callback.message.edit_text("🎒 ИНВЕНТАРЬ\n\nВыбери предмет:",
-                                     reply_markup=inv_list_markup(items, catches))
+    await edit_or_replace(
+        callback.message,
+        "🎒 ИНВЕНТАРЬ\n\nВыбери предмет:",
+        inv_list_markup(items, catches)
+    )
 
 
 @router.callback_query(F.data.startswith("invitem:"))
@@ -129,7 +132,7 @@ async def inv_item_view(callback: CallbackQuery):
     item = await get_item(item_id)
     inv = await get_inventory_item(callback.from_user.id, item_id)
     if not item or not inv:
-        await callback.message.edit_text("Предмет не найден.", reply_markup=None)
+        await edit_or_replace(callback.message, "Предмет не найден.", None)
         return
 
     eq = await get_equipment(callback.from_user.id)
@@ -324,12 +327,12 @@ async def _show_fish_catch(message, user_id: int, item_id: int, weight: int):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     item = await get_item(item_id)
     if not item:
-        await message.edit_text("Рыба не найдена.", reply_markup=None)
+        await edit_or_replace(message, "Рыба не найдена.", None)
         return
     catches = await get_fish_catches(user_id)
     count = sum(1 for c in catches if c['item_id'] == item_id and c['weight'] == weight)
     if count < 1:
-        await message.edit_text("Такой рыбы у тебя больше нет.", reply_markup=None)
+        await edit_or_replace(message, "Такой рыбы у тебя больше нет.", None)
         return
 
     tier = fish_weight_tier(weight)

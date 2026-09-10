@@ -18,7 +18,7 @@ from database.db import (
     get_item_by_name, get_inventory_item, remove_inventory_item,
     add_fish_catch, get_user, update_user, remove_ap, log_activity,
 )
-from utils.helpers import resolve_image, time_of_day_key, edit_message_safe, plural_nordmark, item_local_photo, fish_weight_tier, fish_sell_price
+from utils.helpers import resolve_image, time_of_day_key, edit_message_safe, edit_or_replace, plural_nordmark, item_local_photo, fish_weight_tier, fish_sell_price
 from config import FISH_AP_COST, FISH_WEIGHTS
 
 router = Router()
@@ -235,7 +235,10 @@ async def fish_bait_menu(callback: CallbackQuery):
 
     worms = await get_item_by_name(WORMS_NAME)
     spider = await get_item_by_name(SPIDER_LEG_NAME)
-    worms_qty = (await get_inventory_item(callback.from_user.id, worms['id']))['quantity'] if worms else 0
+    worms_qty = 0
+    if worms:
+        w_inv = await get_inventory_item(callback.from_user.id, worms['id'])
+        worms_qty = w_inv['quantity'] if w_inv else 0
     spider_inv = await get_inventory_item(callback.from_user.id, spider['id']) if spider else None
     spider_qty = spider_inv['quantity'] if spider else 0
 
@@ -300,14 +303,29 @@ async def fish_cast(callback: CallbackQuery):
     try:
         delay = random.randint(7, 15)
         bait_part = f" с наживкой «{bait_name}»" if bait_name else " без наживки"
-        await edit_message_safe(
-            callback.message,
-            f"🎣 Ты забросил удочку{bait_part}...\nРезультат через {delay} секунд. Наберись терпения!",
-            None,
-        )
-        await asyncio.sleep(delay)
-
         chance = _catch_chance(rod, bait_name)
+        # Заброс всегда показываем на картинке озера (базовый ракурс),
+        # чтобы результат заметно менял картинку.
+        cast_text = (
+            f"🎣 Ты забросил удочку{bait_part}...\n"
+            f"Результат через {delay} секунд. Наберись терпения!"
+        )
+        try:
+            from aiogram.types import InputMediaPhoto
+            if callback.message.photo:
+                await callback.message.edit_media(
+                    media=InputMediaPhoto(media=_lake_photo(), caption=cast_text),
+                    reply_markup=None,
+                )
+            else:
+                await callback.message.answer_photo(
+                    photo=_lake_photo(), caption=cast_text, reply_markup=None,
+                )
+        except Exception:
+            pass
+        await log_activity(user_id, "fishing",
+                           f"Заброс: наживка={'—' if not bait_name else bait_name}, шанс {chance}%")
+        await asyncio.sleep(delay)
         if random.random() * 100 < chance:
             fish_name = _pick_fish()
             fish_item = await get_item_by_name(fish_name)
@@ -328,10 +346,17 @@ async def fish_cast(callback: CallbackQuery):
                 if local_photo:
                     from aiogram.types import InputMediaPhoto
                     try:
-                        await callback.message.edit_media(
-                            media=InputMediaPhoto(media=FSInputFile(local_photo), caption=text),
-                            reply_markup=_result_markup(),
-                        )
+                        if callback.message.photo:
+                            await callback.message.edit_media(
+                                media=InputMediaPhoto(media=FSInputFile(local_photo), caption=text),
+                                reply_markup=_result_markup(),
+                            )
+                        else:
+                            await callback.message.delete()
+                            await callback.message.answer_photo(
+                                photo=FSInputFile(local_photo), caption=text,
+                                reply_markup=_result_markup(),
+                            )
                         return
                     except Exception:
                         pass
@@ -344,7 +369,7 @@ async def fish_cast(callback: CallbackQuery):
                 "Сорвалось. Но рыба никуда не денется — пробуй ещё!"
             )
         try:
-            await edit_message_safe(callback.message, text, _result_markup())
+            await edit_or_replace(callback.message, text, _result_markup())
         except Exception:
             pass
     finally:
