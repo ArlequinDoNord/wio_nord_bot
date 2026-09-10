@@ -13,7 +13,7 @@ from database.db import (
 from keyboards.keyboards import (
     shop_catalog_keyboard, item_card_keyboard,
 )
-from utils.helpers import rarity_emoji, rarity_label, plural_nordmark
+from utils.helpers import rarity_emoji, rarity_label, plural_nordmark, item_local_photo
 from config import ITEM_CATEGORIES
 
 router = Router()
@@ -198,19 +198,21 @@ async def shop_item_view(callback: CallbackQuery):
 
     text = header + body
     photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
-    if photo_id:
-        from aiogram.types import InputMediaPhoto
+    local_photo = None if photo_id else item_local_photo(item['name'])
+    if photo_id or local_photo:
+        from aiogram.types import InputMediaPhoto, FSInputFile
+        media = photo_id or FSInputFile(local_photo)
         try:
             if callback.message.photo:
                 await callback.message.edit_media(
-                    media=InputMediaPhoto(media=photo_id, caption=text),
+                    media=InputMediaPhoto(media=media, caption=text),
                     reply_markup=markup
                 )
             else:
                 await callback.message.delete()
-                await callback.message.answer_photo(photo=photo_id, caption=text, reply_markup=markup)
+                await callback.message.answer_photo(photo=media, caption=text, reply_markup=markup)
         except Exception:
-            await callback.message.answer_photo(photo=photo_id, caption=text, reply_markup=markup)
+            await callback.message.answer_photo(photo=media, caption=text, reply_markup=markup)
     else:
         await callback.message.edit_text(text, reply_markup=markup)
 

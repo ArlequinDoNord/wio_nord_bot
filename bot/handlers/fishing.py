@@ -18,7 +18,7 @@ from database.db import (
     get_item_by_name, get_inventory_item, remove_inventory_item,
     add_inventory_item, get_user, update_user, remove_ap, log_activity,
 )
-from utils.helpers import resolve_image, time_of_day_key, edit_message_safe, plural_nordmark
+from utils.helpers import resolve_image, time_of_day_key, edit_message_safe, plural_nordmark, item_local_photo
 from config import FISH_AP_COST
 
 router = Router()
@@ -309,6 +309,17 @@ async def fish_cast(callback: CallbackQuery):
                     f"🎒 {fish_name} отправлен в инвентарь.\n"
                     f"Продать можно за {fish_item['sell_price']} {plural_nordmark(fish_item['sell_price'])}."
                 )
+                local_photo = item_local_photo(fish_name)
+                if local_photo:
+                    from aiogram.types import InputMediaPhoto
+                    try:
+                        await callback.message.edit_media(
+                            media=InputMediaPhoto(media=FSInputFile(local_photo), caption=text),
+                            reply_markup=_result_markup(),
+                        )
+                        return
+                    except Exception:
+                        pass
             else:
                 text = "🎣 Рыбалка\n\n🐟 Что-то поймал, но предмет потерялся. Сообщи хранителю."
         else:

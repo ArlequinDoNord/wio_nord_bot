@@ -1,7 +1,7 @@
 """Инвентарь: просмотр, использование расходников, продажа и передача предметов."""
 
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -11,7 +11,7 @@ from database.db import (
     add_inventory_item, update_item, get_db,
     get_equipment, set_equipment_slot, clear_equipment_slot, log_activity,
 )
-from utils.helpers import rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text
+from utils.helpers import rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text, item_local_photo
 
 router = Router()
 
@@ -149,19 +149,21 @@ async def inv_item_view(callback: CallbackQuery):
                              potion_slots=potion_slots)
 
     photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
-    if photo_id:
+    local_photo = None if photo_id else item_local_photo(item['name'])
+    if photo_id or local_photo:
+        media = photo_id or FSInputFile(local_photo)
         from aiogram.types import InputMediaPhoto
         try:
             if callback.message.photo:
                 await callback.message.edit_media(
-                    media=InputMediaPhoto(media=photo_id, caption=text),
+                    media=InputMediaPhoto(media=media, caption=text),
                     reply_markup=markup
                 )
             else:
                 await callback.message.delete()
-                await callback.message.answer_photo(photo=photo_id, caption=text, reply_markup=markup)
+                await callback.message.answer_photo(photo=media, caption=text, reply_markup=markup)
         except Exception:
-            await callback.message.answer_photo(photo=photo_id, caption=text, reply_markup=markup)
+            await callback.message.answer_photo(photo=media, caption=text, reply_markup=markup)
     else:
         await callback.message.edit_text(text, reply_markup=markup)
 

@@ -109,3 +109,21 @@ def resolve_image(base_key: str, now: datetime | None = None) -> str:
         if os.path.isfile(path):
             return path
     return candidates[0]
+
+
+# Локальные картинки товаров (когда у товара нет Telegram photo_file_id).
+# Кладут в assets/img/<категория>/<имя>.jpg; ключ — точное название товара.
+ITEM_LOCAL_PHOTOS = {
+    "Сиг": "assets/img/fish/sig.jpg",
+    "Муксун": "assets/img/fish/muksun.jpg",
+    "Чир": "assets/img/fish/chir.jpg",
+    "Налим": "assets/img/fish/nalim.jpg",
+}
+
+
+def item_local_photo(name: str):
+    """Локальный файл картинки товара по имени товара (или None)."""
+    path = ITEM_LOCAL_PHOTOS.get(name)
+    if path and os.path.isfile(path):
+        return path
+    return None
