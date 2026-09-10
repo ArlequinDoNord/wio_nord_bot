@@ -4,11 +4,11 @@ from aiogram.types import Message, CallbackQuery, ContentType
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from config import REPORT_AUTO_APPROVE_TROOPS, REPORT_MAX_TROOPS, REPORT_MAX_REGION, get_effective_rank
-from database.db import add_report, approve_report, get_user_reports, get_user, get_report_tax_percent, log_activity, user_has_status_tag
+from config import REPORT_AUTO_APPROVE_TROOPS, REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT, get_effective_rank
+from database.db import add_report, approve_report, get_user_reports, get_user, get_report_tax_percent, count_reports_today, log_activity, user_has_status_tag
 from utils.notify import notify, player_display
 from utils.helpers import is_main_menu_text
-from keyboards.keyboards import report_keyboard
+from keyboards.keyboards import report_keyboard, cancel_keyboard
 
 router = Router()
 
@@ -28,8 +28,14 @@ async def report_menu(message: Message):
             "Статус «Пилот» выдают после проверки — напиши об этом администраторам."
         )
         return
+    remaining = REPORT_DAILY_LIMIT - await count_reports_today(message.from_user.id)
+    header = "📋 Меню отчётов"
+    if remaining > 0:
+        header += f"\nОсталось отчётов сегодня: {remaining}"
+    else:
+        header += "\n⚠️ Лимит отчётов на сегодня исчерпан (3 из 3)."
     await message.answer(
-        "📋 Меню отчётов",
+        header,
         reply_markup=report_keyboard()
     )
 
@@ -44,10 +50,19 @@ async def report_submit_start(callback: CallbackQuery, state: FSMContext):
         )
         await state.clear()
         return
+    remaining = REPORT_DAILY_LIMIT - await count_reports_today(callback.from_user.id)
+    if remaining <= 0:
+        await callback.message.answer(
+            "❌ Лимит отчётов на сегодня исчерпан (3 из 3).\n"
+            "Новые отчёты станут доступны с наступлением новых суток."
+        )
+        await state.clear()
+        return
     await state.set_state(ReportSubmit.waiting_photo)
     await callback.message.answer(
         "📸 Прикрепи скриншот боя.\n"
-        "Отправь фото одним сообщением."
+        f"Отправь фото одним сообщением.\n\nОсталось отчётов на сегодня: {remaining}",
+        reply_markup=cancel_keyboard()
     )
 
 
@@ -61,13 +76,14 @@ async def report_receive_photo(message: Message, state: FSMContext):
     await state.set_state(ReportSubmit.waiting_daily_troops)
     await message.answer(
         f"✍️ Сколько войск ты заработал за сутки? (цифрами, до {REPORT_MAX_TROOPS:,})"
-        .replace(",", " ")
+        .replace(",", " "),
+        reply_markup=cancel_keyboard()
     )
 
 
 @router.message(ReportSubmit.waiting_photo, ~F.text.func(is_main_menu_text))
 async def report_photo_expected(message: Message):
-    await message.answer("❌ Нужно отправить именно фото. Попробуй ещё раз.")
+    await message.answer("❌ Нужно отправить именно фото. Попробуй ещё раз.", reply_markup=cancel_keyboard())
 
 
 @router.message(ReportSubmit.waiting_daily_troops, F.text.regexp(r"^\d{1,7}$"))
@@ -86,13 +102,14 @@ async def report_receive_daily_troops(message: Message, state: FSMContext):
     await state.set_state(ReportSubmit.waiting_total_troops)
     await message.answer(
         f"📊 Сколько у тебя всего войск на данный момент? (цифрами, до {REPORT_MAX_TROOPS:,})"
-        .replace(",", " ")
+        .replace(",", " "),
+        reply_markup=cancel_keyboard()
     )
 
 
 @router.message(ReportSubmit.waiting_daily_troops, ~F.text.func(is_main_menu_text))
 async def report_daily_troops_expected(message: Message):
-    await message.answer("❌ Введи число цифрой. Например: 150")
+    await message.answer("❌ Введи число цифрой. Например: 150", reply_markup=cancel_keyboard())
 
 
 @router.message(ReportSubmit.waiting_total_troops, F.text.regexp(r"^\d{1,7}$"))
@@ -109,17 +126,24 @@ async def report_receive_total_troops(message: Message, state: FSMContext):
         return
     await state.update_data(total_troops=total)
     await state.set_state(ReportSubmit.waiting_region)
+
+    remaining_after = REPORT_DAILY_LIMIT - (await count_reports_today(message.from_user.id) + 1)
+    if remaining_after > 0:
+        reminder = f"\n\n📊 Отчётов на сегодня останется после этого: {remaining_after}."
+    else:
+        reminder = "\n\n📊 Это последний отчёт за сегодня (лимит 3)."
     from aiogram.types import FSInputFile
     map_photo = FSInputFile("assets/img/maps/map.jpg")
     await message.answer_photo(
         photo=map_photo,
-        caption=f"🌍 Карта регионов. Введи номер региона от 0 (Столица) до {REPORT_MAX_REGION}:"
+        caption=f"🌍 Карта регионов. Введи номер региона от 0 (Столица) до {REPORT_MAX_REGION}:{reminder}",
+        reply_markup=cancel_keyboard()
     )
 
 
 @router.message(ReportSubmit.waiting_total_troops, ~F.text.func(is_main_menu_text))
 async def report_total_troops_expected(message: Message):
-    await message.answer("❌ Введи число цифрой. Например: 500")
+    await message.answer("❌ Введи число цифрой. Например: 500", reply_markup=cancel_keyboard())
 
 
 @router.message(ReportSubmit.waiting_region, F.text.regexp(r"^\d+$"))
@@ -133,34 +157,54 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
         )
         return
 
+    reports_today = await count_reports_today(message.from_user.id)
+    if reports_today >= REPORT_DAILY_LIMIT:
+        await state.clear()
+        await message.answer("❌ Лимит отчётов на сегодня исчерпан (3 из 3).")
+        return
+
     data = await state.get_data()
     screenshot_file_id = data["screenshot_file_id"]
     daily_troops = data["daily_troops"]
     total_troops = data["total_troops"]
 
-    report_id = await add_report(
+    report_id, credited = await add_report(
         message.from_user.id, screenshot_file_id,
         daily_troops, total_troops, region_code
     )
     await log_activity(message.from_user.id, "report_submit",
                        f"Сдал отчёт #{report_id}: {daily_troops} войск, регион {region_code or '—'}")
 
+    remaining_after = REPORT_DAILY_LIMIT - (reports_today + 1)
+    if remaining_after > 0:
+        reminder = f"\n📊 Осталось отчётов на сегодня: {remaining_after}."
+    else:
+        reminder = "\n📊 Это последний отчёт за сегодня (лимит 3)."
+
     if daily_troops <= REPORT_AUTO_APPROVE_TROOPS:
         user_before = await get_user(message.from_user.id)
         promoted = user_before["promoted_rank"] if "promoted_rank" in user_before.keys() else None
         rank_before = get_effective_rank(user_before["troops"], promoted)
-        await approve_report(report_id, 0, daily_troops)
+        if credited <= 0:
+            await approve_report(report_id, 0, credited)
+            await state.clear()
+            await message.answer(
+                f"✅ Отчёт #{report_id} принят.\n"
+                f"Новых войск за сутки нет (значение {daily_troops} уже засчитано ранее) — доплата не начислена.{reminder}"
+            )
+            return
+        await approve_report(report_id, 0, credited)
         user = await get_user(message.from_user.id)
         rank = get_effective_rank(user["troops"], user["promoted_rank"] if "promoted_rank" in user.keys() else None)
         tax_percent = await get_report_tax_percent()
-        tax = int(daily_troops * tax_percent / 100)
-        nordmarks_earned = daily_troops - tax
+        tax = int(credited * tax_percent / 100)
+        nordmarks_earned = credited - tax
         tax_line = f"\nналог в казну: {tax_percent}% (−{tax} НМ)" if tax > 0 else ""
         await state.clear()
         await message.answer(
             f"✅ Отчёт #{report_id} автоматически принят!\n"
-            f"Начислено: {daily_troops} войск, {nordmarks_earned} нордмарок{tax_line}.\n"
-            f"Текущее звание: {rank} ({user['troops']} войск)"
+            f"Начислено: {credited} войск, {nordmarks_earned} нордмарок{tax_line}.\n"
+            f"Текущее звание: {rank} ({user['troops']} войск){reminder}"
         )
         if rank != rank_before:
             await notify(bot, f"⭐ Пилот {await player_display(user)} получил звание «{rank}»!", user['user_id'])
@@ -169,15 +213,16 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
         await message.answer(
             f"📤 Отчёт #{report_id} отправлен на проверку.\n"
             f"Войск за сутки: {daily_troops}\n"
+            f"Доплата к начислению: {credited}\n"
             f"Всего войск: {total_troops}\n"
             f"Регион: {region_code}\n"
-            f"Ожидай решения администратора/МВД."
+            f"Ожидай решения администратора/МВД.{reminder}"
         )
 
 
 @router.message(ReportSubmit.waiting_region, ~F.text.func(is_main_menu_text))
 async def report_region_expected(message: Message):
-    await message.answer("❌ Введи номер региона цифрой. Например: 0 (Столица)")
+    await message.answer("❌ Введи номер региона цифрой. Например: 0 (Столица)", reply_markup=cancel_keyboard())
 
 
 @router.callback_query(F.data == "report:my_reports")

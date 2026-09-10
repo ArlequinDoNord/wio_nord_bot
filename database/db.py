@@ -434,6 +434,10 @@ async def init_db():
     await _ensure_column(conn, "users", "salary_debt", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "armor", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "reports", "total_troops", "INTEGER DEFAULT 0")
+    # credited_troops без DEFAULT: у старых отчётов (до миграции) будет NULL
+    await _ensure_column(conn, "reports", "credited_troops", "INTEGER")
+    await _ensure_column(conn, "users", "ap_restored_day", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "users", "ap_restored_today", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "damage", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "heal", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "dungeon_enemies", "drops", "TEXT DEFAULT '[]'")
@@ -496,9 +500,24 @@ async def add_user(user_id: int, username: str, first_name: str, last_name: str)
 
 
 async def get_user(user_id: int):
+    """Возвращает игрока словарём с учётом протухших состояний.
+
+    При активном состоянии «истощён» ap_max заменяется на лимит истощения (90).
+    """
+    from config import AP_EXHAUSTED_MAX_AP
     conn = await get_db()
     cursor = await conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-    return await cursor.fetchone()
+    row = await cursor.fetchone()
+    if not row:
+        return None
+    user = dict(row)
+    state = user.get('state') or 'нормально'
+    refreshed = await drop_expired_state(user_id, state, user.get('state_effects') or "{}")
+    if refreshed != state:
+        user['state'] = refreshed
+    if refreshed == 'истощён':
+        user['ap_max'] = AP_EXHAUSTED_MAX_AP
+    return user
 
 
 async def update_user(user_id: int, **kwargs):
@@ -541,10 +560,21 @@ async def transfer_nordmarks(from_user: int, to_user: int, amount: int, descript
 
 
 async def add_ap(user_id: int, amount: int):
+    """Добавить ОД. При состоянии «истощён» потолок — AP_EXHAUSTED_MAX_AP (90)."""
+    from config import AP_EXHAUSTED_MAX_AP
     conn = await get_db()
-    await conn.execute("""
-        UPDATE users SET ap = MIN(ap_max, ap + ?) WHERE user_id = ?
-    """, (amount, user_id))
+    cursor = await conn.execute(
+        "SELECT state, state_effects, ap_max FROM users WHERE user_id = ?", (user_id,)
+    )
+    row = await cursor.fetchone()
+    if not row:
+        return
+    state = await drop_expired_state(user_id, row['state'], row['state_effects'])
+    cap = AP_EXHAUSTED_MAX_AP if state == 'истощён' else row['ap_max']
+    await conn.execute(
+        "UPDATE users SET ap = MIN(?, ap + ?) WHERE user_id = ?",
+        (cap, amount, user_id)
+    )
     await conn.commit()
 
 
@@ -560,10 +590,20 @@ async def remove_ap(user_id: int, amount: int) -> bool:
 
 
 async def daily_ap_recovery():
+    """Суточное восстановление ОД.
+
+    В состоянии «истощён»: +75 ОД, потолок 90. Счётчик восстановления через
+    расходники (ap_restored_today) обнуляется только при смене суток.
+    """
+    from config import (AP_DAILY_RECOVERY, AP_EXHAUSTED_DAILY_RECOVERY, AP_EXHAUSTED_MAX_AP)
     conn = await get_db()
     await conn.execute("""
-        UPDATE users SET ap = MIN(ap_max, ap + 100)
-    """)
+        UPDATE users SET
+            ap = MIN(CASE WHEN state = 'истощён' THEN ? ELSE ap_max END,
+                     ap + CASE WHEN state = 'истощён' THEN ? ELSE ? END),
+            ap_restored_today = CASE WHEN ap_restored_day = date('now') THEN ap_restored_today ELSE 0 END,
+            ap_restored_day = CASE WHEN ap_restored_day = date('now') THEN ap_restored_day ELSE date('now') END
+    """, (AP_EXHAUSTED_MAX_AP, AP_EXHAUSTED_DAILY_RECOVERY, AP_DAILY_RECOVERY))
     await conn.commit()
 
 
@@ -685,13 +725,59 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
         if item['heal'] > 0:
             return False, "Это зелье можно применить только в бою подземелья 💊"
 
-        await remove_inventory_item(user_id, item_id, 1)
-
         if item['ap_cost'] > 0:
-            from config import AP_BONUS_FROM_CONSUMABLE
-            await add_ap(user_id, AP_BONUS_FROM_CONSUMABLE)
-            return True, f"Ты использовал {item['name']} и получил +{AP_BONUS_FROM_CONSUMABLE} AP!"
+            from config import (AP_BONUS_FROM_CONSUMABLE, AP_DAILY_RESTORE_LIMIT,
+                                AP_EXHAUSTED_MINUTES, AP_EXHAUSTED_DAILY_RECOVERY, AP_EXHAUSTED_MAX_AP)
+            user = await get_user(user_id)
+            if not user:
+                return False, "Пользователь не найден"
 
+            if user.get('state') == 'истощён':
+                return False, (
+                    "🥵 Ты истощён и не можешь восстанавливать ОД через расходники "
+                    f"в ближайшие 2 суток.\nВосстановление: {AP_EXHAUSTED_DAILY_RECOVERY} ОД/сутки, "
+                    f"максимум {AP_EXHAUSTED_MAX_AP} ОД."
+                )
+
+            today = datetime.utcnow().strftime("%Y-%m-%d")
+            restored_today = user.get('ap_restored_today') or 0
+            if user.get('ap_restored_day') != today:
+                restored_today = 0
+            remaining = AP_DAILY_RESTORE_LIMIT - restored_today
+            if remaining <= 0:
+                return False, (
+                    f"🥵 Лимит восстановления ОД за сутки исчерпан ({AP_DAILY_RESTORE_LIMIT} ОД). "
+                    f"Восстановление продолжится в новые сутки."
+                )
+
+            amount = min(AP_BONUS_FROM_CONSUMABLE, remaining)
+            await remove_inventory_item(user_id, item_id, 1)
+            await add_ap(user_id, amount)
+            restored_today += amount
+            conn = await get_db()
+            await conn.execute(
+                "UPDATE users SET ap_restored_today = ?, ap_restored_day = ? WHERE user_id = ?",
+                (restored_today, today, user_id)
+            )
+            await conn.commit()
+
+            if restored_today >= AP_DAILY_RESTORE_LIMIT:
+                await set_user_state(
+                    user_id, "истощён", AP_EXHAUSTED_MINUTES, user_id,
+                    f"Лимит восстановления ОД за сутки ({AP_DAILY_RESTORE_LIMIT}) исчерпан"
+                )
+                return True, (
+                    f"Ты использовал {item['name']} и получил +{amount} AP!\n"
+                    f"⚠️ Лимит восстановления ОД за сутки ({AP_DAILY_RESTORE_LIMIT}) исчерпан — "
+                    f"наступило состояние «истощён» на 2 суток.\n"
+                    f"Восстановление: {AP_EXHAUSTED_DAILY_RECOVERY} ОД/сутки, максимум {AP_EXHAUSTED_MAX_AP} ОД."
+                )
+            return True, (
+                f"Ты использовал {item['name']} и получил +{amount} AP! "
+                f"Осталось восстановить ОД сегодня: {AP_DAILY_RESTORE_LIMIT - restored_today}."
+            )
+
+        await remove_inventory_item(user_id, item_id, 1)
         return True, f"Ты использовал {item['name']}!"
 
     return False, "Этот предмет нельзя использовать так"
@@ -1333,31 +1419,64 @@ async def drop_expired_state(user_id: int, state_text: str, state_effects: str) 
     return state_text
 
 
-async def add_report(user_id: int, screenshot_file_id: str, troops_reported: int, total_troops: int = 0, region: str = ""):
+async def count_reports_today(user_id: int) -> int:
     conn = await get_db()
     cursor = await conn.execute(
-        "INSERT INTO reports (user_id, screenshot_file_id, troops_reported, total_troops, region) VALUES (?, ?, ?, ?, ?)",
-        (user_id, screenshot_file_id, troops_reported, total_troops, region)
+        "SELECT COUNT(*) AS cnt FROM reports WHERE user_id = ? AND date(created_at) = date('now')",
+        (user_id,)
+    )
+    row = await cursor.fetchone()
+    return row['cnt'] if row else 0
+
+
+async def add_report(user_id: int, screenshot_file_id: str, troops_reported: int, total_troops: int = 0, region: str = ""):
+    """Добавить отчёт. Возвращает (report_id, credited_troops).
+
+    За сутки оплачивается только дельта между ранее засчитанным значением
+    (последний одобренный отчёт за сегодня) и новым значением.
+    troops_reported хранит заявленное значение, credited_troops — сумму к оплате.
+    """
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT COALESCE(MAX(troops_reported), 0) AS prev_today FROM reports "
+        "WHERE user_id = ? AND status = 'approved' AND date(created_at) = date('now')",
+        (user_id,)
+    )
+    row = await cursor.fetchone()
+    prev_today = row['prev_today'] if row else 0
+    credited = max(0, troops_reported - prev_today)
+
+    cursor = await conn.execute(
+        "INSERT INTO reports (user_id, screenshot_file_id, troops_reported, total_troops, region, credited_troops) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (user_id, screenshot_file_id, troops_reported, total_troops, region, credited)
     )
     await conn.commit()
-    return cursor.lastrowid
+    return cursor.lastrowid, credited
 
 
 async def approve_report(report_id: int, reviewed_by: int, troops: int):
     conn = await get_db()
-    cursor = await conn.execute("SELECT user_id FROM reports WHERE id = ?", (report_id,))
+    cursor = await conn.execute(
+        "SELECT user_id, troops_reported, credited_troops FROM reports WHERE id = ?", (report_id,)
+    )
     row = await cursor.fetchone()
     if not row:
         return False
 
     user_id = row['user_id']
+    # troops — сумма к оплате (дельта). Для старых отчётов без колонки (NULL) — вся заявка.
+    if troops is None:
+        troops = row['credited_troops'] if row['credited_troops'] is not None else row['troops_reported']
+
     # Налог в казну Нордхайма (ставка настраивается в админке)
     tax_percent = await get_report_tax_percent()
     tax = int(troops * tax_percent / 100)
     nordmarks_earned = troops - tax
 
     await conn.execute(
-        "UPDATE reports SET status = 'approved', reviewed_by = ?, troops_reported = ?, nordmarks_earned = ? WHERE id = ?",
+        "UPDATE reports SET status = 'approved', reviewed_by = ?, credited_troops = ?, "
+        "nordmarks_earned = ? WHERE id = ?",
         (reviewed_by, troops, nordmarks_earned, report_id)
     )
     await conn.execute("UPDATE users SET troops = troops + ? WHERE user_id = ?", (troops, user_id))
@@ -1407,38 +1526,51 @@ async def get_user_reports(user_id: int):
 async def recompute_region_stats():
     """Пересчитывает статистику по регионам из одобренных отчётов.
 
-    troops_24h        — сумма troops_reported по одобренным отчётам за последние 24 часа
+    troops_24h        — по каждому пилоту и календарным суткам берётся ТОЛЬКО
+                        последний отчёт за сутки (его troops_reported), затем сумма
+                        по региону за последние 24 часа
     active_pilots_72h — число уникальных пилотов с одобренными отчётами за последние 72 часа
     """
     conn = await get_db()
     await conn.execute("DELETE FROM region_stats")
-    cursor = await conn.execute("""
-        SELECT region,
-               COALESCE(SUM(troops_reported), 0) AS troops_24h,
-               COUNT(DISTINCT user_id) AS active_pilots_72h
+
+    cur = await conn.execute("""
+        SELECT region, COUNT(DISTINCT user_id) AS pilots
         FROM reports
         WHERE status = 'approved'
+          AND region IS NOT NULL AND region != ''
           AND created_at >= datetime('now', '-72 hours')
         GROUP BY region
-        HAVING region IS NOT NULL AND region != ''
     """)
-    rows = await cursor.fetchall()
-    for row in rows:
-        troops_72h_reporters = row['active_pilots_72h']
-        # Отдельно считаем войска за 24 часа
-        cur2 = await conn.execute("""
-            SELECT COALESCE(SUM(troops_reported), 0) AS t
-            FROM reports
-            WHERE status = 'approved' AND region = ?
-              AND created_at >= datetime('now', '-24 hours')
-        """, (row['region'],))
-        troops_24h = (await cur2.fetchone())['t']
+    pilots_72 = {row['region']: row['pilots'] for row in await cur.fetchall()}
+
+    cur = await conn.execute("""
+        SELECT region, COALESCE(SUM(troops_reported), 0) AS troops_24h
+        FROM (
+            SELECT r.region, r.troops_reported,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY r.user_id, date(r.created_at)
+                       ORDER BY r.created_at DESC, r.id DESC
+                   ) AS rn
+            FROM reports r
+            WHERE r.status = 'approved'
+              AND r.region IS NOT NULL AND r.region != ''
+              AND r.created_at >= datetime('now', '-24 hours')
+        )
+        WHERE rn = 1
+        GROUP BY region
+    """)
+    troops_24h = {row['region']: row['troops_24h'] for row in await cur.fetchall()}
+
+    regions = set(list(pilots_72.keys()) + list(troops_24h.keys()))
+    for region in regions:
         await conn.execute(
-            "INSERT INTO region_stats (region, troops_24h, active_pilots_72h, computed_at) VALUES (?, ?, ?, datetime('now'))",
-            (row['region'], troops_24h, troops_72h_reporters)
+            "INSERT INTO region_stats (region, troops_24h, active_pilots_72h, computed_at) "
+            "VALUES (?, ?, ?, datetime('now'))",
+            (region, troops_24h.get(region, 0), pilots_72.get(region, 0))
         )
     await conn.commit()
-    return len(rows)
+    return len(regions)
 
 
 async def get_region_stats():

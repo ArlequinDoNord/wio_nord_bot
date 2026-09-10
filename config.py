@@ -8,7 +8,7 @@ load_dotenv()
 # - MINOR (x.1.x): новая функциональность (обратно совместимая)
 # - MAJOR (1.x.x): крупные ломающие изменения (до 1.0 — на усмотрение)
 # Стартуем с 0.1.0 (нестабильная фаза).
-VERSION = "0.4.6"
+VERSION = "0.4.8"
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
@@ -70,6 +70,15 @@ AP_MAX = 150
 AP_DAILY_RECOVERY = 100
 AP_BONUS_FROM_CONSUMABLE = 50
 
+# Лимит ДОПОЛНИТЕЛЬНОГО восстановления ОД через расходники за сутки.
+# Естественный запас — 150 ОД (ap_max). Сверху можно восстановить ещё 150 ОД,
+# а при достижении лимита наступает состояние «истощён» (передозировка).
+AP_DAILY_RESTORE_LIMIT = 150
+AP_EXHAUSTED_MINUTES = 2880          # 2 суток
+AP_EXHAUSTED_DAILY_RECOVERY = 75     # суточное восстановление в «истощении»
+AP_EXHAUSTED_MAX_AP = 90             # максимум ОД в «истощении»
+
+REPORT_DAILY_LIMIT = 3
 REPORT_AUTO_APPROVE_TROOPS = 100
 REPORT_MAX_TROOPS = 1000000
 REPORT_MAX_REGION = 38  # 0 = Столица, 1..38 регионы

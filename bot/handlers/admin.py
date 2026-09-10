@@ -1798,6 +1798,7 @@ async def show_pending_reports(message):
         f"📋 ОТЧЁТ #{report['id']}\n\n"
         f"Пилот: {report['first_name']} (@{report['username']})\n"
         f"Войск за сутки: {report['troops_reported']}\n"
+        f"К оплате (дельта): {report['credited_troops'] if ('credited_troops' in report.keys() and report['credited_troops'] is not None) else report['troops_reported']}\n"
         f"Всего войск: {report['total_troops'] if 'total_troops' in report.keys() else '—'}\n"
         f"Регион: {report['region'] or '—'}\n"
         f"Время: {report['created_at'][:16] if report['created_at'] else '—'}\n\n"
@@ -1825,7 +1826,11 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
         await callback.message.answer("❌ Нет прав.")
         return
     report = await get_report_safe(report_id)
-    troops = report['troops_reported']
+    # Новые отчёты начисляют дельту (может быть 0); старые (без дельты, NULL) — всю заявку.
+    if 'credited_troops' in report.keys() and report['credited_troops'] is not None:
+        troops = report['credited_troops']
+    else:
+        troops = report['troops_reported']
     pilot = await get_user(report['user_id'])
     promoted = pilot["promoted_rank"] if "promoted_rank" in pilot.keys() else None
     rank_before = get_effective_rank(pilot["troops"], promoted)
