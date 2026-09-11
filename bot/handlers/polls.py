@@ -61,12 +61,12 @@ async def vote_menu(callback: CallbackQuery):
     if await get_closed_polls():
         buttons.append([InlineKeyboardButton(text="📋 Закрытые опросы", callback_data="vote:archive")])
 
-    buttons.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
+    buttons.append([InlineKeyboardButton(text="🔙 В Ратушу", callback_data="city:pilots")])
 
     if polls:
-        text = "🗳️ ГОЛОСОВАНИЕ\n\nАктивные опросы — выбери, чтобы проголосовать:"
+        text = "🗳️ ГОЛОСОВАНИЕ (Ратуша)\n\nАктивные опросы — выбери, чтобы проголосовать:"
     else:
-        text = "🗳️ ГОЛОСОВАНИЕ\n\nСейчас нет активных опросов."
+        text = "🗳️ ГОЛОСОВАНИЕ (Ратуша)\n\nСейчас нет активных опросов."
 
     if callback.message.photo:
         await callback.message.edit_caption(caption=text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
@@ -291,7 +291,7 @@ async def vote_archive(callback: CallbackQuery):
         await callback.message.answer(
             "📋 Закрытых опросов пока нет.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")]
+                [InlineKeyboardButton(text="🔙 В Ратушу", callback_data="city:pilots")]
             ])
         )
         return

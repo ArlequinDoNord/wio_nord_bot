@@ -149,7 +149,6 @@ def city_keyboard(is_pilot: bool = True, locations: list = None):
             callback_data=f"location:preview:{loc['key']}"
         )])
     if is_pilot:
-        buttons.append([InlineKeyboardButton(text="Голосование", callback_data="city:vote")])
         buttons.append([InlineKeyboardButton(text="Подземелье", callback_data="city:dungeon")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
