@@ -521,7 +521,7 @@ async def housing_install_item(cb: CallbackQuery):
                         await add_inventory_item(uid, old_item["id"], 1)
                 await cb.answer(f"✅ {item['name']} установлена (заменила «{old_name}»).",
                                 show_alert=True)
-                await housing_menu.__wrapped__(cb)
+                await housing_menu(cb)
                 return
 
     # Проверка дубликата
@@ -542,7 +542,7 @@ async def housing_install_item(cb: CallbackQuery):
     await set_housing_slot(uid, empty, et, lvl)
     await remove_inventory_item(uid, item_id, 1)
     await cb.answer(f"✅ «{item['name']}» установлено в слот {empty+1}.", show_alert=True)
-    await housing_menu.__wrapped__(cb)
+    await housing_menu(cb)
 
 
 # ───────── снятие расширения ─────────
@@ -572,7 +572,7 @@ async def housing_uninstall(cb: CallbackQuery):
             await add_inventory_item(uid, fi["id"], 1)
 
     await cb.answer(f"✅ «{fname}» возвращено в инвентарь.", show_alert=True)
-    await housing_menu.__wrapped__(cb)
+    await housing_menu(cb)
 
 
 # ───────── посадка семечка ─────────
@@ -664,4 +664,4 @@ async def housing_move(cb: CallbackQuery):
 
     new_name = HOUSING_TYPES[target]["name"]
     await cb.answer(f"🎉 Переезд в «{new_name}» завершён!", show_alert=True)
-    await housing_menu.__wrapped__(cb)
+    await housing_menu(cb)

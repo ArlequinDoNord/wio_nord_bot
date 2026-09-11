@@ -1,7 +1,7 @@
 """Магазин: каталог по категориям, покупка за Нордмарки и AP."""
 
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 
 from database.db import (
@@ -9,12 +9,15 @@ from database.db import (
     get_user, remove_nordmarks, add_nordmarks, get_db, user_has_status_tag, get_status_by_tag,
     activate_library_card, get_library_cards,
     add_treasury, get_sale_tax_percent, log_activity, update_item,
-    get_player_housing, get_housing_slots, HOUSING_TYPES,
+    get_player_housing, get_housing_slots, set_housing_slot, set_player_housing,
+    get_item_by_name, HOUSING_TYPES, HOUSING_ORDER,
 )
 from keyboards.keyboards import (
     shop_catalog_keyboard, item_card_keyboard,
 )
-from bot.handlers.housing import FURNITURE_BY_ITEM
+from bot.handlers.housing import (
+    FURNITURE_BY_ITEM, FURNITURE_BY_EXPANSION, HOUSING_ITEM_BY_NAME, housing_menu,
+)
 from utils.helpers import rarity_emoji, rarity_label, plural_nordmark, item_local_photo, edit_or_replace
 from config import ITEM_CATEGORIES
 
@@ -353,6 +356,11 @@ async def _buy_item(callback: CallbackQuery, item_id: int, qty: int):
         )
         return
 
+    # Жильё покупается как ПЕРЕЕЗД: показываем подтверждение вместо покупки
+    if item['category'] == 'housing':
+        await _housing_purchase_confirm(callback, item)
+        return
+
     await remove_nordmarks(user_id, total, "shop_purchase", f"Покупка: {item['name']} x{qty}")
     await add_inventory_item(user_id, item_id, qty)
 
@@ -396,3 +404,109 @@ async def decrement_stock(item_id: int):
         db = await get_db()
         await db.execute("UPDATE items SET stock = stock - 1 WHERE id = ?", (item_id,))
         await db.commit()
+
+
+# ───────── жильё: покупка = переезд с подтверждением ─────────
+
+async def _housing_purchase_confirm(callback: CallbackQuery, item):
+    """Экран подтверждения: покупка жилья сразу переселяет и заменяет текущее."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    item = dict(item)
+    h = await get_player_housing(callback.from_user.id)
+    current_name = HOUSING_TYPES[h['housing_type']]['name'] if h else '—'
+    text = (
+        f"{rarity_emoji(item['rarity'])} {item['name']}\n\n"
+        f"⚠️ Это жильё покупается сразу как ПЕРЕЕЗД:\n"
+        f"• Текущее жильё «{current_name}» будет заменено.\n"
+        f"• Вся установленная мебель вернётся в инвентарь.\n"
+        f"• Стоимость: {item['price']} {plural_nordmark(item['price'])}\n\n"
+        f"Подтверждаешь переезд?"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, переезжаем", callback_data=f"buy_housing:{item['id']}")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"buy_housing_cancel:{item['id']}")],
+    ])
+    await callback.message.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("buy_housing_cancel:"))
+async def buy_housing_cancel(callback: CallbackQuery):
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("buy_housing:"))
+async def buy_housing_confirm(callback: CallbackQuery):
+    await callback.answer()
+    uid = callback.from_user.id
+    item_id = int(callback.data.split(":")[1])
+    item = await get_item(item_id)
+    if not item or item['category'] != 'housing':
+        return
+
+    if not await user_has_status_tag(uid, item['required_status']):
+        await callback.answer("❌ Тебе нужен статус, чтобы купить этот товар.", show_alert=True)
+        return
+    if item['stock'] == 0 or (item['stock'] != -1 and item['stock'] < 1):
+        await callback.answer("❌ Товар распродан.", show_alert=True)
+        return
+
+    h = await get_player_housing(uid)
+    current_idx = HOUSING_ORDER.index(h['housing_type']) if h and h['housing_type'] in HOUSING_ORDER else -1
+    target = HOUSING_ITEM_BY_NAME.get(item['name'])
+    if not target:
+        return
+    if HOUSING_ORDER.index(target) <= current_idx:
+        await callback.answer("❌ У тебя уже есть такое жильё или лучше.", show_alert=True)
+        return
+
+    user = await get_user(uid)
+    total = item['price']
+    if user['nordmarks'] < total:
+        await callback.answer(
+            f"❌ Недостаточно. Нужно {total} {plural_nordmark(total)}", show_alert=True
+        )
+        return
+
+    # Списываем деньги
+    await remove_nordmarks(uid, total, "shop_purchase", f"Покупка: {item['name']} (переезд)")
+    await add_treasury(total, f"Продажа: {item['name']}")
+
+    # Вся текущая мебель возвращается в инвентарь (кроме встроенной)
+    slots = await get_housing_slots(uid)
+    for i, s in slots.items():
+        et, lvl = s.get("expansion_type"), s.get("expansion_level", 1)
+        await set_housing_slot(uid, i, None)
+        if s.get("embedded"):
+            continue
+        fname = FURNITURE_BY_EXPANSION.get((et, lvl))
+        if fname:
+            fi = await get_item_by_name(fname)
+            if fi:
+                await add_inventory_item(uid, fi["id"], 1)
+
+    # Переезд
+    await set_player_housing(uid, target)
+    if target == "studio":
+        await set_housing_slot(uid, 0, "kitchen", 1, embedded=True)
+
+    # Остаток на складе
+    if item['stock'] != -1:
+        db = await get_db()
+        await db.execute("UPDATE items SET stock = stock - 1 WHERE id = ?", (item_id,))
+        await db.commit()
+        refreshed = await get_item(item_id)
+        if refreshed['stock'] <= 0:
+            await update_item(item_id, is_available=0)
+
+    await log_activity(uid, "housing_move", target)
+    await log_activity(uid, "shop_purchase",
+                       f"Купил «{item['name']}» за {total} НМ (переезд)")
+
+    await callback.answer(
+        f"🎉 Переезд в «{HOUSING_TYPES[target]['name']}» завершён!", show_alert=True
+    )
+    await housing_menu(callback)
