@@ -694,6 +694,16 @@ async def show_boss(message, run, user_id, state: FSMContext):
 async def dungeon_exit(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     user_id = callback.from_user.id
+
+    # Во время боя с боссом покинуть подземелье нельзя
+    if await state.get_state() == DungeonFSM.in_boss.state:
+        run = await get_active_run(user_id)
+        await callback.message.answer(
+            "⚠️ Идёт бой с боссом! Убежать нельзя — это решающий бой.\n"
+            "Продолжай бой кнопками последнего сообщения."
+        )
+        return
+
     run = await get_active_run(user_id)
     if run:
         loot_nm = run['loot_nm'] or 0

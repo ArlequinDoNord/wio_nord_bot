@@ -12,6 +12,7 @@ router = Router()
 class BankStates(StatesGroup):
     waiting_recipient = State()
     waiting_amount = State()
+    waiting_message = State()
     waiting_treasury_amount = State()
 
 
@@ -238,23 +239,74 @@ async def process_amount(message: Message, state: FSMContext):
         await message.answer(f"❌ Недостаточно средств. Баланс: {sender['nordmarks']} НМ")
         return
 
+    await state.update_data(amount=amount)
+    await state.set_state(BankStates.waiting_message)
+    await message.answer(
+        "📨 Сообщение получателю (до 40 символов).\n"
+        "Отправь «Пропустить», чтобы перевести без сообщения:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(BankStates.waiting_message, ~F.text.func(is_main_menu_text))
+async def process_message(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if text in ("Отмена", "Пропустить", "Без сообщения", "-"):
+        text = ""
+    elif len(text) > 40:
+        await message.answer("❌ Сообщение длиннее 40 символов. Сократи и пришли ещё раз:")
+        return
+
+    data = await state.get_data()
+    recipient_id = data['recipient_id']
+    recipient_name = data.get('recipient_name', recipient_id)
+    amount = data['amount']
+    sender = await get_user(message.from_user.id)
+
+    if not sender or sender['nordmarks'] < amount:
+        await state.clear()
+        await message.answer(
+            f"❌ Недостаточно средств. Баланс: {sender['nordmarks'] if sender else 0} НМ",
+            reply_markup=main_menu_keyboard()
+        )
+        return
+
+    sender_label = sender['first_name'] or f"#{message.from_user.id}"
+    if sender.get('username'):
+        sender_label += f" (@{sender['username']})"
+    description = f"Перевод от {sender_label}"
+    if text:
+        description += f": {text}"
+
     await transfer_nordmarks(
         message.from_user.id,
-        data['recipient_id'],
+        recipient_id,
         amount,
-        f"Перевод от {message.from_user.first_name}"
+        description
     )
     await log_activity(message.from_user.id, "bank_transfer_out",
-                       f"{amount} НМ -> @{data.get('recipient_name', data['recipient_id'])}")
-    await log_activity(data['recipient_id'], "bank_transfer_in",
+                       f"{amount} НМ -> @{data.get('recipient_name', recipient_id)}")
+    await log_activity(recipient_id, "bank_transfer_in",
                        f"+{amount} НМ от @{message.from_user.username or message.from_user.id}")
+
+    # Оповещение получателю
+    note = f"💸 Тебе перевели {amount} {plural_nordmark(amount)}!\nОт: {sender_label}"
+    if text:
+        note += f"\n📨 Сообщение: «{text}»"
+    try:
+        await message.bot.send_message(recipient_id, note)
+    except Exception:
+        pass
+
     await state.clear()
-    await message.answer(
+    reply = (
         f"✅ Перевод выполнен!\n"
         f"Сумма: {amount} НМ\n"
-        f"Получатель: {data['recipient_name']}",
-        reply_markup=main_menu_keyboard()
+        f"Получатель: {recipient_name}"
     )
+    if text:
+        reply += f"\n📨 Сообщение: «{text}»"
+    await message.answer(reply, reply_markup=main_menu_keyboard())
 
 
 @router.callback_query(F.data == "bank:history")

@@ -149,6 +149,9 @@ async def housing_menu(cb: CallbackQuery):
 
     # Кнопка «Перееезд» — если в инвентаре есть жильё более высокого типа
     inv = await get_inventory(uid)
+    free = info["slots"] - sum(1 for s in slots.values() if s.get("expansion_type"))
+    if free == 0 and any(i["category"] == "furniture" for i in inv):
+        lines.append("⚠️ В инвентаре есть мебель, но все слоты заняты.")
     cur_idx = HOUSING_ORDER.index(ht)
     for item in inv:
         if item["category"] != "housing":

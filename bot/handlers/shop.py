@@ -9,10 +9,12 @@ from database.db import (
     get_user, remove_nordmarks, add_nordmarks, get_db, user_has_status_tag, get_status_by_tag,
     activate_library_card, get_library_cards,
     add_treasury, get_sale_tax_percent, log_activity, update_item,
+    get_player_housing, get_housing_slots, HOUSING_TYPES,
 )
 from keyboards.keyboards import (
     shop_catalog_keyboard, item_card_keyboard,
 )
+from bot.handlers.housing import FURNITURE_BY_ITEM
 from utils.helpers import rarity_emoji, rarity_label, plural_nordmark, item_local_photo, edit_or_replace
 from config import ITEM_CATEGORIES
 
@@ -24,6 +26,46 @@ CATEGORIES = [
     "housing", "furniture", "seeds",
 ]
 PER_PAGE = 6
+
+
+def _allow_multi_buy(item) -> bool:
+    """Покупать пачками (>1 шт.) можно только расходники и наживку.
+
+    Жильё, мебель, удочки, билеты и прочее — только по одной штуке.
+    """
+    item = dict(item)
+    if item.get("category") == "consumable":
+        return True
+    if item.get("category") == "fishing":
+        text = f"{item['name']} {item.get('description') or ''}".lower()
+        return "наживка" in text
+    return False
+
+
+async def furniture_block_reason(user_id: int, item) -> str:
+    """Причина, почему расширение нельзя купить (некуда ставить), иначе пустая строка."""
+    item = dict(item)
+    if item.get("category") != "furniture":
+        return ""
+    h = await get_player_housing(user_id)
+    info = HOUSING_TYPES[h["housing_type"]]
+    # Студию нельзя расширять/улучшать по описанию: у неё только встроенная кухня
+    if h["housing_type"] == "studio":
+        return "студию нельзя расширять: у неё только встроенная кухня и нет слотов для мебели"
+    slots = await get_housing_slots(user_id)
+    free = info["slots"] - sum(1 for s in slots.values() if s.get("expansion_type"))
+    if free > 0:
+        return ""
+    # Кухня более высокого уровня заменяет уже установленную кухню (не встроенную)
+    mapping = FURNITURE_BY_ITEM.get(item["name"])
+    if mapping:
+        et, lvl = mapping
+        if et == "kitchen":
+            for s in slots.values():
+                if (not s.get("embedded") and s.get("expansion_type") == "kitchen"
+                        and s.get("expansion_level", 1) < lvl):
+                    return ""
+    return f"некуда установить: в твоём жилье «{info['name']}» нет свободных слотов"
 
 
 async def is_pilot(user_id: int) -> bool:
@@ -211,8 +253,24 @@ async def shop_item_view(callback: CallbackQuery):
     cannot_buy = (item['stock'] == 0) or not has_access
     markup = item_card_keyboard(item['id'], item['price'], can_buy_nord=not cannot_buy)
 
-    # Для безлимитных товаров (fishing/consumable) — кнопка «Купить 5 шт»
-    if item['stock'] == -1 and not cannot_buy and item['price'] > 0:
+    # Мебель (расширения жилья): предупреждение, если устанавливать некуда
+    block_reason = await furniture_block_reason(callback.from_user.id, item)
+    if block_reason:
+        body += f"\n⚠️ {block_reason}"
+
+    # Нехватка Нордмарок: показываем сразу в карточке, а не только при покупке
+    user = await get_user(callback.from_user.id)
+    balance = user['nordmarks'] if user else 0
+    if item['price'] > 0 and not cannot_buy and balance < item['price']:
+        body += (
+            f"\n⚠️ Не хватает {item['price'] - balance} "
+            f"{plural_nordmark(item['price'] - balance)} "
+            f"(нужно {item['price']}, у тебя {balance})"
+        )
+
+    # Для безлимитных расходников и наживки — кнопка «Купить 5 шт»
+    if (item['stock'] == -1 and not cannot_buy and item['price'] > 0
+            and _allow_multi_buy(item)):
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         rows = list(markup.inline_keyboard)
         buy5_price = item['price'] * 5
@@ -254,7 +312,11 @@ async def buy_nord(callback: CallbackQuery):
 async def buy5_nord(callback: CallbackQuery):
     await callback.answer()
     item_id = int(callback.data.split(":")[1])
-    await _buy_item(callback, item_id, 5)
+    item = await get_item(item_id)
+    if item and _allow_multi_buy(item):
+        await _buy_item(callback, item_id, 5)
+    else:
+        await callback.answer("❌ Этот товар продаётся только по одной штуке.", show_alert=True)
 
 
 async def _buy_item(callback: CallbackQuery, item_id: int, qty: int):
@@ -275,6 +337,12 @@ async def _buy_item(callback: CallbackQuery, item_id: int, qty: int):
 
     if item['stock'] != -1 and item['stock'] < qty:
         await callback.answer(f"❌ В магазине осталось меньше {qty} шт.", show_alert=True)
+        return
+
+    # Расширения жилья нельзя купить, если их некуда ставить
+    block_reason = await furniture_block_reason(user_id, item)
+    if block_reason:
+        await callback.answer(f"❌ {block_reason}", show_alert=True)
         return
 
     user = await get_user(user_id)

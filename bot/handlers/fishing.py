@@ -17,7 +17,7 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from database.db import (
     get_item_by_name, get_inventory_item, remove_inventory_item,
     add_fish_catch, add_inventory_item, get_user, update_user,
-    remove_ap, log_activity,
+    remove_ap, log_activity, get_active_run,
 )
 from utils.helpers import resolve_image, time_of_day_key, plural_nordmark, item_local_photo, fish_weight_tier, fish_sell_price
 from config import FISH_AP_COST, FISH_WEIGHTS
@@ -155,6 +155,32 @@ async def _resolve_bait(user_id: int, chosen: str):
     return None, None
 
 
+async def _bait_line(user_id: int, chosen: str) -> str:
+    """Остаток наживки для следующего заброса (по аналогии со счётчиком ОД)."""
+    if (chosen or "").strip() == "none":
+        return "🪱 Наживка: выключена"
+    counts = []
+    total = 0
+    for name, label in (
+        (WORMS_NAME, "черви"),
+        (SPIDER_LEG_NAME, "лапка"),
+        (COMBINED_BAIT_NAME, "комби"),
+    ):
+        qty = 0
+        item = await get_item_by_name(name)
+        if item:
+            inv = await get_inventory_item(user_id, item['id'])
+            qty = inv['quantity'] if inv else 0
+        total += qty
+        counts.append(f"{label} {qty}")
+    line = "🪱 Наживка: " + ", ".join(counts)
+    if total <= 0:
+        line += " — на следующий заброс не хватит («Без наживки»: только мусор)"
+    else:
+        line += " — ещё есть"
+    return line
+
+
 def _catch_chance(rod, bait_name: str) -> int:
     """Шанс улова в процентах при данной удочке и наживке."""
     if not rod:
@@ -226,18 +252,18 @@ def _bait_markup(user_id: int, chosen: str, worms_qty: int, spider_qty: int, com
     rows = []
     if worms_qty:
         rows.append([InlineKeyboardButton(
-            row(f"🐛 {WORMS_NAME} x{worms_qty} (+{BAIT_BONUS[WORMS_NAME]}%)", "worms"),
+            text=row(f"🐛 {WORMS_NAME} x{worms_qty} (+{BAIT_BONUS[WORMS_NAME]}%)", "worms"),
             callback_data="fish:bait:set:worms")])
     if spider_qty:
         rows.append([InlineKeyboardButton(
-            row(f"🕷 {SPIDER_LEG_NAME} x{spider_qty} (+{BAIT_BONUS[SPIDER_LEG_NAME]}%)", "spider"),
+            text=row(f"🕷 {SPIDER_LEG_NAME} x{spider_qty} (+{BAIT_BONUS[SPIDER_LEG_NAME]}%)", "spider"),
             callback_data="fish:bait:set:spider")])
     if combined_qty:
         rows.append([InlineKeyboardButton(
-            row(f"🪤 {COMBINED_BAIT_NAME} x{combined_qty} (+{BAIT_BONUS[COMBINED_BAIT_NAME]}%)", "combined"),
+            text=row(f"🪤 {COMBINED_BAIT_NAME} x{combined_qty} (+{BAIT_BONUS[COMBINED_BAIT_NAME]}%)", "combined"),
             callback_data="fish:bait:set:combined")])
     rows.append([InlineKeyboardButton(
-        row("🚫 Без наживки", "none"),
+        text=row("🚫 Без наживки", "none"),
         callback_data="fish:bait:set:none")])
     rows.append([InlineKeyboardButton(text="🔙 К озеру", callback_data="fish:lake")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -246,6 +272,15 @@ def _bait_markup(user_id: int, chosen: str, worms_qty: int, spider_qty: int, com
 async def fishing_lake_menu(callback: CallbackQuery):
     """Меню озера с рыбалкой (вход из парка: park:lake)."""
     await callback.answer()
+
+    # В подземелье рыбачить нельзя
+    if await get_active_run(callback.from_user.id):
+        await callback.message.answer(
+            "⛔ Ты сейчас проходишь подземелье — рыбачить нельзя.\n"
+            "Выйди из подземелья («🚪 Выйти из подземелья»), а потом иди на озеро."
+        )
+        return
+
     user = await get_user(callback.from_user.id)
     user = user or {}
     chosen = (user.get('fishing_bait') or "").strip()
@@ -347,6 +382,11 @@ async def fish_cast(callback: CallbackQuery):
         await callback.answer("Ты уже закинул удочку — дождись результата!", show_alert=True)
         return
 
+    # В подземелье рыбачить нельзя (старые кнопки озера тоже блокируем)
+    if await get_active_run(user_id):
+        await callback.answer("⛔ Ты в подземелье — рыбачить нельзя!", show_alert=True)
+        return
+
     user = await get_user(user_id)
     if not user:
         await callback.answer("Сначала нажми /start", show_alert=True)
@@ -399,7 +439,9 @@ async def fish_cast(callback: CallbackQuery):
             ap_line += f" — на следующий заброс не хватит ({FISH_AP_COST} ОД)"
         else:
             ap_line += f" — можно забрасывать"
-        ap_block = f"\n\n{ap_line}"
+        # Остаток наживки (аналог ОД)
+        bait = await _bait_line(user_id, chosen)
+        ap_block = f"\n\n{ap_line}\n{bait}"
 
         if bait_name:
             # С наживкой — рыбалка как раньше.
