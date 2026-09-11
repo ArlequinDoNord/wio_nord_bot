@@ -12,6 +12,7 @@ from database.db import (
     get_run_items, clear_run_items, get_user, add_nordmarks, remove_nordmarks, remove_ap, get_db,
     get_player_weapon_damage, get_user_potions, get_item_by_name, remove_inventory_item,
     get_user_contract_count, get_player_armor, add_inventory_item,
+    get_inventory_item, clear_equipment_slot,
     transfer_run_items_to_inventory, get_equipment_slot_items, log_activity,
 )
 from utils.combat import (
@@ -532,6 +533,11 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
     if not ok:
         await callback.message.answer("❌ Не удалось списать предмет.")
         return
+
+    # Предмет кончился — очищаем слот, чтобы он не остался «призрачным»
+    inv_after = await get_inventory_item(user_id, item['id'])
+    if not inv_after or (inv_after['quantity'] or 0) <= 0:
+        await clear_equipment_slot(user_id, slot)
 
     enemy_id = data.get('current_enemy_id')
     is_boss = False

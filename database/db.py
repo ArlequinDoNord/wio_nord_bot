@@ -2301,6 +2301,23 @@ async def delete_park_statue(statue_id: int):
     await conn.commit()
 
 
+async def update_park_statue(statue_id: int, **fields):
+    """Обновляет одно или несколько полей статуи (name/description/image_*)."""
+    if not fields:
+        return
+    allowed = {'name', 'description', 'image_dawn', 'image_day', 'image_sunset', 'image_night'}
+    sets = {k: v for k, v in fields.items() if k in allowed}
+    if not sets:
+        return
+    conn = await get_db()
+    assignments = ", ".join(f"{k} = ?" for k in sets)
+    await conn.execute(
+        f"UPDATE park_statues SET {assignments} WHERE id = ?",
+        list(sets.values()) + [statue_id]
+    )
+    await conn.commit()
+
+
 # ============ УЛОВ (рыбалка): рыба с весом ============
 
 async def add_fish_catch(user_id: int, item_id: int, weight: int = 1) -> int:

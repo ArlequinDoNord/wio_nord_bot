@@ -10,7 +10,7 @@ from database.db import (
     add_nordmarks, get_user, get_inventory_item, get_all_users,
     add_inventory_item, update_item, get_db,
     get_equipment, set_equipment_slot, clear_equipment_slot, log_activity,
-    get_fish_catches, sell_one_fish_catch,
+    get_fish_catches, sell_one_fish_catch, get_active_run,
 )
 from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text,
@@ -70,21 +70,27 @@ def inv_list_markup(items, catches=None):
 
 
 def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equipped: bool = False,
-                    equip_slot: str = None, potion_slots: list = None, sellable: bool = True):
+                    equip_slot: str = None, potion_slots: list = None, sellable: bool = True,
+                    sell5: bool = False, occupied: dict = None):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = []
     if can_use:
         buttons.append([InlineKeyboardButton(text="✅ Использовать", callback_data=f"inv_use:{item_id}")])
     if category == 'consumable' and potion_slots is not None:
+        occupied = occupied or {}
         slot_row = []
         if 1 in potion_slots:
             slot_row.append(InlineKeyboardButton(text="⚗️ Слот 1 ✓", callback_data=f"inv_unslot:potion1"))
         else:
-            slot_row.append(InlineKeyboardButton(text="⚗️ В слот 1", callback_data=f"inv_slot:{item_id}:1"))
+            occ = occupied.get('potion1')
+            label = f"⚗️ В слот 1 (замен. «{occ}»)" if occ else "⚗️ В слот 1"
+            slot_row.append(InlineKeyboardButton(text=label, callback_data=f"inv_slot:{item_id}:1"))
         if 2 in potion_slots:
             slot_row.append(InlineKeyboardButton(text="⚗️ Слот 2 ✓", callback_data=f"inv_unslot:potion2"))
         else:
-            slot_row.append(InlineKeyboardButton(text="⚗️ В слот 2", callback_data=f"inv_slot:{item_id}:2"))
+            occ = occupied.get('potion2')
+            label = f"⚗️ В слот 2 (замен. «{occ}»)" if occ else "⚗️ В слот 2"
+            slot_row.append(InlineKeyboardButton(text=label, callback_data=f"inv_slot:{item_id}:2"))
         buttons.append(slot_row)
     if equip_slot:
         if is_equipped:
@@ -93,6 +99,8 @@ def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equip
             buttons.append([InlineKeyboardButton(text="⚔️ Экипировать", callback_data=f"inv_equip:{item_id}")])
     if sellable:
         buttons.append([InlineKeyboardButton(text="💵 Продать", callback_data=f"inv_sell:{item_id}")])
+        if sell5:
+            buttons.append([InlineKeyboardButton(text="💵 Продать 5 шт", callback_data=f"inv_sell5:{item_id}")])
     buttons.append([InlineKeyboardButton(text="📤 Передать", callback_data=f"inv_transfer:{item_id}")])
     buttons.append([InlineKeyboardButton(text="🔙 В инвентарь", callback_data="inventory:list")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -105,10 +113,14 @@ async def inventory_menu(message: Message):
     if not items and not catches:
         await message.answer("Твой инвентарь пуст.")
         return
-    await message.answer(
-        "🎒 ИНВЕНТАРЬ\n\nВыбери предмет:",
-        reply_markup=inv_list_markup(items, catches)
-    )
+    header = "🎒 ИНВЕНТАРЬ\n\nВыбери предмет:"
+    run = await get_active_run(message.from_user.id)
+    if run:
+        header = ("🎒 ИНВЕНТАРЬ\n"
+                  "⏳ Идёт забег в подземелье: вернуться в бой можно "
+                  "старыми кнопками «Атаковать/Продолжить» в чате.\n\n"
+                  "Выбери предмет:")
+    await message.answer(header, reply_markup=inv_list_markup(items, catches))
 
 
 @router.callback_query(F.data == "inventory:list")
@@ -173,11 +185,22 @@ async def inv_item_view(callback: CallbackQuery):
     if potion_slots:
         text += f"\n\n⚗️ В активном слоте: {', '.join(str(n) for n in potion_slots)}"
 
+    # Кто сейчас занимает слоты (для честной замены — без сюрпризов)
+    occupied = {}
+    if item['category'] == 'consumable':
+        for n, slot in ((1, 'potion1'), (2, 'potion2')):
+            occ_id = eq.get(slot)
+            if occ_id and occ_id != item_id:
+                occ_item = await get_item(occ_id)
+                occupied[slot] = occ_item['name'] if occ_item else f"#{occ_id}"
+
     can_use = item['category'] == "consumable" and not (item['heal'] or 0)
     markup = inv_item_markup(item_id, item['category'], can_use=can_use,
                              is_equipped=is_equipped, equip_slot=equip_slot,
                              potion_slots=potion_slots,
-                             sellable=(item['sell_price'] or 0) > 0)
+                             sellable=(item['sell_price'] or 0) > 0,
+                             sell5=(inv['quantity'] or 0) >= 5,
+                             occupied=occupied)
 
     photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
     local_photo = None if photo_id else item_local_photo(item['name'])
@@ -257,8 +280,14 @@ async def inv_potion_slot(callback: CallbackQuery):
         return
 
     slot = f"potion{slot_n}"
+    eq = await get_equipment(user_id)
+    replaced = eq.get(slot)
     await set_equipment_slot(user_id, slot, item_id)
-    await callback.message.answer(f"⚗️ {item['name']} поставлен в активный слот {slot_n}.")
+    note = ""
+    if replaced and replaced != item_id:
+        old = await get_item(replaced)
+        note = f" (был «{old['name'] if old else replaced}»)"
+    await callback.answer(f"⚗️ В слот {slot_n} теперь: {item['name']}{note}")
 
 
 @router.callback_query(F.data.startswith("inv_unslot:"))
@@ -292,28 +321,40 @@ async def inv_use(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("inv_sell:"))
 async def inv_sell(callback: CallbackQuery):
     await callback.answer()
-    user_id = callback.from_user.id
     item_id = int(callback.data.split(":")[1])
+    await _sell_item(callback, item_id, 1)
+
+
+@router.callback_query(F.data.startswith("inv_sell5:"))
+async def inv_sell5(callback: CallbackQuery):
+    await callback.answer()
+    item_id = int(callback.data.split(":")[1])
+    await _sell_item(callback, item_id, 5)
+
+
+async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
+    user_id = callback.from_user.id
     item = await get_item(item_id)
     inv = await get_inventory_item(user_id, item_id)
-    if not item or not inv or inv['quantity'] < 1:
-        await callback.message.answer("❌ У тебя нет этого предмета.")
+    if not item or not inv or inv['quantity'] < qty:
+        await callback.answer(f"❌ У тебя меньше {qty} шт. этого предмета.", show_alert=True)
         return
 
-    await remove_inventory_item(user_id, item_id, 1)
-    await add_nordmarks(user_id, item['sell_price'], "shop_sale", f"Продажа: {item['name']}")
-    await log_activity(user_id, "shop_sale", f"Продал «{item['name']}» за {item['sell_price']} НМ")
+    await remove_inventory_item(user_id, item_id, qty)
+    total = item['sell_price'] * qty
+    await add_nordmarks(user_id, total, "shop_sale", f"Продажа: {item['name']} x{qty}")
+    await log_activity(user_id, "shop_sale", f"Продал «{item['name']}» x{qty} за {total} НМ")
 
     # Маркетплейс: товар с ограниченным остатком (не -1 «безлимит») после продажи игроком
     # возвращается в магазин — сколько продали, столько и появилось к покупке.
     if item['stock'] != -1:
         await update_item(item_id, is_available=1)
         db = await get_db()
-        await db.execute("UPDATE items SET stock = stock + 1 WHERE id = ?", (item_id,))
+        await db.execute("UPDATE items SET stock = stock + ? WHERE id = ?", (qty, item_id))
         await db.commit()
 
     await callback.message.answer(
-        f"💵 Ты продал {item['name']} за {item['sell_price']} {plural_nordmark(item['sell_price'])}!"
+        f"💵 Ты продал {item['name']} x{qty} за {total} {plural_nordmark(total)}!"
     )
 
 

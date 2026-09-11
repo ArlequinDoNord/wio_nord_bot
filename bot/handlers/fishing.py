@@ -264,6 +264,12 @@ async def fishing_lake_menu(callback: CallbackQuery):
         bait_line = "🪱 Наживка: нужна удочка"
         chance_line = ""
 
+    ap = user.get('ap', 0) or 0
+    ap_max = user.get('ap_max', ap) or ap
+    ap_line = f"⚡ ОД: {ap}/{ap_max}"
+    if ap < FISH_AP_COST:
+        ap_line += f" — не хватит на заброс ({FISH_AP_COST} ОД), придёт с новыми сутками"
+
     caption = (
         "🌊 ОЗЕРО В ПАРКЕ\n\n"
         "Зеркальная гладь среди деревьев. Тут водятся рыбы: "
@@ -271,6 +277,7 @@ async def fishing_lake_menu(callback: CallbackQuery):
         f"{rod_line}\n"
         f"{bait_line}\n"
         f"{chance_line}\n\n"
+        f"{ap_line}\n\n"
         f"Заброс стоит {FISH_AP_COST} ОД, результат через 7–15 секунд."
     )
     await _paint(callback, text=caption, media_path=_lake_path(), kb=_lake_markup())

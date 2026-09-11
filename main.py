@@ -42,14 +42,24 @@ logger = logging.getLogger(__name__)
 class MainMenuFSMReset(BaseMiddleware):
     """Если приходит нажатие reply-кнопки главного меню, сбрасывает активное
     FSM-состояние. Иначе FSM-хендлеры (админ-панель, передача и т.д.) перехватывают
-    «Магазин»/«Инвентарь»/«Сдать отчёт» как ввод числа и отвечают мусором."""
+    «Магазин»/«Инвентарь»/«Сдать отчёт» как ввод числа и отвечают мусором.
+
+    Исключение — активный забег в подземелье: там состояние хранит бой
+    (шаг кнопок, HP врага, яд). Его сбрасывать нельзя, иначе игрок, открывший
+    «Инвентарь»/«Магазин» посреди забега, не сможет продолжить бой старыми
+    кнопками и «застрянет» (жетон сгорел, кнопки мертвы).
+    """
+
+    DUNGEON_STATE_KEYS = ('dungeon_step', 'current_enemy_id', 'current_enemy_hp', 'dungeon_id')
 
     async def __call__(self, handler, event, data):
         if isinstance(event, Message) and event.text and is_main_menu_text(event.text):
             state: FSMContext | None = data.get('state')
             if state is not None:
                 try:
-                    await state.clear()
+                    active = await state.get_data()
+                    if not any(k in active for k in self.DUNGEON_STATE_KEYS):
+                        await state.clear()
                 except Exception:
                     pass
         return await handler(event, data)

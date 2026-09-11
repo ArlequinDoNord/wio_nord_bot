@@ -16,6 +16,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
     get_park_statues, get_park_statue, add_park_statue, delete_park_statue,
+    update_park_statue,
     can_enter_location, PARK_TOD_KEYS,
 )
 from keyboards.keyboards import cancel_keyboard
@@ -169,6 +170,7 @@ async def park_admin(callback: CallbackQuery):
         return
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Добавить статую", callback_data="park:admin:add")],
+        [InlineKeyboardButton(text="✏️ Изменить статую", callback_data="park:admin:editlist")],
         [InlineKeyboardButton(text="🗑️ Удалить статую", callback_data="park:admin:list")],
         [InlineKeyboardButton(text="🔙 В парк", callback_data="park:menu")],
     ])
@@ -308,3 +310,120 @@ async def statue_admin_delete(callback: CallbackQuery):
     await delete_park_statue(statue_id)
     await log_action(callback.from_user.id, 'delete_statue', None, statue['name'])
     await callback.message.answer(f"🗑️ Статуя «{statue['name']}» удалена из парка.")
+
+
+# ============ ИЗМЕНЕНИЕ СТАТУИ (админ) ============
+
+class AdminStatueEdit(StatesGroup):
+    field = State()
+    value = State()
+
+
+async def _statue_edit_fields_menu(callback: CallbackQuery, statue: dict):
+    """Inline-меню выбора поля статуи для редактирования."""
+    def flabel(key, current):
+        short = ""
+        if key == "description":
+            short = (current or "—")[:40]
+        else:
+            short = "есть" if current else "—"
+        return f"{TOD_LABEL.get(key, key)}: «{short}»"
+
+    rows = [
+        [InlineKeyboardButton(
+            f"📝 Описание: «{(statue.get('description') or '—')[:40]}»",
+            callback_data=f"park:adminedit:f:{statue['id']}:description",
+        )],
+    ]
+    for key in PARK_TOD_KEYS:
+        rows.append([InlineKeyboardButton(
+            flabel(key, statue.get(f"image_{key}")),
+            callback_data=f"park:adminedit:f:{statue['id']}:{key}",
+        )])
+    rows.append([InlineKeyboardButton(text="✅ Готово", callback_data="park:admin")])
+    await callback.message.edit_text(
+        f"✏️ Редактирование статуи «{statue['name']}»\nВыбери поле для изменения:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+@router.callback_query(F.data == "park:admin:editlist")
+async def statue_admin_edit_list(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    statues = await get_park_statues()
+    if not statues:
+        await callback.message.answer("Пока нет ни одной статуи.")
+        return
+    rows = [[InlineKeyboardButton(text=f"✏️ {s['name']}", callback_data=f"park:admin:edit:{s['id']}")] for s in statues]
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="park:admin")])
+    await edit_message_safe(callback.message, "Выбери статую для редактирования:",
+                            InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("park:admin:edit:"))
+async def statue_admin_edit_start(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        statue_id = int(callback.data.split(":", 3)[3])
+    except ValueError:
+        return
+    statue = await get_park_statue(statue_id)
+    if not statue:
+        await callback.message.answer("❌ Статуя не найдена.")
+        return
+    await state.update_data(statue_id=statue_id, field=None)
+    await state.set_state(AdminStatueEdit.field)
+    await _statue_edit_fields_menu(callback, statue)
+
+
+@router.callback_query(F.data.startswith("park:adminedit:f:"))
+async def statue_admin_edit_field(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, _, statue_s, field = callback.data.split(":", 4)
+    await state.update_data(field=field)
+    await state.set_state(AdminStatueEdit.value)
+    if field == 'description':
+        await callback.message.edit_text(
+            "📝 Введи новое описание статуи:", reply_markup=cancel_keyboard()
+        )
+    else:
+        await callback.message.edit_text(
+            f"🖼️ Пришли фото статуи для «{TOD_LABEL.get(field, field)}»\n"
+            f"или отправь «—», чтобы оставить без изменений:",
+            reply_markup=cancel_keyboard()
+        )
+
+
+@router.message(AdminStatueEdit.value, ~F.text.func(is_main_menu_text))
+async def statue_admin_edit_value(message: Message, state: FSMContext):
+    data = await state.get_data()
+    statue_id = data.get('statue_id')
+    field = data.get('field')
+    if not statue_id or not field:
+        await state.clear()
+        return
+    if field == 'description':
+        await update_park_statue(statue_id, description=(message.text or "").strip())
+    else:
+        if not (message.photo or (message.text and message.text.strip() == "—")):
+            await message.answer("❌ Пришли фото или «—» чтобы оставить как есть.", reply_markup=cancel_keyboard())
+            return
+        if message.text and message.text.strip() == "—":
+            # «—» без изменений
+            pass
+        else:
+            file_id = message.photo[-1].file_id
+            await update_park_statue(statue_id, **{field: file_id})
+
+    statue = await get_park_statue(statue_id)
+    await message.answer("✅ Сохранено.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ Ещё изменений", callback_data=f"park:admin:edit:{statue_id}")],
+        [InlineKeyboardButton(text="✅ Готово", callback_data="park:admin")],
+    ]))
+    await state.set_state(AdminStatueEdit.field)
