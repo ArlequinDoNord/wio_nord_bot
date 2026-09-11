@@ -331,13 +331,13 @@ async def _statue_edit_fields_menu(callback: CallbackQuery, statue: dict):
 
     rows = [
         [InlineKeyboardButton(
-            f"📝 Описание: «{(statue.get('description') or '—')[:40]}»",
+            text=f"📝 Описание: «{(statue.get('description') or '—')[:40]}»",
             callback_data=f"park:adminedit:f:{statue['id']}:description",
         )],
     ]
     for key in PARK_TOD_KEYS:
         rows.append([InlineKeyboardButton(
-            flabel(key, statue.get(f"image_{key}")),
+            text=flabel(key, statue.get(f"image_{key}")),
             callback_data=f"park:adminedit:f:{statue['id']}:{key}",
         )])
     rows.append([InlineKeyboardButton(text="✅ Готово", callback_data="park:admin")])
