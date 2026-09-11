@@ -58,15 +58,22 @@ class MainMenuFSMReset(BaseMiddleware):
     DUNGEON_STATE_KEYS = ('dungeon_step', 'current_enemy_id', 'current_enemy_hp', 'dungeon_id')
 
     async def __call__(self, handler, event, data):
-        if isinstance(event, Message) and event.text and is_main_menu_text(event.text):
-            state: FSMContext | None = data.get('state')
-            if state is not None:
+        if isinstance(event, Message) and event.text:
+            from bot.handlers.fishing import deactivate_fishing
+            if is_main_menu_text(event.text) or event.text.startswith("/"):
                 try:
-                    active = await state.get_data()
-                    if not any(k in active for k in self.DUNGEON_STATE_KEYS):
-                        await state.clear()
+                    await deactivate_fishing(event.from_user.id)
                 except Exception:
                     pass
+            if is_main_menu_text(event.text):
+                state: FSMContext | None = data.get('state')
+                if state is not None:
+                    try:
+                        active = await state.get_data()
+                        if not any(k in active for k in self.DUNGEON_STATE_KEYS):
+                            await state.clear()
+                    except Exception:
+                        pass
         return await handler(event, data)
 
 

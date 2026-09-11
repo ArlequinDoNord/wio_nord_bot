@@ -3039,6 +3039,12 @@ async def ensure_life_items():
     conn = await get_db()
     added = False
 
+    # Кадка переименована: «Кадка с растением» → «Кадка для растений» (и в старых БД).
+    # Делаем до сидирования ниже, чтобы не появился дубль с новым именем.
+    await conn.execute(
+        "UPDATE items SET name = 'Кадка для растений' WHERE name = 'Кадка с растением'"
+    )
+
     def _item(name: str):
         return name
 
@@ -3060,7 +3066,7 @@ async def ensure_life_items():
          800, 400, 3, "furniture", -1, 0, "vip", 1),
         ("Верстак", "Рабочее место для сборки простых предметов.",
          150, 75, 1, "furniture", -1, 0, "pilot", 1),
-        ("Кадка с растением", "Кадка для выращивания растений. Пустая — в неё сажаются семена.",
+        ("Кадка для растений", "Кадка для выращивания растений. Пустая — в неё сажаются семена.",
          200, 100, 1, "furniture", -1, 0, "pilot", 1),
         ("Яблочное семечко", "Семечко яблони. Посади в кадку в жилье — вырастет яблоня.",
          30, 15, 1, "seeds", 10, 0, "pilot", 1),
@@ -3371,6 +3377,60 @@ async def get_recipe(recipe_id: int):
     conn = await get_db()
     cursor = await conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,))
     return await cursor.fetchone()
+
+
+# ---------- Учёт и списание ингредиентов (в т.ч. уловов рыбы) ----------
+
+async def get_ingredient_map(user_id: int) -> dict:
+    """Название → количество: инвентарь + непроданные уловы рыбы.
+
+    Рыба ловится в таблицу fish_catches, а не в items/inventory, поэтому
+    рецепты кухни не могли «видеть» улов. Объединяем обе базы.
+    """
+    counts: dict = {}
+    inv = await get_inventory(user_id)
+    for i in inv:
+        counts[i['name']] = counts.get(i['name'], 0) + i['quantity']
+    catches = await get_fish_catches(user_id)
+    for c in catches:
+        counts[c['name']] = counts.get(c['name'], 0) + 1
+    return counts
+
+
+async def remove_fish_catches_by_name(user_id: int, name: str, qty: int) -> bool:
+    """Списывает qty непроданных уловов рыбы по названию. True — если хватило."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT fc.id FROM fish_catches fc JOIN items i ON i.id = fc.item_id "
+        "WHERE fc.user_id = ? AND i.name = ? AND fc.sold_at IS NULL "
+        "ORDER BY fc.id LIMIT ?",
+        (user_id, name, qty)
+    )
+    rows = await cursor.fetchall()
+    if len(rows) < qty:
+        return False
+    ids = [r['id'] for r in rows]
+    await conn.execute(
+        f"DELETE FROM fish_catches WHERE id IN ({','.join('?' * len(ids))})", ids
+    )
+    await conn.commit()
+    return True
+
+
+async def consume_ingredient(user_id: int, name: str, qty: int) -> bool:
+    """Списывает ингредиент по названию: сначала инвентарь, затем уловы рыбы."""
+    item = await get_item_by_name(name)
+    remaining = qty
+    if item:
+        inv = await get_inventory_item(user_id, item['id'])
+        if inv and inv['quantity'] > 0:
+            from_inv = min(remaining, inv['quantity'])
+            if not await remove_inventory_item(user_id, item['id'], from_inv):
+                return False
+            remaining -= from_inv
+    if remaining > 0:
+        return await remove_fish_catches_by_name(user_id, name, remaining)
+    return True
 
 
 # ---------- Порча жареной рыбы ----------

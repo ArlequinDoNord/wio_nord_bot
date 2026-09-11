@@ -79,6 +79,40 @@ def _lake_path() -> str:
 # кнопки «Забросить/Ещё раз», которые можно спамить.
 FISH_MSG: dict = {}
 
+# Токен текущего окна рыбалки: user_id -> токен. Каждое свежее открытие
+# озера/наживки получает новый токен, который вшивается в callback_data.
+# Старые окна (напр. оставшиеся в трее после ухода в магазин) несут старый
+# токен и отсекаются в хендлерах — как step-guard в подземелье.
+FISH_TOKEN: dict = {}
+
+# Активные рыбалки-окна (ключи без токена) — сбрасывается при уходе в другое меню.
+
+
+def _new_token() -> str:
+    return str(random.randint(100000, 999999))
+
+
+async def deactivate_fishing(user_id: int):
+    """Инвалидация окна рыбалки при уходе в другое меню (магазин, город и т.п.)."""
+    FISH_TOKEN.pop(user_id, None)
+    FISH_MSG.pop(user_id, None)
+    FISHING_CASTING.discard(user_id)
+
+
+async def _fish_ok(callback) -> bool:
+    """Step-guard: callback должен приходить из текущего окна рыбалки.
+    Старые окна (уход в магазин/город и т.п.) несут протухший токен — отсекаем."""
+    rest = callback.data[len("fish:"):]
+    # cast:TOKEN | bait:TOKEN | lake:TOKEN | bait:set:TOKEN:VAL
+    token = rest.split(":")[2] if rest.startswith("bait:set:") else rest.split(":")[1]
+    if FISH_TOKEN.get(callback.from_user.id) != token:
+        await callback.answer(
+            "⏳ Это окно рыбалки устарело — открой озеро заново (Парк → Озеро).",
+            show_alert=True,
+        )
+        return False
+    return True
+
 
 async def _paint(callback, *, text: str = None, media_path: str = None, kb=None):
     """Единая отрисовка окна рыбалки в одном сообщении на игрока.
@@ -228,24 +262,25 @@ async def _bait_label(user_id: int, chosen: str):
     return f"{name} x{qty} (+{BAIT_BONUS[name]}%)"
 
 
-def _lake_markup():
+def _lake_markup(token: str):
     rows = [
-        [InlineKeyboardButton(text="🎣 Забросить удочку", callback_data="fish:cast")],
-        [InlineKeyboardButton(text="🪱 Наживка", callback_data="fish:bait")],
+        [InlineKeyboardButton(text="🎣 Забросить удочку", callback_data=f"fish:cast:{token}")],
+        [InlineKeyboardButton(text="🪱 Наживка", callback_data=f"fish:bait:{token}")],
         [InlineKeyboardButton(text="🔙 В парк", callback_data="park:menu")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _result_markup():
+def _result_markup(token: str):
     rows = [
-        [InlineKeyboardButton(text="🎣 Ещё раз", callback_data="fish:cast")],
+        [InlineKeyboardButton(text="🎣 Ещё раз", callback_data=f"fish:cast:{token}")],
         [InlineKeyboardButton(text="🔙 В парк", callback_data="park:menu")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _bait_markup(user_id: int, chosen: str, worms_qty: int, spider_qty: int, combined_qty: int = 0):
+def _bait_markup(user_id: int, chosen: str, worms_qty: int, spider_qty: int, combined_qty: int = 0,
+                 token: str = ""):
     def row(label: str, value: str):
         marked = " ✓" if chosen == value else ""
         return label + marked
@@ -253,19 +288,19 @@ def _bait_markup(user_id: int, chosen: str, worms_qty: int, spider_qty: int, com
     if worms_qty:
         rows.append([InlineKeyboardButton(
             text=row(f"🐛 {WORMS_NAME} x{worms_qty} (+{BAIT_BONUS[WORMS_NAME]}%)", "worms"),
-            callback_data="fish:bait:set:worms")])
+            callback_data=f"fish:bait:set:{token}:worms")])
     if spider_qty:
         rows.append([InlineKeyboardButton(
             text=row(f"🕷 {SPIDER_LEG_NAME} x{spider_qty} (+{BAIT_BONUS[SPIDER_LEG_NAME]}%)", "spider"),
-            callback_data="fish:bait:set:spider")])
+            callback_data=f"fish:bait:set:{token}:spider")])
     if combined_qty:
         rows.append([InlineKeyboardButton(
             text=row(f"🪤 {COMBINED_BAIT_NAME} x{combined_qty} (+{BAIT_BONUS[COMBINED_BAIT_NAME]}%)", "combined"),
-            callback_data="fish:bait:set:combined")])
+            callback_data=f"fish:bait:set:{token}:combined")])
     rows.append([InlineKeyboardButton(
         text=row("🚫 Без наживки", "none"),
-        callback_data="fish:bait:set:none")])
-    rows.append([InlineKeyboardButton(text="🔙 К озеру", callback_data="fish:lake")])
+        callback_data=f"fish:bait:set:{token}:none")])
+    rows.append([InlineKeyboardButton(text="🔙 К озеру", callback_data=f"fish:lake:{token}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -280,6 +315,10 @@ async def fishing_lake_menu(callback: CallbackQuery):
             "Выйди из подземелья («🚪 Выйти из подземелья»), а потом иди на озеро."
         )
         return
+
+    # Свежее окно рыба gets свой токен: старые окна отсекаются step-guard'ом.
+    token = _new_token()
+    FISH_TOKEN[callback.from_user.id] = token
 
     user = await get_user(callback.from_user.id)
     user = user or {}
@@ -321,16 +360,20 @@ async def fishing_lake_menu(callback: CallbackQuery):
         f"{ap_line}\n\n"
         f"Заброс стоит {FISH_AP_COST} ОД, результат через 7–15 секунд."
     )
-    await _paint(callback, text=caption, media_path=_lake_path(), kb=_lake_markup())
+    await _paint(callback, text=caption, media_path=_lake_path(), kb=_lake_markup(token))
 
 
-@router.callback_query(F.data == "fish:lake")
+@router.callback_query(F.data.regexp(r"^fish:lake:\d+$"))
 async def fish_lake_cb(callback: CallbackQuery):
+    if not _fish_ok(callback):
+        return
     await fishing_lake_menu(callback)
 
 
-@router.callback_query(F.data == "fish:bait")
+@router.callback_query(F.data.regexp(r"^fish:bait:\d+$"))
 async def fish_bait_menu(callback: CallbackQuery):
+    if not _fish_ok(callback):
+        return
     await callback.answer()
     user = await get_user(callback.from_user.id)
     user = user or {}
@@ -364,19 +407,24 @@ async def fish_bait_menu(callback: CallbackQuery):
         f"(водоросли {JUNK_SEAWEED_CHANCE}%, сапог {JUNK_BOOT_CHANCE}%)."
     )
     await _paint(callback, text=text,
-                 kb=_bait_markup(callback.from_user.id, chosen, worms_qty, spider_qty, combined_qty))
+                 kb=_bait_markup(callback.from_user.id, chosen, worms_qty, spider_qty, combined_qty,
+                                 token=FISH_TOKEN.get(callback.from_user.id, "")))
 
 
-@router.callback_query(F.data.startswith("fish:bait:set:"))
+@router.callback_query(F.data.regexp(r"^fish:bait:set:\d+:[a-z]+$"))
 async def fish_bait_choose(callback: CallbackQuery):
+    if not _fish_ok(callback):
+        return
     await callback.answer()
-    value = callback.data.split(":", 3)[3]
+    value = callback.data.split(":", 4)[4]
     await update_user(callback.from_user.id, fishing_bait=value)
     await fishing_lake_menu(callback)
 
 
-@router.callback_query(F.data == "fish:cast")
+@router.callback_query(F.data.regexp(r"^fish:cast:\d+$"))
 async def fish_cast(callback: CallbackQuery):
+    if not _fish_ok(callback):
+        return
     user_id = callback.from_user.id
     if user_id in FISHING_CASTING:
         await callback.answer("Ты уже закинул удочку — дождись результата!", show_alert=True)
@@ -397,7 +445,7 @@ async def fish_cast(callback: CallbackQuery):
         await _paint(
             callback,
             text="❌ У тебя нет удочки. Купи «Удочка из орешника» в магазине (категория «Рыбалка»).",
-            kb=_lake_markup(),
+            kb=_lake_markup(FISH_TOKEN.get(user_id, "")),
         )
         return
 
@@ -405,7 +453,7 @@ async def fish_cast(callback: CallbackQuery):
         await _paint(
             callback,
             text=f"❌ Не хватает ОД: нужно {FISH_AP_COST}, доступно меньше. Восстановление — в новые сутки.",
-            kb=_lake_markup(),
+            kb=_lake_markup(FISH_TOKEN.get(user_id, "")),
         )
         return
 
@@ -464,7 +512,7 @@ async def fish_cast(callback: CallbackQuery):
                     )
                     local_photo = item_local_photo(fish_name)
                     if local_photo:
-                        await _paint(callback, text=text + ap_block, media_path=local_photo, kb=_result_markup())
+                        await _paint(callback, text=text + ap_block, media_path=local_photo, kb=_result_markup(FISH_TOKEN.get(user_id, "")))
                         return
                 else:
                     text = "🎣 Рыбалка\n\n🐟 Что-то поймал, но предмет потерялся. Сообщи хранителю."
@@ -504,6 +552,6 @@ async def fish_cast(callback: CallbackQuery):
                 )
         # Счётчик ОД перед следующим забросом
         text += ap_block
-        await _paint(callback, text=text, kb=_result_markup())
+        await _paint(callback, text=text, kb=_result_markup(FISH_TOKEN.get(user_id, "")))
     finally:
         FISHING_CASTING.discard(user_id)

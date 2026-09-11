@@ -11,7 +11,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, Inli
 from database.db import (
     get_user, get_player_housing, set_player_housing, get_housing_slots, set_housing_slot,
     ensure_player_housing, HOUSING_TYPES, HOUSING_ORDER, PLANT_STAGES, FRUIT_EVERY_DAYS,
-    get_recipes, get_recipe,
+    get_recipes, get_recipe, get_ingredient_map, consume_ingredient,
     plant_seed, plant_stage_info, harvest_plant,
     get_inventory, get_item, get_item_by_name,
     remove_inventory_item, add_inventory_item, remove_ap, add_ap,
@@ -28,14 +28,14 @@ FURNITURE_BY_EXPANSION = {
     ("kitchen", 2): "Кухня 2 уровня",
     ("kitchen", 3): "Кухня 3 уровня",
     ("workbench", 1): "Верстак",
-    ("plant_pot", 1): "Кадка с растением",
+    ("plant_pot", 1): "Кадка для растений",
 }
 FURNITURE_BY_ITEM = {v: k for k, v in FURNITURE_BY_EXPANSION.items()}
 
 EXPANSION_LABELS = {
     "kitchen": "🍳 Кухня",
     "workbench": "🔧 Верстак",
-    "plant_pot": "🌱 Кадка с растением",
+    "plant_pot": "🌱 Кадка для растений",
 }
 
 # Встроенная кухня студии (идёт вместе с жильём, не снимается и не возвращается).
@@ -91,7 +91,7 @@ def _slot_name(slot):
     if et == "workbench":
         return "Верстак"
     if et == "plant_pot":
-        return "Кадка с растением"
+        return "Кадка для растений"
     return "Пустой слот"
 
 
@@ -162,7 +162,7 @@ async def housing_menu(cb: CallbackQuery):
                 f"🏠 Переехать в «{item['name']}»",
                 f"housing:move:{item['id']}")])
 
-    rows.append([_inv_row("🔙 В город", "city")])
+    rows.append([_inv_row("🔙 В город", "city:menu")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
 
@@ -258,7 +258,7 @@ async def _room_plant(cb, uid, idx, slot, ht):
     if not seed_name:
         # Пустая кадка — список семян в инвентаре
         inv = await get_inventory(uid)
-        seeds = [i for i in inv if i.get("category") == "seeds"]
+        seeds = [i for i in inv if i["category"] == "seeds"]
         lines = ["🌱 *Кадка пуста*\nВыбери семечко для посадки:"]
         rows = []
         for s in seeds:
@@ -317,8 +317,7 @@ async def housing_recipe(cb: CallbackQuery):
         return
     ingredients = json.loads(r["ingredients"] or "[]")
 
-    inv = await get_inventory(uid)
-    inv_map = {i["name"]: i["quantity"] for i in inv}
+    inv_map = await get_ingredient_map(uid)
     lines = [f"📋 *{r['name']}*\n{r['description']}\n", "Ингредиенты:"]
     can_craft = True
     for ing_name, qty in ingredients:
@@ -369,8 +368,7 @@ async def housing_craft(cb: CallbackQuery):
         return
 
     ingredients = json.loads(r["ingredients"] or "[]")
-    inv = await get_inventory(uid)
-    inv_map = {i["name"]: i["quantity"] for i in inv}
+    inv_map = await get_ingredient_map(uid)
     for ing_name, qty in ingredients:
         if inv_map.get(ing_name, 0) < qty:
             await cb.answer(f"❌ Нет «{ing_name}»!", show_alert=True)
@@ -382,9 +380,9 @@ async def housing_craft(cb: CallbackQuery):
         return
 
     for ing_name, qty in ingredients:
-        item = await get_item_by_name(ing_name)
-        if item:
-            await remove_inventory_item(uid, item["id"], qty)
+        if not await consume_ingredient(uid, ing_name, qty):
+            await cb.answer(f"❌ Не удалось списать «{ing_name}»!", show_alert=True)
+            return
 
     CRAFTING.add(uid)
     try:
@@ -468,7 +466,7 @@ async def housing_install(cb: CallbackQuery):
         return
 
     inv = await get_inventory(uid)
-    furniture = [i for i in inv if i.get("category") == "furniture"]
+    furniture = [i for i in inv if i["category"] == "furniture"]
     lines = ["➕ *Установить расширение*\nВыбери мебель из инвентаря:"]
     rows = []
     for item in furniture:
@@ -490,7 +488,7 @@ async def housing_install_item(cb: CallbackQuery):
     idx, item_id = int(idx_s), int(iid_s)
 
     item = await get_item(item_id)
-    if not item or item.get("category") != "furniture":
+    if not item or item["category"] != "furniture":
         await cb.answer("❌ Это не мебель.", show_alert=True)
         return
 
@@ -626,7 +624,7 @@ async def housing_move(cb: CallbackQuery):
     item_id = int(cb.data.split(":")[2])
 
     item = await get_item(item_id)
-    if not item or item.get("category") != "housing":
+    if not item or item["category"] != "housing":
         return
 
     target = HOUSING_ITEM_BY_NAME.get(item["name"])

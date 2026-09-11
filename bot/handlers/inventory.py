@@ -50,7 +50,47 @@ def _fish_groups(catches):
     return groups
 
 
-def inv_list_markup(items, catches=None):
+# Порядок категорий в подменю инвентаря (как каталог магазина)
+INV_CATEGORIES = [
+    "weapon", "equipment", "consumable", "resource", "seeds",
+    "fishing", "housing", "furniture", "special", "souvenirs",
+    "library_card", "building",
+]
+FISH_ALL_KEY = "__fish__"
+
+
+def inv_categories_markup(items, catches):
+    """Подменю категорий: сколько предметов в каждой + улов."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from utils.helpers import category_label
+    counts = {}
+    for it in items:
+        counts[it['category']] = counts.get(it['category'], 0) + (it['quantity'] or 1)
+    fish_total = sum(g["count"] for g in _fish_groups(catches or []).values())
+    if fish_total > 0:
+        counts[FISH_ALL_KEY] = fish_total
+
+    rows = []
+    for cat in INV_CATEGORIES:
+        if cat not in counts or counts[cat] <= 0:
+            continue
+        label = category_label(cat)
+        emoji = {"weapon": "⚔️", "equipment": "🛡️", "consumable": "🧪",
+                 "resource": "⛏️", "seeds": "🌱", "fishing": "🎣",
+                 "housing": "🏠", "furniture": "🪑", "special": "💎",
+                 "souvenirs": "🏺", "library_card": "📚", "building": "🏗️"}.get(cat, "📦")
+        rows.append([InlineKeyboardButton(
+            text=f"{emoji} {label} — {counts[cat]}",
+            callback_data=f"inventory:cat:{cat}")])
+    if FISH_ALL_KEY in counts:
+        rows.append([InlineKeyboardButton(
+            text=f"🐟 Улов — {counts[FISH_ALL_KEY]}",
+            callback_data=f"inventory:cat:{FISH_ALL_KEY}")])
+    rows.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def inv_list_markup(items, catches=None, back_cb: str = "back:main", back_label: str = "🔙 В меню"):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = []
     for it in items:
@@ -67,7 +107,7 @@ def inv_list_markup(items, catches=None):
             text=f"{emoji} {g['name']} — {tier['label']} x{g['count']}",
             callback_data=f"fishcatch:{item_id}:{weight}"
         )])
-    buttons.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])
+    buttons.append([InlineKeyboardButton(text=back_label, callback_data=back_cb)])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -104,7 +144,7 @@ def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equip
         if sell5:
             buttons.append([InlineKeyboardButton(text="💵 Продать 5 шт", callback_data=f"inv_sell5:{item_id}")])
     buttons.append([InlineKeyboardButton(text="📤 Передать", callback_data=f"inv_transfer:{item_id}")])
-    buttons.append([InlineKeyboardButton(text="🔙 В инвентарь", callback_data="inventory:list")])
+    buttons.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="inventory:list")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -116,7 +156,7 @@ async def inventory_menu(message: Message):
     if not items and not catches:
         await message.answer("Твой инвентарь пуст.")
         return
-    header = "🎒 ИНВЕНТАРЬ\n\nВыбери предмет:"
+    header = "🎒 ИНВЕНТАРЬ\n\nВыбери категорию:"
     if spoiled:
         header = f"🥀 Часть провизии испортилась: {spoiled} шт. обращено.\n\n" + header
     run = await get_active_run(message.from_user.id)
@@ -124,8 +164,8 @@ async def inventory_menu(message: Message):
         header = ("🎒 ИНВЕНТАРЬ\n"
                   "⏳ Идёт забег в подземелье: вернуться в бой можно "
                   "старыми кнопками «Атаковать/Продолжить» в чате.\n\n"
-                  "Выбери предмет:")
-    await message.answer(header, reply_markup=inv_list_markup(items, catches))
+                  "Выбери категорию:")
+    await message.answer(header, reply_markup=inv_categories_markup(items, catches))
 
 
 @router.callback_query(F.data == "inventory:list")
@@ -137,14 +177,41 @@ async def inventory_list_cb(callback: CallbackQuery):
     if not items and not catches:
         await edit_or_replace(callback.message, "Твой инвентарь пуст.", None)
         return
-    header = "🎒 ИНВЕНТАРЬ\n\nВыбери предмет:"
+    header = "🎒 ИНВЕНТАРЬ\n\nВыбери категорию:"
     if spoiled:
         header = f"🥀 Часть провизии испортилась: {spoiled} шт. обращено.\n\n" + header
     await edit_or_replace(
         callback.message,
         header,
-        inv_list_markup(items, catches)
+        inv_categories_markup(items, catches)
     )
+
+
+@router.callback_query(F.data.regexp(r"^inventory:cat:[^:]+$"))
+async def inventory_cat_cb(callback: CallbackQuery):
+    await callback.answer()
+    cat = callback.data.split(":", 2)[2]
+    user_id = callback.from_user.id
+    items = await get_inventory(user_id)
+    catches = await get_fish_catches(user_id)
+    if cat != FISH_ALL_KEY:
+        items = [i for i in items if i['category'] == cat]
+        catches = []
+    else:
+        items = []
+    if not items and not catches:
+        await edit_or_replace(callback.message, "В этой категории нет предметов.", None)
+        return
+    header = "🎒 ИНВЕНТАРЬ"
+    if cat == FISH_ALL_KEY:
+        header += "\nУлов:"
+    else:
+        from utils.helpers import category_label
+        header += f"\n{category_label(cat)}:"
+    await edit_or_replace(callback.message, header,
+                          inv_list_markup(items, catches,
+                                          back_cb="inventory:list",
+                                          back_label="🔙 К категориям"))
 
 
 async def _render_item_card(message, user_id: int, item_id: int):
@@ -471,7 +538,7 @@ async def _show_fish_catch(message, user_id: int, item_id: int, weight: int):
     markup = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"💵 Продать одну (за {sell_text})",
                               callback_data=f"fishsell:{item_id}:{weight}")],
-        [InlineKeyboardButton(text="🔙 В инвентарь", callback_data="inventory:list")],
+        [InlineKeyboardButton(text="🔙 К категориям", callback_data="inventory:list")],
     ])
 
     photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
