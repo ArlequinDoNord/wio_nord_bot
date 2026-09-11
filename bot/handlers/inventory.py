@@ -138,17 +138,16 @@ async def inventory_list_cb(callback: CallbackQuery):
     )
 
 
-@router.callback_query(F.data.startswith("invitem:"))
-async def inv_item_view(callback: CallbackQuery):
-    await callback.answer()
-    item_id = int(callback.data.split(":")[1])
+async def _render_item_card(message, user_id: int, item_id: int):
+    """Перерисовывает карточку предмета в указанном сообщении (edit или replace)."""
     item = await get_item(item_id)
-    inv = await get_inventory_item(callback.from_user.id, item_id)
+    inv = await get_inventory_item(user_id, item_id)
     if not item or not inv:
-        await edit_or_replace(callback.message, "Предмет не найден.", None)
+        await edit_or_replace(message, "Предмет не найден.", None)
         return
 
-    eq = await get_equipment(callback.from_user.id)
+    eq = await get_equipment(user_id)
+    in_run = bool(await get_active_run(user_id))
 
     text = (
         f"{rarity_emoji(item['rarity'])} {item['name']} {rarity_emoji(item['rarity'])}\n"
@@ -195,6 +194,11 @@ async def inv_item_view(callback: CallbackQuery):
                 occupied[slot] = occ_item['name'] if occ_item else f"#{occ_id}"
 
     can_use = item['category'] == "consumable" and not (item['heal'] or 0)
+    if in_run:
+        can_use = False
+        equip_slot = None
+        potion_slots = []
+        occupied = {}
     markup = inv_item_markup(item_id, item['category'], can_use=can_use,
                              is_equipped=is_equipped, equip_slot=equip_slot,
                              potion_slots=potion_slots,
@@ -208,24 +212,35 @@ async def inv_item_view(callback: CallbackQuery):
         media = photo_id or FSInputFile(local_photo)
         from aiogram.types import InputMediaPhoto
         try:
-            if callback.message.photo:
-                await callback.message.edit_media(
+            if message.photo:
+                await message.edit_media(
                     media=InputMediaPhoto(media=media, caption=text),
                     reply_markup=markup
                 )
             else:
-                await callback.message.delete()
-                await callback.message.answer_photo(photo=media, caption=text, reply_markup=markup)
+                await message.delete()
+                await message.answer_photo(photo=media, caption=text, reply_markup=markup)
         except Exception:
-            await callback.message.answer_photo(photo=media, caption=text, reply_markup=markup)
+            await message.answer_photo(photo=media, caption=text, reply_markup=markup)
     else:
-        await callback.message.edit_text(text, reply_markup=markup)
+        await message.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("invitem:"))
+async def inv_item_view(callback: CallbackQuery):
+    await callback.answer()
+    item_id = int(callback.data.split(":")[1])
+    await _render_item_card(callback.message, callback.from_user.id, item_id)
 
 
 @router.callback_query(F.data.startswith("inv_equip:"))
 async def inv_equip(callback: CallbackQuery):
     await callback.answer()
     user_id = callback.from_user.id
+    run = await get_active_run(user_id)
+    if run:
+        await callback.message.answer("⏳ Идёт забег в подземелье: менять оружие и броню в бою нельзя.")
+        return
     item_id = int(callback.data.split(":")[1])
     item = await get_item(item_id)
     inv = await get_inventory_item(user_id, item_id)
@@ -251,6 +266,10 @@ async def inv_equip(callback: CallbackQuery):
 async def inv_unequip(callback: CallbackQuery):
     await callback.answer()
     user_id = callback.from_user.id
+    run = await get_active_run(user_id)
+    if run:
+        await callback.message.answer("⏳ Идёт забег в подземелье: менять оружие и броню в бою нельзя.")
+        return
     item_id = int(callback.data.split(":")[1])
     item = await get_item(item_id)
     if not item:
@@ -268,6 +287,11 @@ async def inv_unequip(callback: CallbackQuery):
 async def inv_potion_slot(callback: CallbackQuery):
     await callback.answer()
     user_id = callback.from_user.id
+    run = await get_active_run(user_id)
+    if run:
+        await callback.message.answer("⏳ Идёт забег в подземелье: менять активные слоты нельзя. "
+                                      "Заготовь слоты до входа или в новом забеге.")
+        return
     _, item_id_s, slot_n = callback.data.split(":")
     item_id = int(item_id_s)
     item = await get_item(item_id)
@@ -286,14 +310,23 @@ async def inv_potion_slot(callback: CallbackQuery):
     note = ""
     if replaced and replaced != item_id:
         old = await get_item(replaced)
-        note = f" (был «{old['name'] if old else replaced}»)"
-    await callback.answer(f"⚗️ В слот {slot_n} теперь: {item['name']}{note}")
+        note = f" (было заменено: «{old['name'] if old else replaced}»)"
+    await callback.message.answer(
+        f"⚗️ {item['name']} поставлен в активный слот {slot_n}.{note}\n"
+        f"Используется в бою подземелья кнопкой слота."
+    )
+    await _render_item_card(callback.message, user_id, item_id)
 
 
 @router.callback_query(F.data.startswith("inv_unslot:"))
 async def inv_potion_unslot(callback: CallbackQuery):
     await callback.answer()
     user_id = callback.from_user.id
+    run = await get_active_run(user_id)
+    if run:
+        await callback.message.answer("⏳ Идёт забег в подземелье: менять активные слоты нельзя. "
+                                      "Заготовь слоты до входа или в новом забеге.")
+        return
     slot = callback.data.split(":", 1)[1]
     eq = await get_equipment(user_id)
     item_id = eq.get(slot)
@@ -304,11 +337,18 @@ async def inv_potion_unslot(callback: CallbackQuery):
     await clear_equipment_slot(user_id, slot)
     name = item['name'] if item else "Предмет"
     await callback.message.answer(f"✖️ {name} снят из активного слота.")
+    await _render_item_card(callback.message, user_id, item_id)
 
 
 @router.callback_query(F.data.startswith("inv_use:"))
 async def inv_use(callback: CallbackQuery):
     await callback.answer()
+    user_id = callback.from_user.id
+    run = await get_active_run(user_id)
+    if run:
+        await callback.message.answer("⏳ Идёт забег в подземелье: использовать расходники из инвентаря нельзя. "
+                                      "Зелья — только через активные слоты в бою, водоросли/энергетики — после забега.")
+        return
     item_id = int(callback.data.split(":")[1])
     ok, msg = await process_item_use(callback.from_user.id, item_id)
     if ok:
@@ -338,6 +378,16 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
     inv = await get_inventory_item(user_id, item_id)
     if not item or not inv or inv['quantity'] < qty:
         await callback.answer(f"❌ У тебя меньше {qty} шт. этого предмета.", show_alert=True)
+        return
+
+    # Нельзя продать предмет, стоящий в активном слоте (иначе останется «призрачный слот»).
+    eq = await get_equipment(user_id)
+    slotted = [n for n, s in ((1, 'potion1'), (2, 'potion2')) if eq.get(s) == item_id]
+    if slotted:
+        await callback.message.answer(
+            f"❌ «{item['name']}» стоит в активном слоте {', '.join(str(n) for n in slotted)}. "
+            f"Сначала сними его из слота."
+        )
         return
 
     await remove_inventory_item(user_id, item_id, qty)
