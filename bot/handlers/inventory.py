@@ -380,13 +380,20 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
         await callback.answer(f"❌ У тебя меньше {qty} шт. этого предмета.", show_alert=True)
         return
 
-    # Нельзя продать предмет, стоящий в активном слоте (иначе останется «призрачный слот»).
+    # Нельзя продать предмет, стоящий в любом активном слоте (иначе останется «призрачный слот»:
+    # урон/защита берутся напрямую из items по id в equipment, без проверки инвентаря).
     eq = await get_equipment(user_id)
-    slotted = [n for n, s in ((1, 'potion1'), (2, 'potion2')) if eq.get(s) == item_id]
-    if slotted:
+    if item_id in eq.values():
+        slot_names = {
+            'potion1': 'активный слот 1',
+            'potion2': 'активный слот 2',
+            'weapon': 'оружие',
+            'armor': 'броня',
+        }
+        used = [slot_names[s] for s in ('potion1', 'potion2', 'weapon', 'armor') if eq.get(s) == item_id]
         await callback.message.answer(
-            f"❌ «{item['name']}» стоит в активном слоте {', '.join(str(n) for n in slotted)}. "
-            f"Сначала сними его из слота."
+            f"❌ «{item['name']}» сейчас используется ({', '.join(used)}). "
+            f"Сначала сними его."
         )
         return
 
@@ -497,6 +504,21 @@ async def inv_transfer_start(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ У тебя нет этого предмета.")
         return
 
+    eq = await get_equipment(user_id)
+    if item_id in eq.values():
+        slot_names = {
+            'potion1': 'активный слот 1',
+            'potion2': 'активный слот 2',
+            'weapon': 'оружие',
+            'armor': 'броня',
+        }
+        used = [slot_names[s] for s in ('potion1', 'potion2', 'weapon', 'armor') if eq.get(s) == item_id]
+        await callback.message.answer(
+            f"❌ «{item['name']}» сейчас используется ({', '.join(used)}). "
+            f"Сначала сними его."
+        )
+        return
+
     await state.update_data(item_id=item_id, item_name=item['name'])
     await state.set_state(TransferItem.target)
     await callback.message.answer(
@@ -542,6 +564,14 @@ async def inv_transfer_amount(message: Message, state: FSMContext):
     inv = await get_inventory_item(from_user, item_id)
     if not inv or inv['quantity'] < amount:
         await message.answer(f"❌ У тебя нет столько. В наличии: {inv['quantity'] if inv else 0} шт.")
+        return
+
+    eq = await get_equipment(from_user)
+    if item_id in eq.values():
+        await message.answer(
+            f"❌ «{data['item_name']}» сейчас экипирован или в активном слоте. "
+            f"Передать его можно только снятыми из слота."
+        )
         return
 
     target_id = data['target_id']
