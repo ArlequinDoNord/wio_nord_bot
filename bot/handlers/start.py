@@ -7,7 +7,7 @@ from database.db import add_user, get_user, ensure_base_status, user_has_status_
 from keyboards.keyboards import main_menu_keyboard, city_keyboard
 from utils.permissions import is_admin
 from utils.helpers import resolve_image
-from config import VERSION
+from config import VERSION, VERSION_NOTES
 
 router = Router()
 
@@ -34,7 +34,9 @@ async def cmd_start(message: Message):
         "C:\\НОРД> boot_sequence_complete\n"
         ">> ДОСТУПНЫЕ ОПЕРАЦИИ:\n"
         "Версия сборки: "
-        f"{VERSION}\n"
+        f"{VERSION}\n\n"
+        ">> Что нового:\n"
+        f"{VERSION_NOTES}\n"
         "```"
     )
 
