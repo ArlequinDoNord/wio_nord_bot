@@ -778,7 +778,7 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
             return False, "Это зелье можно применить только в бою подземелья 💊"
 
         if item['ap_cost'] > 0:
-            from config import (AP_BONUS_FROM_CONSUMABLE, AP_DAILY_RESTORE_LIMIT,
+            from config import (AP_DAILY_RESTORE_LIMIT,
                                 AP_EXHAUSTED_MINUTES, AP_EXHAUSTED_DAILY_RECOVERY, AP_EXHAUSTED_MAX_AP)
             user = await get_user(user_id)
             if not user:
@@ -802,7 +802,7 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
                     f"Восстановление продолжится в новые сутки."
                 )
 
-            amount = min(AP_BONUS_FROM_CONSUMABLE, remaining)
+            amount = min(item['ap_cost'], remaining)
             await remove_inventory_item(user_id, item_id, 1)
             await add_ap(user_id, amount)
             restored_today += amount
@@ -2818,20 +2818,29 @@ async def ensure_dungeon_shop_items():
             )
             added = True
 
-    # Мусор со дна озера (без наживки): водоросли — крафт энергетиков,
-    # появляются в магазине, когда их продаёт пилот (рыночный товар: stock=0);
+    # Мусор со дна озера (без наживки): водоросли — расходник (+1 ОД) и сырьё для
+    # будущих энергетиков, появляются в магазине, когда их продаёт пилот (stock=0);
     # сапог — продажа за 15 НМ, в магазин не попадает.
     for (jname, jdesc, jprice, jsell, jstock) in (
-            ("Кусочек водорослей", "Сырьё для будущих энергетиков. Улов без наживки.", 5, 3, 0),
+            ("Кусочек водорослей", "Съешь и немного взбодришься: +1 ОД при использовании. Улов без наживки.", 5, 3, 0),
             ("Старый сапог", "Проржавевший сапог со дна паркового озера. Продаётся за гроши.", 0, 15, -1),
     ):
         cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (jname,))
         if (await cursor.fetchone())['c'] == 0:
+            jap_cost = 1 if jname == "Кусочек водорослей" else 0
             await add_item(
                 name=jname, description=jdesc, price=jprice, sell_price=jsell, rarity=1,
-                category="resource", stock=jstock, added_by=0, ap_cost=0, damage=0, heal=0,
+                category="consumable" if jap_cost else "resource",
+                stock=jstock, added_by=0, ap_cost=jap_cost, damage=0, heal=0,
             )
             added = True
+
+    # Миграция для существующих БД: водоросли — расходник с +1 ОД (были resource).
+    await conn.execute(
+        "UPDATE items SET category = 'consumable', ap_cost = 1, "
+        "description = 'Съешь и немного взбодришься: +1 ОД при использовании. Улов без наживки.' "
+        "WHERE name = 'Кусочек водорослей'"
+    )
 
     # Рыба — только из рыбалки, в магазин не попадает (stock=-1 безлимит, но
     # is_available=0). Лапка и водоросли — трофей: появляются на рынке после
