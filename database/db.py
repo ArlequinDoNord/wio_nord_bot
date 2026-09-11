@@ -1,4 +1,5 @@
 import json
+import time
 import aiosqlite
 from config import DB_PATH
 
@@ -443,6 +444,40 @@ async def init_db():
             FOREIGN KEY (user_id) REFERENCES users(user_id),
             FOREIGN KEY (award_id) REFERENCES awards(id)
         );
+
+        CREATE TABLE IF NOT EXISTS player_housing (
+            user_id INTEGER PRIMARY KEY,
+            housing_type TEXT DEFAULT 'municipal',
+            purchased_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS housing_slots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            slot_index INTEGER NOT NULL,
+            expansion_type TEXT,
+            expansion_level INTEGER DEFAULT 1,
+            plant_data TEXT DEFAULT '{}',
+            FOREIGN KEY (user_id) REFERENCES users(user_id),
+            UNIQUE(user_id, slot_index)
+        );
+
+        CREATE TABLE IF NOT EXISTS recipes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            result_item_name TEXT NOT NULL,
+            result_quantity INTEGER DEFAULT 1,
+            required_expansion TEXT,
+            required_level INTEGER DEFAULT 1,
+            ingredients TEXT NOT NULL DEFAULT '[]',
+            ap_cost INTEGER DEFAULT 0,
+            production_time INTEGER DEFAULT 30,
+            rarity INTEGER DEFAULT 1,
+            is_available INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     """)
     await conn.commit()
 
@@ -485,6 +520,14 @@ async def init_db():
     # Опросы: кто и когда закрыл (для архива закрытых голосований)
     await _ensure_column(conn, "polls", "closed_by", "INTEGER")
     await _ensure_column(conn, "polls", "closed_at", "TIMESTAMP")
+    # Срок годности жареной рыбы (время истечения в инвентаре)
+    await _ensure_column(conn, "inventory", "expires_at", "TIMESTAMP")
+    # Фонтан в парке: 1 восстановление ОД в сутки
+    await _ensure_column(conn, "users", "fountain_used_day", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "users", "fountain_used_today", "INTEGER DEFAULT 0")
+    # Встроенные расширения жилья (например, кухня в студии): embedded=1 — не возвращается
+    # в инвентарь при переезде и не может быть снята вручную.
+    await _ensure_column(conn, "housing_slots", "embedded", "INTEGER DEFAULT 0")
     # Убраны из магазина товары без функционала (вернуть можно через админ-добавление товаров)
     await conn.execute("UPDATE items SET is_available = 0 WHERE name IN "
                        "('Ангар-бокс','Металл','Кристаллы','Медаль «Крыло»','Топливо','Ремкомплект')")
@@ -495,7 +538,7 @@ async def init_db():
     await conn.execute("UPDATE items SET armor = 2 WHERE name = 'Кислородная маска' AND armor = 0")
     # Базовые статусы иерархии: Пилот — гражданин (0), Турист — гость (-10).
     # Старые записи Пилота, которым ранее могли поставить высокий уровень, возвращаем к 0.
-    await conn.execute("UPDATE statuses SET sort_order = 0 WHERE access_tag = 'pilot'")
+    await conn.execute("UPDATE statuses SET sort_order = 2 WHERE access_tag = 'pilot'")
     await conn.execute("UPDATE statuses SET sort_order = -10 WHERE access_tag = 'tourist'")
     await conn.commit()
     await ensure_base_statuses()
@@ -654,7 +697,9 @@ async def daily_ap_recovery():
             ap_restored_today = CASE WHEN ap_restored_day = date('now') THEN ap_restored_today ELSE 0 END,
             ap_restored_day = CASE WHEN ap_restored_day = date('now') THEN ap_restored_day ELSE date('now') END,
             seaweed_used_today = CASE WHEN seaweed_used_day = date('now') THEN seaweed_used_today ELSE 0 END,
-            seaweed_used_day = CASE WHEN seaweed_used_day = date('now') THEN seaweed_used_day ELSE date('now') END
+            seaweed_used_day = CASE WHEN seaweed_used_day = date('now') THEN seaweed_used_day ELSE date('now') END,
+            fountain_used_today = CASE WHEN fountain_used_day = date('now') THEN fountain_used_today ELSE 0 END,
+            fountain_used_day = CASE WHEN fountain_used_day = date('now') THEN fountain_used_day ELSE date('now') END
     """, (AP_EXHAUSTED_MAX_AP, AP_EXHAUSTED_DAILY_RECOVERY, AP_DAILY_RECOVERY))
     await conn.commit()
 
@@ -717,13 +762,27 @@ async def delete_item(item_id: int):
     await conn.commit()
 
 
-async def add_inventory_item(user_id: int, item_id: int, quantity: int = 1):
+async def add_inventory_item(user_id: int, item_id: int, quantity: int = 1, expires_at: str = None):
     conn = await get_db()
-    await conn.execute("""
-        INSERT INTO inventory (user_id, item_id, quantity)
-        VALUES (?, ?, ?)
-        ON CONFLICT(user_id, item_id) DO UPDATE SET quantity = quantity + ?
-    """, (user_id, item_id, quantity, quantity))
+    cursor = await conn.execute(
+        "SELECT quantity, expires_at FROM inventory WHERE user_id = ? AND item_id = ?",
+        (user_id, item_id)
+    )
+    row = await cursor.fetchone()
+    if row:
+        # У одной стопки — ранний срок истечения (минимальный из добавленных).
+        new_exp = row['expires_at']
+        if expires_at:
+            new_exp = min(str(row['expires_at']), str(expires_at)) if row['expires_at'] else str(expires_at)
+        await conn.execute(
+            "UPDATE inventory SET quantity = quantity + ?, expires_at = ? WHERE user_id = ? AND item_id = ?",
+            (quantity, new_exp, user_id, item_id)
+        )
+    else:
+        await conn.execute(
+            "INSERT INTO inventory (user_id, item_id, quantity, expires_at) VALUES (?, ?, ?, ?)",
+            (user_id, item_id, quantity, expires_at)
+        )
     await conn.commit()
 
 
@@ -768,6 +827,17 @@ async def get_inventory_item(user_id: int, item_id: int):
         (user_id, item_id)
     )
     return await cursor.fetchone()
+
+
+async def get_inventory_expiry(user_id: int, item_id: int):
+    """Срок годности предмета в инвентаре (секунды эпохи) или None."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT expires_at FROM inventory WHERE user_id = ? AND item_id = ?",
+        (user_id, item_id)
+    )
+    row = await cursor.fetchone()
+    return row['expires_at'] if row else None
 
 
 async def process_item_use(user_id: int, item_id: int) -> tuple:
@@ -1948,11 +2018,14 @@ async def create_status(name: str, access_tag: str = None, description: str = No
 async def ensure_base_statuses():
     """Создаёт базовые статусы иерархии, если их нет.
 
-    Пилот (гражданин) — 0, Турист (гость) — -10, Ветеран — 5, VIP — 10.
+    Турист (гость) — -10, Рекрут — 1, Пилот (гражданин) — 2,
+    Ветеран — 5, VIP — 10. sort_order выставляются принудительно
+    (синхронизирует старые БД, где Пилот был 0).
     """
     base = [
         ("Турист", "tourist", "Гость Нордхайма. Права ограничены.", -10),
-        ("Пилот", "pilot", "Гражданин Нордхайма. Базовый статус пилота.", 0),
+        ("Рекрут", "recruit", "Кандидат в пилоты. Живёт в общем кубрике.", 1),
+        ("Пилот", "pilot", "Гражданин Нордхайма. Базовый статус пилота.", 2),
         ("Ветеран", "veteran", "Ветеран боевых действий.", 5),
         ("VIP", "vip", "Особо важная персона.", 10),
     ]
@@ -1963,6 +2036,13 @@ async def ensure_base_statuses():
             continue
         await create_status(name, tag, desc, sort_order=level)
         await conn.commit()
+
+    # Принудительная канонизация уровней базовой иерархии (идиот-безопасно).
+    canonical = {"tourist": -10, "recruit": 1, "pilot": 2, "veteran": 5, "vip": 10}
+    for tag, level in canonical.items():
+        await conn.execute(
+            "UPDATE statuses SET sort_order = ? WHERE access_tag = ?", (level, tag))
+    await conn.commit()
 
 
 async def ensure_base_status(user_id: int):
@@ -2471,6 +2551,7 @@ DEFAULT_DUNGEON = {
                     {"item": "Паутина паука", "chance": 0.15, "qty": 1},
                     {"item": "Осколок кристалла", "chance": 0.05, "qty": 1},
                     {"item": "Лапка кристального паука", "chance": 0.05, "qty": 1},
+                    {"item": "Лапка паука", "chance": 0.2, "qty": 1},
                 ], "assets/img/enemies/crystal_spider.jpg", 0, 0),
             ],
             "boss": ("Король крыс", 50, 8, 15, True, [
@@ -2953,6 +3034,104 @@ async def ensure_dungeon_shop_items():
     return added
 
 
+async def ensure_life_items():
+    """Идемпотентно добавляет предметы жилья, мебели, семян, ресурсов и продовольствия."""
+    conn = await get_db()
+    added = False
+
+    def _item(name: str):
+        return name
+
+    # (имя, описание, цена, продажа, рарность, категория, stock, heal, required_status, is_available)
+    items = [
+        ("Студия", "Квартира-студия: одна комната и свободная планировка. 1 слот расширений.",
+         500, 250, 2, "housing", -1, 0, "pilot", 1),
+        ("Квартира", "Просторная двухкомнатная квартира. 2 слота расширений.",
+         1500, 750, 3, "housing", -1, 0, "pilot", 1),
+        ("Улучшенное жильё", "Просторное жильё с несколькими комнатами. Ветеранская планировка: 3 слота расширений.",
+         3000, 1500, 4, "housing", -1, 0, "veteran", 1),
+        ("Особняк", "Роскошный особняк для VIP. 6 слотов расширений и свобода в оформлении.",
+         5000, 2500, 5, "housing", -1, 0, "vip", 1),
+        ("Кухня 1 уровня", "Простая кухня: можно жарить рыбу.",
+         100, 50, 1, "furniture", -1, 0, "pilot", 1),
+        ("Кухня 2 уровня", "Кухня с плитой: варка настоек.",
+         300, 150, 2, "furniture", -1, 0, "veteran", 1),
+        ("Кухня 3 уровня", "Кухня с полным набором инструментов: энергетики и редкие настойки.",
+         800, 400, 3, "furniture", -1, 0, "vip", 1),
+        ("Верстак", "Рабочее место для сборки простых предметов.",
+         150, 75, 1, "furniture", -1, 0, "pilot", 1),
+        ("Кадка с растением", "Кадка для выращивания растений. Пустая — в неё сажаются семена.",
+         200, 100, 1, "furniture", -1, 0, "pilot", 1),
+        ("Яблочное семечко", "Семечко яблони. Посади в кадку в жилье — вырастет яблоня.",
+         30, 15, 1, "seeds", 10, 0, "pilot", 1),
+        ("Бутылка чистой воды", "Чистая вода из артезианской скважины. Основа для настоек и энергетиков.",
+         20, 10, 1, "resource", -1, 0, "pilot", 1),
+        ("Лапка паука", "Высушенная лапка обычного паука. Ингредиент для комбинированной наживки.",
+         10, 5, 1, "resource", 0, 0, None, 0),
+        ("Жареный сиг", "Жаренный на углях сиг. +15 HP в бою. Срок годности 4 суток.",
+         60, 30, 1, "consumable", -1, 15, None, 0),
+        ("Жареный муксун", "Нежный жареный муксун. +30 HP в бою. Срок годности 4 суток.",
+         140, 70, 2, "consumable", -1, 30, None, 0),
+        ("Жареный чир", "Деликатес: жареный чир. +45 HP в бою. Срок годности 4 суток.",
+         300, 150, 3, "consumable", -1, 45, None, 0),
+        ("Жареный налим", "Праздничный ужин: жареный налим. +55 HP в бою. Срок годности 4 суток.",
+         440, 220, 3, "consumable", -1, 55, None, 0),
+        ("Испорченный сиг", "Протухшая рыба. Слегка восстанавливает HP, но навлекает несварение.",
+         14, 7, 1, "consumable", -1, 5, None, 0),
+        ("Испорченный муксун", "Протухшая рыба. Слегка восстанавливает HP, но навлекает несварение.",
+         34, 17, 2, "consumable", -1, 5, None, 0),
+        ("Испорченный чир", "Протухший деликатес. Слегка восстанавливает HP, но навлекает несварение.",
+         80, 40, 3, "consumable", -1, 5, None, 0),
+        ("Испорченный налим", "Протухшая ночная добыча. Слегка восстанавливает HP, но навлекает несварение.",
+         120, 60, 3, "consumable", -1, 5, None, 0),
+        ("Яблоко", "Свежее яблоко из кадки. +15 HP в бою. Иногда из него выпадает семечко.",
+         20, 10, 1, "consumable", -1, 15, None, 0),
+        ("Улучшенная настойка здоровья", "Мощный эликсир: +50 HP в бою подземелья.",
+         80, 40, 3, "consumable", 20, 50, None, 1),
+        ("Комбинированная наживка", "Сборная наживка с верстака: +30% к шансу улова. Расходуется при забросе.",
+         30, 15, 2, "fishing", -1, 0, None, 0),
+    ]
+    for (name, desc, price, sell, rarity, category, stock, heal, req_status, is_avail) in items:
+        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (name,))
+        if (await cursor.fetchone())['c'] == 0:
+            item_id = await add_item(
+                name=name, description=desc, price=price, sell_price=sell, rarity=rarity,
+                category=category, stock=stock, added_by=0, ap_cost=0, damage=0, heal=heal,
+            )
+            if req_status:
+                await update_item(item_id, required_status=req_status)
+            if not is_avail:
+                await update_item(item_id, is_available=0)
+            added = True
+
+    # Синхронизация цен/статусов для уже существующих жилья-предметов (напр. в старых БД v0.5.0-ранний).
+    housing_sync = {
+        "Студия": {"price": 500, "sell_price": 250, "required_status": "pilot"},
+        "Квартира": {"price": 1500, "sell_price": 750, "required_status": "pilot"},
+        "Улучшенное жильё": {"price": 3000, "sell_price": 1500, "required_status": "veteran"},
+        "Особняк": {"price": 5000, "sell_price": 2500, "required_status": "vip"},
+    }
+    for name, vals in housing_sync.items():
+        await conn.execute(
+            "UPDATE items SET price = ?, sell_price = ?, required_status = ? WHERE name = ?",
+            (vals["price"], vals["sell_price"], vals["required_status"], name)
+        )
+
+    # Синхронизация HP жареной рыбы (уменьшено на 15)
+    fried_heal_sync = {
+        "Жареный сиг": 15, "Жареный муксун": 30,
+        "Жареный чир": 45, "Жареный налим": 55,
+    }
+    for name, heal in fried_heal_sync.items():
+        await conn.execute("UPDATE items SET heal = ? WHERE name = ? AND heal != ?",
+                           (heal, name, heal))
+
+    # Лапка паука добавлен в дропы кристального паука в DEFAULT_DUNGEON
+    # (синхронизируется через ensure_dungeon_enemy_drops на старте).
+    await conn.commit()
+    return added
+
+
 async def ensure_dungeon_enemy_drops():
     """Синхронизирует врагов существующего данжа с DEFAULT_DUNGEON (дропы, HP, награды)."""
     conn = await get_db()
@@ -3021,6 +3200,337 @@ async def ensure_dungeon_enemy_drops():
     # этажей в данже = 1
     await conn.execute("UPDATE dungeons SET floors_count = ? WHERE id = ?", (len(DEFAULT_DUNGEON["floors"]), dungeon_id))
     await conn.commit()
+
+
+# ============ ЖИЛЬЁ, РЕЦЕПТЫ, РАСТЕНИЯ ============
+
+# Типы жилья и число слотов расширений.
+KUBRIK_DESC = ('Жилой бокс «Кубрик Кубик»: индивидуальное пространство 4 на 4 метра, '
+               'уголок приватности рекрута в огромном здании казённого жилого модуля '
+               'эскадрилий. Есть электричество и отопление, остальные удобства — на этаже, '
+               'слева и справа в конце коридора.')
+STUDIO_DESC = ('Квартира-студия в рабочем районе: стены не могут похвастаться толщиной, '
+               'а звуки улицы вряд ли дадут долго спать поутру. Зато не надо ждать очередь '
+               'в ванну и составлять расписание на пользование плитой. Маленький духовой шкаф, '
+               'совмещённый с плиткой, уже входит в стоимость — социальная программа '
+               '«Забота Нордхайма».')
+APARTMENT_DESC = ('Двухкомнатная квартира — жильё среднего класса. Просторные комнаты '
+                  'и довольно толстые стены, чтобы не отвлекаться на крики или странные '
+                  'музыкальные предпочтения соседей. Отдельное помещение для кухни '
+                  'и совмещённый санузел.')
+HOUSING_TYPES = {
+    "municipal": {"name": "Кубрик", "slots": 0, "desc": KUBRIK_DESC},
+    "studio": {"name": "Студия", "slots": 1, "desc": STUDIO_DESC},
+    "apartment": {"name": "Квартира", "slots": 2, "desc": APARTMENT_DESC},
+    "improved": {"name": "Улучшенное жильё", "slots": 3},
+    "mansion": {"name": "Особняк", "slots": 6},
+}
+HOUSING_ORDER = ["municipal", "studio", "apartment", "improved", "mansion"]
+
+# Стадии роста растения: (название, длительность_суток). Последняя — без конца.
+PLANT_STAGES = [
+    ("Семя", 2),
+    ("Росток", 4),
+    ("Куст", 8),
+    ("Зрелое дерево", 16),
+    ("Плодоносит", None),
+]
+FRUIT_EVERY_DAYS = 2
+APPLE_SEED_NAME = "Яблочное семечко"
+APPLE_NAME = "Яблоко"
+FOOD_SHELF_DAYS = 4  # срок годности жареной рыбы (96 часов)
+
+
+async def ensure_player_housing(user_id: int):
+    """Возвращает жильё игрока, создавая муниципальную квартиру для пилота при первом обращении."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM player_housing WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    if row:
+        return dict(row)
+    await conn.execute(
+        "INSERT OR IGNORE INTO player_housing (user_id, housing_type) VALUES (?, 'municipal')",
+        (user_id,)
+    )
+    await conn.commit()
+    return {"user_id": user_id, "housing_type": "municipal", "purchased_at": None}
+
+
+async def get_player_housing(user_id: int):
+    return await ensure_player_housing(user_id)
+
+
+async def set_player_housing(user_id: int, housing_type: str):
+    conn = await get_db()
+    await conn.execute(
+        "INSERT OR REPLACE INTO player_housing (user_id, housing_type, purchased_at) "
+        "VALUES (?, ?, datetime('now'))",
+        (user_id, housing_type)
+    )
+    await conn.commit()
+
+
+async def get_housing_slots(user_id: int) -> dict:
+    """Слоты расширений жилья: {slot_index: row}."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM housing_slots WHERE user_id = ? ORDER BY slot_index", (user_id,)
+    )
+    rows = await cursor.fetchall()
+    return {row['slot_index']: dict(row) for row in rows}
+
+
+async def set_housing_slot(user_id: int, slot_index: int, expansion_type: str = None,
+                           expansion_level: int = 1, plant_data: dict = None,
+                           embedded: bool = False):
+    conn = await get_db()
+    if not expansion_type:
+        await conn.execute(
+            "DELETE FROM housing_slots WHERE user_id = ? AND slot_index = ?",
+            (user_id, slot_index)
+        )
+    else:
+        pd = json.dumps(plant_data or {}, ensure_ascii=False)
+        await conn.execute(
+            "INSERT INTO housing_slots (user_id, slot_index, expansion_type, expansion_level, plant_data, embedded) "
+            "VALUES (?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(user_id, slot_index) DO UPDATE SET "
+            "expansion_type = excluded.expansion_type, expansion_level = excluded.expansion_level, "
+            "plant_data = excluded.plant_data, embedded = excluded.embedded",
+            (user_id, slot_index, expansion_type, expansion_level, pd, 1 if embedded else 0)
+        )
+    await conn.commit()
+
+
+# ---------- Рецепты ----------
+
+RECIPES_DEF = [
+    {"name": "Пожарить сига", "desc": "Жареный сиг: +15 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареный сиг", "qty": 1, "exp": "kitchen", "lvl": 1,
+     "ingredients": [("Сиг", 1)], "ap": 5, "time": 20, "rarity": 1},
+    {"name": "Пожарить муксуна", "desc": "Жареный муксун: +30 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареный муксун", "qty": 1, "exp": "kitchen", "lvl": 1,
+     "ingredients": [("Муксун", 1)], "ap": 5, "time": 20, "rarity": 1},
+    {"name": "Пожарить чира", "desc": "Жареный чир: +45 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареный чир", "qty": 1, "exp": "kitchen", "lvl": 1,
+     "ingredients": [("Чир", 1)], "ap": 7, "time": 25, "rarity": 1},
+    {"name": "Пожарить налима", "desc": "Жареный налим: +55 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареный налим", "qty": 1, "exp": "kitchen", "lvl": 1,
+     "ingredients": [("Налим", 1)], "ap": 8, "time": 25, "rarity": 1},
+    {"name": "Комбинированная наживка", "desc": "Собирается на верстаке. +30% к шансу улова.",
+     "result": "Комбинированная наживка", "qty": 1, "exp": "workbench", "lvl": 1,
+     "ingredients": [("Лапка паука", 1), ("Черви", 1)], "ap": 5, "time": 20, "rarity": 1},
+    {"name": "Малая настойка здоровья", "desc": "Восстанавливает 20 HP в бою подземелья.",
+     "result": "Малая настойка здоровья", "qty": 1, "exp": "kitchen", "lvl": 2,
+     "ingredients": [("Бутылка чистой воды", 1), ("Осколок кристалла", 1)], "ap": 10, "time": 30, "rarity": 1},
+    {"name": "Энергетик", "desc": "+50 ОД при использовании.",
+     "result": "Энергетик", "qty": 1, "exp": "kitchen", "lvl": 3,
+     "ingredients": [("Бутылка чистой воды", 1), ("Кусочек водорослей", 4)], "ap": 15, "time": 45, "rarity": 1},
+    {"name": "Улучшенная настойка здоровья", "desc": "Восстанавливает 50 HP в бою подземелья. Редкий рецепт.",
+     "result": "Улучшенная настойка здоровья", "qty": 1, "exp": "kitchen", "lvl": 3,
+     "ingredients": [("Яблоко", 1), ("Бутылка чистой воды", 1), ("Осколок кристалла", 1), ("Кусочек водорослей", 2)],
+     "ap": 20, "time": 60, "rarity": 3},
+]
+
+
+async def ensure_recipes():
+    """Идемпотентно засевает рецепты (если таблица пуста)."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT COUNT(*) as c FROM recipes")
+    if (await cursor.fetchone())['c'] > 0:
+        return False
+    for r in RECIPES_DEF:
+        await conn.execute(
+            "INSERT INTO recipes (name, description, result_item_name, result_quantity, "
+            "required_expansion, required_level, ingredients, ap_cost, production_time, rarity) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (r['name'], r['desc'], r['result'], r.get('qty', 1), r['exp'], r['lvl'],
+             json.dumps(r['ingredients'], ensure_ascii=False), r['ap'], r['time'], r.get('rarity', 1))
+        )
+    await conn.commit()
+    return True
+
+
+async def get_recipes(expansion: str = None, level: int = None):
+    """Доступные рецепты. Если задан уровень — рецепты, открываемые расширением этого уровня."""
+    conn = await get_db()
+    q = "SELECT * FROM recipes WHERE is_available = 1"
+    params = []
+    if expansion:
+        q += " AND required_expansion = ?"
+        params.append(expansion)
+        if level is not None:
+            q += " AND required_level <= ?"
+            params.append(level)
+    q += " ORDER BY required_level, rarity, id"
+    cursor = await conn.execute(q, params)
+    return await cursor.fetchall()
+
+
+async def get_recipe(recipe_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM recipes WHERE id = ?", (recipe_id,))
+    return await cursor.fetchone()
+
+
+# ---------- Порча жареной рыбы ----------
+
+async def process_food_expiry(user_id: int) -> int:
+    """Конвертирует протухшую жареную рыбу в испорченную. Возвращает число превращённых."""
+    conn = await get_db()
+    now = time.time()
+    # Срок хранится в секундах с эпохи (эпоха = int). Возможен и строковый вариант из legacy.
+    cursor = await conn.execute(
+        "SELECT inv.id, inv.item_id, inv.quantity, inv.expires_at, i.name FROM inventory inv "
+        "JOIN items i ON inv.item_id = i.id "
+        "WHERE inv.user_id = ? AND inv.expires_at IS NOT NULL AND inv.expires_at != ''",
+        (user_id,)
+    )
+    rows = await cursor.fetchall()
+    converted = 0
+    for row in rows:
+        try:
+            exp = float(row['expires_at'])
+        except (TypeError, ValueError):
+            continue
+        if exp >= now:
+            continue
+        spoiled_name = "Испорченный " + row['name'].replace("Жареный ", "", 1)
+        spoiled = await get_item_by_name(spoiled_name)
+        await conn.execute("DELETE FROM inventory WHERE id = ?", (row['id'],))
+        if spoiled:
+            await add_inventory_item(user_id, spoiled['id'], row['quantity'])
+        converted += row['quantity']
+    if converted:
+        await conn.commit()
+    return converted
+
+
+async def get_inventory_with_expiry(user_id: int):
+    """Инвентарь с данными о сроке годности (для карточек предметов)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT i.*, inv.quantity, inv.expires_at FROM inventory inv "
+        "JOIN items i ON inv.item_id = i.id "
+        "WHERE inv.user_id = ? AND inv.quantity > 0 "
+        "ORDER BY i.category, i.rarity DESC",
+        (user_id,)
+    )
+    return await cursor.fetchall()
+
+
+# ---------- Растение (кадка) ----------
+
+async def plant_seed(user_id: int, slot_index: int, seed_item_id: int):
+    """Сажает семечко в пустую кадку. Возвращает (получилось, сообщение)."""
+    seed = await get_item(seed_item_id)
+    if not seed or seed['category'] != 'seeds':
+        return False, "Это не семечко."
+    inv = await get_inventory_item(user_id, seed_item_id)
+    if not inv or inv['quantity'] < 1:
+        return False, "Семечка нет в инвентаре."
+    now = time.time()
+    plant_data = {
+        "seed": seed['name'],
+        "stage_started_at": now,
+        "last_harvest_at": None,
+        "fruits": 0,
+    }
+    await set_housing_slot(user_id, slot_index, "plant_pot", 1, plant_data)
+    await remove_inventory_item(user_id, seed_item_id, 1)
+    return True, seed['name']
+
+
+FRUIT_MAX = 5
+
+
+def plant_stage_info(data: dict, now: float):
+    """Данные о текущем состоянии растения: стадия, накопленные плоды, время до следующего плода.
+
+    Логика плодов: созревшее дерево даёт по 1 плоду каждые 2 суток, максимум 5.
+    Пока плоды не собраны — таймер стоит (новые плоды не появляются).
+    data: {seed, stage_started_at (epoch), last_harvest_at (epoch|None)}
+    """
+    data = dict(data or {})
+    started = float(data.get('stage_started_at') or now)
+    elapsed = max(0.0, now - started)
+
+    boundaries = []
+    cum = 0
+    for _name, days in PLANT_STAGES[:-1]:
+        cum += days * 86400
+        boundaries.append(cum)
+
+    stage = 0
+    for i, b in enumerate(boundaries, start=1):
+        if elapsed >= b:
+            stage = i
+        else:
+            break
+
+    fruits = 0
+    next_in = 0.0
+
+    if stage < 4:
+        next_in = boundaries[stage] - elapsed
+    else:
+        t4 = started + boundaries[3]
+        base = float(data.get('last_harvest_at') or t4)
+        interval = FRUIT_EVERY_DAYS * 86400
+        since_base = max(0.0, now - base)
+        fruits = min(FRUIT_MAX, int(since_base // interval))
+        if fruits >= FRUIT_MAX:
+            next_in = 0.0  # кап 5 — ждём сбора, таймер не идёт
+        else:
+            next_in = interval - (since_base % interval)
+
+    return {
+        "stage": stage,
+        "next_in": max(0.0, next_in),
+        "fruit_ready": fruits > 0,
+        "fruits": fruits,
+        "data": data,
+    }
+
+
+async def harvest_plant(user_id: int, slot_index: int):
+    """Собирает ВСЕ накопленные плоды (макс. 5). Возвращает (получилось, сообщение)."""
+    slots = await get_housing_slots(user_id)
+    slot = slots.get(slot_index)
+    if not slot or slot.get('expansion_type') != 'plant_pot':
+        return False, "Кадки с растением здесь нет."
+    data = json.loads(slot.get('plant_data') or '{}')
+    info = plant_stage_info(data, time.time())
+    fruits = info['fruits']
+    if fruits <= 0:
+        return False, "Плодов ещё нет."
+    apple = await get_item_by_name(APPLE_NAME)
+    if not apple:
+        return False, "Яблоко не настроено в базе. Сообщи хранителю."
+    await add_inventory_item(user_id, apple['id'], fruits)
+    # Таймер обновляется только при сборе
+    data['last_harvest_at'] = time.time()
+    data.pop('fruits', None)
+    data.pop('next_fruit_at', None)
+    await set_housing_slot(user_id, slot_index, "plant_pot", 1, data)
+    return True, (apple, fruits)
+
+
+# ---------- Фонтан (восстановление ОД раз в сутки) ----------
+
+async def can_use_fountain(user_id: int) -> bool:
+    user = await get_user(user_id)
+    if not user:
+        return False
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    return not (user.get('fountain_used_day') == today and (user.get('fountain_used_today') or 0) >= 1)
+
+
+async def mark_fountain_used(user_id: int):
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    user = await get_user(user_id)
+    used = 1 if user and user.get('fountain_used_day') == today else 1
+    await update_user(user_id, fountain_used_day=today, fountain_used_today=used)
 
 
 # ============ ЛОГ АКТИВНОСТИ ИГРОКОВ ============

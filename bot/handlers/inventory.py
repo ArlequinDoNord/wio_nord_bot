@@ -1,5 +1,7 @@
 """Инвентарь: просмотр, использование расходников, продажа и передача предметов."""
 
+import time
+
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.fsm.context import FSMContext
@@ -7,10 +9,10 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
     get_inventory, get_item, process_item_use, remove_inventory_item,
-    add_nordmarks, get_user, get_inventory_item, get_all_users,
+    add_nordmarks, get_user, get_inventory_item, get_inventory_expiry, get_all_users,
     add_inventory_item, update_item, get_db,
     get_equipment, set_equipment_slot, clear_equipment_slot, log_activity,
-    get_fish_catches, sell_one_fish_catch, get_active_run,
+    get_fish_catches, sell_one_fish_catch, get_active_run, process_food_expiry,
 )
 from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text,
@@ -108,12 +110,15 @@ def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equip
 
 @router.message(F.text == "Инвентарь")
 async def inventory_menu(message: Message):
+    spoiled = await process_food_expiry(message.from_user.id)
     items = await get_inventory(message.from_user.id)
     catches = await get_fish_catches(message.from_user.id)
     if not items and not catches:
         await message.answer("Твой инвентарь пуст.")
         return
     header = "🎒 ИНВЕНТАРЬ\n\nВыбери предмет:"
+    if spoiled:
+        header = f"🥀 Часть провизии испортилась: {spoiled} шт. обращено.\n\n" + header
     run = await get_active_run(message.from_user.id)
     if run:
         header = ("🎒 ИНВЕНТАРЬ\n"
@@ -126,14 +131,18 @@ async def inventory_menu(message: Message):
 @router.callback_query(F.data == "inventory:list")
 async def inventory_list_cb(callback: CallbackQuery):
     await callback.answer()
+    spoiled = await process_food_expiry(callback.from_user.id)
     items = await get_inventory(callback.from_user.id)
     catches = await get_fish_catches(callback.from_user.id)
     if not items and not catches:
         await edit_or_replace(callback.message, "Твой инвентарь пуст.", None)
         return
+    header = "🎒 ИНВЕНТАРЬ\n\nВыбери предмет:"
+    if spoiled:
+        header = f"🥀 Часть провизии испортилась: {spoiled} шт. обращено.\n\n" + header
     await edit_or_replace(
         callback.message,
-        "🎒 ИНВЕНТАРЬ\n\nВыбери предмет:",
+        header,
         inv_list_markup(items, catches)
     )
 
@@ -167,6 +176,19 @@ async def _render_item_card(message, user_id: int, item_id: int):
         text += "💊 Применяется в бою подземелья: поставь в слот 1/2 (кнопки ниже) и жми в бою.\n\n"
     if item['description']:
         text += f"📝 {item['description']}\n\n"
+
+    # Срок годности (жареная рыба)
+    exp = await get_inventory_expiry(user_id, item_id)
+    if exp:
+        try:
+            remaining = float(exp) - time.time()
+            if remaining > 0:
+                text += f"⏳ Срок годности: ~{remaining/86400:.1f} сут\n"
+            else:
+                text += "🥀 Провизия испортилась…\n"
+        except (TypeError, ValueError):
+            pass
+
     text += f"💵 Продажа: {item['sell_price']} {plural_nordmark(item['sell_price'])}"
 
     # Определяем слот снаряжения и статус экипировки

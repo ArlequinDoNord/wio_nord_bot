@@ -1,4 +1,4 @@
-"""Городской парк Аркхольма: озеро (статика) и аллея статуй с перелистыванием.
+"""Городской парк Аркхольма: озеро (статика), фонтан и аллея статуй.
 
 Статуи добавляются/удаляются админом (право can_manage_locations — супер-админ,
 с заделом на выдачу этого права другим ролям). У статуи можно задать картинки
@@ -6,6 +6,7 @@
 затем любой другой.
 """
 
+import asyncio
 import os
 
 from aiogram import Router, F
@@ -18,6 +19,7 @@ from database.db import (
     get_park_statues, get_park_statue, add_park_statue, delete_park_statue,
     update_park_statue,
     can_enter_location, PARK_TOD_KEYS,
+    get_user, add_ap, can_use_fountain, mark_fountain_used, log_activity,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import has_permission, log_action
@@ -26,6 +28,11 @@ from utils.helpers import resolve_image, time_of_day_key, edit_message_safe, is_
 router = Router()
 
 PARK_PHOTO = "city/park"
+FOUNTAIN_PHOTO = "city/park/fountain"
+FOUNTAIN_AP_BONUS = 15
+FOUNTAIN_WAIT_SEC = 15
+# Пользователи, которые сейчас набирают воду (защита от двойного клика)
+_FOUNTAIN_USING: set = set()
 
 TOD_LABEL = {
     "dawn": "🌅 Рассвет",
@@ -73,6 +80,7 @@ async def _show(message, media, caption, kb):
 def park_menu_markup(is_manager: bool):
     rows = [
         [InlineKeyboardButton(text="🗿 Аллея статуй", callback_data="park:statues")],
+        [InlineKeyboardButton(text="💧 Фонтан", callback_data="park:fountain")],
         [InlineKeyboardButton(text="🌊 Озеро", callback_data="park:lake")],
     ]
     if is_manager:
@@ -102,6 +110,85 @@ async def park_menu_cb(callback: CallbackQuery):
 async def park_lake(callback: CallbackQuery):
     from bot.handlers.fishing import fishing_lake_menu
     await fishing_lake_menu(callback)
+
+
+# ============ ФОНТАН ============
+
+def _fountain_photo_file():
+    path = resolve_image(FOUNTAIN_PHOTO)
+    if os.path.isfile(path):
+        return FSInputFile(path)
+    return park_photo()
+
+
+def fountain_markup(can_use: bool):
+    rows = []
+    if can_use:
+        rows.append([InlineKeyboardButton(
+            text=f"💧 Восстановить {FOUNTAIN_AP_BONUS} ОД",
+            callback_data="park:fountain:drink")])
+    rows.append([InlineKeyboardButton(text="🔙 В парк", callback_data="park:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _show_fountain(message, caption, kb):
+    await _show(message, _fountain_photo_file(), caption, kb)
+
+
+@router.callback_query(F.data == "park:fountain")
+async def park_fountain(callback: CallbackQuery):
+    await callback.answer()
+    uid = callback.from_user.id
+    can = await can_use_fountain(uid)
+    user = await get_user(uid) or {}
+    caption = (
+        "💧 ФОНТАН АРКХОЛЬМА\n\n"
+        "Струи чистой воды радуют глаз, а прохладная свежесть бодрит.\n"
+        "Можно попить воды и восстановить 15 ОД — раз в сутки.\n"
+    )
+    if not can:
+        caption += "\n⏳ Фонтан уже использован сегодня. Приходи завтра."
+    else:
+        caption += f"\n⚡ ОД сейчас: {user.get('ap', 0)}"
+    await _show_fountain(callback.message, caption, fountain_markup(can))
+
+
+@router.callback_query(F.data == "park:fountain:drink")
+async def park_fountain_drink(callback: CallbackQuery):
+    await callback.answer()
+    uid = callback.from_user.id
+    if uid in _FOUNTAIN_USING:
+        await callback.answer("⏳ Ты уже набираешь воду!", show_alert=True)
+        return
+    if not await can_use_fountain(uid):
+        await callback.answer("❌ Фонтан уже использован сегодня.", show_alert=True)
+        return
+
+    _FOUNTAIN_USING.add(uid)
+    try:
+        caption = (
+            "💧 *Фонтан*\n\n"
+            f"Набираешь воду… {FOUNTAIN_WAIT_SEC} сек"
+        )
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⏳ Набирается…", callback_data="noop")]])
+        await callback.message.edit_caption(caption=caption, reply_markup=kb)
+
+        await asyncio.sleep(FOUNTAIN_WAIT_SEC)
+
+        await add_ap(uid, FOUNTAIN_AP_BONUS)
+        await mark_fountain_used(uid)
+        await log_activity(uid, "fountain_drink", f"+{FOUNTAIN_AP_BONUS} ОД")
+
+        caption = (
+            "💧 *Фонтан*\n\n"
+            f"✅ Ты попил воды: +{FOUNTAIN_AP_BONUS} ОД.\n"
+            "Фонтан можно использовать раз в сутки."
+        )
+        await callback.message.edit_caption(
+            caption=caption, reply_markup=fountain_markup(False))
+    finally:
+        _FOUNTAIN_USING.discard(uid)
 
 
 # ============ АЛЛЕЯ СТАТУЙ ============

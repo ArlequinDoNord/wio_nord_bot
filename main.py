@@ -8,7 +8,11 @@ from aiogram.types import BotCommand, Message
 from dotenv import load_dotenv
 
 from config import BOT_TOKEN
-from database.db import init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon, ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, pay_salaries, payout_reports
+from database.db import (
+    init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon,
+    ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, ensure_life_items, ensure_recipes,
+    pay_salaries, payout_reports,
+)
 from utils.notify import notify_treasury_shortage
 from utils.helpers import is_main_menu_text
 from bot.handlers.start import router as start_router
@@ -25,6 +29,7 @@ from bot.handlers.library import router as library_router
 from bot.handlers.locations import router as locations_router
 from bot.handlers.park import router as park_router
 from bot.handlers.fishing import router as fishing_router
+from bot.handlers.housing import router as housing_router
 
 load_dotenv()
 
@@ -130,6 +135,14 @@ async def main():
     await ensure_dungeon_enemy_drops()
     logger.info("Дропы врагов обновлены")
 
+    life_seeded = await ensure_life_items()
+    if life_seeded:
+        logger.info("Предметы жилья, мебели, еды и семян добавлены")
+
+    recipes_seeded = await ensure_recipes()
+    if recipes_seeded:
+        logger.info("Рецепты кухни и верстака добавлены")
+
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
@@ -154,11 +167,12 @@ async def main():
     dp.include_router(locations_router)
     dp.include_router(park_router)
     dp.include_router(fishing_router)
+    dp.include_router(housing_router)
 
     for r in (start_router, profile_router, bank_router, admin_router, shop_router,
               inventory_router, reports_router, dungeon_router, pilots_router,
               polls_router, library_router, locations_router, park_router,
-              fishing_router):
+              fishing_router, housing_router):
         r.message.middleware(MainMenuFSMReset())
 
     logger.info("Хендлеры зарегистрированы")

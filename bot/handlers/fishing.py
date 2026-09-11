@@ -27,6 +27,7 @@ router = Router()
 ROD_NAME = "Удочка из орешника"
 WORMS_NAME = "Черви"
 SPIDER_LEG_NAME = "Лапка кристального паука"
+COMBINED_BAIT_NAME = "Комбинированная наживка"
 SEAWEED_NAME = "Кусочек водорослей"
 BOOT_NAME = "Старый сапог"
 LAKE_PHOTO = "city/lake"
@@ -36,7 +37,7 @@ FISHING_CASTING = set()
 
 # Шанс улова: 50% база + ранг удочки*10 + бонус наживки, максимум 90%
 FISHING_BASE_CHANCE = 50
-BAIT_BONUS = {WORMS_NAME: 15, SPIDER_LEG_NAME: 25}
+BAIT_BONUS = {WORMS_NAME: 15, SPIDER_LEG_NAME: 25, COMBINED_BAIT_NAME: 30}
 ROD_BONUS_PER_RANK = 10
 CHANCE_CAP = 90
 
@@ -134,7 +135,7 @@ async def _rod_for(user_id: int):
 async def _resolve_bait(user_id: int, chosen: str):
     """Подбирает наживку для заброса.
 
-    chosen: '' — авто (сначала черви, затем лапка), 'worms'/'spider' —
+    chosen: '' — авто (сначала черви, затем лапка), 'worms'/'spider'/'combined' —
     конкретная, 'none' — без наживки осознанно.
     Возвращает (имя_наживки_или_None, item_id_наживки_или_None).
     """
@@ -143,7 +144,7 @@ async def _resolve_bait(user_id: int, chosen: str):
     candidates = []
     if chosen:
         candidates.append(chosen)
-    candidates += [n for n in (WORMS_NAME, SPIDER_LEG_NAME) if n not in candidates]
+    candidates += [n for n in (WORMS_NAME, SPIDER_LEG_NAME, COMBINED_BAIT_NAME) if n not in candidates]
     for name in candidates:
         item = await get_item_by_name(name)
         if not item:
@@ -218,22 +219,27 @@ def _result_markup():
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _bait_markup(user_id: int, chosen: str, worms_qty: int, spider_qty: int):
+def _bait_markup(user_id: int, chosen: str, worms_qty: int, spider_qty: int, combined_qty: int = 0):
     def row(label: str, value: str):
         marked = " ✓" if chosen == value else ""
         return label + marked
-    rows = [
-        [InlineKeyboardButton(
+    rows = []
+    if worms_qty:
+        rows.append([InlineKeyboardButton(
             row(f"🐛 {WORMS_NAME} x{worms_qty} (+{BAIT_BONUS[WORMS_NAME]}%)", "worms"),
-            callback_data="fish:bait:set:worms")],
-        [InlineKeyboardButton(
+            callback_data="fish:bait:set:worms")])
+    if spider_qty:
+        rows.append([InlineKeyboardButton(
             row(f"🕷 {SPIDER_LEG_NAME} x{spider_qty} (+{BAIT_BONUS[SPIDER_LEG_NAME]}%)", "spider"),
-            callback_data="fish:bait:set:spider")],
-        [InlineKeyboardButton(
-            row("🚫 Без наживки", "none"),
-            callback_data="fish:bait:set:none")],
-        [InlineKeyboardButton(text="🔙 К озеру", callback_data="fish:lake")],
-    ]
+            callback_data="fish:bait:set:spider")])
+    if combined_qty:
+        rows.append([InlineKeyboardButton(
+            row(f"🪤 {COMBINED_BAIT_NAME} x{combined_qty} (+{BAIT_BONUS[COMBINED_BAIT_NAME]}%)", "combined"),
+            callback_data="fish:bait:set:combined")])
+    rows.append([InlineKeyboardButton(
+        row("🚫 Без наживки", "none"),
+        callback_data="fish:bait:set:none")])
+    rows.append([InlineKeyboardButton(text="🔙 К озеру", callback_data="fish:lake")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -297,16 +303,20 @@ async def fish_bait_menu(callback: CallbackQuery):
 
     worms = await get_item_by_name(WORMS_NAME)
     spider = await get_item_by_name(SPIDER_LEG_NAME)
+    combined = await get_item_by_name(COMBINED_BAIT_NAME)
     worms_qty = 0
     if worms:
         w_inv = await get_inventory_item(callback.from_user.id, worms['id'])
         worms_qty = w_inv['quantity'] if w_inv else 0
     spider_inv = await get_inventory_item(callback.from_user.id, spider['id']) if spider else None
     spider_qty = spider_inv['quantity'] if spider else 0
+    combined_inv = await get_inventory_item(callback.from_user.id, combined['id']) if combined else None
+    combined_qty = combined_inv['quantity'] if combined else 0
 
     selected = {
         "worms": WORMS_NAME,
         "spider": SPIDER_LEG_NAME,
+        "combined": COMBINED_BAIT_NAME,
         "none": "Без наживки",
         "": "Авто (что есть)",
     }.get(chosen, "")
@@ -314,11 +324,12 @@ async def fish_bait_menu(callback: CallbackQuery):
         "🪱 НАЖИВКА\n\n"
         f"Сейчас: {selected or chosen}\n"
         "Наживка расходуется при каждом забросе.\n"
-        "«Авто»: сначала черви, при их отсутствии — лапка.\n\n"
+        "«Авто»: сначала черви, затем лапка, затем комбинированная.\n\n"
         f"⚠️ Без наживки рыба не клюёт: со дна только мусор "
         f"(водоросли {JUNK_SEAWEED_CHANCE}%, сапог {JUNK_BOOT_CHANCE}%)."
     )
-    await _paint(callback, text=text, kb=_bait_markup(callback.from_user.id, chosen, worms_qty, spider_qty))
+    await _paint(callback, text=text,
+                 kb=_bait_markup(callback.from_user.id, chosen, worms_qty, spider_qty, combined_qty))
 
 
 @router.callback_query(F.data.startswith("fish:bait:set:"))

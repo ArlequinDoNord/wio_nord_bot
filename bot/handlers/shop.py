@@ -18,7 +18,11 @@ from config import ITEM_CATEGORIES
 
 router = Router()
 
-CATEGORIES = ["weapon", "consumable", "equipment", "building", "resource", "special", "souvenirs", "library_card", "fishing"]
+CATEGORIES = [
+    "weapon", "consumable", "equipment", "building", "resource",
+    "special", "souvenirs", "library_card", "fishing",
+    "housing", "furniture", "seeds",
+]
 PER_PAGE = 6
 
 
@@ -125,8 +129,13 @@ def items_page_markup(items, category, page: int):
     buttons = []
     for it in chunk:
         emoji = rarity_emoji(it['rarity'])
+        stats = ""
+        if it['damage'] > 0:
+            stats += f" ⚔️{it['damage']}"
+        if it['armor'] > 0:
+            stats += f" 🛡{it['armor']}"
         buttons.append([InlineKeyboardButton(
-            text=f"{emoji} {it['name']} — {it['price']} НМ",
+            text=f"{emoji} {it['name']}{stats} — {it['price']} НМ",
             callback_data=f"shopitem:{it['id']}"
         )])
 
@@ -170,8 +179,13 @@ async def shop_item_view(callback: CallbackQuery):
     header = (
         f"{rarity_emoji(item['rarity'])} {item['name']} {rarity_emoji(item['rarity'])}\n"
         f"Редкость: {rarity_label(item['rarity'])}\n"
-        f"Категория: {ITEM_CATEGORIES.get(item['category'], item['category'])}\n\n"
+        f"Категория: {ITEM_CATEGORIES.get(item['category'], item['category'])}"
     )
+    if item['damage'] > 0:
+        header += f"\n⚔️ Урон: {item['damage']}"
+    if item['armor'] > 0:
+        header += f"\n🛡 Броня: {item['armor']}"
+    header += "\n\n"
     body = ""
     if item['description']:
         body += f"📝 {item['description']}\n\n"

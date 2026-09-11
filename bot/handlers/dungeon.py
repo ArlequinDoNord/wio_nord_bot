@@ -563,6 +563,19 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
             f"❤️ {_hp_bar(new_hp, run['hp_max'])}\n\n"
             f"Продолжай бой:"
         )
+        # Яблоко: иногда из него выпадает семечко (10%)
+        if item['name'] == "Яблоко" and random.random() < 0.1:
+            seed = await get_item_by_name("Яблочное семечко")
+            if seed:
+                await add_inventory_item(user_id, seed['id'], 1)
+                text += "\n\n🌱 Из яблока выпало семечко!"
+        # Испорченная рыба: несварение на сутки
+        if item['name'].startswith("Испорченный"):
+            from utils.states import apply_state_to
+            await apply_state_to(user_id, "несварение", caused_by=user_id,
+                                 reason="съедена испорченная рыба")
+            text += ("\n\n🤢 Ты съел испорченную рыбу — наступило несварение на сутки. "
+                     "Нельзя применять расходники.")
     else:
         await add_inventory_item(user_id, item['id'], 1)
         await callback.message.answer("❌ Этот предмет нельзя использовать в бою.")

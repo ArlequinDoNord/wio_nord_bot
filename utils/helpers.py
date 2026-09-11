@@ -131,6 +131,10 @@ ITEM_LOCAL_PHOTOS = {
     "Муксун": "assets/img/fish/muksun.jpg",
     "Чир": "assets/img/fish/chir.jpg",
     "Налим": "assets/img/fish/nalim.jpg",
+    "Жареный сиг": "assets/img/fish/fried_sig.jpg",
+    "Жареный муксун": "assets/img/fish/fried_muksun.jpg",
+    "Жареный чир": "assets/img/fish/fried_chir.jpg",
+    "Жареный налим": "assets/img/fish/fried_nalim.jpg",
     "Удочка из орешника": "assets/img/fish/rod.jpg",
 }
 

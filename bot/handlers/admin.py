@@ -63,6 +63,7 @@ class AdminEditItem(StatesGroup):
     item_id = State()
     field = State()
     value = State()
+    photo = State()
 
 
 class AdminFinance(StatesGroup):
@@ -768,6 +769,7 @@ async def edit_item_pick(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text="🛡️ Броня", callback_data="field:armor")],
             [InlineKeyboardButton(text="⚡ AP за использование", callback_data="field:ap_cost")],
             [InlineKeyboardButton(text="🔒 Требуемый статус", callback_data="field:required_status")],
+            [InlineKeyboardButton(text="🖼 Картинка", callback_data="field:photo")],
             [InlineKeyboardButton(text="🚧 Вкл/выкл продажу", callback_data="field:is_available")],
         ])
     )
@@ -803,6 +805,40 @@ async def edit_item_field_req(callback: CallbackQuery, state: FSMContext):
     await log_action(callback.from_user.id, 'edit_item', None, f"item_id={item_id} required_status={tag}")
     await state.clear()
     await callback.message.answer("✅ Требуемый статус обновлён.")
+
+
+@router.callback_query(F.data == "field:photo")
+async def edit_item_field_photo(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(AdminEditItem.photo)
+    await callback.message.answer(
+        "🖼 Отправь фото товара (или «-», чтобы убрать картинку).",
+        reply_markup=cancel_keyboard())
+
+
+@router.message(AdminEditItem.photo)
+async def edit_item_photo(message: Message, state: FSMContext):
+    data = await state.get_data()
+    item_id = data.get('item_id')
+    item = await get_item(item_id)
+    if not item:
+        await state.clear()
+        await message.answer("❌ Товар не найден.")
+        return
+    if message.text and message.text.strip() == "-":
+        await update_item(item_id, photo_file_id=None)
+        await log_action(message.from_user.id, 'edit_item', None, f"item_id={item_id} photo cleared")
+        await state.clear()
+        await message.answer("✅ Картинка убрана.")
+        return
+    if not message.photo:
+        await message.answer("❌ Отправь именно фото (или «-» для очистки).")
+        return
+    file_id = message.photo[-1].file_id
+    await update_item(item_id, photo_file_id=file_id)
+    await log_action(message.from_user.id, 'edit_item', None, f"item_id={item_id} photo updated")
+    await state.clear()
+    await message.answer(f"✅ Картинка товара «{item['name']}» обновлена.")
 
 
 @router.callback_query(F.data.startswith("field:"))
