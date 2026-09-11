@@ -479,6 +479,9 @@ async def init_db():
     await _ensure_column(conn, "locations", "preview_photo", "TEXT")
     # Рыбалка: выбранная игроком наживка ('worms'/'spider'/'none', '' = авто)
     await _ensure_column(conn, "users", "fishing_bait", "TEXT DEFAULT ''")
+    # Счётчик водорослей (для «несварения»: >6 в сутки → запрет расходников на 24 ч)
+    await _ensure_column(conn, "users", "seaweed_used_today", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "users", "seaweed_used_day", "TEXT DEFAULT NULL")
     # Опросы: кто и когда закрыл (для архива закрытых голосований)
     await _ensure_column(conn, "polls", "closed_by", "INTEGER")
     await _ensure_column(conn, "polls", "closed_at", "TIMESTAMP")
@@ -640,6 +643,7 @@ async def daily_ap_recovery():
 
     В состоянии «истощён»: +75 ОД, потолок 90. Счётчик восстановления через
     расходники (ap_restored_today) обнуляется только при смене суток.
+    Счётчик водорослей (seaweed_used_today) тоже обнуляется.
     """
     from config import (AP_DAILY_RECOVERY, AP_EXHAUSTED_DAILY_RECOVERY, AP_EXHAUSTED_MAX_AP)
     conn = await get_db()
@@ -648,7 +652,9 @@ async def daily_ap_recovery():
             ap = MIN(CASE WHEN state = 'истощён' THEN ? ELSE ap_max END,
                      ap + CASE WHEN state = 'истощён' THEN ? ELSE ? END),
             ap_restored_today = CASE WHEN ap_restored_day = date('now') THEN ap_restored_today ELSE 0 END,
-            ap_restored_day = CASE WHEN ap_restored_day = date('now') THEN ap_restored_day ELSE date('now') END
+            ap_restored_day = CASE WHEN ap_restored_day = date('now') THEN ap_restored_day ELSE date('now') END,
+            seaweed_used_today = CASE WHEN seaweed_used_day = date('now') THEN seaweed_used_today ELSE 0 END,
+            seaweed_used_day = CASE WHEN seaweed_used_day = date('now') THEN seaweed_used_day ELSE date('now') END
     """, (AP_EXHAUSTED_MAX_AP, AP_EXHAUSTED_DAILY_RECOVERY, AP_DAILY_RECOVERY))
     await conn.commit()
 
@@ -777,12 +783,20 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
         if item['heal'] > 0:
             return False, "Это зелье можно применить только в бою подземелья 💊"
 
+        # «Несварение»: нельзя применять расходники вообще (в т.ч. восстановление ОД).
+        user = await get_user(user_id)
+        if not user:
+            return False, "Пользователь не найден"
+        if user.get('state') == 'несварение':
+            return False, (
+                "🤢 Несварение: ты слишком много ел водорослей. "
+                "Расходники нельзя применять ещё сутки."
+            )
+
         if item['ap_cost'] > 0:
             from config import (AP_DAILY_RESTORE_LIMIT,
-                                AP_EXHAUSTED_MINUTES, AP_EXHAUSTED_DAILY_RECOVERY, AP_EXHAUSTED_MAX_AP)
-            user = await get_user(user_id)
-            if not user:
-                return False, "Пользователь не найден"
+                                AP_EXHAUSTED_MINUTES, AP_EXHAUSTED_DAILY_RECOVERY, AP_EXHAUSTED_MAX_AP,
+                                SEAWEED_DAILY_LIMIT, DIGESTIVE_UPSET_MINUTES)
 
             if user.get('state') == 'истощён':
                 return False, (
@@ -802,16 +816,49 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
                     f"Восстановление продолжится в новые сутки."
                 )
 
+            # Водоросли: считаем дневное применение → несварение при превышении лимита.
+            is_seaweed = item['name'] == "Кусочек водорослей"
+            seaweed_used = 0
+            if is_seaweed:
+                seaweed_used = user.get('seaweed_used_today') or 0
+                if user.get('seaweed_used_day') != today:
+                    seaweed_used = 0
+                if seaweed_used >= SEAWEED_DAILY_LIMIT:
+                    return False, (
+                        f"🤢 Сегодня ты уже съел {seaweed_used} водорослей (лимит {SEAWEED_DAILY_LIMIT}). "
+                        f"Наступило несварение на сутки."
+                    )
+
             amount = min(item['ap_cost'], remaining)
             await remove_inventory_item(user_id, item_id, 1)
             await add_ap(user_id, amount)
             restored_today += amount
             conn = await get_db()
-            await conn.execute(
-                "UPDATE users SET ap_restored_today = ?, ap_restored_day = ? WHERE user_id = ?",
-                (restored_today, today, user_id)
-            )
+            if is_seaweed:
+                seaweed_used += 1
+                await conn.execute(
+                    "UPDATE users SET ap_restored_today = ?, ap_restored_day = ?, "
+                    "seaweed_used_today = ?, seaweed_used_day = ? WHERE user_id = ?",
+                    (restored_today, today, seaweed_used, today, user_id)
+                )
+            else:
+                await conn.execute(
+                    "UPDATE users SET ap_restored_today = ?, ap_restored_day = ? WHERE user_id = ?",
+                    (restored_today, today, user_id)
+                )
             await conn.commit()
+
+            # Водоросли: на 6-й штуке наступает несварение на сутки.
+            if is_seaweed and seaweed_used >= SEAWEED_DAILY_LIMIT:
+                await set_user_state(
+                    user_id, "несварение", DIGESTIVE_UPSET_MINUTES, user_id,
+                    f"Съедено {seaweed_used} водорослей за сутки (лимит {SEAWEED_DAILY_LIMIT})"
+                )
+                return True, (
+                    f"Ты использовал {item['name']} и получил +{amount} AP!\n"
+                    f"🤢 Ты съел {seaweed_used} водорослей за сегодня — наступило несварение на сутки. "
+                    f"Расходники недоступны. Продолжай завтра!"
+                )
 
             if restored_today >= AP_DAILY_RESTORE_LIMIT:
                 await set_user_state(
@@ -823,6 +870,13 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
                     f"⚠️ Лимит восстановления ОД за сутки ({AP_DAILY_RESTORE_LIMIT}) исчерпан — "
                     f"наступило состояние «истощён» на 2 суток.\n"
                     f"Восстановление: {AP_EXHAUSTED_DAILY_RECOVERY} ОД/сутки, максимум {AP_EXHAUSTED_MAX_AP} ОД."
+                )
+            if is_seaweed:
+                left_seaweed = max(0, SEAWEED_DAILY_LIMIT - seaweed_used)
+                return True, (
+                    f"Ты использовал {item['name']} и получил +{amount} AP! "
+                    f"Водорослей сегодня: {seaweed_used}/{SEAWEED_DAILY_LIMIT} "
+                    f"(ещё {left_seaweed} до несварения)."
                 )
             return True, (
                 f"Ты использовал {item['name']} и получил +{amount} AP! "
