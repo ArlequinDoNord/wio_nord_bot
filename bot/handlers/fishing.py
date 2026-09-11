@@ -379,6 +379,17 @@ async def fish_cast(callback: CallbackQuery):
                            f"Заброс: наживка={'—' if not bait_name else bait_name}, шанс {chance}%")
         await asyncio.sleep(delay)
 
+        # Счётичик ОД после поклёвки (перед решением «Ещё раз»)
+        fresh = await get_user(user_id) or {}
+        _ap = fresh.get('ap', 0) or 0
+        _ap_max = fresh.get('ap_max', _ap) or _ap
+        ap_line = f"⚡ ОД: {_ap}/{_ap_max}"
+        if _ap < FISH_AP_COST:
+            ap_line += f" — на следующий заброс не хватит ({FISH_AP_COST} ОД)"
+        else:
+            ap_line += f" — можно забрасывать"
+        ap_block = f"\n\n{ap_line}"
+
         if bait_name:
             # С наживкой — рыбалка как раньше.
             caught = random.random() * 100 < chance
@@ -400,7 +411,7 @@ async def fish_cast(callback: CallbackQuery):
                     )
                     local_photo = item_local_photo(fish_name)
                     if local_photo:
-                        await _paint(callback, text=text, media_path=local_photo, kb=_result_markup())
+                        await _paint(callback, text=text + ap_block, media_path=local_photo, kb=_result_markup())
                         return
                 else:
                     text = "🎣 Рыбалка\n\n🐟 Что-то поймал, но предмет потерялся. Сообщи хранителю."
@@ -438,6 +449,8 @@ async def fish_cast(callback: CallbackQuery):
                     "Поплавок даже не дрогнул. Без наживки рыба не клюёт — "
                     "с дна достаётся только мусор. Попробуй с наживкой!"
                 )
+        # Счётчик ОД перед следующим забросом
+        text += ap_block
         await _paint(callback, text=text, kb=_result_markup())
     finally:
         FISHING_CASTING.discard(user_id)
