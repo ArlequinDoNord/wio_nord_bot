@@ -197,6 +197,17 @@ async def shop_item_view(callback: CallbackQuery):
     cannot_buy = (item['stock'] == 0) or not has_access
     markup = item_card_keyboard(item['id'], item['price'], can_buy_nord=not cannot_buy)
 
+    # Для безлимитных товаров (fishing/consumable) — кнопка «Купить 5 шт»
+    if item['stock'] == -1 and not cannot_buy and item['price'] > 0:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        rows = list(markup.inline_keyboard)
+        buy5_price = item['price'] * 5
+        rows.insert(-1, [InlineKeyboardButton(
+            text=f"💰 Купить 5 за {buy5_price}",
+            callback_data=f"buy5_nord:{item['id']}"
+        )])
+        markup = InlineKeyboardMarkup(inline_keyboard=rows)
+
     text = header + body
     photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
     local_photo = None if photo_id else item_local_photo(item['name'])
@@ -221,53 +232,70 @@ async def shop_item_view(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("buy_nord:"))
 async def buy_nord(callback: CallbackQuery):
     await callback.answer()
-    user_id = callback.from_user.id
     item_id = int(callback.data.split(":")[1])
+    await _buy_item(callback, item_id, 1)
+
+
+@router.callback_query(F.data.startswith("buy5_nord:"))
+async def buy5_nord(callback: CallbackQuery):
+    await callback.answer()
+    item_id = int(callback.data.split(":")[1])
+    await _buy_item(callback, item_id, 5)
+
+
+async def _buy_item(callback: CallbackQuery, item_id: int, qty: int):
+    user_id = callback.from_user.id
     item = await get_item(item_id)
 
     if not item or not item['is_available']:
-        await callback.message.answer("❌ Товар недоступен.")
+        await callback.answer("❌ Товар недоступен.", show_alert=True)
         return
 
     if not await user_has_status_tag(user_id, item['required_status']):
-        await callback.message.answer("❌ Тебе нужен статус, чтобы купить этот товар.")
+        await callback.answer("❌ Тебе нужен статус, чтобы купить этот товар.", show_alert=True)
         return
 
     if item['stock'] == 0:
-        await callback.message.answer("❌ Товар распродан.")
+        await callback.answer("❌ Товар распродан.", show_alert=True)
+        return
+
+    if item['stock'] != -1 and item['stock'] < qty:
+        await callback.answer(f"❌ В магазине осталось меньше {qty} шт.", show_alert=True)
         return
 
     user = await get_user(user_id)
-    if user['nordmarks'] < item['price']:
-        await callback.message.answer(
-            f"❌ Недостаточно средств. Нужно {item['price']} {plural_nordmark(item['price'])}."
+    total = item['price'] * qty
+    if user['nordmarks'] < total:
+        await callback.answer(
+            f"❌ Недостаточно. Нужно {total} {plural_nordmark(total)}", show_alert=True
         )
         return
 
-    await remove_nordmarks(user_id, item['price'], "shop_purchase", f"Покупка: {item['name']}")
-    await add_inventory_item(user_id, item_id, 1)
-    await decrement_stock(item_id)
-    # Товар с ограниченным остатком: распродано — исчезает из магазина,
-    # пока кто-то не продаст такой же предмет (см. inv_sell).
+    await remove_nordmarks(user_id, total, "shop_purchase", f"Покупка: {item['name']} x{qty}")
+    await add_inventory_item(user_id, item_id, qty)
+
     if item['stock'] != -1:
+        db = await get_db()
+        await db.execute("UPDATE items SET stock = stock - ? WHERE id = ?", (qty, item_id))
+        await db.commit()
         refreshed = await get_item(item_id)
         if refreshed['stock'] <= 0:
             await update_item(item_id, is_available=0)
-    await log_activity(user_id, "shop_purchase", f"Купил «{item['name']}» за {item['price']} НМ")
 
-    await add_treasury(item['price'], f"Продажа: {item['name']}")
+    await log_activity(user_id, "shop_purchase", f"Купил «{item['name']}» x{qty} за {total} НМ")
+    await add_treasury(total, f"Продажа: {item['name']} x{qty}")
 
     producer = item['produced_by'] if 'produced_by' in item.keys() else None
     if producer:
         sale_tax = await get_sale_tax_percent()
-        tax_amount = int(item['price'] * sale_tax / 100)
-        seller_pay = item['price'] - tax_amount
+        tax_amount = int(total * sale_tax / 100)
+        seller_pay = total - tax_amount
         await add_nordmarks(
             producer, seller_pay, "shop_payout",
-            f"Продажа товара: {item['name']} ({sale_tax}% налог)"
+            f"Продажа товара: {item['name']} x{qty} ({sale_tax}% налог)"
         )
 
-    if item['category'] == "library_card":
+    if item['category'] == "library_card" and qty == 1:
         card_type = "silver" if "Серебряный" in item['name'] else "basic"
         await activate_library_card(user_id, card_type)
         await callback.message.answer(
@@ -276,7 +304,7 @@ async def buy_nord(callback: CallbackQuery):
         )
     else:
         await callback.message.answer(
-            f"✅ Куплено: {item['name']} за {item['price']} {plural_nordmark(item['price'])}!"
+            f"✅ Куплено: {item['name']} x{qty} за {total} {plural_nordmark(total)}!"
         )
 
 
