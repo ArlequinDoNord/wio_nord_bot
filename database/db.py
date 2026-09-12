@@ -1,7 +1,7 @@
 import json
 import time
 import aiosqlite
-from config import DB_PATH
+from config import DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MINUTES
 
 db: aiosqlite.Connection | None = None
 
@@ -123,6 +123,17 @@ async def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (poll_id) REFERENCES polls(id),
             UNIQUE(poll_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS news_releases (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            body TEXT DEFAULT '',
+            photo_file_id TEXT,
+            author_id INTEGER NOT NULL,
+            author_name TEXT DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT '',
+            edited INTEGER DEFAULT 0
         );
 
         CREATE TABLE IF NOT EXISTS daily_limits (
@@ -519,6 +530,12 @@ async def init_db():
     # Счётчик водорослей (для «несварения»: >6 в сутки → запрет расходников на 24 ч)
     await _ensure_column(conn, "users", "seaweed_used_today", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "seaweed_used_day", "TEXT DEFAULT NULL")
+    # Счётчик бутылок пива (для состояний «пьян»/«очень пьян»)
+    await _ensure_column(conn, "users", "beer_used_today", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "users", "beer_used_day", "TEXT DEFAULT NULL")
+    # Спец-отдел: неверные попытки ввода кода и время блокировки покупок (бан на 24 ч)
+    await _ensure_column(conn, "users", "special_fails_today", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "users", "special_blocked_until", "TEXT DEFAULT NULL")
     # Опросы: кто и когда закрыл (для архива закрытых голосований)
     await _ensure_column(conn, "polls", "closed_by", "INTEGER")
     await _ensure_column(conn, "polls", "closed_at", "TIMESTAMP")
@@ -563,6 +580,8 @@ async def seed_locations(conn):
          "all", None, ["пьян"], "city/library"),
         ("park", "Городской парк", "Тенистые аллеи, пруд и статуи. Открыт для всех — и для пилотов, и для туристов.",
          "all", None, ["пьян"], "city/park"),
+        ("gossmi", "ГосСМИ", "Медиацентр Нордхайма. Здесь корреспонденты готовят выпуски городских новостей.",
+         "all", None, ["пьян"], "city/media"),
     ]
     for key, name, desc, mode, req_status, blocking, preview in base:
         await conn.execute(
@@ -595,10 +614,70 @@ async def add_user(user_id: int, username: str, first_name: str, last_name: str)
     await conn.commit()
 
 
+def _load_state_effects(state_col: str, state_effects: str) -> dict:
+    """Парсит state_effects в dict {ключ состояния: effects}.
+
+    Поддерживает legacy плоский формат {"applied_at", "minutes", ...},
+    где ключ состояния берётся из столбца state.
+    """
+    try:
+        data = json.loads(state_effects) if state_effects else {}
+    except (ValueError, TypeError):
+        data = {}
+    if not isinstance(data, dict):
+        data = {}
+    if "applied_at" in data:
+        key = state_col if state_col and state_col != "нормально" else ""
+        if key:
+            return {key: data}
+        return {}
+    return {k: v for k, v in data.items() if isinstance(v, dict)}
+
+
+def _state_col_value(effects: dict) -> str:
+    keys = list(effects.keys())
+    return ", ".join(keys) if keys else "нормально"
+
+
+async def _refresh_user_states(user_id: int) -> dict:
+    """Читает состояния игрока, снимает протухшие и возвращает {ключ: effects}."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT state, state_effects FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    if not row:
+        return {}
+    effects = _load_state_effects(row['state'], row['state_effects'])
+    now = datetime.now()
+    changed = False
+    for key in list(effects.keys()):
+        eff = effects[key] or {}
+        try:
+            applied = datetime.strptime(eff['applied_at'], "%Y-%m-%d %H:%M:%S")
+            minutes = int(eff.get('minutes', 0))
+        except (ValueError, TypeError, KeyError):
+            continue
+        if applied + timedelta(minutes=minutes) <= now:
+            del effects[key]
+            changed = True
+            await conn.execute(
+                "INSERT INTO state_log (user_id, old_state, new_state, reason, caused_by) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (user_id, key, "нормально", f"срок действия истёк ({key})", eff.get('caused_by'))
+            )
+    if changed:
+        await conn.execute(
+            "UPDATE users SET state = ?, state_effects = ? WHERE user_id = ?",
+            (_state_col_value(effects), json.dumps(effects, ensure_ascii=False), user_id)
+        )
+        await conn.commit()
+    return effects
+
+
 async def get_user(user_id: int):
     """Возвращает игрока словарём с учётом протухших состояний.
 
     При активном состоянии «истощён» ap_max заменяется на лимит истощения (90).
+    user['state'] — строка состояний через запятую, user['state_keys'] — список.
     """
     from config import AP_EXHAUSTED_MAX_AP
     conn = await get_db()
@@ -607,11 +686,11 @@ async def get_user(user_id: int):
     if not row:
         return None
     user = dict(row)
-    state = user.get('state') or 'нормально'
-    refreshed = await drop_expired_state(user_id, state, user.get('state_effects') or "{}")
-    if refreshed != state:
-        user['state'] = refreshed
-    if refreshed == 'истощён':
+    effects = await _refresh_user_states(user_id)
+    user['state'] = _state_col_value(effects)
+    user['state_effects'] = json.dumps(effects, ensure_ascii=False)
+    user['state_keys'] = list(effects.keys())
+    if 'истощён' in effects:
         user['ap_max'] = AP_EXHAUSTED_MAX_AP
     return user
 
@@ -660,13 +739,13 @@ async def add_ap(user_id: int, amount: int):
     from config import AP_EXHAUSTED_MAX_AP
     conn = await get_db()
     cursor = await conn.execute(
-        "SELECT state, state_effects, ap_max FROM users WHERE user_id = ?", (user_id,)
+        "SELECT ap_max FROM users WHERE user_id = ?", (user_id,)
     )
     row = await cursor.fetchone()
     if not row:
         return
-    state = await drop_expired_state(user_id, row['state'], row['state_effects'])
-    cap = AP_EXHAUSTED_MAX_AP if state == 'истощён' else row['ap_max']
+    effects = await _refresh_user_states(user_id)
+    cap = AP_EXHAUSTED_MAX_AP if 'истощён' in effects else row['ap_max']
     await conn.execute(
         "UPDATE users SET ap = MIN(?, ap + ?) WHERE user_id = ?",
         (cap, amount, user_id)
@@ -696,8 +775,8 @@ async def daily_ap_recovery():
     conn = await get_db()
     await conn.execute("""
         UPDATE users SET
-            ap = MIN(CASE WHEN state = 'истощён' THEN ? ELSE ap_max END,
-                     ap + CASE WHEN state = 'истощён' THEN ? ELSE ? END),
+            ap = MIN(CASE WHEN INSTR(state, 'истощён') > 0 THEN ? ELSE ap_max END,
+                     ap + CASE WHEN INSTR(state, 'истощён') > 0 THEN ? ELSE ? END),
             ap_restored_today = CASE WHEN ap_restored_day = date('now') THEN ap_restored_today ELSE 0 END,
             ap_restored_day = CASE WHEN ap_restored_day = date('now') THEN ap_restored_day ELSE date('now') END,
             seaweed_used_today = CASE WHEN seaweed_used_day = date('now') THEN seaweed_used_today ELSE 0 END,
@@ -855,25 +934,81 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
         return False, "У тебя нет этого предмета"
 
     if item['category'] == 'consumable':
-        if item['heal'] > 0:
-            return False, "Это зелье можно применить только в бою подземелья 💊"
+        # Пиво пьётся где угодно (+10 HP засчитывается в бою подземелья отдельным путём).
+        from config import (BEER_ITEM_NAME, BEER_DAILY_LIMIT, BEER_VERY_DRUNK_LIMIT,
+                            BEER_DRUNK_MINUTES, BEER_VERY_DRUNK_MINUTES)
+        from utils.states import consumables_blocked, apply_state_to
 
-        # «Несварение»: нельзя применять расходники вообще (в т.ч. восстановление ОД).
         user = await get_user(user_id)
         if not user:
             return False, "Пользователь не найден"
-        if user.get('state') == 'несварение':
+        state_keys = user.get('state_keys') or []
+
+        # Состояния, блокирующие расходники («несварение», «очень пьян»).
+        blocked_by = consumables_blocked(state_keys)
+        if blocked_by:
+            if "очень пьян" in blocked_by:
+                return False, (
+                    "🥴 Ты слишком пьян, чтобы что-то применять. "
+                    "Зелья и расходники станут доступны, когда «очень пьян» пройдёт (6 часов)."
+                )
             return False, (
                 "🤢 Несварение: ты слишком много ел водорослей. "
                 "Расходники нельзя применять ещё сутки."
             )
+
+        # Пиво: меняем дневной счётчик и выдаём состояния «пьян»/«очень пьян».
+        if item['name'] == BEER_ITEM_NAME:
+            ok = await remove_inventory_item(user_id, item_id, 1)
+            if not ok:
+                return False, "Не удалось списать бутылку пива."
+            today = datetime.utcnow().strftime("%Y-%m-%d")
+            beer_today = user.get('beer_used_today') or 0
+            if user.get('beer_used_day') != today:
+                beer_today = 0
+            beer_today += 1
+            conn = await get_db()
+            await conn.execute(
+                "UPDATE users SET beer_used_today = ?, beer_used_day = ? WHERE user_id = ?",
+                (beer_today, today, user_id)
+            )
+            await conn.commit()
+
+            if beer_today >= BEER_VERY_DRUNK_LIMIT:
+                await apply_state_to(
+                    user_id, "очень пьян", caused_by=user_id, minutes=BEER_VERY_DRUNK_MINUTES,
+                    reason=f"Выпито {beer_today} бутылок пива за сутки"
+                )
+                return True, (
+                    f"🍺 Ты выпил пиво ({beer_today}/{BEER_VERY_DRUNK_LIMIT} за сутки).\n"
+                    f"🥴 Ты совсем на ногах не стоишь — наступило состояние «Очень пьян» на 6 часов! "
+                    f"Атака и уклонение сильно снижены, зелья недоступны, во все здания вход закрыт."
+                )
+            if beer_today >= BEER_DAILY_LIMIT:
+                await apply_state_to(
+                    user_id, "пьян", caused_by=user_id, minutes=BEER_DRUNK_MINUTES,
+                    reason=f"Выпито {beer_today} бутылок пива за сутки"
+                )
+                return True, (
+                    f"🍺 Ты выпил пиво ({beer_today}/{BEER_VERY_DRUNK_LIMIT} за сутки).\n"
+                    f"🍺 Захмелел: состояние «Пьян» на {BEER_DRUNK_MINUTES} минут. "
+                    f"В Ратушу и Библиотеку не пускают, в бою атака −20%."
+                )
+            return True, (
+                f"🍺 Ты выпил пиво ({beer_today}/{BEER_VERY_DRUNK_LIMIT} за сутки). "
+                f"В бою подземелья оно восстановит 10 HP. "
+                f"Не пей больше {BEER_DAILY_LIMIT} за сутки — иначе будешь пьян."
+            )
+
+        if item['heal'] > 0:
+            return False, "Это зелье можно применить только в бою подземелья 💊"
 
         if item['ap_cost'] > 0:
             from config import (AP_DAILY_RESTORE_LIMIT,
                                 AP_EXHAUSTED_MINUTES, AP_EXHAUSTED_DAILY_RECOVERY, AP_EXHAUSTED_MAX_AP,
                                 SEAWEED_DAILY_LIMIT, DIGESTIVE_UPSET_MINUTES)
 
-            if user.get('state') == 'истощён':
+            if 'истощён' in state_keys:
                 return False, (
                     "🥵 Ты истощён и не можешь восстанавливать ОД через расходники "
                     f"в ближайшие 2 суток.\nВосстановление: {AP_EXHAUSTED_DAILY_RECOVERY} ОД/сутки, "
@@ -1023,6 +1158,85 @@ async def get_polls_created_today(admin_id: int) -> int:
         "SELECT COUNT(*) AS cnt FROM polls WHERE admin_id = ? "
         "AND created_at >= datetime('now', 'start of day')",
         (admin_id,)
+    )
+    row = await cursor.fetchone()
+    return row['cnt'] if row else 0
+
+
+# ============ НОВОСТИ ГOССМИ ============
+
+async def add_news(title: str, body: str, author_id: int, author_name: str,
+                   photo_file_id: str = None) -> int:
+    """Опубликовать новостной выпуск. Возвращает id записи."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "INSERT INTO news_releases (title, body, photo_file_id, author_id, author_name, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (title, body, photo_file_id, author_id, author_name,
+         datetime.now(MOSCOW_TZ).isoformat())
+    )
+    await conn.commit()
+    return cursor.lastrowid
+
+
+async def get_news(id: int):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM news_releases WHERE id = ?", (id,))
+    return await cursor.fetchone()
+
+
+async def get_latest_news(limit: int = 10) -> list:
+    """Последние выпуски (новые сверху) для ленты."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM news_releases ORDER BY rowid DESC LIMIT ?", (limit,))
+    return await cursor.fetchall()
+
+
+async def get_all_news() -> list:
+    """Все выпуски (для архива в библиотеке), новые сверху."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM news_releases ORDER BY rowid DESC")
+    return await cursor.fetchall()
+
+
+async def update_news(id: int, title: str = None, body: str = None,
+                      photo_file_id: str = None) -> bool:
+    """Изменить выпуск (редактор). photo_file_id=None — без изменений."""
+    sets, params = [], []
+    if title is not None:
+        sets.append("title = ?")
+        params.append(title)
+    if body is not None:
+        sets.append("body = ?")
+        params.append(body)
+    if photo_file_id is not None:
+        sets.append("photo_file_id = ?")
+        params.append(photo_file_id)
+    if not sets:
+        return False
+    sets.append("edited = 1")
+    params.append(id)
+    conn = await get_db()
+    await conn.execute(f"UPDATE news_releases SET {', '.join(sets)} WHERE id = ?", params)
+    await conn.commit()
+    return True
+
+
+async def delete_news(id: int) -> bool:
+    conn = await get_db()
+    cursor = await conn.execute("DELETE FROM news_releases WHERE id = ?", (id,))
+    await conn.commit()
+    return cursor.rowcount > 0
+
+
+async def get_news_count_today(user_id: int) -> int:
+    """Сколько выпусков опубликовал игрок за текущие сутки (МСК)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT COUNT(*) AS cnt FROM news_releases "
+        "WHERE author_id = ? AND substr(created_at, 1, 10) = ?",
+        (user_id, datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d"))
     )
     row = await cursor.fetchone()
     return row['cnt'] if row else 0
@@ -1432,6 +1646,126 @@ async def set_sale_tax_percent(percent: int):
     await conn.commit()
 
 
+# ============ СПЕЦ-ОТДЕЛ ============
+
+# Код доступа к спец-отделу (задаётся админом с правами can_manage_shop).
+SPECIAL_DEPT_CODE_KEY = "special_dept_code"
+
+
+async def get_special_dept_code() -> str:
+    """Текущий код доступа к спец-отделу (пустая строка — спец-отдел закрыт)."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT value FROM settings WHERE key = ?", (SPECIAL_DEPT_CODE_KEY,))
+    row = await cursor.fetchone()
+    return row['value'] if row else ""
+
+
+async def set_special_dept_code(code: str):
+    """Задать/сменить код доступа к спец-отделу ('' — закрыть отдел)."""
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (SPECIAL_DEPT_CODE_KEY, code)
+    )
+    await conn.commit()
+
+
+async def get_special_fails(user_id: int) -> int:
+    """Сколько раз сегодня игрок вводил неверный код спец-отдела."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT special_fails_today FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    return row['special_fails_today'] if row else 0
+
+
+async def add_special_fail(user_id: int) -> int:
+    """Увеличить счётчик неверных кодов на 1. Возвращает новое значение."""
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET special_fails_today = special_fails_today + 1 WHERE user_id = ?",
+        (user_id,)
+    )
+    await conn.commit()
+    return await get_special_fails(user_id)
+
+
+async def register_special_fail(user_id: int) -> bool:
+    """Зарегистрировать неверный ввод кода.
+
+    При достижении лимита спец-отдел блокируется на 24 часа, счётчик обнуляется.
+    Возвращает True, если игрок только что получил бан.
+    """
+    fails = await add_special_fail(user_id)
+    if fails >= SPECIAL_DEPT_ATTEMPTS_LIMIT:
+        await set_special_blocked(user_id, SPECIAL_DEPT_BLOCK_MINUTES)
+        await reset_special_fails(user_id)
+        return True
+    return False
+
+
+async def reset_special_fails(user_id: int):
+    """Обнулить счётчик неверных кодов (после успешной попытки)."""
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET special_fails_today = 0 WHERE user_id = ?", (user_id,))
+    await conn.commit()
+
+
+async def is_special_blocked(user_id: int) -> bool:
+    """Забанен ли игрок (покупки в спец-отделе закрыты на 24 часа)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT special_blocked_until FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    if not row or not row['special_blocked_until']:
+        return False
+    until = row['special_blocked_until']
+    try:
+        until_ts = float(until)
+    except (TypeError, ValueError):
+        return False
+    return time.time() < until_ts
+
+
+async def set_special_blocked(user_id: int, minutes: int):
+    """Установить бан покупок в спец-отделе на `minutes` минут."""
+    conn = await get_db()
+    until_ts = time.time() + minutes * 60
+    await conn.execute(
+        "UPDATE users SET special_blocked_until = ? WHERE user_id = ?",
+        (str(until_ts), user_id)
+    )
+    await conn.commit()
+
+
+async def clear_special_blocked(user_id: int):
+    """Снять бан (после успешного ввода кода)."""
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET special_blocked_until = NULL WHERE user_id = ?", (user_id,))
+    await conn.commit()
+    await reset_special_fails(user_id)
+
+
+async def special_dept_block_left_minutes(user_id: int) -> int:
+    """Сколько минут осталось до снятия бана (0 — не забанен)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT special_blocked_until FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    if not row or not row['special_blocked_until']:
+        return 0
+    until = row['special_blocked_until']
+    try:
+        until_ts = float(until)
+    except (TypeError, ValueError):
+        return 0
+    left = int((until_ts - time.time()) // 60)
+    return max(0, left)
+
+
 # ============ БИБЛИОТЕКА НОРДХАЙМА ============
 
 # Разделы библиотеки и типы карт
@@ -1552,29 +1886,60 @@ async def add_interaction(from_user: int, to_user: int, interaction_type: str):
 
 async def set_user_state(user_id: int, state_text: str, minutes: int, caused_by: int = None, reason: str = "",
                          meta: dict = None):
-    """Установить состояние игрока. Метаданные (срок действия и причина) — в state_effects JSON."""
+    """Добавить/обновить одно состояние в списке состояний игрока.
+
+    Остальные состояния сохраняются. state_effects — dict {ключ: effects}.
+    """
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    effects = {"applied_at": now, "minutes": minutes, "caused_by": caused_by, "reason": reason}
+    effects_data = {"applied_at": now, "minutes": minutes, "caused_by": caused_by, "reason": reason}
     if meta:
-        effects.update(meta)
+        effects_data.update(meta)
     conn = await get_db()
-    cursor = await conn.execute("SELECT state FROM users WHERE user_id = ?", (user_id,))
+    cursor = await conn.execute("SELECT state, state_effects FROM users WHERE user_id = ?", (user_id,))
     row = await cursor.fetchone()
     old_state = row['state'] if row else "нормально"
+    effects = _load_state_effects(row['state'] if row else "", row['state_effects'] if row else "{}")
+    effects[state_text] = effects_data
+    new_state = _state_col_value(effects)
 
     await conn.execute(
         "UPDATE users SET state = ?, state_effects = ? WHERE user_id = ?",
-        (state_text, json.dumps(effects, ensure_ascii=False), user_id)
+        (new_state, json.dumps(effects, ensure_ascii=False), user_id)
     )
     await conn.execute(
         "INSERT INTO state_log (user_id, old_state, new_state, reason, caused_by) VALUES (?, ?, ?, ?, ?)",
-        (user_id, old_state, state_text, reason or "изменение состояния", caused_by)
+        (user_id, old_state, new_state, reason or "изменение состояния", caused_by)
     )
     await conn.commit()
 
 
+async def remove_user_state(user_id: int, state_text: str, caused_by: int = None, reason: str = "состояние снято"):
+    """Снять одно состояние игрока, остальные сохраняются."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT state, state_effects FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    if not row:
+        return
+    old_state = row['state'] if row else "нормально"
+    effects = _load_state_effects(row['state'] if row else "", row['state_effects'] if row else "{}")
+    if state_text not in effects:
+        return
+    del effects[state_text]
+    new_state = _state_col_value(effects)
+    await conn.execute(
+        "UPDATE users SET state = ?, state_effects = ? WHERE user_id = ?",
+        (new_state, json.dumps(effects, ensure_ascii=False), user_id)
+    )
+    if old_state != new_state:
+        await conn.execute(
+            "INSERT INTO state_log (user_id, old_state, new_state, reason, caused_by) VALUES (?, ?, ?, ?, ?)",
+            (user_id, old_state, new_state, reason, caused_by)
+        )
+    await conn.commit()
+
+
 async def clear_user_state(user_id: int, caused_by: int = None, reason: str = "состояние снято"):
-    """Снять состояние: вернуть игрока в «нормально»."""
+    """Снять все состояния: вернуть игрока в «нормально»."""
     conn = await get_db()
     cursor = await conn.execute("SELECT state, state_effects FROM users WHERE user_id = ?", (user_id,))
     row = await cursor.fetchone()
@@ -1594,23 +1959,29 @@ async def clear_user_state(user_id: int, caused_by: int = None, reason: str = "�
     await conn.commit()
 
 
-async def drop_expired_state(user_id: int, state_text: str, state_effects: str) -> str:
-    """Если срок состояния истёк — снять его. Возвращает актуальный state_text.
+async def drop_expired_state(user_id: int, state_col: str, state_effects: str) -> str:
+    """Снять все истёкшие состояния. Возвращает актуальный state (через запятую).
 
-    state_effects — JSON вида {"applied_at": "2026-09-06 12:00:00", "minutes": 60, ...}.
+    state_effects — JSON dict {ключ: {"applied_at", "minutes", ...}} либо legacy
+    плоский формат {"applied_at": "...", "minutes": 60}.
     """
-    if state_text == "нормально" or not state_effects:
-        return state_text
-    try:
-        effects = json.loads(state_effects)
-    except (ValueError, TypeError):
-        return state_text
-    applied = datetime.strptime(effects['applied_at'], "%Y-%m-%d %H:%M:%S")
-    minutes = int(effects.get('minutes', 0))
-    if applied + timedelta(minutes=minutes) <= datetime.now():
-        await clear_user_state(user_id, effects.get('caused_by'), f"срок действия истёк ({state_text})")
+    old_effects = _load_state_effects(state_col, state_effects)
+    if not old_effects:
         return "нормально"
-    return state_text
+    now = datetime.now()
+    remaining = {}
+    for key, eff in old_effects.items():
+        try:
+            applied = datetime.strptime(eff['applied_at'], "%Y-%m-%d %H:%M:%S")
+            minutes = int(eff.get('minutes', 0))
+        except (ValueError, TypeError, KeyError):
+            remaining[key] = eff
+            continue
+        if applied + timedelta(minutes=minutes) <= now:
+            await clear_user_state(user_id, eff.get('caused_by'), f"срок действия истёк ({key})")
+        else:
+            remaining[key] = eff
+    return _state_col_value(remaining)
 
 
 async def count_reports_today(user_id: int) -> int:
@@ -2382,11 +2753,13 @@ async def can_enter_location(user_id: int, key: str) -> bool:
         return False
 
     # 2) Состояние не должно быть в блокирующих для этой локации
+    from utils.states import place_blocked, get_state_info
+    if place_blocked((await get_state_info(user_id))['names'], key):
+        return False
     blocking = json.loads(loc['blocking_states'] or '[]')
     if blocking:
-        from utils.states import get_state_info
         info = await get_state_info(user_id)
-        if info['name'] in blocking:
+        if any(name in blocking for name in info['names']):
             return False
     return True
 
@@ -3101,6 +3474,12 @@ async def ensure_life_items():
          80, 40, 3, "consumable", 20, 50, None, 1),
         ("Комбинированная наживка", "Сборная наживка с верстака: +30% к шансу улова. Расходуется при забросе.",
          30, 15, 2, "fishing", -1, 0, None, 0),
+        # Пиво: пьётся где угодно, в бою подземелья дополнительно даёт +HP.
+        # 3-я бутылка за сутки → «пьян»; 6-я → «очень пьян» (блок расходников, всех входов, 6 часов).
+        ("Бутылка пива", "Холодное ячменное пиво. Восстанавливает 10 HP в бою подземелья. "
+         "Пьётся где угодно, но держи себя в руках: 3 бутылки за сутки — и ты пьян, "
+         "6 — совсем плохо.",
+         40, 20, 1, "consumable", -1, 10, None, 1),
     ]
     for (name, desc, price, sell, rarity, category, stock, heal, req_status, is_avail) in items:
         cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (name,))

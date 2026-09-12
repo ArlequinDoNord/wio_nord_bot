@@ -386,7 +386,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     damage_to_enemy = calculate_attack(0, weapon_damage)
     from utils.states import get_state_info, combat_multipliers
     state_info = await get_state_info(user_id)
-    mult = combat_multipliers(state_info['name'])
+    mult = combat_multipliers(state_info['names'])
     am = mult.get('attack_mult', 1.0)
     damage_to_enemy = max(1, int(damage_to_enemy * am))
     current_enemy_hp = max(0, current_enemy_hp - damage_to_enemy)
@@ -522,7 +522,7 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("Ты не отравлен, антидот бесполезен.")
         return
 
-    if item['heal'] > 0 and run['hp'] >= run['hp_max']:
+    if item['heal'] > 0 and run['hp'] >= run['hp_max'] and item['name'] != "Бутылка пива":
         await callback.message.answer(
             f"❤️ HP уже полное ({run['hp']}/{run['hp_max']}), зелье не нужно.\n"
             f"Примени его в бою, когда потеряешь HP."
@@ -563,6 +563,42 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
             f"❤️ {_hp_bar(new_hp, run['hp_max'])}\n\n"
             f"Продолжай бой:"
         )
+
+        # Пиво в бою: восстанавливает 10 HP и считается в дневном счётчике → «пьян»/«очень пьян».
+        from config import (BEER_ITEM_NAME, BEER_DAILY_LIMIT, BEER_VERY_DRUNK_LIMIT,
+                            BEER_DRUNK_MINUTES, BEER_VERY_DRUNK_MINUTES)
+        if item['name'] == BEER_ITEM_NAME:
+            from database.db import get_db
+            from utils.states import apply_state_to
+            from datetime import datetime as _dt
+            today = _dt.utcnow().strftime("%Y-%m-%d")
+            conn = await get_db()
+            cursor = await conn.execute(
+                "SELECT beer_used_today, beer_used_day FROM users WHERE user_id = ?", (user_id,))
+            row = await cursor.fetchone()
+            beer_today = row['beer_used_today'] or 0 if row else 0
+            if row is None or row['beer_used_day'] != today:
+                beer_today = 0
+            beer_today += 1
+            await conn.execute(
+                "UPDATE users SET beer_used_today = ?, beer_used_day = ? WHERE user_id = ?",
+                (beer_today, today, user_id))
+            await conn.commit()
+            if beer_today >= BEER_VERY_DRUNK_LIMIT:
+                await apply_state_to(
+                    user_id, "очень пьян", caused_by=user_id, minutes=BEER_VERY_DRUNK_MINUTES,
+                    reason=f"Выпито {beer_today} бутылок пива за сутки")
+                text += (f"\n\n🥴 {beer_today}/{BEER_VERY_DRUNK_LIMIT} бутылок за сутки — "
+                         f"ты совсем пьян! «Очень пьян»: зелья недоступны, вход в здания закрыт, "
+                         f"штраф к бою на 6 часов.")
+            elif beer_today >= BEER_DAILY_LIMIT:
+                await apply_state_to(
+                    user_id, "пьян", caused_by=user_id, minutes=BEER_DRUNK_MINUTES,
+                    reason=f"Выпито {beer_today} бутылок пива за сутки")
+                text += (f"\n\n🍺 {beer_today}/{BEER_VERY_DRUNK_LIMIT} бутылок за сутки — "
+                         f"ты пьян! Урон −20%, уклонение −30%. Ещё {BEER_VERY_DRUNK_LIMIT - beer_today} "
+                         f"— и наступит «Очень пьян».")
+
         # Яблоко: иногда из него выпадает семечко (10%)
         if item['name'] == "Яблоко" and random.random() < 0.1:
             seed = await get_item_by_name("Яблочное семечко")

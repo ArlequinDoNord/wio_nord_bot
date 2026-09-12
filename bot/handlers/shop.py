@@ -3,6 +3,8 @@
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
     get_available_items, get_item, add_inventory_item,
@@ -11,24 +13,31 @@ from database.db import (
     add_treasury, get_sale_tax_percent, log_activity, update_item,
     get_player_housing, get_housing_slots, set_housing_slot, set_player_housing,
     get_item_by_name, HOUSING_TYPES, HOUSING_ORDER,
+    get_special_dept_code, get_special_fails, register_special_fail,
+    is_special_blocked, special_dept_block_left_minutes, clear_special_blocked,
 )
 from keyboards.keyboards import (
-    shop_catalog_keyboard, item_card_keyboard,
+    shop_catalog_keyboard, item_card_keyboard, cancel_keyboard, main_menu_keyboard,
 )
 from bot.handlers.housing import (
     FURNITURE_BY_ITEM, FURNITURE_BY_EXPANSION, HOUSING_ITEM_BY_NAME, housing_menu,
 )
 from utils.helpers import rarity_emoji, rarity_label, plural_nordmark, item_local_photo, edit_or_replace
-from config import ITEM_CATEGORIES
+from config import ITEM_CATEGORIES, SPECIAL_DEPT_ATTEMPTS_LIMIT
 
 router = Router()
 
 CATEGORIES = [
     "weapon", "consumable", "equipment", "building", "resource",
-    "special", "souvenirs", "library_card", "fishing",
+    "special", "special_dept", "souvenirs", "library_card", "fishing",
     "housing", "furniture", "seeds",
 ]
 PER_PAGE = 6
+
+
+class SpecialDeptBuy(StatesGroup):
+    """Ввод кода доступа к спец-отделу при покупке товара."""
+    code = State()
 
 
 def _allow_multi_buy(item) -> bool:
@@ -242,6 +251,13 @@ async def shop_item_view(callback: CallbackQuery):
     if req:
         body += f"\n🔒 Требуется статус: {req}"
 
+    if item['category'] == "special_dept":
+        has_code = bool(await get_special_dept_code())
+        body += (
+            "\n🔐 Товар из Спец-отдела: покупка возможна только по коду доступа."
+            if has_code else "\n🔒 Спец-отдел сейчас закрыт."
+        )
+
     producer = item['produced_by'] if 'produced_by' in item.keys() else None
     if producer:
         sale_tax = await get_sale_tax_percent()
@@ -305,22 +321,125 @@ async def shop_item_view(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("buy_nord:"))
-async def buy_nord(callback: CallbackQuery):
+async def buy_nord(callback: CallbackQuery, state: FSMContext):
     item_id = int(callback.data.split(":")[1])
+    item = await get_item(item_id)
+    if item and item['category'] == "special_dept":
+        await _start_special_dept_buy(callback, state, item_id, 1)
+        return
     await _buy_item(callback, item_id, 1)
 
 
 @router.callback_query(F.data.startswith("buy5_nord:"))
-async def buy5_nord(callback: CallbackQuery):
+async def buy5_nord(callback: CallbackQuery, state: FSMContext):
     item_id = int(callback.data.split(":")[1])
     item = await get_item(item_id)
-    if item and _allow_multi_buy(item):
+    if not item:
+        await callback.answer("❌ Товар не найден.", show_alert=True)
+        return
+    if item['category'] == "special_dept":
+        await _start_special_dept_buy(callback, state, item_id, 5)
+        return
+    if _allow_multi_buy(item):
         await _buy_item(callback, item_id, 5)
     else:
         await callback.answer("❌ Этот товар продаётся только по одной штуке.", show_alert=True)
 
 
-async def _buy_item(callback: CallbackQuery, item_id: int, qty: int):
+async def _start_special_dept_buy(callback: CallbackQuery, state: FSMContext, item_id: int, qty: int):
+    """Начать покупку из спец-отдела: запрашиваем код доступа."""
+    uid = callback.from_user.id
+
+    code = await get_special_dept_code()
+    if not code:
+        await callback.answer("🔐 Спец-отдел сейчас закрыт.", show_alert=True)
+        return
+
+    if await is_special_blocked(uid):
+        minutes = await special_dept_block_left_minutes(uid)
+        await callback.answer(
+            f"⛔ Ты ввёл код спец-отдела неверно 3 раза. "
+            f"Покупки заблокированы ещё на {minutes} мин.",
+            show_alert=True)
+        return
+
+    await state.set_state(SpecialDeptBuy.code)
+    await state.update_data(special_item_id=item_id, special_qty=qty)
+    await callback.message.answer(
+        "🔐 СПЕЦ-ОТДЕЛ\n\n"
+        "Эта секция магазина доступна по коду доступа.\n"
+        f"Осталось попыток: {SPECIAL_DEPT_ATTEMPTS_LIMIT}.\n\n"
+        "Введи код:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(SpecialDeptBuy.code)
+async def special_dept_enter_code(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    uid = message.from_user.id
+
+    if text in ("Отмена", "-", "Пропустить"):
+        await state.clear()
+        await message.answer("Отменено.", reply_markup=main_menu_keyboard())
+        return
+
+    data = await state.get_data()
+    item_id = data.get('special_item_id')
+    qty = data.get('special_qty') or 1
+
+    code = await get_special_dept_code()
+    if not code:
+        await state.clear()
+        await message.answer("🔐 Спец-отдел сейчас закрыт.", reply_markup=main_menu_keyboard())
+        return
+
+    if await is_special_blocked(uid):
+        minutes = await special_dept_block_left_minutes(uid)
+        await state.clear()
+        await message.answer(
+            f"⛔ Ты ввёл код спец-отдела неверно 3 раза. "
+            f"Покупки заблокированы ещё на {minutes} мин.",
+            reply_markup=main_menu_keyboard())
+        return
+
+    if text == code:
+        await clear_special_blocked(uid)
+        await state.clear()
+        await _buy_item(_MsgSender(message), item_id, qty, special_verified=True)
+        return
+
+    banned = await register_special_fail(uid)
+    if banned:
+        await state.clear()
+        await message.answer(
+            "⛔ Неверный код! Ты ввёл его неверно 3 раза — "
+            f"покупки в спец-отделе заблокированы на 24 часа.",
+            reply_markup=main_menu_keyboard())
+        return
+
+    fails = await get_special_fails(uid)
+    left = max(0, SPECIAL_DEPT_ATTEMPTS_LIMIT - fails)
+    await message.answer(
+        f"❌ Неверный код. Осталось попыток: {left}.\n"
+        "Введи код ещё раз:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+class _MsgSender:
+    """Обёртка Message как CallbackQuery для повторного использования _buy_item."""
+
+    def __init__(self, message: Message):
+        self.message = message
+        self.from_user = message.from_user
+
+    async def answer(self, text: str = "", show_alert: bool = False):
+        if text:
+            await self.message.answer(text)
+
+
+async def _buy_item(callback: CallbackQuery, item_id: int, qty: int, special_verified: bool = False):
     user_id = callback.from_user.id
     item = await get_item(item_id)
 
@@ -330,6 +449,11 @@ async def _buy_item(callback: CallbackQuery, item_id: int, qty: int):
 
     if not await user_has_status_tag(user_id, item['required_status']):
         await callback.answer("❌ Тебе нужен статус, чтобы купить этот товар.", show_alert=True)
+        return
+
+    # Спец-отдел: без подтверждённого кода покупка не проходит (кроме попытки из FSM)
+    if not special_verified and item['category'] == "special_dept":
+        await callback.answer("🔐 Покупка в спец-отделе только по коду доступа.", show_alert=True)
         return
 
     if item['stock'] == 0:

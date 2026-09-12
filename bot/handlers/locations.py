@@ -80,6 +80,9 @@ async def location_enter(callback: CallbackQuery):
     elif key == "park":
         from bot.handlers.park import park_enter
         await park_enter(callback)
+    elif key == "gossmi":
+        from bot.handlers.news import news_tab
+        await news_tab(callback.message)
     else:
         await callback.message.answer(
             f"📍 {loc['name']}\nДоступ разрешён. Функционал этой локации ещё в разработке."

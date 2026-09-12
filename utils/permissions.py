@@ -24,6 +24,8 @@ ROLES = {
         'can_manage_awards': True,
         'can_grant_awards': True,
         'can_manage_storage': True,
+        'can_post_news': True,
+        'can_manage_news': True,
         'level': 100
     },
     'shop_admin': {  # Министр торговли
@@ -62,6 +64,15 @@ ROLES = {
     'representative': {  # Представитель — создаёт опросы (лимит 2 в сутки)
         'can_create_polls': True,
         'level': 15
+    },
+    'journalist': {  # Журналист ГосСМИ — пишет новости (лимит 2 в сутки)
+        'can_post_news': True,
+        'level': 20
+    },
+    'editor': {  # Редактор ГосСМИ — новости, редактирование/удаление выпусков
+        'can_post_news': True,
+        'can_manage_news': True,
+        'level': 40
     }
 }
 
@@ -75,6 +86,8 @@ ROLE_LABELS = {
     'mvd_helper': 'Вице-доминус',
     'librarian': 'Библиотекарь',
     'representative': 'Представитель',
+    'journalist': 'Журналист ГосСМИ',
+    'editor': 'Редактор ГосСМИ',
 }
 
 

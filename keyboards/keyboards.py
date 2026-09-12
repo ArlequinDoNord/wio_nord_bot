@@ -6,6 +6,7 @@ def main_menu_keyboard(is_admin: bool = False, is_pilot: bool = True):
         [KeyboardButton(text="Профиль")],
         [KeyboardButton(text="Инвентарь"), KeyboardButton(text="Магазин")],
         [KeyboardButton(text="Банк"), KeyboardButton(text="Город")],
+        [KeyboardButton(text="📰 Новости Нордхайма")],
     ]
     if is_pilot:
         keyboard.append([KeyboardButton(text="📝 Сдать отчёт")])
@@ -99,6 +100,7 @@ def shop_admin_keyboard():
         [InlineKeyboardButton(text="Добавить товар", callback_data="shop_admin:add")],
         [InlineKeyboardButton(text="Удалить товар", callback_data="shop_admin:delete")],
         [InlineKeyboardButton(text="Изменить товар", callback_data="shop_admin:edit")],
+        [InlineKeyboardButton(text="🔐 Код спец-отдела", callback_data="shop_admin:special_code")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="admin:menu")],
     ])
 

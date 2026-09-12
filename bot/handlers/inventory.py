@@ -18,6 +18,7 @@ from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text,
     item_local_photo, fish_weight_tier, fish_sell_price, edit_or_replace,
 )
+from keyboards.keyboards import cancel_keyboard, main_menu_keyboard
 
 router = Router()
 
@@ -25,6 +26,7 @@ router = Router()
 class TransferItem(StatesGroup):
     target = State()
     amount = State()
+    message = State()
 
 
 async def find_user(text: str):
@@ -282,7 +284,7 @@ async def _render_item_card(message, user_id: int, item_id: int):
                 occ_item = await get_item(occ_id)
                 occupied[slot] = occ_item['name'] if occ_item else f"#{occ_id}"
 
-    can_use = item['category'] == "consumable" and not (item['heal'] or 0)
+    can_use = item['category'] == "consumable" and (not (item['heal'] or 0) or item['name'] == "Бутылка пива")
     if in_run:
         can_use = False
         equip_slot = None
@@ -663,6 +665,35 @@ async def inv_transfer_amount(message: Message, state: FSMContext):
         return
 
     target_id = data['target_id']
+    await state.update_data(target_id=target_id, amount=amount)
+    await state.set_state(TransferItem.message)
+    await message.answer(
+        "📨 Сообщение получателю (до 40 символов).\n"
+        "Отправь «Пропустить», чтобы передать без сообщения:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(TransferItem.message, ~F.text.func(is_main_menu_text))
+async def inv_transfer_message(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if text in ("Отмена", "Пропустить", "Без сообщения", "-"):
+        text = ""
+    elif len(text) > 40:
+        await message.answer("❌ Сообщение длиннее 40 символов. Сократи и пришли ещё раз:")
+        return
+
+    data = await state.get_data()
+    from_user = message.from_user.id
+    item_id = data['item_id']
+    amount = data['amount']
+    target_id = data['target_id']
+    inv = await get_inventory_item(from_user, item_id)
+    if not inv or inv['quantity'] < amount:
+        await message.answer(f"❌ У тебя нет столько. В наличии: {inv['quantity'] if inv else 0} шт.")
+        await state.clear()
+        return
+
     ok = await remove_inventory_item(from_user, item_id, amount)
     if not ok:
         await message.answer("❌ Не удалось списать предмет.")
@@ -673,6 +704,26 @@ async def inv_transfer_amount(message: Message, state: FSMContext):
     target_user = await get_user(target_id)
     target_name = f"@{target_user['username']}" if target_user and target_user['username'] else f"#{target_id}"
     await state.clear()
-    await message.answer(
+
+    sender_label = message.from_user.first_name or f"#{from_user}"
+    if message.from_user.username:
+        sender_label += f" (@{message.from_user.username})"
+
+    # Оповещение получателю
+    note = (
+        f"📦 Тебе передали: {amount} шт. «{data['item_name']}»\n"
+        f"От: {sender_label}"
+    )
+    if text:
+        note += f"\n📨 Сообщение: «{text}»"
+    try:
+        await message.bot.send_message(target_id, note)
+    except Exception:
+        pass
+
+    reply = (
         f"✅ Ты передал {amount} шт. «{data['item_name']}» игроку {target_name}!"
     )
+    if text:
+        reply += f"\n📨 Сообщение: «{text}»"
+    await message.answer(reply, reply_markup=main_menu_keyboard())

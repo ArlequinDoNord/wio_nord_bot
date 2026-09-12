@@ -56,6 +56,7 @@ def sections_markup(open_sections: list, is_manager: bool = False):
             )])
     if is_manager:
         rows.append([InlineKeyboardButton(text="🛠 Управление книгами", callback_data="libadmin:menu")])
+    rows.append([InlineKeyboardButton(text="🗞 Архив новостей ГосСМИ", callback_data="news:archive")])
     rows.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

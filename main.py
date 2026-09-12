@@ -30,6 +30,7 @@ from bot.handlers.locations import router as locations_router
 from bot.handlers.park import router as park_router
 from bot.handlers.fishing import router as fishing_router
 from bot.handlers.housing import router as housing_router
+from bot.handlers.news import router as news_router
 
 load_dotenv()
 
@@ -175,6 +176,7 @@ async def main():
     dp.include_router(park_router)
     dp.include_router(fishing_router)
     dp.include_router(housing_router)
+    dp.include_router(news_router)
 
     for r in (start_router, profile_router, bank_router, admin_router, shop_router,
               inventory_router, reports_router, dungeon_router, pilots_router,

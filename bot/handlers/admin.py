@@ -20,6 +20,7 @@ from database.db import (
     get_treasury_balance, transfer_from_treasury, get_treasury_stats,
     get_report_tax_percent, set_report_tax_percent,
     get_sale_tax_percent, set_sale_tax_percent,
+    get_special_dept_code, set_special_dept_code,
     get_salaried_users, get_user_salary, set_user_salary, pay_salaries,
     get_all_locations, get_location, create_location, update_location_access,
     location_access_label,
@@ -57,6 +58,10 @@ class AdminAddItem(StatesGroup):
 
 class AdminSaleTax(StatesGroup):
     percent = State()
+
+
+class AdminSpecialCode(StatesGroup):
+    code = State()
 
 
 class AdminEditItem(StatesGroup):
@@ -1310,6 +1315,51 @@ async def admin_saletax_set(message: Message, state: FSMContext):
     )
 
 
+# ============ СПЕЦ-ОТДЕЛ (КОД ДОСТУПА) ============
+
+@router.callback_query(F.data == "shop_admin:special_code")
+async def admin_special_code_view(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_shop"):
+        await callback.message.answer("❌ Нет прав для управления магазином.")
+        return
+    current = await get_special_dept_code()
+    current_text = current if current else "не задан (отдел закрыт)"
+    await state.set_state(AdminSpecialCode.code)
+    await callback.message.edit_text(
+        f"🔐 КОД СПЕЦ-ОТДЕЛА\n\n"
+        f"Текущий код: {current_text}\n\n"
+        f"Спец-отдел — закрытая секция магазина. Покупать товары из неё могут "
+        f"только те, кто знает код (4–8 цифр). После 3 неверных попыток покупки "
+        f"блокируются на 24 часа.\n\n"
+        f"Введи новый код (4–8 цифр) или «-» чтобы закрыть отдел:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 В управление магазином", callback_data="admin:shop")]
+        ])
+    )
+
+
+@router.message(AdminSpecialCode.code)
+async def admin_special_code_set(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if text == "-":
+        await set_special_dept_code("")
+        await log_action(message.from_user.id, 'set_special_dept_code', None, f"closed")
+        await state.clear()
+        await message.answer("🔐 Спец-отдел закрыт. Товары из него больше нельзя купить.")
+        return
+    if not text.isdigit() or not (4 <= len(text) <= 8):
+        await message.answer("❌ Код должен содержать 4–8 цифр. Повтори ввод:")
+        return
+    await set_special_dept_code(text)
+    await log_action(message.from_user.id, 'set_special_dept_code', None, f"set")
+    await state.clear()
+    await message.answer(
+        f"🔐 Код спец-отдела установлен: {text}.\n"
+        f"Покупатели будут вводить его при покупке из спец-отдела."
+    )
+
+
 @router.callback_query(F.data == "fin:manual")
 async def finance_manual(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -2332,7 +2382,7 @@ async def admin_states_op(callback: CallbackQuery, state: FSMContext):
     if op == "clear":
         data = await state.get_data()
         from utils.states import clear_state_of
-        await clear_state_of(data['target_id'], callback.from_user.id, "снято админом")
+        await clear_state_of(data['target_id'], caused_by=callback.from_user.id, reason="снято админом")
         await state.clear()
         await callback.message.answer("✨ Состояние снято. Игрок снова в норме.")
         return
