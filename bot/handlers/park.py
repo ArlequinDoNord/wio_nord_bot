@@ -31,7 +31,7 @@ PARK_PHOTO = "city/park"
 FOUNTAIN_PHOTO = "city/park/fountain"
 FOUNTAIN_AP_BONUS = 15
 FOUNTAIN_WAIT_SEC = 15
-# Пользователи, которые сейчас набирают воду (защита от двойного клика)
+# Пользователи, которые сейчас отдыхают у фонтана (защита от двойного клика)
 _FOUNTAIN_USING: set = set()
 
 TOD_LABEL = {
@@ -144,7 +144,7 @@ async def park_fountain(callback: CallbackQuery):
     caption = (
         "💧 ФОНТАН АРКХОЛЬМА\n\n"
         "Струи чистой воды радуют глаз, а прохладная свежесть бодрит.\n"
-        "Можно попить воды и восстановить 15 ОД — раз в сутки.\n"
+        "Раз в сутки у фонтана можно восстановить 15 ОД.\n"
     )
     if not can:
         caption += "\n⏳ Фонтан уже использован сегодня. Приходи завтра."
@@ -155,23 +155,23 @@ async def park_fountain(callback: CallbackQuery):
 
 @router.callback_query(F.data == "park:fountain:drink")
 async def park_fountain_drink(callback: CallbackQuery):
-    await callback.answer()
     uid = callback.from_user.id
     if uid in _FOUNTAIN_USING:
-        await callback.answer("⏳ Ты уже набираешь воду!", show_alert=True)
+        await callback.answer("⏳ Ты уже отдыхаешь у фонтана!", show_alert=True)
         return
     if not await can_use_fountain(uid):
         await callback.answer("❌ Фонтан уже использован сегодня.", show_alert=True)
         return
 
+    await callback.answer("💧 Отдыхаешь у фонтана…")
     _FOUNTAIN_USING.add(uid)
     try:
         caption = (
             "💧 *Фонтан*\n\n"
-            f"Набираешь воду… {FOUNTAIN_WAIT_SEC} сек"
+            f"Отдыхаешь у фонтана… {FOUNTAIN_WAIT_SEC} сек"
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="⏳ Набирается…", callback_data="noop")]])
+            [InlineKeyboardButton(text="⏳ Отдых…", callback_data="noop")]])
         await callback.message.edit_caption(caption=caption, reply_markup=kb)
 
         await asyncio.sleep(FOUNTAIN_WAIT_SEC)
@@ -182,7 +182,7 @@ async def park_fountain_drink(callback: CallbackQuery):
 
         caption = (
             "💧 *Фонтан*\n\n"
-            f"✅ Ты попил воды: +{FOUNTAIN_AP_BONUS} ОД.\n"
+            f"✅ Ты отдохнул у фонтана: +{FOUNTAIN_AP_BONUS} ОД.\n"
             "Фонтан можно использовать раз в сутки."
         )
         await callback.message.edit_caption(

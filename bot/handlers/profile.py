@@ -22,12 +22,11 @@ async def selected_status_label(user_id: int) -> str:
     return sel['name'] if sel else "—"
 
 
-async def render_profile(where, user_id: int):
-    out = where.message if hasattr(where, 'message') else where
+async def _profile_caption(user_id: int, owner: bool = True):
+    """Подпись профиля. owner=True — полный вид для владельца (с оповещениями и действием)."""
     user = await get_user(user_id)
     if not user:
-        await out.answer("Сначала нажми /start")
-        return
+        return None, None
 
     rank = get_effective_rank(user['troops'], user['promoted_rank'] if 'promoted_rank' in user.keys() else None)
     next_rank, next_troops = get_next_rank(user['troops'])
@@ -54,6 +53,7 @@ async def render_profile(where, user_id: int):
 
     status = await selected_status_label(user_id)
     notify = bool(user['notify_enabled'] if 'notify_enabled' in user.keys() else 1)
+    public = bool(user['profile_public'] if 'profile_public' in user.keys() else 1)
     from utils.states import get_state_info, format_state_line
     state_line = format_state_line(await get_state_info(user_id))
     eq = await get_equipment(user_id)
@@ -81,25 +81,63 @@ async def render_profile(where, user_id: int):
 
     if not eq_lines:
         eq_lines.append("— пусто —")
+
     caption += (
         f"💰 Нордмарки: {user['nordmarks']}\n"
         f"⚡ Очки действия: {user['ap']}/{user['ap_max']}\n"
-        f"❤️ Состояние: {user['state']}\n"
-        + (f"{state_line}\n" if state_line else "")
+        + (f"{state_line}\n" if state_line else "❤️ Состояние: нормально\n")
         + f"🎖️ Статус: {status}\n"
-        + f"🔔 Оповещения в группе: {'вкл' if notify else 'выкл'}\n\n"
-        + "Экипировка:\n" + "\n".join(f"  {l}" for l in eq_lines) + "\n\n"
-        + f"👇 Выберите действие:"
     )
+    if owner:
+        caption += f"🔔 Оповещения в группе: {'вкл' if notify else 'выкл'}\n"
+        if await user_has_status_tag(user_id, "vip"):
+            caption += f"👁 Профиль виден другим: {'да' if public else 'нет'}\n"
+    caption += (
+        "\nЭкипировка:\n" + "\n".join(f"  {l}" for l in eq_lines) + "\n\n"
+    )
+    if owner:
+        caption += "👇 Выберите действие:"
+    return caption, photo
+
+
+async def render_profile(where, user_id: int):
+    out = where.message if hasattr(where, 'message') else where
+    caption, photo = await _profile_caption(user_id, owner=True)
+    if caption is None:
+        await out.answer("Сначала нажми /start")
+        return
+
+    user = await get_user(user_id)
+    notify = bool(user['notify_enabled'] if 'notify_enabled' in user.keys() else 1)
+    public = bool(user['profile_public'] if 'profile_public' in user.keys() else 1)
+    can_toggle = await user_has_status_tag(user_id, "vip")
 
     if photo:
         await out.answer_photo(
             photo=photo,
             caption=caption,
-            reply_markup=profile_keyboard(notify)
+            reply_markup=profile_keyboard(notify, public, can_toggle)
         )
     else:
-        await out.answer(caption, reply_markup=profile_keyboard(notify))
+        await out.answer(caption, reply_markup=profile_keyboard(notify, public, can_toggle))
+
+
+async def render_other_profile(where, user_id: int):
+    """Просмотр профиля другого пилота (из Ратуши) — без кнопок владельца."""
+    out = where.message if hasattr(where, 'message') else where
+    caption, photo = await _profile_caption(user_id, owner=False)
+    if caption is None:
+        await out.answer("❌ Пилот не найден.")
+        return
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 К пилотам", callback_data="city:pilots:list")]
+    ])
+    if photo:
+        await out.answer_photo(photo=photo, caption=caption, reply_markup=markup)
+    else:
+        await out.answer(caption, reply_markup=markup)
 
 
 @router.message(Command("profile"))
@@ -193,6 +231,26 @@ async def notify_toggle(callback: CallbackQuery):
         await callback.message.answer("✅ Оповещения снова включены!")
 
 
+@router.callback_query(F.data == "profile:public_toggle")
+async def public_toggle(callback: CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    is_vip = await user_has_status_tag(user_id, "vip")
+    if not is_vip:
+        await callback.message.answer(
+            "👁 Переключение видимости профиля доступно только со статуса «VIP»."
+        )
+        return
+
+    user = await get_user(user_id)
+    current = bool(user['profile_public'] if 'profile_public' in user.keys() else 1)
+    await update_user(user_id, profile_public=0 if current else 1)
+    if current:
+        await callback.message.answer("🔒 Профиль скрыт от других пилотов!")
+    else:
+        await callback.message.answer("👁 Профиль снова виден всем!")
+
+
 @router.callback_query(F.data == "profile:pilot_card")
 async def pilot_card(callback: CallbackQuery):
     await callback.answer()
@@ -228,7 +286,6 @@ async def pilot_card(callback: CallbackQuery):
         f"ФИНАНСЫ\n"
         f"Нордмарки: {user['nordmarks']}\n"
         f"Очки действия: {user['ap']}/{user['ap_max']}\n"
-        f"Состояние: {user['state']}\n"
         f"═══════════════════════════\n"
         f"Выдан: {user['created_at'] if 'created_at' in user.keys() else '—'}\n"
         f"═══════════════════════════"

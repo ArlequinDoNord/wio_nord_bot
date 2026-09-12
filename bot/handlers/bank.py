@@ -320,14 +320,23 @@ async def bank_history(callback: CallbackQuery):
 
     text = "📜 История транзакций:\n\n"
     for t in txns[:10]:
-        sign = "+" if (t['to_user'] == callback.from_user.id and t['amount'] > 0) else ""
-        if t['to_user'] == callback.from_user.id and t['tx_type'] in ("transfer", "report", "salary", "bonus", "shop_sale", "treasury"):
-            sign = "+"
-        elif t['from_user'] == callback.from_user.id:
-            sign = "-"
+        me = callback.from_user.id
+        incoming = t['to_user'] == me and t['from_user'] != me
+        sign = "+" if incoming else "-"
+
+        # «Покупка» — только когда покупаешь товары/вещи; всё остальное движение
+        # средств подписывается как «Списание» или «Зачисление».
+        if t['tx_type'] == "shop_purchase":
+            label = "🛒 Покупка"
+        elif t['tx_type'] == "shop_sale":
+            label = "💵 Продажа товара"
+        elif incoming:
+            label = "📥 Зачисление средств"
+        else:
+            label = "📤 Списание средств"
 
         date_str = t['created_at'][:16] if t['created_at'] else ""
-        text += f"{date_str} {tx_type_label(t['tx_type'])}: {sign}{abs(t['amount'])} НМ\n"
+        text += f"{date_str} {label}: {sign}{abs(t['amount'])} НМ\n"
         if t['description']:
             text += f"  {t['description']}\n"
 

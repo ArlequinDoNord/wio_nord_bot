@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
-    add_item, delete_item, update_item, get_available_items,
+    add_item, delete_item, update_item, get_available_items, get_all_items,
     get_item, get_all_users, get_pending_reports, approve_report,
     reject_report, add_nordmarks, remove_nordmarks, add_ap, remove_ap,
     create_status, delete_status, get_all_statuses, get_status,
@@ -77,6 +77,11 @@ class AdminTreasury(StatesGroup):
     target = State()
 
 
+class AdminStorageRestock(StatesGroup):
+    # Возврат предмета из Хранилища в магазин
+    amount = State()
+
+
 class AdminTax(StatesGroup):
     percent = State()
 
@@ -140,7 +145,7 @@ async def perm_flags(user_id: int) -> dict:
              "can_approve_reports", "can_manage_admins", "can_view_logs",
              "can_manage_statuses", "can_grant_statuses", "can_grant_troops",
              "can_manage_states", "can_manage_locations", "can_manage_salaries",
-             "can_manage_awards", "can_grant_awards"]
+             "can_manage_awards", "can_grant_awards", "can_manage_storage"]
     return {p: await has_permission(user_id, p) for p in perms}
 
 
@@ -466,6 +471,193 @@ async def admin_shop(callback: CallbackQuery):
     await callback.message.edit_text(
         "🛒 УПРАВЛЕНИЕ МАГАЗИНОМ\n\nВыберите действие:",
         reply_markup=shop_admin_keyboard()
+    )
+
+
+# ============ ХРАНИЛИЩЕ (только супер-админ) ============
+# Здесь лежат ВСЕ предметы, когда-либо добавленные в бот — и распроданные,
+# и скрытые. Это позволяет вернуть в магазин предмет без обращения к разработчику.
+
+STORAGE_PER_PAGE = 10
+
+
+def _storage_pages(total: int):
+    return max(1, (total + STORAGE_PER_PAGE - 1) // STORAGE_PER_PAGE)
+
+
+def storage_markup(items, page: int = 0):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    total = len(items)
+    pages = _storage_pages(total)
+    page = max(0, min(page, pages - 1))
+    start = page * STORAGE_PER_PAGE
+    chunk = items[start:start + STORAGE_PER_PAGE]
+
+    rows = []
+    for it in chunk:
+        if it['is_available']:
+            status = "🟢" if it['stock'] != 0 else "🟡"
+            marker = f"{status} {it['name']} (ост. {it['stock']})"
+        else:
+            marker = f"🔴 {it['name']} — скрыт"
+        rows.append([InlineKeyboardButton(
+            text=marker,
+            callback_data=f"storage:item:{it['id']}"
+        )])
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"storage:page:{page-1}"))
+    nav.append(InlineKeyboardButton(text=f"{page+1}/{pages}", callback_data="storage:noop"))
+    if page < pages - 1:
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"storage:page:{page+1}"))
+    if nav:
+        rows.append(nav)
+
+    rows.append([InlineKeyboardButton(text="🔙 Админ-панель", callback_data="admin:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data == "admin:storage")
+async def admin_storage(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_storage"):
+        await callback.message.answer("❌ Раздел доступен только Хранителю.")
+        return
+    items = await get_all_items()
+    if not items:
+        await callback.message.edit_text("📦 Хранилище пусто.", reply_markup=storage_markup([]))
+        return
+    text = (f"📦 ХРАНИЛИЩЕ НОРДХАЙМА\n"
+            f"Всего позиций: {len(items)}\n\n"
+            f"🟢 — в продаже, 🟡 — почти распродан, 🔴 — скрыт. "
+            f"Нажми на предмет, чтобы вернуть его в магазин.")
+    await callback.message.edit_text(text, reply_markup=storage_markup(items))
+
+
+@router.callback_query(F.data == "storage:noop")
+async def storage_noop(callback: CallbackQuery):
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("storage:page:"))
+async def storage_page(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_storage"):
+        return
+    page = int(callback.data.split(":")[2])
+    items = await get_all_items()
+    await callback.message.edit_text(
+        "📦 ХРАНИЛИЩЕ НОРДХАЙМА\n\n"
+        "🟢 — в продаже, 🟡 — почти распродан, 🔴 — скрыт. "
+        "Нажми на предмет, чтобы вернуть его в магазин.",
+        reply_markup=storage_markup(items, page)
+    )
+
+
+@router.callback_query(F.data.startswith("storage:item:"))
+async def storage_item(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_storage"):
+        return
+    item_id = int(callback.data.split(":")[2])
+    item = await get_item(item_id)
+    if not item:
+        await callback.message.edit_text("❌ Предмет не найден.", reply_markup=storage_markup([]))
+        return
+
+    cat = ITEM_CATEGORIES.get(item['category'], item['category'])
+    stock_text = "безлимит" if item['stock'] == -1 else str(item['stock'])
+    status = ("🟢 в продаже" if item['is_available'] and item['stock'] != 0
+              else "🟡 почти распродан" if item['is_available'] else "🔴 скрыт")
+
+    text = (
+        f"📦 *{item['name']}*\n"
+        f"──────────────\n"
+        f"Категория: {cat}\n"
+        f"Редкость: {RARITY_LEVELS.get(item['rarity'], item['rarity'])}\n"
+        f"Цена: {item['price']} {plural_nordmark(item['price'])}\n"
+        f"Продажа: {item['sell_price']} {plural_nordmark(item['sell_price'])}\n"
+        f"Остаток: {stock_text}\n"
+        f"Статус: {status}\n"
+    )
+    if item.get('description'):
+        text += f"📝 {item['description']}\n"
+
+    rows = []
+    if not item['is_available'] or item['stock'] == 0:
+        if item['stock'] == 0:
+            text += "\n⚠️ Предмет распродан. Верни его в магазин, указав количество."
+        else:
+            text += "\n⚠️ Предмет скрыт. Верни его в магазин, указав количество."
+        rows.append([InlineKeyboardButton(text="➕ Вернуть в магазин", callback_data=f"storage:restock:{item_id}")])
+    rows.append([InlineKeyboardButton(text="🔙 К списку", callback_data="admin:storage")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    await callback.message.edit_text(text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("storage:restock:"))
+async def storage_restock(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_storage"):
+        return
+    item_id = int(callback.data.split(":")[2])
+    item = await get_item(item_id)
+    if not item:
+        await callback.message.edit_text("❌ Предмет не найден.", reply_markup=storage_markup([]))
+        return
+    await state.update_data(storage_item_id=item_id)
+    await state.set_state(AdminStorageRestock.amount)
+    await callback.message.edit_text(
+        f"📦 «{item['name']}» — сколько единиц вернуть в магазин?\n"
+        f"Введи число (например 100) или «-» для безлимита.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:storage")]
+        ])
+    )
+
+
+@router.message(AdminStorageRestock.amount)
+async def storage_restock_amount(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_storage"):
+        await state.clear()
+        await message.answer("❌ Нет прав.")
+        return
+    text = message.text.strip()
+    if text == "-":
+        stock = -1
+    else:
+        try:
+            stock = int(text)
+        except ValueError:
+            await message.answer("❌ Введи целое число или «-»:")
+            return
+        if stock < 0:
+            await message.answer("❌ Количество не может быть отрицательным:")
+            return
+
+    data = await state.get_data()
+    item_id = data.get('storage_item_id')
+    if not item_id:
+        await state.clear()
+        await message.answer("❌ Сессия устарела. Зайди в Хранилище заново.")
+        return
+    item = await get_item(item_id)
+    if not item:
+        await state.clear()
+        await message.answer("❌ Предмет не найден.")
+        return
+
+    await update_item(item_id, stock=stock, is_available=1)
+    await log_action(message.from_user.id, 'storage_restock', None,
+                     f"item={item['name']} id={item_id} stock={stock}")
+    await state.clear()
+    await message.answer(
+        f"✅ «{item['name']}» возвращён в магазин!\n"
+        f"Остаток: {'безлимит' if stock == -1 else stock}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📦 В Хранилище", callback_data="admin:storage")]
+        ])
     )
 
 

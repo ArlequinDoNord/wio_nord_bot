@@ -95,7 +95,6 @@ async def town_hall_pilots_list(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("rathaus:"))
 async def town_hall_pilot_card(callback: CallbackQuery):
-    await callback.answer()
     user_id = int(callback.data.split(":")[1])
     user = await get_user(user_id)
     if not user:
@@ -115,10 +114,53 @@ async def town_hall_pilot_card(callback: CallbackQuery):
         f"🎖️ Статус: {status}\n"
     )
 
-    markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 К пилотам", callback_data="city:pilots:list")]
-    ])
+    # Видимость профиля: если владелец скрыл его (VIP-настройка) — кнопка открытия не показывается.
+    public = bool(user['profile_public'] if 'profile_public' in user.keys() else 1)
+    buttons = []
+    if public:
+        buttons.append([InlineKeyboardButton(
+            text="👤 Открыть профиль",
+            callback_data=f"rathaus_prof:{user_id}"
+        )])
+    else:
+        text += f"\n🔒 Профиль скрыт владельцем.\n"
+    buttons.append([InlineKeyboardButton(text="🔙 К пилотам", callback_data="city:pilots:list")])
+    markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    photo = user['photo_file_id'] if 'photo_file_id' in user.keys() else None
+    if photo:
+        try:
+            if callback.message.photo:
+                from aiogram.types import InputMediaPhoto
+                await callback.message.edit_media(
+                    media=InputMediaPhoto(media=photo, caption=text),
+                    reply_markup=markup
+                )
+            else:
+                await callback.message.delete()
+                await callback.message.answer_photo(photo=photo, caption=text, reply_markup=markup)
+            return
+        except Exception:
+            pass
+
     if callback.message.photo:
         await callback.message.edit_caption(caption=text, reply_markup=markup)
     else:
         await callback.message.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("rathaus_prof:"))
+async def town_hall_open_profile(callback: CallbackQuery):
+    await callback.answer()
+    user_id = int(callback.data.split(":")[1])
+    user = await get_user(user_id)
+    if not user:
+        await callback.message.answer("❌ Пилот не найден.")
+        return
+
+    if not bool(user['profile_public'] if 'profile_public' in user.keys() else 1):
+        await callback.message.answer("🔒 Пилот скрыл свой профиль.")
+        return
+
+    from .profile import render_other_profile
+    await render_other_profile(callback.message, user_id)

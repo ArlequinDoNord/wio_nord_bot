@@ -449,14 +449,12 @@ async def inv_use(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("inv_sell:"))
 async def inv_sell(callback: CallbackQuery):
-    await callback.answer()
     item_id = int(callback.data.split(":")[1])
     await _sell_item(callback, item_id, 1)
 
 
 @router.callback_query(F.data.startswith("inv_sell5:"))
 async def inv_sell5(callback: CallbackQuery):
-    await callback.answer()
     item_id = int(callback.data.split(":")[1])
     await _sell_item(callback, item_id, 5)
 
@@ -480,12 +478,13 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
             'armor': 'броня',
         }
         used = [slot_names[s] for s in ('potion1', 'potion2', 'weapon', 'armor') if eq.get(s) == item_id]
-        await callback.message.answer(
+        await callback.answer(
             f"❌ «{item['name']}» сейчас используется ({', '.join(used)}). "
-            f"Сначала сними его."
+            f"Сначала сними его.", show_alert=True
         )
         return
 
+    await callback.answer()
     await remove_inventory_item(user_id, item_id, qty)
     total = item['sell_price'] * qty
     await add_nordmarks(user_id, total, "shop_sale", f"Продажа: {item['name']} x{qty}")

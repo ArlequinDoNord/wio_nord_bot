@@ -16,6 +16,8 @@ from database.db import (
     get_inventory, get_item, get_item_by_name,
     remove_inventory_item, add_inventory_item, remove_ap, add_ap,
     get_inventory_item, user_has_status_tag, log_activity,
+    remove_nordmarks,
+    get_housing_expansions_installed, increment_housing_expansions,
 )
 from utils.helpers import resolve_image, rarity_emoji, rarity_label, edit_or_replace
 
@@ -59,6 +61,15 @@ HOUSING_ITEM_BY_NAME = {
 
 FRIED_PREFIX = "Жареный "
 FOOD_EXPIRY_SEC = 4 * 86400          # 96 часов
+
+# Перепланировка: первая установка расширения в дом бесплатна, далее платно.
+# Цена зависит от уровня жилья: Квартира (2 слота) — 300 НМ, далее +300 за уровень.
+def replanning_cost(housing_type: str) -> int:
+    try:
+        idx = HOUSING_ORDER.index(housing_type)
+    except ValueError:
+        return 0
+    return max(0, (idx - 1)) * 300
 
 # Защита от двойного крафта
 CRAFTING: set = set()
@@ -348,7 +359,6 @@ async def housing_recipe(cb: CallbackQuery):
 
 @router.callback_query(F.data.startswith("housing:craft:"))
 async def housing_craft(cb: CallbackQuery):
-    await cb.answer()
     uid = cb.from_user.id
     if uid in CRAFTING:
         await cb.answer("⏳ Уже готовишься!", show_alert=True)
@@ -386,6 +396,7 @@ async def housing_craft(cb: CallbackQuery):
 
     CRAFTING.add(uid)
     try:
+        await cb.answer("🏭 Начал готовить!")
         wait = r["production_time"]
         h = await get_player_housing(uid)
         photo = _housing_photo(h["housing_type"])
@@ -433,8 +444,31 @@ async def housing_craft(cb: CallbackQuery):
             lines.append("⏳ Срок годности: 96 часов")
         lines.append("\nДобавлено в инвентарь.")
 
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [_inv_row("🏠 К жилью", "housing:menu")]])
+        # Проверяем, можно ли готовить ещё
+        inv_map2 = await get_ingredient_map(uid)
+        can_repeat = True
+        for ing_name, qty in ingredients:
+            if inv_map2.get(ing_name, 0) < qty:
+                can_repeat = False
+                break
+        if can_repeat:
+            user = await get_user(uid)
+            if user and user['ap'] < r['ap_cost']:
+                can_repeat = False
+        if can_repeat:
+            remaining = []
+            for ing_name, qty in ingredients:
+                have = inv_map2.get(ing_name, 0)
+                remaining.append(f"• {ing_name}: {have}/{qty}")
+            lines.append("\n🔄 *Можно приготовить ещё:*")
+            lines.extend(remaining)
+
+        rows = []
+        if can_repeat:
+            rows.append([_inv_row(f"🔄 Жарить ещё ({r['ap_cost']} ОД)", f"housing:craft:{idx}:{rid}")])
+        rows.append([_inv_row("📋 К рецептам", f"housing:room:{idx}")])
+        rows.append([_inv_row("🏠 К жилью", "housing:menu")])
+        kb = InlineKeyboardMarkup(inline_keyboard=rows)
         await cb.bot.send_message(cb.message.chat.id, "\n".join(lines), reply_markup=kb)
 
     finally:
@@ -450,7 +484,6 @@ async def noop_handler(cb: CallbackQuery):
 
 @router.callback_query(F.data.startswith("housing:install:"))
 async def housing_install(cb: CallbackQuery):
-    await cb.answer()
     uid = cb.from_user.id
     idx = int(cb.data.split(":")[2])
 
@@ -465,9 +498,16 @@ async def housing_install(cb: CallbackQuery):
         await cb.answer("❌ Слот уже занят.", show_alert=True)
         return
 
+    installed = await get_housing_expansions_installed(uid)
+    cost = replanning_cost(ht) if installed > 0 else 0
+
     inv = await get_inventory(uid)
     furniture = [i for i in inv if i["category"] == "furniture"]
     lines = ["➕ *Установить расширение*\nВыбери мебель из инвентаря:"]
+    if cost:
+        lines.append(f"\n⚠️ Перепланировка (не первая установка): {cost} НМ")
+    else:
+        lines.append("\n🆓 Первая установка в этом жильё — бесплатно.")
     rows = []
     for item in furniture:
         rows.append([_inv_row(
@@ -482,7 +522,6 @@ async def housing_install(cb: CallbackQuery):
 
 @router.callback_query(F.data.startswith("housing:install_item:"))
 async def housing_install_item(cb: CallbackQuery):
-    await cb.answer()
     uid = cb.from_user.id
     _, _, idx_s, iid_s = cb.data.split(":")
     idx, item_id = int(idx_s), int(iid_s)
@@ -504,6 +543,17 @@ async def housing_install_item(cb: CallbackQuery):
     max_slots = info["slots"]
     slots = await get_housing_slots(uid)
 
+    # Плата за перепланировку: первая установка расширения в это жильё — бесплатно,
+    # каждая последующая — платно (цена зависит от уровня жилья).
+    installed = await get_housing_expansions_installed(uid)
+    cost = replanning_cost(ht) if installed > 0 else 0
+    if cost:
+        user = await get_user(uid)
+        if not user or user['nordmarks'] < cost:
+            await cb.answer(f"❌ Перепланировка стоит {cost} НМ. Не хватает средств!",
+                            show_alert=True)
+            return
+
     # Кухня: замена старой (возврат в инвентарь). Встроенную кухню студии не трогаем.
     if et == "kitchen":
         for i, s in sorted(slots.items()):
@@ -511,12 +561,15 @@ async def housing_install_item(cb: CallbackQuery):
                     and s.get("expansion_type") == "kitchen"
                     and s.get("expansion_level", 1) < lvl):
                 old_name = FURNITURE_BY_EXPANSION.get(("kitchen", s["expansion_level"]))
+                if cost:
+                    await remove_nordmarks(uid, cost, "replanning", f"Перепланировка жилья ({ht})")
                 await set_housing_slot(uid, i, et, lvl)
                 await remove_inventory_item(uid, item_id, 1)
                 if old_name:
                     old_item = await get_item_by_name(old_name)
                     if old_item:
                         await add_inventory_item(uid, old_item["id"], 1)
+                await increment_housing_expansions(uid)
                 await cb.answer(f"✅ {item['name']} установлена (заменила «{old_name}»).",
                                 show_alert=True)
                 await housing_menu(cb)
@@ -537,8 +590,11 @@ async def housing_install_item(cb: CallbackQuery):
         await cb.answer("❌ Нет свободных слотов.", show_alert=True)
         return
 
+    if cost:
+        await remove_nordmarks(uid, cost, "replanning", f"Перепланировка жилья ({ht})")
     await set_housing_slot(uid, empty, et, lvl)
     await remove_inventory_item(uid, item_id, 1)
+    await increment_housing_expansions(uid)
     await cb.answer(f"✅ «{item['name']}» установлено в слот {empty+1}.", show_alert=True)
     await housing_menu(cb)
 

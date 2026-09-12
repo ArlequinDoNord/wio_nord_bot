@@ -23,6 +23,7 @@ ROLES = {
         'can_manage_locations': True,
         'can_manage_awards': True,
         'can_grant_awards': True,
+        'can_manage_storage': True,
         'level': 100
     },
     'shop_admin': {  # Министр торговли

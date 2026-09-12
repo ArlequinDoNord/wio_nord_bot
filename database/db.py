@@ -41,6 +41,7 @@ async def init_db():
             promoted_rank TEXT,
             status_text TEXT DEFAULT 'Боевой пилот',
             notify_enabled INTEGER DEFAULT 1,
+            profile_public INTEGER DEFAULT 1,
             equipment TEXT DEFAULT '{}',
             salary INTEGER DEFAULT 0,
             salary_period_days INTEGER DEFAULT 7,
@@ -487,6 +488,7 @@ async def init_db():
     await _ensure_column(conn, "statuses", "sort_order", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "promoted_rank", "TEXT")
     await _ensure_column(conn, "users", "notify_enabled", "INTEGER DEFAULT 1")
+    await _ensure_column(conn, "users", "profile_public", "INTEGER DEFAULT 1")
     await _ensure_column(conn, "users", "equipment", "TEXT DEFAULT '{}'")
     await _ensure_column(conn, "users", "salary", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "salary_period_days", "INTEGER DEFAULT 7")
@@ -528,6 +530,8 @@ async def init_db():
     # Встроенные расширения жилья (например, кухня в студии): embedded=1 — не возвращается
     # в инвентарь при переезде и не может быть снята вручную.
     await _ensure_column(conn, "housing_slots", "embedded", "INTEGER DEFAULT 0")
+    # Счётчик установок расширений: первая в доме — бесплатно, далее перепланировка платная.
+    await _ensure_column(conn, "player_housing", "expansions_installed", "INTEGER DEFAULT 0")
     # Убраны из магазина товары без функционала (вернуть можно через админ-добавление товаров)
     await conn.execute("UPDATE items SET is_available = 0 WHERE name IN "
                        "('Ангар-бокс','Металл','Кристаллы','Медаль «Крыло»','Топливо','Ремкомплект')")
@@ -727,12 +731,6 @@ async def get_item(item_id: int):
     return await cursor.fetchone()
 
 
-async def get_item_by_name(name: str):
-    conn = await get_db()
-    cursor = await conn.execute("SELECT * FROM items WHERE name = ?", (name,))
-    return await cursor.fetchone()
-
-
 async def get_available_items(category: str = None, rarity: int = None):
     conn = await get_db()
     query = "SELECT * FROM items WHERE is_available = 1"
@@ -745,6 +743,13 @@ async def get_available_items(category: str = None, rarity: int = None):
         params.append(rarity)
     query += " ORDER BY rarity, price"
     cursor = await conn.execute(query, params)
+    return await cursor.fetchall()
+
+
+async def get_all_items():
+    """Все существующие предметы (включая распроданные и скрытые) для Хранилища."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM items ORDER BY category, name")
     return await cursor.fetchall()
 
 
@@ -2511,7 +2516,7 @@ DEFAULT_ITEMS = [
     # (name, description, price, sell_price, rarity, category, stock, ap_cost, damage, heal)
     ("Учебный истребитель", "Базовая учебная машина для новичков.", 250, 125, 2, "weapon", 5, 0, 8, 0),
     ("Стандартный пулемёт", "Надёжное вооружение для воздушных боёв.", 150, 75, 1, "weapon", 10, 0, 5, 0),
-    ("Энергетик", "Восстанавливает силы: даёт +AP при использовании.", 50, 25, 1, "consumable", 20, 50, 0, 0),
+    ("Энергетик", "Восстанавливает силы: даёт +AP при использовании.", 50, 25, 1, "consumable", 100, 50, 0, 0),
     ("Лётный шлем", "Защищает пилота в бою.", 120, 60, 2, "equipment", 10, 0, 0, 0, 4),
     ("Кислородная маска", "Для высотных полётов.", 90, 45, 1, "equipment", 10, 0, 0, 0, 2),
     ("Малая настойка здоровья", "Восстанавливает 20 HP. Применяется в бою подземелья.", 40, 20, 2, "consumable", 30, 0, 0, 20),
@@ -3284,6 +3289,24 @@ async def get_housing_slots(user_id: int) -> dict:
     )
     rows = await cursor.fetchall()
     return {row['slot_index']: dict(row) for row in rows}
+
+
+async def get_housing_expansions_installed(user_id: int) -> int:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT expansions_installed FROM player_housing WHERE user_id = ?", (user_id,)
+    )
+    row = await cursor.fetchone()
+    return row['expansions_installed'] if row else 0
+
+
+async def increment_housing_expansions(user_id: int):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE player_housing SET expansions_installed = expansions_installed + 1 WHERE user_id = ?",
+        (user_id,)
+    )
+    await conn.commit()
 
 
 async def set_housing_slot(user_id: int, slot_index: int, expansion_type: str = None,

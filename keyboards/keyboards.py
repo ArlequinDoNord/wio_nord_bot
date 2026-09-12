@@ -40,12 +40,14 @@ def admin_panel_keyboard(permissions: dict):
         buttons.append([InlineKeyboardButton(text="📒 Лог игрока", callback_data="admin:player_log")])
     if permissions.get('can_manage_users'):
         buttons.append([InlineKeyboardButton(text="🗑 Удалить фото пилота", callback_data="admin:del_photo")])
+    if permissions.get('can_manage_storage'):
+        buttons.append([InlineKeyboardButton(text="📦 Хранилище", callback_data="admin:storage")])
     buttons.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def profile_keyboard(notify_enabled: bool = True):
-    return InlineKeyboardMarkup(inline_keyboard=[
+def profile_keyboard(notify_enabled: bool = True, profile_public: bool = True, can_toggle_visibility: bool = False):
+    rows = [
         [InlineKeyboardButton(text="Изменить фото", callback_data="profile:set_photo")],
         [InlineKeyboardButton(text="Выбрать статус", callback_data="profile:choose_status")],
         [InlineKeyboardButton(text="🎖️ Награды", callback_data="profile:awards")],
@@ -54,7 +56,13 @@ def profile_keyboard(notify_enabled: bool = True):
             text="🔔 Оповещения: вкл" if notify_enabled else "🔕 Оповещения: выкл",
             callback_data="profile:notify_toggle"
         )],
-    ])
+    ]
+    if can_toggle_visibility:
+        rows.append([InlineKeyboardButton(
+            text="👁 Профиль виден: всем" if profile_public else "🔒 Профиль скрыт",
+            callback_data="profile:public_toggle"
+        )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def shop_keyboard():

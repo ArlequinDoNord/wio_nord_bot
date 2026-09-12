@@ -306,14 +306,12 @@ async def shop_item_view(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("buy_nord:"))
 async def buy_nord(callback: CallbackQuery):
-    await callback.answer()
     item_id = int(callback.data.split(":")[1])
     await _buy_item(callback, item_id, 1)
 
 
 @router.callback_query(F.data.startswith("buy5_nord:"))
 async def buy5_nord(callback: CallbackQuery):
-    await callback.answer()
     item_id = int(callback.data.split(":")[1])
     item = await get_item(item_id)
     if item and _allow_multi_buy(item):
@@ -358,8 +356,11 @@ async def _buy_item(callback: CallbackQuery, item_id: int, qty: int):
 
     # Жильё покупается как ПЕРЕЕЗД: показываем подтверждение вместо покупки
     if item['category'] == 'housing':
+        await callback.answer()
         await _housing_purchase_confirm(callback, item)
         return
+
+    await callback.answer()
 
     await remove_nordmarks(user_id, total, "shop_purchase", f"Покупка: {item['name']} x{qty}")
     await add_inventory_item(user_id, item_id, qty)
