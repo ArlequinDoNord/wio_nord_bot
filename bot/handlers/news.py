@@ -86,14 +86,19 @@ def fmt_release(n) -> str:
 
 
 @router.message(F.text == "📰 Новости Нордхайма")
-async def news_tab(message: Message):
-    """Вкладка «Новости Нордхайма» в главном меню."""
+async def news_tab(message: Message, user_id: int | None = None):
+    """Вкладка «Новости Нордхайма» в главном меню и вход в здание «ГосСМИ».
+
+    user_id нужен, когда вызываем напрямую из callback на ботовском сообщении
+    (вход в здание): там message.from_user — это бот, а не игрок.
+    """
+    actor = user_id if user_id is not None else message.from_user.id if message.from_user else 0
     feed = await get_latest_news(FEED_LIMIT)
     if not feed:
         await message.answer(
             "📰 НОВОСТИ НОРДХАЙМА\n\n"
             "Новостей пока нет. Корреспонденты ГосСМИ ещё не выходили в эфир.",
-            reply_markup=await news_menu_kb(await has_permission(message.from_user.id, "can_post_news"))
+            reply_markup=await news_menu_kb(await has_permission(actor, "can_post_news"))
         )
         return
 
@@ -104,7 +109,7 @@ async def news_tab(message: Message):
         )
     await message.answer(
         "\n".join(lines),
-        reply_markup=feed_markup(feed, await has_permission(message.from_user.id, "can_post_news"))
+        reply_markup=feed_markup(feed, await has_permission(actor, "can_post_news"))
     )
 
 

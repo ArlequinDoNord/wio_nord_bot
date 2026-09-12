@@ -9,6 +9,7 @@
 import asyncio
 import os
 import random
+import time
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile
@@ -34,6 +35,43 @@ LAKE_PHOTO = "city/lake"
 
 # Пользователи, чей заброс ещё не завершён (защита от повторного клика)
 FISHING_CASTING = set()
+
+# Активные на озере: user_id -> время последней рыболовной активности (epoch).
+# Нужно для строки «сколько пилотов рыбачат рядом» в окне озера.
+FISH_ACTIVE: dict = {}
+# Окно «сейчас рыбачит»: активность за последние N минут.
+FISH_ACTIVE_WINDOW = 15 * 60
+
+
+def _mark_fishing_active(user_id: int):
+    """Отметить игрока как рыбачащего на озере прямо сейчас."""
+    FISH_ACTIVE[user_id] = time.time()
+
+
+def _prune_fishing_active():
+    """Убрать протухшие отметки (озеро открыли давно и ушли)."""
+    now = time.time()
+    expired = [u for u, t in FISH_ACTIVE.items() if now - t > FISH_ACTIVE_WINDOW]
+    for u in expired:
+        FISH_ACTIVE.pop(u, None)
+
+
+def _human_plural(n: int) -> str:
+    n10, n100 = n % 10, n % 100
+    if n10 == 1 and n100 != 11:
+        return "человек"
+    if 2 <= n10 <= 4 and not (12 <= n100 <= 14):
+        return "человека"
+    return "человек"
+
+
+def fishing_company_line(user_id: int) -> str:
+    """Строка «сколько пилотов рыбачит рядом» (без себя)."""
+    _prune_fishing_active()
+    others = sum(1 for u in FISH_ACTIVE if u != user_id)
+    if others <= 0:
+        return "🍃 Рядом пока никого — озеро тихое."
+    return f"👥 Сейчас рядом с тобой рыбачит {others} {_human_plural(others)}."
 
 # Шанс улова: 50% база + ранг удочки*10 + бонус наживки, максимум 90%
 FISHING_BASE_CHANCE = 50
@@ -97,6 +135,7 @@ async def deactivate_fishing(user_id: int):
     FISH_TOKEN.pop(user_id, None)
     FISH_MSG.pop(user_id, None)
     FISHING_CASTING.discard(user_id)
+    FISH_ACTIVE.pop(user_id, None)
 
 
 async def _fish_ok(callback) -> bool:
@@ -319,6 +358,7 @@ async def fishing_lake_menu(callback: CallbackQuery):
     # Свежее окно рыба gets свой токен: старые окна отсекаются step-guard'ом.
     token = _new_token()
     FISH_TOKEN[callback.from_user.id] = token
+    _mark_fishing_active(callback.from_user.id)
 
     user = await get_user(callback.from_user.id)
     user = user or {}
@@ -358,7 +398,8 @@ async def fishing_lake_menu(callback: CallbackQuery):
         f"{bait_line}\n"
         f"{chance_line}\n\n"
         f"{ap_line}\n\n"
-        f"Заброс стоит {FISH_AP_COST} ОД, результат через 7–15 секунд."
+        f"Заброс стоит {FISH_AP_COST} ОД, результат через 7–15 секунд.\n\n"
+        f"{fishing_company_line(callback.from_user.id)}"
     )
     await _paint(callback, text=caption, media_path=_lake_path(), kb=_lake_markup(token))
 
@@ -375,6 +416,7 @@ async def fish_bait_menu(callback: CallbackQuery):
     if not _fish_ok(callback):
         return
     await callback.answer()
+    _mark_fishing_active(callback.from_user.id)
     user = await get_user(callback.from_user.id)
     user = user or {}
     chosen = (user.get('fishing_bait') or "").strip()
@@ -429,6 +471,8 @@ async def fish_cast(callback: CallbackQuery):
     if user_id in FISHING_CASTING:
         await callback.answer("Ты уже закинул удочку — дождись результата!", show_alert=True)
         return
+
+    _mark_fishing_active(user_id)
 
     # В подземелье рыбачить нельзя (старые кнопки озера тоже блокируем)
     if await get_active_run(user_id):
