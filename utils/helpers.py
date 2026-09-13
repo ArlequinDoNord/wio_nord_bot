@@ -147,6 +147,9 @@ ITEM_LOCAL_PHOTOS = {
     "Жареный чир": "assets/img/fish/fried_chir.jpg",
     "Жареный налим": "assets/img/fish/fried_nalim.jpg",
     "Удочка из орешника": "assets/img/fish/rod.jpg",
+    "Кусочек водорослей": "assets/img/fish/seaweed.jpg",
+    "Хвост крысы": "assets/img/loot/rat_tail.jpg",
+    "Лапка кристального паука": "assets/img/loot/spider_paw.jpg",
 }
 
 

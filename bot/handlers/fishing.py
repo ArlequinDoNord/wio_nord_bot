@@ -586,6 +586,10 @@ async def fish_cast(callback: CallbackQuery):
                         f"Из воды появляется: «{junk_name}»!\n\n"
                         f"🎒 Предмет отправлен в инвентарь.{sell_line}"
                     )
+                    local_photo = item_local_photo(junk_name)
+                    if local_photo:
+                        await _paint(callback, text=text + ap_block, media_path=local_photo, kb=_result_markup(FISH_TOKEN.get(user_id, "")))
+                        return
                 else:
                     text = "🎣 Рыбалка\n\n🐟 Что-то выловил, но предмет потерялся. Сообщи хранителю."
             else:
