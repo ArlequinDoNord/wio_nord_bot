@@ -24,6 +24,16 @@ def is_main_menu_text(text: str) -> bool:
     return text in MAIN_MENU_TEXTS
 
 
+def row_get(row, key, default=None):
+    """Безопасное чтение колонки из sqlite3.Row / dict (у Row нет .get())."""
+    if row is None:
+        return default
+    try:
+        return row[key]
+    except (KeyError, IndexError, TypeError):
+        return default
+
+
 async def edit_message_safe(message, text: str, reply_markup=None):
     """Редактирует сообщение с учётом его типа.
 

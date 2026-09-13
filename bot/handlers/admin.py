@@ -34,7 +34,7 @@ from utils.permissions import (
     add_role, remove_role, ROLES, role_label, log_action,
 )
 from utils.helpers import plural_nordmark
-from config import RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES, get_effective_rank, VERSION
+from config import RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES, get_effective_rank, VERSION, DRINK_EFFECT_LABELS
 from utils.notify import notify, player_display, NOTIFY_REPORT_MIN_TROOPS
 
 router = Router()
@@ -49,6 +49,7 @@ class AdminAddItem(StatesGroup):
     sell_price = State()
     rarity = State()
     category = State()
+    drink = State()
     stock = State()
     stats = State()
     producer = State()
@@ -378,6 +379,27 @@ def category_choice_markup():
     rows = []
     for key, label in ITEM_CATEGORIES.items():
         rows.append([InlineKeyboardButton(text=f"{label}", callback_data=f"cat:{key}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def drink_choice_markup(edit_mode: bool = False):
+    """Меню выбора типа напитка (для добавления и правки товара).
+
+    prefix 'drinksel:' — при добавлении (переводит на следующий шаг),
+    'editset:drink:' — при правке существующего товара.
+    """
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    p = "editset:drink:" if edit_mode else "drinksel:"
+    choice = [
+        ("❌ Не напиток", "none"),
+        ("🍺 Слабоалкогольный (пиво)", "alcohol_weak"),
+        ("🥃 Крепкий алкоголь (водка)", "alcohol_strong"),
+        ("🤢 С несварением", "indigestion"),
+        ("🥵 С истощением", "exhaustion"),
+        ("⚠️ Несварение + истощение", "indigestion_exhaustion"),
+        ("🥤 Безалкогольный, без эффекта", "none"),
+    ]
+    rows = [[InlineKeyboardButton(text=text, callback_data=f"{p}{key}")] for text, key in choice]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -743,6 +765,27 @@ async def add_item_category(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     category = callback.data.split(":")[1]
     await state.update_data(category=category)
+    if category == 'consumable':
+        # Напитку нужен тип действия на состояние; остальные расходники идут дальше.
+        await state.set_state(AdminAddItem.drink)
+        await callback.message.answer(
+            "Напиток или обычный расходник?\n\n"
+            "Напитки пьются где угодно (в бою — кнопкой слота): "
+            "алкоголь даёт состояния «пьян»/«очень пьян», "
+            "безалкогольные могут вызывать несварение или истощение.",
+            reply_markup=drink_choice_markup()
+        )
+        return
+    await state.set_state(AdminAddItem.stock)
+    await callback.message.answer("Шаг 7/9 — Остаток на складе (или «-» = безлимит):",
+                                  reply_markup=cancel_keyboard())
+
+
+@router.callback_query(F.data.startswith("drinksel:"))
+async def add_item_drink_choice(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    effect = callback.data.split(":", 1)[1]
+    await state.update_data(drink_effect=None if effect in ("none", "") else effect)
     await state.set_state(AdminAddItem.stock)
     await callback.message.answer("Шаг 7/9 — Остаток на складе (или «-» = безлимит):",
                                   reply_markup=cancel_keyboard())
@@ -861,6 +904,7 @@ async def add_item_photo(message: Message, state: FSMContext):
         photo_file_id=data.get('photo_file_id'),
         produced_by=data.get('produced_by'),
         damage=data.get('damage', 0), armor=data.get('armor', 0),
+        heal=data.get('heal', 0), drink_effect=data.get('drink_effect'),
     )
     await log_action(admin_id, 'add_item', data.get('produced_by'),
                      f"item={data['name']} id={item_id}")
@@ -967,6 +1011,7 @@ async def edit_item_pick(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text="⚡ AP за использование", callback_data="field:ap_cost")],
             [InlineKeyboardButton(text="🔒 Требуемый статус", callback_data="field:required_status")],
             [InlineKeyboardButton(text="🖼 Картинка", callback_data="field:photo")],
+            [InlineKeyboardButton(text="🍺 Тип напитка (действие)", callback_data="field:drink")],
             [InlineKeyboardButton(text="🚧 Вкл/выкл продажу", callback_data="field:is_available")],
         ])
     )
@@ -1036,6 +1081,43 @@ async def edit_item_photo(message: Message, state: FSMContext):
     await log_action(message.from_user.id, 'edit_item', None, f"item_id={item_id} photo updated")
     await state.clear()
     await message.answer(f"✅ Картинка товара «{item['name']}» обновлена.")
+
+
+@router.callback_query(F.data == "field:drink")
+async def edit_item_field_drink(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    from utils.helpers import row_get
+    data = await state.get_data()
+    item_id = data.get('item_id')
+    item = await get_item(item_id) if item_id else None
+    cur = row_get(item, 'drink_effect') if item else None
+    cur_label = (DRINK_EFFECT_LABELS.get(cur) if cur in DRINK_EFFECT_LABELS else
+                 ("🥤 не напиток" if not cur else cur))
+    await callback.message.answer(
+        f"🍺 Текущий тип напитка у «{item['name'] if item else 'товар'}»: {cur_label}.\n\n"
+        f"Выбери новое действие:",
+        reply_markup=drink_choice_markup(edit_mode=True))
+
+
+@router.callback_query(F.data.startswith("editset:drink:"))
+async def edit_item_set_drink(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    from utils.helpers import row_get
+    effect = callback.data.split(":")[2]
+    data = await state.get_data()
+    item_id = data.get('item_id')
+    item = await get_item(item_id)
+    if not item:
+        await state.clear()
+        await callback.message.answer("❌ Товар не найден.")
+        return
+    new_effect = None if effect in ("none", "") else effect
+    await update_item(item_id, drink_effect=new_effect)
+    label = DRINK_EFFECT_LABELS.get(new_effect) if new_effect in DRINK_EFFECT_LABELS else "не напиток"
+    await log_action(callback.from_user.id, 'edit_item', None,
+                     f"item_id={item_id} drink_effect={new_effect}")
+    await state.clear()
+    await callback.message.answer(f"✅ Тип напитка «{item['name']}» установлен: {label}.")
 
 
 @router.callback_query(F.data.startswith("field:"))

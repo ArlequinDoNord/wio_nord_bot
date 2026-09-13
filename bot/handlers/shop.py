@@ -241,6 +241,12 @@ async def shop_item_view(callback: CallbackQuery):
         header += f"\n🛡 Броня: {item['armor']}"
     header += "\n\n"
     body = ""
+    from utils.helpers import row_get
+    if row_get(item, 'drink_effect'):
+        from config import DRINK_EFFECT_LABELS
+        label = DRINK_EFFECT_LABELS.get(row_get(item, 'drink_effect'))
+        if label:
+            body += f"{label}\n\n"
     if item['description']:
         body += f"📝 {item['description']}\n\n"
     body += f"💰 Цена: {item['price']} {plural_nordmark(item['price'])}"

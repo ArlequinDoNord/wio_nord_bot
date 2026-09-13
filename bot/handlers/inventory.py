@@ -17,6 +17,7 @@ from database.db import (
 from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text,
     item_local_photo, fish_weight_tier, fish_sell_price, edit_or_replace,
+    row_get,
 )
 from keyboards.keyboards import cancel_keyboard, main_menu_keyboard
 
@@ -241,6 +242,11 @@ async def _render_item_card(message, user_id: int, item_id: int):
         dots.append(f"💚 Лечение: {item['heal']}")
     if dots:
         text += " • ".join(dots) + "\n\n"
+    if row_get(item, 'drink_effect'):
+        from config import DRINK_EFFECT_LABELS
+        label = DRINK_EFFECT_LABELS.get(row_get(item, 'drink_effect'))
+        if label:
+            text += f"{label}\n\n"
     if item['heal']:
         text += "💊 Применяется в бою подземелья: поставь в слот 1/2 (кнопки ниже) и жми в бою.\n\n"
     if item['description']:
@@ -284,7 +290,7 @@ async def _render_item_card(message, user_id: int, item_id: int):
                 occ_item = await get_item(occ_id)
                 occupied[slot] = occ_item['name'] if occ_item else f"#{occ_id}"
 
-    can_use = item['category'] == "consumable" and (not (item['heal'] or 0) or item['name'] == "Бутылка пива")
+    can_use = item['category'] == "consumable" and (not (item['heal'] or 0) or bool(row_get(item, 'drink_effect')))
     if in_run:
         can_use = False
         equip_slot = None

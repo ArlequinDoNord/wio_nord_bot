@@ -68,6 +68,7 @@ async def init_db():
             ap_cost INTEGER DEFAULT 0,
             heal INTEGER DEFAULT 0,
             armor INTEGER DEFAULT 0,
+            drink_effect TEXT DEFAULT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -535,6 +536,11 @@ async def init_db():
     # Счётчик бутылок пива (для состояний «пьян»/«очень пьян»)
     await _ensure_column(conn, "users", "beer_used_today", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "beer_used_day", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "items", "drink_effect", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "users", "alcohol_weak_used_today", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "users", "alcohol_weak_used_day", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "users", "alcohol_strong_used_today", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "users", "alcohol_strong_used_day", "TEXT DEFAULT NULL")
     # Спец-отдел: неверные попытки ввода кода и время блокировки покупок (бан на 24 ч)
     await _ensure_column(conn, "users", "special_fails_today", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "special_blocked_until", "TEXT DEFAULT NULL")
@@ -567,6 +573,8 @@ async def init_db():
     await ensure_base_statuses()
     await conn.commit()
     await seed_locations(conn)
+    # Снятые с игры предметы (T-Меч, T-Броня, учебные машины) — полное удаление.
+    await purge_retired_items()
 
 
 async def seed_locations(conn):
@@ -592,6 +600,67 @@ async def seed_locations(conn):
             (key, name, desc, mode, req_status, json.dumps(blocking, ensure_ascii=False), preview)
         )
     await conn.commit()
+
+
+# ============ УДАЛЕНИЕ СНЯТЫХ С ИГРЫ ПРЕДМЕТОВ ============
+
+# Предметы, полностью выведенные из игры: товары, инвентарь, снаряжение,
+# дропы и сделки с ними очищаются при миграции.
+RETIRED_ITEMS = ["Учебный истребитель", "Стандартный пулемёт", "T-Меч", "T-Броня",
+                 "Бутылка пива"]
+
+
+async def purge_retired_items():
+    """Убирает снятые с игры предметы из всех таблиц и колонок.
+
+    Вызывается на старте: удаляет сами записи items и все ссылки на них
+    (инвентарь, снаряжение, дропы, очереди производства, сделки, здания).
+    """
+    conn = await get_db()
+    if not RETIRED_ITEMS:
+        return False
+    placeholders = ",".join("?" * len(RETIRED_ITEMS))
+    cursor = await conn.execute(
+        f"SELECT id FROM items WHERE name IN ({placeholders})", RETIRED_ITEMS
+    )
+    ids = [row["id"] for row in await cursor.fetchall()]
+    if not ids:
+        return False
+    id_ph = ",".join("?" * len(ids))
+
+    for table, col in (("inventory", "item_id"),
+                       ("player_dungeon_inventory", "item_id"),
+                       ("dungeon_rewards", "item_id"),
+                       ("dungeon_items", "item_id"),
+                       ("resource_sources", "item_id"),
+                       ("fish_catches", "item_id"),
+                       ("production_queue", "recipe_item_id")):
+        await conn.execute(f"DELETE FROM {table} WHERE {col} IN ({id_ph})", ids)
+    await conn.execute(f"UPDATE trades SET from_item_id = NULL WHERE from_item_id IN ({id_ph})", ids)
+    await conn.execute(f"UPDATE trades SET to_item_id = NULL WHERE to_item_id IN ({id_ph})", ids)
+    await conn.execute(f"UPDATE buildings SET production_item_id = NULL WHERE production_item_id IN ({id_ph})", ids)
+
+    # Снаряжение игроков: слоты 'weapon'/'armor', ссылающиеся на удаляемые предметы.
+    cur = await conn.execute("SELECT user_id, equipment FROM users WHERE equipment IS NOT NULL AND equipment != '{}'")
+    for row in await cur.fetchall():
+        try:
+            eq = json.loads(row["equipment"])
+        except (ValueError, TypeError):
+            continue
+        changed = False
+        for slot in ("weapon", "armor"):
+            if eq.get(slot) in ids:
+                eq.pop(slot, None)
+                changed = True
+        if changed:
+            await conn.execute(
+                "UPDATE users SET equipment = ? WHERE user_id = ?",
+                (json.dumps(eq, ensure_ascii=False), row["user_id"])
+            )
+
+    await conn.execute(f"DELETE FROM items WHERE id IN ({id_ph})", ids)
+    await conn.commit()
+    return True
 
 
 async def _ensure_column(conn, table: str, column: str, coltype: str):
@@ -793,14 +862,15 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
                    rarity: int, category: str, stock: int, added_by: int,
                    photo_file_id: str = None, ap_cost: int = 0,
                    production_time_hours: int = 0, produced_by: int = None,
-                   damage: int = 0, heal: int = 0, armor: int = 0):
+                   damage: int = 0, heal: int = 0, armor: int = 0,
+                   drink_effect: str = None):
     conn = await get_db()
     cursor = await conn.execute(
         """INSERT INTO items (name, description, photo_file_id, price, sell_price,
-           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (name, description, photo_file_id, price, sell_price, rarity, category,
-         stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor)
+         stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect)
     )
     await conn.commit()
     return cursor.lastrowid
@@ -840,6 +910,103 @@ async def update_item(item_id: int, **kwargs):
     values = list(kwargs.values()) + [item_id]
     await conn.execute(f"UPDATE items SET {sets} WHERE id = ?", values)
     await conn.commit()
+
+
+# Допустимые типы действия напитка (items.drink_effect).
+# None/'' = не напиток. 'none' = безалкогольный напиток без действия на состояние.
+DRINK_EFFECTS = (
+    "alcohol_weak", "alcohol_strong", "indigestion",
+    "exhaustion", "indigestion_exhaustion", "none",
+)
+
+
+async def consume_drink(user_id: int, item_id: int):
+    """Применяет действие напитка (после списания предмета из инвентаря).
+
+    Возвращает (ok, message).
+    - alcohol_weak:  3-я за сутки → «пьян», 6-я → «очень пьян»;
+    - alcohol_strong: 1-я → «пьян», 2-я → «очень пьян»;
+    - indigestion / exhaustion / indigestion_exhaustion: состояния на сутки/2 суток;
+    - none: без действия на состояние.
+    """
+    from config import (ALCOHOL_WEAK_DRUNK_LIMIT, ALCOHOL_WEAK_VERY_DRUNK_LIMIT,
+                        ALCOHOL_STRONG_DRUNK_LIMIT, ALCOHOL_STRONG_VERY_DRUNK_LIMIT,
+                        DRUNK_MINUTES, VERY_DRUNK_MINUTES)
+    from utils.states import apply_state_to
+    from utils.helpers import row_get
+
+    item = await get_item(item_id)
+    if not item:
+        return False, "Предмет не найден."
+    effect = row_get(item, "drink_effect")
+    if effect is None:
+        return False, "Это не напиток с эффектом."
+    if effect not in DRINK_EFFECTS:
+        return False, "Неизвестный тип напитка."
+
+    user = await get_user(user_id)
+    if not user:
+        return False, "Ты не зарегистрирован."
+    name = item["name"]
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    conn = await get_db()
+
+    if effect in ("alcohol_weak", "alcohol_strong"):
+        if effect == "alcohol_strong":
+            drunk_limit, very_limit = ALCOHOL_STRONG_DRUNK_LIMIT, ALCOHOL_STRONG_VERY_DRUNK_LIMIT
+            cnt_col, day_col = "alcohol_strong_used_today", "alcohol_strong_used_day"
+            glass = "🥃"
+            kind = "крепкий алкоголь"
+        else:
+            drunk_limit, very_limit = ALCOHOL_WEAK_DRUNK_LIMIT, ALCOHOL_WEAK_VERY_DRUNK_LIMIT
+            cnt_col, day_col = "alcohol_weak_used_today", "alcohol_weak_used_day"
+            glass = "🍺"
+            kind = "слабоалкогольный напиток"
+        used = int(user.get(cnt_col) or 0)
+        if user.get(day_col) != today:
+            used = 0
+        used += 1
+        await conn.execute(
+            f"UPDATE users SET {cnt_col} = ?, {day_col} = ? WHERE user_id = ?",
+            (used, today, user_id))
+        await conn.commit()
+
+        if used >= very_limit:
+            await apply_state_to(user_id, "очень пьян",
+                                 minutes=VERY_DRUNK_MINUTES,
+                                 reason=f"выпит {kind} «{name}» ({used} шт./сутки)")
+            return True, (
+                f"{glass} Ты выпил «{name}» ({used}/{very_limit} за сутки). "
+                f"🥴 Состояние «Очень пьян» на {VERY_DRUNK_MINUTES} минут! "
+                f"Зелья недоступны, вход во все здания закрыт, в бою атака −50%."
+            )
+        if used >= drunk_limit:
+            await apply_state_to(user_id, "пьян",
+                                 minutes=DRUNK_MINUTES,
+                                 reason=f"выпит {kind} «{name}» ({used} шт./сутки)")
+            return True, (
+                f"{glass} Ты выпил «{name}» ({used}/{very_limit} за сутки). "
+                f"🍺 Состояние «Пьян» на {DRUNK_MINUTES} минут. "
+                f"В Ратушу и Библиотеку не пускают, в бою атака −20%."
+            )
+        return True, (
+            f"{glass} Ты выпил «{name}» ({used}/{very_limit} за сутки). "
+            f"Ещё {drunk_limit - used} шт. — и наступит «Пьян»."
+        )
+
+    # Безалкогольные эффекты.
+    parts = []
+    if effect in ("indigestion", "indigestion_exhaustion"):
+        await apply_state_to(user_id, "несварение",
+                             reason=f"выпит напиток «{name}»")
+        parts.append("🤢 Наступило «Несварение»: расходники недоступны (24 часа).")
+    if effect in ("exhaustion", "indigestion_exhaustion"):
+        await apply_state_to(user_id, "истощён",
+                             reason=f"выпит напиток «{name}»")
+        parts.append("🥵 Наступило «Истощён»: суточное восстановление ОД сильно снижено (2 суток).")
+    if parts:
+        return True, f"Ты выпил «{name}».\n\n" + "\n\n".join(parts)
+    return True, f"Ты выпил «{name}». Приятного аппетита!"
 
 
 async def delete_item(item_id: int):
@@ -936,10 +1103,8 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
         return False, "У тебя нет этого предмета"
 
     if item['category'] == 'consumable':
-        # Пиво пьётся где угодно (+10 HP засчитывается в бою подземелья отдельным путём).
-        from config import (BEER_ITEM_NAME, BEER_DAILY_LIMIT, BEER_VERY_DRUNK_LIMIT,
-                            BEER_DRUNK_MINUTES, BEER_VERY_DRUNK_MINUTES)
-        from utils.states import consumables_blocked, apply_state_to
+        from utils.states import consumables_blocked
+        from utils.helpers import row_get
 
         user = await get_user(user_id)
         if not user:
@@ -955,52 +1120,17 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
                     "Зелья и расходники станут доступны, когда «очень пьян» пройдёт (6 часов)."
                 )
             return False, (
-                "🤢 Несварение: ты слишком много ел водорослей. "
+                "🤢 Несварение: пищеварение на паузе. "
                 "Расходники нельзя применять ещё сутки."
             )
 
-        # Пиво: меняем дневной счётчик и выдаём состояния «пьян»/«очень пьян».
-        if item['name'] == BEER_ITEM_NAME:
+        # Напиток с действием: пиво и прочие пьются где угодно
+        # (+10 HP засчитывается в бою подземелья отдельным путём).
+        if row_get(item, 'drink_effect'):
             ok = await remove_inventory_item(user_id, item_id, 1)
             if not ok:
-                return False, "Не удалось списать бутылку пива."
-            today = datetime.utcnow().strftime("%Y-%m-%d")
-            beer_today = user.get('beer_used_today') or 0
-            if user.get('beer_used_day') != today:
-                beer_today = 0
-            beer_today += 1
-            conn = await get_db()
-            await conn.execute(
-                "UPDATE users SET beer_used_today = ?, beer_used_day = ? WHERE user_id = ?",
-                (beer_today, today, user_id)
-            )
-            await conn.commit()
-
-            if beer_today >= BEER_VERY_DRUNK_LIMIT:
-                await apply_state_to(
-                    user_id, "очень пьян", caused_by=user_id, minutes=BEER_VERY_DRUNK_MINUTES,
-                    reason=f"Выпито {beer_today} бутылок пива за сутки"
-                )
-                return True, (
-                    f"🍺 Ты выпил пиво ({beer_today}/{BEER_VERY_DRUNK_LIMIT} за сутки).\n"
-                    f"🥴 Ты совсем на ногах не стоишь — наступило состояние «Очень пьян» на 6 часов! "
-                    f"Атака и уклонение сильно снижены, зелья недоступны, во все здания вход закрыт."
-                )
-            if beer_today >= BEER_DAILY_LIMIT:
-                await apply_state_to(
-                    user_id, "пьян", caused_by=user_id, minutes=BEER_DRUNK_MINUTES,
-                    reason=f"Выпито {beer_today} бутылок пива за сутки"
-                )
-                return True, (
-                    f"🍺 Ты выпил пиво ({beer_today}/{BEER_VERY_DRUNK_LIMIT} за сутки).\n"
-                    f"🍺 Захмелел: состояние «Пьян» на {BEER_DRUNK_MINUTES} минут. "
-                    f"В Ратушу и Библиотеку не пускают, в бою атака −20%."
-                )
-            return True, (
-                f"🍺 Ты выпил пиво ({beer_today}/{BEER_VERY_DRUNK_LIMIT} за сутки). "
-                f"В бою подземелья оно восстановит 10 HP. "
-                f"Не пей больше {BEER_DAILY_LIMIT} за сутки — иначе будешь пьян."
-            )
+                return False, "Не удалось списать напиток."
+            return await consume_drink(user_id, item_id)
 
         if item['heal'] > 0:
             return False, "Это зелье можно применить только в бою подземелья 💊"
@@ -2889,8 +3019,6 @@ async def sell_one_fish_catch(user_id: int, item_id: int, weight: int) -> bool:
 
 DEFAULT_ITEMS = [
     # (name, description, price, sell_price, rarity, category, stock, ap_cost, damage, heal)
-    ("Учебный истребитель", "Базовая учебная машина для новичков.", 250, 125, 2, "weapon", 5, 0, 8, 0),
-    ("Стандартный пулемёт", "Надёжное вооружение для воздушных боёв.", 150, 75, 1, "weapon", 10, 0, 5, 0),
     ("Энергетик", "Восстанавливает силы: даёт +AP при использовании.", 50, 25, 1, "consumable", 100, 50, 0, 0),
     ("Лётный шлем", "Защищает пилота в бою.", 120, 60, 2, "equipment", 10, 0, 0, 0, 4),
     ("Кислородная маска", "Для высотных полётов.", 90, 45, 1, "equipment", 10, 0, 0, 0, 2),
@@ -3476,11 +3604,12 @@ async def ensure_life_items():
          80, 40, 3, "consumable", 20, 50, None, 1),
         ("Комбинированная наживка", "Сборная наживка с верстака: +30% к шансу улова. Расходуется при забросе.",
          30, 15, 2, "fishing", -1, 0, None, 0),
-        # Пиво: пьётся где угодно, в бою подземелья дополнительно даёт +HP.
-        # 3-я бутылка за сутки → «пьян»; 6-я → «очень пьян» (блок расходников, всех входов, 6 часов).
-        ("Бутылка пива", "Холодное ячменное пиво. Восстанавливает 10 HP в бою подземелья. "
-         "Пьётся где угодно, но держи себя в руках: 3 бутылки за сутки — и ты пьян, "
-         "6 — совсем плохо.",
+        # Пиво «Мерцание Севера»: фирменный напиток города. Пьётся где угодно,
+        # в бою подземелья дополнительно даёт +HP. 3-я бутылка за сутки → «пьян»;
+        # 6-я → «очень пьян» (блок расходников, всех входов, 6 часов).
+        ("Пиво \"Мерцание Севера\"", "Фирменное холодное пиво Нордхайма. "
+         "Восстанавливает 10 HP в бою подземелья. Пьётся где угодно, но держи себя в руках: "
+         "3 бутылки за сутки — и ты пьян, 6 — совсем плохо.",
          40, 20, 1, "consumable", -1, 10, None, 1),
     ]
     for (name, desc, price, sell, rarity, category, stock, heal, req_status, is_avail) in items:
@@ -3495,6 +3624,17 @@ async def ensure_life_items():
             if not is_avail:
                 await update_item(item_id, is_available=0)
             added = True
+
+    # Типы напитков: привязываем действие на состояние к напиткам по имени
+    # (миграция старых БД + сидирование новых). Один напиток — одно действие.
+    drink_sync = {
+        "alcohol_weak": ("Пиво \"Мерцание Севера\"",),
+    }
+    for effect, names in drink_sync.items():
+        await conn.execute(
+            "UPDATE items SET drink_effect = ? WHERE name IN ({})".format(
+                ",".join("?" * len(names))), (effect,) + tuple(names)
+        )
 
     # Синхронизация цен/статусов для уже существующих жилья-предметов (напр. в старых БД v0.5.0-ранний).
     housing_sync = {
