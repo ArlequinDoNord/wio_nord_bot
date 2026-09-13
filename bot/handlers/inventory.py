@@ -242,11 +242,6 @@ async def _render_item_card(message, user_id: int, item_id: int):
         dots.append(f"💚 Лечение: {item['heal']}")
     if dots:
         text += " • ".join(dots) + "\n\n"
-    if row_get(item, 'drink_effect'):
-        from config import DRINK_EFFECT_LABELS
-        label = DRINK_EFFECT_LABELS.get(row_get(item, 'drink_effect'))
-        if label:
-            text += f"{label}\n\n"
     if item['heal']:
         text += "💊 Применяется в бою подземелья: поставь в слот 1/2 (кнопки ниже) и жми в бою.\n\n"
     if item['description']:
