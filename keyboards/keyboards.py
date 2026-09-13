@@ -15,6 +15,20 @@ def main_menu_keyboard(is_admin: bool = False, is_pilot: bool = True):
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
 
+async def main_menu_kb(user_id: int):
+    """Reply-клавиатура главного меню с АКТУАЛЬНЫМИ флагами админа/пилота.
+
+    Все обработчики («В меню», «Отмена», завершения FSM) должны перерисовывать
+    главное меню именно через эту функцию, иначе у админа пропадает кнопка
+    «👑 Админ-панель» после навигации (флаг пересчитывается каждый раз).
+    """
+    from utils.permissions import is_admin
+    from database.db import user_has_status_tag
+    admin_flag = await is_admin(user_id)
+    pilot_flag = await user_has_status_tag(user_id, "pilot")
+    return main_menu_keyboard(is_admin=admin_flag, is_pilot=pilot_flag)
+
+
 def admin_panel_keyboard(permissions: dict):
     buttons = []
     if permissions.get('can_manage_shop'):

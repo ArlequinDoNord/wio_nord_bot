@@ -59,6 +59,22 @@ HOUSING_ITEM_BY_NAME = {
     "Особняк": "mansion",
 }
 
+# Картинки стадий растений: seed_name → {0..4: путь}. Файлы в assets/img/housing.
+# Паттерн: пустая кадка показывает базовую картинку (EMPTY_KADKA_PHOTO), после
+# посадки — индивидуальную картинку под каждый вид семечек по стадиям роста.
+# Сейчас ключи пустые (пользователь готовит изображения) — действует фолбэк
+# на фото жилья. Как только файлы появятся, картинки включатся сами.
+EMPTY_KADKA_PHOTO = "assets/img/housing/kadka.jpg"
+PLANT_PHOTOS: dict[str, dict[int, str]] = {
+    # "Яблочное семечко": {
+    #     0: "assets/img/housing/plant_apple_0.jpg",  # Семя
+    #     1: "assets/img/housing/plant_apple_1.jpg",  # Росток
+    #     2: "assets/img/housing/plant_apple_2.jpg",  # Куст
+    #     3: "assets/img/housing/plant_apple_3.jpg",  # Зрелое дерево
+    #     4: "assets/img/housing/plant_apple_4.jpg",  # Плодоносит
+    # },
+}
+
 FRIED_PREFIX = "Жареный "
 FOOD_EXPIRY_SEC = 4 * 86400          # 96 часов
 
@@ -217,6 +233,36 @@ async def housing_room(cb: CallbackQuery):
 
 
 async def _room_kitchen(cb, uid, idx, slot, ht, lvl):
+    title = _slot_name(slot)
+    lines = [f"🍳 *{title}* (слот {idx+1})\n"]
+    if slot.get("embedded"):
+        lines.append("⚙️ Встроено в жильё — убрать нельзя.\n")
+    lines.append("Выбери действие:")
+    rows = [
+        [_inv_row("🍳 Готовить", f"housing:kitchen:{idx}")],
+    ]
+    if not slot.get("embedded"):
+        rows.append([_inv_row("🔪 Убрать из слота", f"housing:uninstall:{idx}")])
+    rows.append([_inv_row("🔙 К жилью", "housing:menu")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
+
+
+@router.callback_query(F.data.startswith("housing:kitchen:"))
+async def housing_kitchen_recipes(cb: CallbackQuery):
+    await cb.answer()
+    uid = cb.from_user.id
+    idx = int(cb.data.split(":")[2])
+    slots = await get_housing_slots(uid)
+    slot = slots.get(idx)
+    if not slot or slot.get("expansion_type") != "kitchen":
+        return
+    lvl = slot.get("expansion_level", 1)
+    ht = (await get_player_housing(uid))["housing_type"]
+    await _kitchen_recipes(cb, uid, idx, slot, ht, lvl)
+
+
+async def _kitchen_recipes(cb, uid, idx, slot, ht, lvl):
     recipes = await get_recipes("kitchen", lvl)
     title = _slot_name(slot)
     lines = [f"🍳 *{title}* (слот {idx+1})\n"]
@@ -230,11 +276,7 @@ async def _room_kitchen(cb, uid, idx, slot, ht, lvl):
     rows = []
     for r in recipes:
         rows.append([_inv_row(f"📋 {r['name']}", f"housing:recipe:{idx}:{r['id']}")])
-    if slot.get("embedded"):
-        lines.append("\n⚙️ Встроено в жильё — убрать нельзя.")
-    else:
-        rows.append([_inv_row("🔪 Убрать из слота", f"housing:uninstall:{idx}")])
-    rows.append([_inv_row("🔙 К жилью", "housing:menu")])
+    rows.append([_inv_row("🔙 К кухне", f"housing:room:{idx}")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
 
@@ -281,7 +323,8 @@ async def _room_plant(cb, uid, idx, slot, ht):
         rows.append([_inv_row("🔪 Убрать кадку", f"housing:uninstall:{idx}")])
         rows.append([_inv_row("🔙 К жилью", "housing:menu")])
         kb = InlineKeyboardMarkup(inline_keyboard=rows)
-        await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
+        photo = EMPTY_KADKA_PHOTO if os.path.isfile(EMPTY_KADKA_PHOTO) else _housing_photo(ht)
+        await _paint(cb, "\n".join(lines), photo, kb)
         return
 
     now = time.time()
@@ -311,7 +354,13 @@ async def _room_plant(cb, uid, idx, slot, ht):
     rows.append([_inv_row("🔪 Убрать кадку", f"housing:uninstall:{idx}")])
     rows.append([_inv_row("🔙 К жилью", "housing:menu")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
-    await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
+
+    # Картинка стадии растения: индивидуальная под вид семечка (если загружена),
+    # иначе — фото жилья как раньше.
+    seed_photos = PLANT_PHOTOS.get(seed_name) or {}
+    p = seed_photos.get(stage)
+    plant_photo = p if p and os.path.isfile(p) else _housing_photo(ht)
+    await _paint(cb, "\n".join(lines), plant_photo, kb)
 
 
 # ───────── карточка рецепта ─────────
@@ -616,6 +665,38 @@ async def housing_uninstall(cb: CallbackQuery):
         await cb.answer("⚙️ Это встроено в жильё — убрать нельзя.", show_alert=True)
         return
 
+    # Кадка с растением: спрашиваем подтверждение — растение удалится безвозвратно,
+    # кадка вернётся к обычному состоянию, а повторная установка будет платной.
+    if slot["expansion_type"] == "plant_pot":
+        try:
+            data = json.loads(slot.get("plant_data") or "{}")
+        except Exception:
+            data = {}
+        if data.get("seed"):
+            ht = (await get_player_housing(uid))["housing_type"]
+            info = plant_stage_info(data, time.time())
+            stage_name = PLANT_STAGES[info["stage"]][0]
+            installed = await get_housing_expansions_installed(uid)
+            cost = replanning_cost(ht) if installed > 0 else 0
+            cost_line = (f"\n💸 Повторная установка расширения будет платной "
+                         f"(перепланировка: {cost} НМ).") if cost else \
+                        ("\n💸 Первая установка в это жильё по-прежнему будет "
+                         "бесплатной.")
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [_inv_row("✅ Убрать, растение удалить", f"housing:uninstall_confirm:{idx}")],
+                [_inv_row("❌ Оставить", f"housing:room:{idx}")],
+            ])
+            await _paint(
+                cb,
+                f"🌱 *Убрать кадку с растением?*\n\n"
+                f"Растение «{data['seed']}» (стадия: {stage_name}) будет удалено "
+                f"безвозвратно — семечко и прогресс не вернутся.\n"
+                f"Кадка снова станет обычной пустой.{cost_line}",
+                _housing_photo(ht),
+                kb
+            )
+            return
+
     et = slot["expansion_type"]
     lvl = slot.get("expansion_level", 1)
     fname = FURNITURE_BY_EXPANSION.get((et, lvl))
@@ -626,6 +707,38 @@ async def housing_uninstall(cb: CallbackQuery):
             await add_inventory_item(uid, fi["id"], 1)
 
     await cb.answer(f"✅ «{fname}» возвращено в инвентарь.", show_alert=True)
+    await housing_menu(cb)
+
+
+@router.callback_query(F.data.startswith("housing:uninstall_confirm:"))
+async def housing_uninstall_confirm(cb: CallbackQuery):
+    await cb.answer()
+    uid = cb.from_user.id
+    idx = int(cb.data.split(":")[2])
+
+    slots = await get_housing_slots(uid)
+    slot = slots.get(idx)
+    if not slot or not slot.get("expansion_type"):
+        await cb.answer("❌ Слот уже пуст.", show_alert=True)
+        return
+    if slot.get("embedded"):
+        await cb.answer("⚙️ Это встроено в жильё — убрать нельзя.", show_alert=True)
+        return
+
+    et = slot["expansion_type"]
+    lvl = slot.get("expansion_level", 1)
+    fname = FURNITURE_BY_EXPANSION.get((et, lvl))
+    await set_housing_slot(uid, idx, None)
+    if fname:
+        fi = await get_item_by_name(fname)
+        if fi:
+            await add_inventory_item(uid, fi["id"], 1)
+
+    if et == "plant_pot":
+        await cb.answer("✅ Кадка возвращена в инвентарь, растение удалено.",
+                        show_alert=True)
+    else:
+        await cb.answer(f"✅ «{fname}» возвращено в инвентарь.", show_alert=True)
     await housing_menu(cb)
 
 

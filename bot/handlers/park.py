@@ -77,27 +77,24 @@ async def _show(message, media, caption, kb):
         await message.answer_photo(photo=media, caption=caption, reply_markup=kb)
 
 
-def park_menu_markup(is_manager: bool):
+def park_menu_markup():
     rows = [
         [InlineKeyboardButton(text="🗿 Аллея статуй", callback_data="park:statues")],
         [InlineKeyboardButton(text="💧 Фонтан", callback_data="park:fountain")],
         [InlineKeyboardButton(text="🌊 Озеро", callback_data="park:lake")],
+        [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
     ]
-    if is_manager:
-        rows.append([InlineKeyboardButton(text="🛠 Управление статуями", callback_data="park:admin")])
-    rows.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def park_enter(callback: CallbackQuery):
     """Точка входа из locations.py (маршрут location:enter:park)."""
-    is_manager = await has_permission(callback.from_user.id, "can_manage_locations")
     caption = (
         "🌳 ГОРОДСКОЙ ПАРК АРКХОЛЬМА\n\n"
         "Тенистые аллеи, пруд и тишина вместо шума цеха.\n"
         "Парк открыт для всех — и для пилотов, и для туристов."
     )
-    await _show(callback.message, park_photo(), caption, park_menu_markup(is_manager))
+    await _show(callback.message, park_photo(), caption, park_menu_markup())
 
 
 @router.callback_query(F.data == "park:menu")
@@ -193,7 +190,7 @@ async def park_fountain_drink(callback: CallbackQuery):
 
 # ============ АЛЛЕЯ СТАТУЙ ============
 
-def statue_browse_markup(total: int, idx: int):
+def statue_browse_markup(total: int, idx: int, is_manager: bool = False):
     rows = []
     nav = []
     if total > 1 and idx > 0:
@@ -203,16 +200,18 @@ def statue_browse_markup(total: int, idx: int):
         nav.append(InlineKeyboardButton(text="▶️", callback_data=f"park:statue:{idx + 1}"))
     if nav:
         rows.append(nav)
+    if is_manager:
+        rows.append([InlineKeyboardButton(text="🛠 Управление статуями", callback_data="park:admin")])
     rows.append([InlineKeyboardButton(text="🔙 В парк", callback_data="park:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def _show_statue(message, statue: dict, idx: int, total: int):
+async def _show_statue(message, statue: dict, idx: int, total: int, is_manager: bool = False):
     text = f"🗿 {statue['name']}\n"
     if statue.get('description'):
         text += f"\n{statue['description']}\n"
     image = statue_image(statue)
-    kb = statue_browse_markup(total, idx)
+    kb = statue_browse_markup(total, idx, is_manager)
     if image:
         await _show(message, image, text, kb)
     else:
@@ -222,6 +221,7 @@ async def _show_statue(message, statue: dict, idx: int, total: int):
 @router.callback_query(F.data == "park:statues")
 async def park_statues(callback: CallbackQuery):
     await callback.answer()
+    is_manager = await has_permission(callback.from_user.id, "can_manage_locations")
     statues = await get_park_statues()
     if not statues:
         kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -230,7 +230,7 @@ async def park_statues(callback: CallbackQuery):
         caption = "🗿 АЛЛЕЯ СТАТУЙ\n\nПока пусто. Статуи появятся позже."
         await _show(callback.message, park_photo(), caption, kb)
         return
-    await _show_statue(callback.message, statues[0], 0, len(statues))
+    await _show_statue(callback.message, statues[0], 0, len(statues), is_manager)
 
 
 @router.callback_query(F.data.startswith("park:statue:"))
@@ -240,11 +240,12 @@ async def park_statue_nav(callback: CallbackQuery):
         idx = int(callback.data.split(":", 2)[2])
     except ValueError:
         return
+    is_manager = await has_permission(callback.from_user.id, "can_manage_locations")
     statues = await get_park_statues()
     if not statues:
         return
     idx = max(0, min(idx, len(statues) - 1))
-    await _show_statue(callback.message, statues[idx], idx, len(statues))
+    await _show_statue(callback.message, statues[idx], idx, len(statues), is_manager)
 
 
 # ============ УПРАВЛЕНИЕ СТАТУЯМИ (админ) ============

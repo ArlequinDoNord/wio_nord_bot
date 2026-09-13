@@ -2401,23 +2401,23 @@ async def noop(callback: CallbackQuery):
 async def back_main_cb(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
-    from keyboards.keyboards import main_menu_keyboard
-    await callback.message.answer("Главное меню:", reply_markup=main_menu_keyboard())
+    from keyboards.keyboards import main_menu_kb
+    await callback.message.answer("Главное меню:", reply_markup=await main_menu_kb(callback.from_user.id))
 
 
 @router.callback_query(F.data == "cancel")
 async def cancel_cb(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.clear()
-    from keyboards.keyboards import main_menu_keyboard
-    await callback.message.answer("Действие отменено.", reply_markup=main_menu_keyboard())
+    from keyboards.keyboards import main_menu_kb
+    await callback.message.answer("Действие отменено.", reply_markup=await main_menu_kb(callback.from_user.id))
 
 
 @router.message(F.text == "/cancel")
 async def cancel_text(message: Message, state: FSMContext):
     await state.clear()
-    from keyboards.keyboards import main_menu_keyboard
-    await message.answer("Действие отменено.", reply_markup=main_menu_keyboard())
+    from keyboards.keyboards import main_menu_kb
+    await message.answer("Действие отменено.", reply_markup=await main_menu_kb(message.from_user.id))
 
 
 # ============ СОСТОЯНИЯ ИГРОКОВ ============

@@ -1,5 +1,8 @@
 """Магазин: каталог по категориям, покупка за Нордмарки и AP."""
 
+import os
+import time
+
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
@@ -15,14 +18,19 @@ from database.db import (
     get_item_by_name, HOUSING_TYPES, HOUSING_ORDER,
     get_special_dept_code, get_special_fails, register_special_fail,
     is_special_blocked, special_dept_block_left_minutes, clear_special_blocked,
+    get_fish_offers, get_fish_offer, remove_fish_offer,
 )
 from keyboards.keyboards import (
-    shop_catalog_keyboard, item_card_keyboard, cancel_keyboard, main_menu_keyboard,
+    shop_catalog_keyboard, item_card_keyboard, cancel_keyboard, main_menu_kb,
 )
 from bot.handlers.housing import (
-    FURNITURE_BY_ITEM, FURNITURE_BY_EXPANSION, HOUSING_ITEM_BY_NAME, housing_menu,
+    FURNITURE_BY_ITEM, FURNITURE_BY_EXPANSION, HOUSING_ITEM_BY_NAME,
+    _housing_photo, housing_menu,
 )
-from utils.helpers import rarity_emoji, rarity_label, plural_nordmark, item_local_photo, edit_or_replace
+from utils.helpers import (
+    rarity_emoji, rarity_label, plural_nordmark, item_local_photo,
+    edit_or_replace, fish_weight_tier, fish_sell_price,
+)
 from config import ITEM_CATEGORIES, SPECIAL_DEPT_ATTEMPTS_LIMIT
 
 router = Router()
@@ -105,6 +113,24 @@ async def visible_items(user_id: int, items) -> list:
     return result
 
 
+def fish_offer_items(offers) -> list:
+    """Псевдо-товары рыбного рынка для ленты каталога «Расходники»."""
+    out = []
+    for o in offers:
+        out.append({
+            "__offer__": True,
+            "id": o["id"],
+            "name": o["name"],
+            "rarity": o["rarity"],
+            "price": o["price"],
+            "weight": o["weight"],
+            "remaining_sec": o["remaining_sec"],
+            "damage": 0,
+            "armor": 0,
+        })
+    return out
+
+
 async def status_req_label(tag: str) -> str:
     if not tag:
         return ""
@@ -129,6 +155,9 @@ async def shop_menu(message: Message):
     for it in items:
         if it['category'] in counts:
             counts[it['category']] += 1
+    padder = fish_offer_items(await get_fish_offers())
+    if padder:
+        counts['consumable'] = counts.get('consumable', 0) + len(padder)
     counts = {k: v for k, v in counts.items() if v > 0}
 
     if not counts:
@@ -152,6 +181,9 @@ async def shop_catalog(callback: CallbackQuery):
     for it in items:
         if it['category'] in counts:
             counts[it['category']] += 1
+    padder = fish_offer_items(await get_fish_offers())
+    if padder:
+        counts['consumable'] = counts.get('consumable', 0) + len(padder)
     counts = {k: v for k, v in counts.items() if v > 0}
     await edit_or_replace(
         callback.message,
@@ -165,6 +197,8 @@ async def shop_category(callback: CallbackQuery):
     await callback.answer()
     category = callback.data.split(":")[1]
     items = await visible_items(callback.from_user.id, await get_available_items(category=category))
+    if category == "consumable":
+        items = items + fish_offer_items(await get_fish_offers())
     if not items:
         await callback.message.edit_text(
             "В этой категории пока нет доступных товаров.", reply_markup=None)
@@ -182,6 +216,12 @@ def items_page_markup(items, category, page: int):
 
     buttons = []
     for it in chunk:
+        if it.get("__offer__"):
+            buttons.append([InlineKeyboardButton(
+                text=f"🐟 {it['name']} — {it['price']} НМ",
+                callback_data=f"fishoffer:{it['id']}"
+            )])
+            continue
         emoji = rarity_emoji(it['rarity'])
         stats = ""
         if it['damage'] > 0:
@@ -218,6 +258,8 @@ async def shop_category_page(callback: CallbackQuery):
     await callback.answer()
     category, page = callback.data.split(":")[1], int(callback.data.split(":")[2])
     items = await visible_items(callback.from_user.id, await get_available_items(category=category))
+    if category == "consumable":
+        items = items + fish_offer_items(await get_fish_offers())
     await show_items_page(callback, category, items, page)
 
 
@@ -302,6 +344,10 @@ async def shop_item_view(callback: CallbackQuery):
     text = header + body
     photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
     local_photo = None if photo_id else item_local_photo(item['name'])
+    if not photo_id and not local_photo and item['category'] == "housing":
+        htype = HOUSING_ITEM_BY_NAME.get(item['name'])
+        if htype:
+            local_photo = _housing_photo(htype)
     if photo_id or local_photo:
         from aiogram.types import InputMediaPhoto, FSInputFile
         media = photo_id or FSInputFile(local_photo)
@@ -381,7 +427,7 @@ async def special_dept_enter_code(message: Message, state: FSMContext):
 
     if text in ("Отмена", "-", "Пропустить"):
         await state.clear()
-        await message.answer("Отменено.", reply_markup=main_menu_keyboard())
+        await message.answer("Отменено.", reply_markup=await main_menu_kb(uid))
         return
 
     data = await state.get_data()
@@ -391,7 +437,7 @@ async def special_dept_enter_code(message: Message, state: FSMContext):
     code = await get_special_dept_code()
     if not code:
         await state.clear()
-        await message.answer("🔐 Спец-отдел сейчас закрыт.", reply_markup=main_menu_keyboard())
+        await message.answer("🔐 Спец-отдел сейчас закрыт.", reply_markup=await main_menu_kb(uid))
         return
 
     if await is_special_blocked(uid):
@@ -400,7 +446,7 @@ async def special_dept_enter_code(message: Message, state: FSMContext):
         await message.answer(
             f"⛔ Ты ввёл код спец-отдела неверно 3 раза. "
             f"Покупки заблокированы ещё на {minutes} мин.",
-            reply_markup=main_menu_keyboard())
+            reply_markup=await main_menu_kb(uid))
         return
 
     if text == code:
@@ -415,7 +461,7 @@ async def special_dept_enter_code(message: Message, state: FSMContext):
         await message.answer(
             "⛔ Неверный код! Ты ввёл его неверно 3 раза — "
             f"покупки в спец-отделе заблокированы на 24 часа.",
-            reply_markup=main_menu_keyboard())
+            reply_markup=await main_menu_kb(uid))
         return
 
     fails = await get_special_fails(uid)
@@ -523,6 +569,108 @@ async def _buy_item(callback: CallbackQuery, item_id: int, qty: int, special_ver
         )
 
 
+@router.callback_query(F.data.startswith("fishoffer:"))
+async def fish_offer_view(callback: CallbackQuery):
+    await callback.answer()
+    offer_id = int(callback.data.split(":")[1])
+    offer = await get_fish_offer(offer_id)
+    if not offer:
+        await edit_or_replace(callback.message, "❌ Этот улов уже продан.", None)
+        return
+
+    item = await get_item(offer['item_id'])
+    tier = fish_weight_tier(offer['weight'])
+    sell = fish_sell_price(item['sell_price'], offer['weight']) if item else offer['price']
+    rem = max(0, offer['remaining_sec'])
+    d, rem2 = divmod(rem, 86400)
+    h = rem2 // 3600
+    fresh_line = f"⏳ Свежесть: {d} дн {h} ч" if d > 0 else f"⏳ Свежесть: {h} ч"
+
+    seller = await get_user(offer['seller_id'])
+    seller_name = (f"@{seller['username']}" if seller and seller['username']
+                   else f"#{offer['seller_id']}")
+
+    text = (
+        f"{rarity_emoji(offer['rarity'])} {offer['name']} {rarity_emoji(offer['rarity'])}\n"
+        f"Редкость: {rarity_label(offer['rarity'])}\n\n"
+        f"⚖️ Вес: {tier['label']}\n"
+        f"{fresh_line}\n"
+        f"👨‍🏭 Продаёт: {seller_name}\n\n"
+        f"💰 Цена: {offer['price']} {plural_nordmark(offer['price'])}\n"
+        f"Срок годности в магазине заморожен — продолжится у покупателя."
+    )
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"💰 Купить за {offer['price']} {plural_nordmark(offer['price'])}",
+            callback_data=f"fishbuy:{offer['id']}")],
+        [InlineKeyboardButton(text="🔙 Расходники", callback_data="shopcat:consumable")],
+    ])
+
+    photo_id = item['photo_file_id'] if item and 'photo_file_id' in item.keys() else None
+    local_photo = None if photo_id else (item_local_photo(offer['name'])
+                                         if item else None)
+    if photo_id or local_photo:
+        from aiogram.types import InputMediaPhoto, FSInputFile
+        media = photo_id or FSInputFile(local_photo)
+        try:
+            if callback.message.photo:
+                await callback.message.edit_media(
+                    media=InputMediaPhoto(media=media, caption=text), reply_markup=kb)
+            else:
+                await callback.message.delete()
+                await callback.message.answer_photo(photo=media, caption=text, reply_markup=kb)
+        except Exception:
+            await callback.message.answer_photo(photo=media, caption=text, reply_markup=kb)
+    else:
+        await edit_or_replace(callback.message, text, kb)
+
+
+@router.callback_query(F.data.startswith("fishbuy:"))
+async def fish_buy(callback: CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    offer_id = int(callback.data.split(":")[1])
+    offer = await get_fish_offer(offer_id)
+    if not offer:
+        await edit_or_replace(callback.message, "❌ Этот улов уже продан.", None)
+        return
+    if offer['seller_id'] == user_id:
+        await callback.message.answer("❌ Это твой собственный улов — купить его нельзя.")
+        return
+
+    user = await get_user(user_id)
+    price = offer['price']
+    if user['nordmarks'] < price:
+        await callback.message.answer(
+            f"❌ Недостаточно. Нужно {price} {plural_nordmark(price)}")
+        return
+
+    now = int(time.time())
+    await remove_nordmarks(user_id, price, "shop_purchase",
+                           f"Покупка улова: {offer['name']}")
+    # Срок продолжает идти у покупателя (в магазине он был заморожен).
+    await add_inventory_item(user_id, offer['item_id'], 1,
+                             expires_at=str(now + max(1, offer['remaining_sec'])))
+
+    sale_tax = await get_sale_tax_percent()
+    tax_amount = int(price * sale_tax / 100)
+    seller_pay = price - tax_amount
+    await add_nordmarks(offer['seller_id'], seller_pay, "shop_payout",
+                        f"Продажа улова: {offer['name']} ({sale_tax}% налог)")
+    await add_treasury(tax_amount, f"Налог: {offer['name']}")
+
+    await remove_fish_offer(offer_id)
+    await log_activity(user_id, "shop_purchase",
+                       f"Купил улов «{offer['name']}» за {price} НМ")
+    await log_activity(offer['seller_id'], "shop_sale",
+                       f"Продан улов «{offer['name']}» за {price} НМ")
+    await callback.message.answer(
+        f"✅ Куплено: {offer['name']} за {price} {plural_nordmark(price)}!\n"
+        f"⏳ Срок годности продолжился — храни в прохладном месте."
+    )
+
+
 async def decrement_stock(item_id: int):
     item = await get_item(item_id)
     if item and item['stock'] != -1 and item['stock'] > 0:
@@ -551,7 +699,16 @@ async def _housing_purchase_confirm(callback: CallbackQuery, item):
         [InlineKeyboardButton(text="✅ Да, переезжаем", callback_data=f"buy_housing:{item['id']}")],
         [InlineKeyboardButton(text="❌ Отмена", callback_data=f"buy_housing_cancel:{item['id']}")],
     ])
-    await callback.message.answer(text, reply_markup=kb)
+    local_photo = None
+    htype = HOUSING_ITEM_BY_NAME.get(item.get('name'))
+    if htype:
+        local_photo = _housing_photo(htype)
+    if local_photo and os.path.isfile(local_photo):
+        from aiogram.types import FSInputFile
+        await callback.message.answer_photo(photo=FSInputFile(local_photo), caption=text,
+                                            reply_markup=kb)
+    else:
+        await callback.message.answer(text, reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("buy_housing_cancel:"))

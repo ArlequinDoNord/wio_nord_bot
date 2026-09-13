@@ -12,14 +12,15 @@ from database.db import (
     add_nordmarks, get_user, get_inventory_item, get_inventory_expiry, get_all_users,
     add_inventory_item, update_item, get_db,
     get_equipment, set_equipment_slot, clear_equipment_slot, log_activity,
-    get_fish_catches, sell_one_fish_catch, get_active_run, process_food_expiry,
+    get_fish_catches, take_fish_catch, sell_one_fish_catch, get_active_run,
+    process_food_expiry, add_fish_offer, RAW_FISH_SHELF_SEC,
 )
 from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text,
     item_local_photo, fish_weight_tier, fish_sell_price, edit_or_replace,
     row_get,
 )
-from keyboards.keyboards import cancel_keyboard, main_menu_keyboard
+from keyboards.keyboards import cancel_keyboard, main_menu_kb
 
 router = Router()
 
@@ -529,16 +530,35 @@ async def _show_fish_catch(message, user_id: int, item_id: int, weight: int):
     tier = fish_weight_tier(weight)
     sell = fish_sell_price(item['sell_price'], weight)
     sell_text = f"{sell} {plural_nordmark(sell)}"
+
+    remaining = 0
+    for c in catches:
+        if c['item_id'] == item_id and c['weight'] == weight:
+            remaining = c.get('remaining_sec', 0)
+            break
+    if remaining > 0:
+        d, rem = divmod(remaining, 86400)
+        h, m = rem // 3600, (rem % 3600) // 60
+        if d > 0:
+            fresh_line = f"⏳ Свежесть: {d} дн {h} ч"
+        else:
+            fresh_line = f"⏳ Свежесть: {h} ч {m} мин"
+    else:
+        fresh_line = "⏳ Свежий улов"
+
     text = (
         f"{rarity_emoji(item['rarity'])} {item['name']} {rarity_emoji(item['rarity'])}\n"
         f"Редкость: {rarity_label(item['rarity'])}\n\n"
         f"⚖️ Вес: {tier['label']}\n"
-        f"В наличии: {count} шт.\n\n"
+        f"В наличии: {count} шт.\n"
+        f"{fresh_line}\n\n"
         f"{item['description']}\n\n"
-        f"💵 Цена продажи (с учётом веса): {sell_text}"
+        f"💰 Цена (с учётом веса): {sell_text}"
     )
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"💵 Продать одну (за {sell_text})",
+        [InlineKeyboardButton(text=f"🏪 На рынок (за {sell_text})",
+                              callback_data=f"fishmarket:{item_id}:{weight}")],
+        [InlineKeyboardButton(text=f"💵 Скупщику сразу (за {sell_text})",
                               callback_data=f"fishsell:{item_id}:{weight}")],
         [InlineKeyboardButton(text="🔙 К категориям", callback_data="inventory:list")],
     ])
@@ -559,6 +579,44 @@ async def _show_fish_catch(message, user_id: int, item_id: int, weight: int):
             await message.answer_photo(photo=media, caption=text, reply_markup=markup)
     else:
         await message.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("fishmarket:"))
+async def fish_market_sell(callback: CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    _, item_id_s, weight_s = callback.data.split(":")
+    item_id, weight = int(item_id_s), int(weight_s)
+    item = await get_item(item_id)
+    if not item:
+        return
+
+    c = await take_fish_catch(user_id, item_id, weight)
+    if not c:
+        await callback.message.answer("❌ Свежего улова уже нет.")
+        await _show_fish_catch(callback.message, user_id, item_id, weight)
+        return
+
+    now = int(time.time())
+    exp = c.get('expires_at')
+    try:
+        expi = int(float(exp)) if exp else None
+    except (TypeError, ValueError):
+        expi = None
+    remaining = max(1, (expi or (now + RAW_FISH_SHELF_SEC)) - now)
+
+    price = fish_sell_price(item['sell_price'], weight)
+    await add_fish_offer(user_id, item_id, weight, price, remaining)
+    await log_activity(user_id, "shop_sale",
+                       f"Выставил «{item['name']}» на рынок за {price} НМ")
+    await callback.message.answer(
+        f"🏪 «{item['name']}» выставлен на продажу за "
+        f"{price} {plural_nordmark(price)}!\n"
+        "Его смогут купить другие пилоты в Магазине → «Расходники».\n"
+        "Срок годности рыбы в магазине замораживается, а Нордмарки придут "
+        "тебе после покупки (за вычетом налога)."
+    )
+    await _show_fish_catch(callback.message, user_id, item_id, weight)
 
 
 @router.callback_query(F.data.startswith("fishsell:"))
@@ -727,4 +785,4 @@ async def inv_transfer_message(message: Message, state: FSMContext):
     )
     if text:
         reply += f"\n📨 Сообщение: «{text}»"
-    await message.answer(reply, reply_markup=main_menu_keyboard())
+    await message.answer(reply, reply_markup=await main_menu_kb(message.from_user.id))

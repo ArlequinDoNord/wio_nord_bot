@@ -7,7 +7,7 @@ from database.db import (
     get_user, update_user, get_user_statuses, get_selected_status, set_selected_status,
     user_has_status_tag, get_equipment, get_item, get_equipment_slot_items, get_user_awards,
 )
-from keyboards.keyboards import profile_keyboard, cancel_keyboard, main_menu_keyboard
+from keyboards.keyboards import profile_keyboard, cancel_keyboard, main_menu_kb
 from config import get_rank, get_effective_rank, get_next_rank, get_rank_index, RANKS
 
 router = Router()
@@ -154,7 +154,7 @@ async def render_other_profile(where, user_id: int):
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 К пилотам", callback_data="city:pilots:list")]
+        [InlineKeyboardButton(text="🔙 К карточке пилота", callback_data=f"rathaus:{user_id}")]
     ])
     photo = user['photo_file_id'] if 'photo_file_id' in user.keys() else None
     if photo:
@@ -190,7 +190,7 @@ async def process_photo(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
         "✅ Фото профиля обновлено!",
-        reply_markup=main_menu_keyboard()
+        reply_markup=await main_menu_kb(message.from_user.id)
     )
 
 
@@ -209,7 +209,7 @@ async def process_about(message: Message, state: FSMContext):
     text = message.text.strip()
     if text.lower() in ("/cancel", "отмена"):
         await state.clear()
-        await message.answer("Отменено.", reply_markup=main_menu_keyboard())
+        await message.answer("Отменено.", reply_markup=await main_menu_kb(message.from_user.id))
         return
     if len(text) > 70:
         await message.answer(
@@ -220,7 +220,7 @@ async def process_about(message: Message, state: FSMContext):
         text = ""
     await update_user(message.from_user.id, about=text)
     await state.clear()
-    await message.answer("✅ «О себе» сохранено!", reply_markup=main_menu_keyboard())
+    await message.answer("✅ «О себе» сохранено!", reply_markup=await main_menu_kb(message.from_user.id))
 
 
 @router.callback_query(F.data == "profile:choose_status")

@@ -5,7 +5,7 @@ import os
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
-from database.db import (get_all_users, get_user, get_selected_status,
+from database.db import (get_all_users, get_user,
                          can_enter_location, get_active_polls,
                          get_user_voted_polls_count)
 from config import get_effective_rank
@@ -107,19 +107,14 @@ async def town_hall_pilot_card(callback: CallbackQuery):
 
     name = (user['first_name'] + " " + (user['last_name'] or "")).strip()
     rank = get_effective_rank(user['troops'], user['promoted_rank'] if 'promoted_rank' in user.keys() else None)
-    selected = await get_selected_status(user_id)
-    status = selected['name'] if selected else "—"
 
+    # Краткая карточка: только имя и звание. Фото, позывной, статус и «О себе» —
+    # в полном профиле («👤 Открыть профиль»).
     text = (
         f"🪖 {name}\n"
         f"────────────────\n"
-        f"Позывной: @{user['username'] or '—'}\n"
         f"⭐ Звание: {rank}\n"
-        f"🎖️ Статус: {status}\n"
     )
-    about = (user.get('about') or '').strip()
-    if about:
-        text += f"📖 О себе: {about}\n"
 
     # Видимость профиля: если владелец скрыл его (VIP-настройка) — кнопка открытия не показывается.
     public = bool(user['profile_public'] if 'profile_public' in user.keys() else 1)
@@ -133,22 +128,6 @@ async def town_hall_pilot_card(callback: CallbackQuery):
         text += f"\n🔒 Профиль скрыт владельцем.\n"
     buttons.append([InlineKeyboardButton(text="🔙 К пилотам", callback_data="city:pilots:list")])
     markup = InlineKeyboardMarkup(inline_keyboard=buttons)
-
-    photo = user['photo_file_id'] if 'photo_file_id' in user.keys() else None
-    if photo:
-        try:
-            if callback.message.photo:
-                from aiogram.types import InputMediaPhoto
-                await callback.message.edit_media(
-                    media=InputMediaPhoto(media=photo, caption=text),
-                    reply_markup=markup
-                )
-            else:
-                await callback.message.delete()
-                await callback.message.answer_photo(photo=photo, caption=text, reply_markup=markup)
-            return
-        except Exception:
-            pass
 
     if callback.message.photo:
         await callback.message.edit_caption(caption=text, reply_markup=markup)

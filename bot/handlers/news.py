@@ -13,9 +13,9 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
     add_news, get_news, get_latest_news, get_all_news, update_news,
-    delete_news, get_news_count_today, get_user,
+    delete_news, get_news_count_today, get_user, has_library_access,
 )
-from utils.permissions import has_permission
+from utils.permissions import has_permission, is_admin
 from utils.helpers import edit_or_replace, edit_message_safe
 from config import ADMIN_IDS
 
@@ -50,6 +50,19 @@ async def daily_limit_for(user_id: int) -> tuple:
             return 0, True
         return EDITOR_LIMIT, False
     return JOURNALIST_LIMIT, False
+
+
+async def _archive_allowed(user_id: int) -> bool:
+    """Архив всех выпусков — для корреспондентов ГосСМИ и владельцев читательского билета.
+
+    Лента (последние 10 выпусков) доступна всем, а полный архив — привилегия
+    читателей Библиотеки (и сотрудников ГосСМИ: журналистов/редакторов/админов).
+    """
+    if await is_admin(user_id):
+        return True
+    if await has_permission(user_id, "can_post_news"):
+        return True
+    return await has_library_access(user_id)
 
 
 async def news_menu_kb(has_manage: bool = False):
@@ -116,6 +129,13 @@ async def news_tab(message: Message, user_id: int | None = None):
 @router.callback_query(F.data == "news:archive")
 async def news_archive(callback: CallbackQuery):
     await callback.answer()
+    if not await _archive_allowed(callback.from_user.id):
+        await callback.message.answer(
+            "📚 Архив всех выпусков ГосСМИ живёт в Библиотеке и доступен владельцам "
+            "читательского билета.\n\n"
+            "Купи «Читательский билет» в Магазине → раздел «Читательские билеты»."
+        )
+        return
     all_news = await get_all_news()
     if not all_news:
         await edit_or_replace(callback.message, "Архив новостей пуст.", None)
@@ -156,6 +176,12 @@ async def _archive_page(callback: CallbackQuery, all_news, page: int):
 @router.callback_query(F.data.regexp(r"^news:arch:\d+$"))
 async def news_archive_page(callback: CallbackQuery):
     await callback.answer()
+    if not await _archive_allowed(callback.from_user.id):
+        await callback.message.answer(
+            "📚 Архив выпусков ГосСМИ доступен только владельцам читательского билета "
+            "(Библиотека, раздел «Читательские билеты» в Магазине)."
+        )
+        return
     page = int(callback.data.split(":")[2])
     all_news = await get_all_news()
     if not all_news:

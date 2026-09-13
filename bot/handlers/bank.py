@@ -3,7 +3,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.db import get_user, transfer_nordmarks, get_transactions_history, get_all_users, transfer_to_treasury, get_treasury_balance, log_activity
-from keyboards.keyboards import bank_keyboard, cancel_keyboard, main_menu_keyboard
+from keyboards.keyboards import bank_keyboard, cancel_keyboard, main_menu_kb
 from utils.helpers import format_amount, plural_nordmark, is_main_menu_text
 
 router = Router()
@@ -159,7 +159,7 @@ async def process_treasury_amount(message: Message, state: FSMContext):
     text = message.text.strip()
     if text == "Отмена":
         await state.clear()
-        await message.answer("Операция отменена", reply_markup=main_menu_keyboard())
+        await message.answer("Операция отменена", reply_markup=await main_menu_kb(message.from_user.id))
         return
 
     try:
@@ -189,7 +189,7 @@ async def process_treasury_amount(message: Message, state: FSMContext):
         f"✅ Пожертвование принято!\n"
         f"Сумма: {amount} НМ\n"
         f"Баланс казны: {new_balance} НМ",
-        reply_markup=main_menu_keyboard()
+        reply_markup=await main_menu_kb(message.from_user.id)
     )
 
 
@@ -198,7 +198,7 @@ async def process_recipient(message: Message, state: FSMContext):
     username = message.text.strip()
     if not username or username == "Отмена":
         await state.clear()
-        await message.answer("Операция отменена", reply_markup=main_menu_keyboard())
+        await message.answer("Операция отменена", reply_markup=await main_menu_kb(message.from_user.id))
         return
 
     users = await get_all_users()
@@ -220,7 +220,7 @@ async def process_amount(message: Message, state: FSMContext):
     text = message.text.strip()
     if text == "Отмена":
         await state.clear()
-        await message.answer("Операция отменена", reply_markup=main_menu_keyboard())
+        await message.answer("Операция отменена", reply_markup=await main_menu_kb(message.from_user.id))
         return
 
     try:
@@ -267,7 +267,7 @@ async def process_message(message: Message, state: FSMContext):
         await state.clear()
         await message.answer(
             f"❌ Недостаточно средств. Баланс: {sender['nordmarks'] if sender else 0} НМ",
-            reply_markup=main_menu_keyboard()
+            reply_markup=await main_menu_kb(message.from_user.id)
         )
         return
 
@@ -306,7 +306,7 @@ async def process_message(message: Message, state: FSMContext):
     )
     if text:
         reply += f"\n📨 Сообщение: «{text}»"
-    await message.answer(reply, reply_markup=main_menu_keyboard())
+    await message.answer(reply, reply_markup=await main_menu_kb(message.from_user.id))
 
 
 @router.callback_query(F.data == "bank:history")

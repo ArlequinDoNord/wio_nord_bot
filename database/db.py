@@ -417,6 +417,19 @@ async def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_fish_catches_user ON fish_catches(user_id, sold_at);
 
+        CREATE TABLE IF NOT EXISTS market_fish (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            seller_id INTEGER NOT NULL,
+            item_id INTEGER NOT NULL,
+            weight INTEGER NOT NULL DEFAULT 1,
+            price INTEGER NOT NULL,
+            remaining_sec INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (seller_id) REFERENCES users(user_id),
+            FOREIGN KEY (item_id) REFERENCES items(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_market_fish ON market_fish(created_at);
+
         CREATE TABLE IF NOT EXISTS statuses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -549,6 +562,9 @@ async def init_db():
     await _ensure_column(conn, "polls", "closed_at", "TIMESTAMP")
     # Срок годности жареной рыбы (время истечения в инвентаре)
     await _ensure_column(conn, "inventory", "expires_at", "TIMESTAMP")
+    # Срок годности сырой (неприготовленной) рыбы: 4 дня с момента поимки.
+    # У старых уловов expires_at пустой — они считаются свежими (фолбэк в коде).
+    await _ensure_column(conn, "fish_catches", "expires_at", "TIMESTAMP")
     # Фонтан в парке: 1 восстановление ОД в сутки
     await _ensure_column(conn, "users", "fountain_used_day", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "users", "fountain_used_today", "INTEGER DEFAULT 0")
@@ -2976,28 +2992,80 @@ async def update_park_statue(statue_id: int, **fields):
 # ============ УЛОВ (рыбалка): рыба с весом ============
 
 async def add_fish_catch(user_id: int, item_id: int, weight: int = 1) -> int:
-    """Записывает пойманную рыбу с весом (отдельный экземпляр)."""
+    """Записывает пойманную рыбу с весом (отдельный экземпляр).
+
+    Сырая рыба портится через 4 дня после поимки (срок годности).
+    """
     conn = await get_db()
+    expires_at = str(int(time.time()) + RAW_FISH_SHELF_SEC)
     cursor = await conn.execute(
-        "INSERT INTO fish_catches (user_id, item_id, weight) VALUES (?, ?, ?)",
-        (user_id, item_id, weight)
+        "INSERT INTO fish_catches (user_id, item_id, weight, expires_at) VALUES (?, ?, ?, ?)",
+        (user_id, item_id, weight, expires_at)
     )
     await conn.commit()
     return cursor.lastrowid
 
 
 async def get_fish_catches(user_id: int):
-    """Все непроданные уловы игрока вместе с данными предмета."""
+    """Свежие (непротухшие) непроданные уловы игрока вместе с данными предмета.
+
+    Протухшая рыба удаляется (срок годности 4 дня), в инвентарь не попадает
+    и не может быть использована в рецептах кухни.
+    """
     conn = await get_db()
+    now = int(time.time())
+    await conn.execute(
+        "DELETE FROM fish_catches WHERE user_id = ? AND sold_at IS NULL "
+        "AND expires_at IS NOT NULL AND CAST(expires_at AS REAL) <= ?",
+        (user_id, now)
+    )
+    await conn.commit()
     cursor = await conn.execute("""
-        SELECT fc.id, fc.user_id, fc.item_id, fc.weight, fc.created_at,
+        SELECT fc.id, fc.user_id, fc.item_id, fc.weight, fc.created_at, fc.expires_at,
                i.name, i.sell_price, i.rarity, i.description
         FROM fish_catches fc
         JOIN items i ON i.id = fc.item_id
         WHERE fc.user_id = ? AND fc.sold_at IS NULL
         ORDER BY fc.id
     """, (user_id,))
-    return await cursor.fetchall()
+    rows = await cursor.fetchall()
+    result = []
+    for r in rows:
+        r = dict(r)
+        exp = r.get('expires_at')
+        try:
+            expi = int(float(exp)) if exp else None
+        except (TypeError, ValueError):
+            expi = None
+        if expi is None:
+            # Уловы до введения срока годности считаем свежими (полные 4 дня).
+            expi = now + RAW_FISH_SHELF_SEC
+        r['remaining_sec'] = max(0, expi - now)
+        result.append(r)
+    return result
+
+
+async def take_fish_catch(user_id: int, item_id: int, weight: int):
+    """Забирает один свежий улов (для продажи на рынок) и возвращает его данные.
+
+    Возвращает None, если свежего улова нет. Улов удаляется из fish_catches,
+    а оставшийся срок годности можно «заморозить» для маркета.
+    """
+    conn = await get_db()
+    now = int(time.time())
+    cursor = await conn.execute(
+        "SELECT id, expires_at FROM fish_catches WHERE user_id = ? AND item_id = ? "
+        "AND weight = ? AND sold_at IS NULL "
+        "AND (expires_at IS NULL OR CAST(expires_at AS REAL) > ?) "
+        "ORDER BY id LIMIT 1",
+        (user_id, item_id, weight, now)
+    )
+    row = await cursor.fetchone()
+    if not row:
+        return None
+    await conn.execute("DELETE FROM fish_catches WHERE id = ?", (row['id'],))
+    await conn.commit()
+    return dict(row)
 
 
 async def get_fish_catch(catch_id: int):
@@ -3011,12 +3079,14 @@ async def get_fish_catch(catch_id: int):
 
 
 async def sell_one_fish_catch(user_id: int, item_id: int, weight: int) -> bool:
-    """Списывает один непроданный улов рыбы с данным весом. True — если был."""
+    """Списывает один свежий непроданный улов рыбы с данным весом. True — если был."""
     conn = await get_db()
     cursor = await conn.execute(
         "SELECT id FROM fish_catches WHERE user_id = ? AND item_id = ? AND weight = ? "
-        "AND sold_at IS NULL ORDER BY id LIMIT 1",
-        (user_id, item_id, weight)
+        "AND sold_at IS NULL "
+        "AND (expires_at IS NULL OR CAST(expires_at AS REAL) > ?) "
+        "ORDER BY id LIMIT 1",
+        (user_id, item_id, weight, int(time.time()))
     )
     row = await cursor.fetchone()
     if not row:
@@ -3024,6 +3094,53 @@ async def sell_one_fish_catch(user_id: int, item_id: int, weight: int) -> bool:
     await conn.execute("DELETE FROM fish_catches WHERE id = ?", (row['id'],))
     await conn.commit()
     return True
+
+
+# ============ МАРКЕТ УЛОВА: рыба, выставленная на продажу в магазине ============
+
+async def add_fish_offer(seller_id: int, item_id: int, weight: int,
+                         price: int, remaining_sec: int) -> int:
+    """Выставляет свежий улов в магазин. Срок годности «замирает» на остатке."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "INSERT INTO market_fish (seller_id, item_id, weight, price, remaining_sec) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (seller_id, item_id, weight, price, max(1, remaining_sec))
+    )
+    await conn.commit()
+    return cursor.lastrowid
+
+
+async def get_fish_offers():
+    """Активные объявления пойманной рыбы в магазине (со сведениями о предмете)."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT mf.id, mf.seller_id, mf.item_id, mf.weight, mf.price, mf.remaining_sec,
+               i.name, i.rarity
+        FROM market_fish mf
+        JOIN items i ON i.id = mf.item_id
+        ORDER BY mf.id
+    """)
+    return await cursor.fetchall()
+
+
+async def get_fish_offer(offer_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT mf.*, i.name, i.rarity, i.sell_price
+        FROM market_fish mf
+        JOIN items i ON i.id = mf.item_id
+        WHERE mf.id = ?
+    """, (offer_id,))
+    return await cursor.fetchone()
+
+
+async def remove_fish_offer(offer_id: int) -> bool:
+    """Удаляет объявление (рыба куплена или снята)."""
+    conn = await get_db()
+    cursor = await conn.execute("DELETE FROM market_fish WHERE id = ?", (offer_id,))
+    await conn.commit()
+    return cursor.rowcount > 0
 
 
 # ============ СИД: ТЕСТОВЫЕ ТОВАРЫ ============
@@ -3782,6 +3899,9 @@ FRUIT_EVERY_DAYS = 2
 APPLE_SEED_NAME = "Яблочное семечко"
 APPLE_NAME = "Яблоко"
 FOOD_SHELF_DAYS = 4  # срок годности жареной рыбы (96 часов)
+# Срок годности сырой (неприготовленной) рыбы: 4 дня с момента поимки.
+RAW_FISH_SHELF_DAYS = 4
+RAW_FISH_SHELF_SEC = RAW_FISH_SHELF_DAYS * 86400
 
 
 async def ensure_player_housing(user_id: int):
@@ -3944,7 +4064,16 @@ async def get_ingredient_map(user_id: int) -> dict:
     """
     counts: dict = {}
     inv = await get_inventory(user_id)
+    now = time.time()
     for i in inv:
+        # Срок годности: протухшее сырьё в рецепты не идёт (например, купленная рыба).
+        exp = i.get('expires_at')
+        try:
+            expi = float(exp) if exp else None
+        except (TypeError, ValueError):
+            expi = None
+        if expi and expi <= now:
+            continue
         counts[i['name']] = counts.get(i['name'], 0) + i['quantity']
     catches = await get_fish_catches(user_id)
     for c in catches:
@@ -3958,8 +4087,9 @@ async def remove_fish_catches_by_name(user_id: int, name: str, qty: int) -> bool
     cursor = await conn.execute(
         "SELECT fc.id FROM fish_catches fc JOIN items i ON i.id = fc.item_id "
         "WHERE fc.user_id = ? AND i.name = ? AND fc.sold_at IS NULL "
+        "AND (fc.expires_at IS NULL OR CAST(fc.expires_at AS REAL) > ?) "
         "ORDER BY fc.id LIMIT ?",
-        (user_id, name, qty)
+        (user_id, name, time.time(), qty)
     )
     rows = await cursor.fetchall()
     if len(rows) < qty:
