@@ -216,7 +216,7 @@ def items_page_markup(items, category, page: int):
 
     buttons = []
     for it in chunk:
-        if it.get("__offer__"):
+        if isinstance(it, dict) and it.get("__offer__"):
             buttons.append([InlineKeyboardButton(
                 text=f"🐟 {it['name']} — {it['price']} НМ",
                 callback_data=f"fishoffer:{it['id']}"
