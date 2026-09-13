@@ -976,7 +976,7 @@ async def consume_drink(user_id: int, item_id: int):
                                  minutes=VERY_DRUNK_MINUTES,
                                  reason=f"выпит {kind} «{name}» ({used} шт./сутки)")
             return True, (
-                f"{glass} Ты выпил «{name}» ({used}/{very_limit} за сутки). "
+                f"{glass} Ты выпил «{name}». "
                 f"🥴 Состояние «Очень пьян» на {VERY_DRUNK_MINUTES} минут! "
                 f"Зелья недоступны, вход во все здания закрыт, в бою атака −50%."
             )
@@ -985,13 +985,13 @@ async def consume_drink(user_id: int, item_id: int):
                                  minutes=DRUNK_MINUTES,
                                  reason=f"выпит {kind} «{name}» ({used} шт./сутки)")
             return True, (
-                f"{glass} Ты выпил «{name}» ({used}/{very_limit} за сутки). "
+                f"{glass} Ты выпил «{name}». "
                 f"🍺 Состояние «Пьян» на {DRUNK_MINUTES} минут. "
                 f"В Ратушу и Библиотеку не пускают, в бою атака −20%."
             )
         return True, (
-            f"{glass} Ты выпил «{name}» ({used}/{very_limit} за сутки). "
-            f"Ещё {drunk_limit - used} шт. — и наступит «Пьян»."
+            f"{glass} Ты выпил «{name}». "
+            f"Приятного аппетита!"
         )
 
     # Безалкогольные эффекты.
