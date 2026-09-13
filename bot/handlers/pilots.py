@@ -5,17 +5,19 @@ import os
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
-from database.db import get_all_users, get_user, get_selected_status, can_enter_location
+from database.db import (get_all_users, get_user, get_selected_status,
+                         can_enter_location, get_active_polls,
+                         get_user_voted_polls_count)
 from config import get_effective_rank
 from utils.helpers import resolve_image
 
 router = Router()
 
 
-def town_hall_markup() -> InlineKeyboardMarkup:
-    """Главное меню Ратуши: разделы."""
+def town_hall_markup(voted: int = 0, active: int = 0) -> InlineKeyboardMarkup:
+    """Главное меню Ратуши: разделы. voted/active — счётчик «Голосования и опросы» (участие/активные)."""
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🗳️ Голосование и опросы", callback_data="city:vote")],
+        [InlineKeyboardButton(text=f"🗳️ Голосование и опросы {voted}/{active}", callback_data="city:vote")],
         [InlineKeyboardButton(text="🪖 Пилоты города", callback_data="city:pilots:list")],
         [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
     ])
@@ -37,21 +39,23 @@ async def _show_hall(callback: CallbackQuery):
     """Показать главное меню Ратуши (переписывает текущее сообщение)."""
     hall_view = resolve_image("city/rathaus")
     caption = "🏛️ РАТУША НОРДХАЙМА\n\nЗдесь собираются пилоты, проходят голосования и решаются вопросы города."
+    voted = await get_user_voted_polls_count(callback.from_user.id)
+    active = len(await get_active_polls())
     if os.path.isfile(hall_view):
         if callback.message.photo:
             from aiogram.types import InputMediaPhoto
             await callback.message.edit_media(
                 media=InputMediaPhoto(media=FSInputFile(hall_view), caption=caption),
-                reply_markup=town_hall_markup()
+                reply_markup=town_hall_markup(voted, active)
             )
         else:
             await callback.message.answer_photo(
                 photo=FSInputFile(hall_view),
                 caption=caption,
-                reply_markup=town_hall_markup()
+                reply_markup=town_hall_markup(voted, active)
             )
     else:
-        await callback.message.edit_text(caption, reply_markup=town_hall_markup())
+        await callback.message.edit_text(caption, reply_markup=town_hall_markup(voted, active))
 
 
 @router.callback_query(F.data == "city:pilots")

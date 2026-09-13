@@ -1405,6 +1405,17 @@ async def user_voted(poll_id: int, user_id: int) -> bool:
     return await cursor.fetchone() is not None
 
 
+async def get_user_voted_polls_count(user_id: int) -> int:
+    """Сколько всего опросов уже прошёл пилот (хотя бы раз проголосовал)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT COUNT(DISTINCT poll_id) AS cnt FROM poll_votes WHERE user_id = ?",
+        (user_id,)
+    )
+    row = await cursor.fetchone()
+    return row['cnt'] if row else 0
+
+
 async def get_poll_vote_option(poll_id: int, user_id: int):
     conn = await get_db()
     cursor = await conn.execute(
