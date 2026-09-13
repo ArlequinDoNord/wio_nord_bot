@@ -40,6 +40,7 @@ async def init_db():
             state_effects TEXT DEFAULT '{}',
             promoted_rank TEXT,
             status_text TEXT DEFAULT 'Боевой пилот',
+            about TEXT DEFAULT '',
             notify_enabled INTEGER DEFAULT 1,
             profile_public INTEGER DEFAULT 1,
             equipment TEXT DEFAULT '{}',
@@ -500,6 +501,7 @@ async def init_db():
     await _ensure_column(conn, "users", "promoted_rank", "TEXT")
     await _ensure_column(conn, "users", "notify_enabled", "INTEGER DEFAULT 1")
     await _ensure_column(conn, "users", "profile_public", "INTEGER DEFAULT 1")
+    await _ensure_column(conn, "users", "about", "TEXT DEFAULT ''")
     await _ensure_column(conn, "users", "equipment", "TEXT DEFAULT '{}'")
     await _ensure_column(conn, "users", "salary", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "salary_period_days", "INTEGER DEFAULT 7")

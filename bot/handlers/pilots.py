@@ -113,6 +113,9 @@ async def town_hall_pilot_card(callback: CallbackQuery):
         f"⭐ Звание: {rank}\n"
         f"🎖️ Статус: {status}\n"
     )
+    about = (user.get('about') or '').strip()
+    if about:
+        text += f"📖 О себе: {about}\n"
 
     # Видимость профиля: если владелец скрыл его (VIP-настройка) — кнопка открытия не показывается.
     public = bool(user['profile_public'] if 'profile_public' in user.keys() else 1)

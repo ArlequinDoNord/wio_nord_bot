@@ -51,6 +51,7 @@ def profile_keyboard(notify_enabled: bool = True, profile_public: bool = True, c
     rows = [
         [InlineKeyboardButton(text="Изменить фото", callback_data="profile:set_photo")],
         [InlineKeyboardButton(text="Выбрать статус", callback_data="profile:choose_status")],
+        [InlineKeyboardButton(text="📖 О себе", callback_data="profile:edit_about")],
         [InlineKeyboardButton(text="🎖️ Награды", callback_data="profile:awards")],
         [InlineKeyboardButton(text="Карточка пилота", callback_data="profile:pilot_card")],
         [InlineKeyboardButton(

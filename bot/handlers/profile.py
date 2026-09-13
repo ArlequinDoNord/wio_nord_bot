@@ -15,6 +15,7 @@ router = Router()
 
 class ProfileStates(StatesGroup):
     waiting_photo = State()
+    waiting_about = State()
 
 
 async def selected_status_label(user_id: int) -> str:
@@ -88,6 +89,9 @@ async def _profile_caption(user_id: int, owner: bool = True):
         + (f"{state_line}\n" if state_line else "❤️ Состояние: нормально\n")
         + f"🎖️ Статус: {status}\n"
     )
+    about = (user.get('about') or '').strip()
+    if about:
+        caption += f"📖 О себе: {about}\n"
     if owner:
         caption += f"🔔 Оповещения в группе: {'вкл' if notify else 'выкл'}\n"
         if await user_has_status_tag(user_id, "vip"):
@@ -123,17 +127,36 @@ async def render_profile(where, user_id: int):
 
 
 async def render_other_profile(where, user_id: int):
-    """Просмотр профиля другого пилота (из Ратуши) — без кнопок владельца."""
+    """Публичный профиль пилота при просмотре из Ратуши.
+
+    Сторонний наблюдатель видит только: фотокарточку, имя и позывной, звание,
+    статус и «О себе». Без войск, финансов, экипировки и состояния.
+    """
     out = where.message if hasattr(where, 'message') else where
-    caption, photo = await _profile_caption(user_id, owner=False)
-    if caption is None:
+    user = await get_user(user_id)
+    if not user:
         await out.answer("❌ Пилот не найден.")
         return
+
+    name = (user['first_name'] + " " + (user['last_name'] or "")).strip()
+    rank = get_effective_rank(user['troops'], user['promoted_rank'] if 'promoted_rank' in user.keys() else None)
+    status = await selected_status_label(user_id)
+    about = (user.get('about') or '').strip()
+
+    caption = (
+        f"🪪 Пилот: {name}\n"
+        f"Позывной: @{user['username'] or '—'}\n"
+        f"⭐ Звание: {rank}\n"
+        f"🎖️ Статус: {status}\n"
+    )
+    if about:
+        caption += f"\n📖 О себе: {about}\n"
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     markup = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 К пилотам", callback_data="city:pilots:list")]
     ])
+    photo = user['photo_file_id'] if 'photo_file_id' in user.keys() else None
     if photo:
         await out.answer_photo(photo=photo, caption=caption, reply_markup=markup)
     else:
@@ -169,6 +192,35 @@ async def process_photo(message: Message, state: FSMContext):
         "✅ Фото профиля обновлено!",
         reply_markup=main_menu_keyboard()
     )
+
+
+@router.callback_query(F.data == "profile:edit_about")
+async def edit_about(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.set_state(ProfileStates.waiting_about)
+    await callback.message.answer(
+        "📖 Напиши «о себе» — до 70 символов. Нажми «Отмена», если передумаешь:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(ProfileStates.waiting_about, F.text)
+async def process_about(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if text.lower() in ("/cancel", "отмена"):
+        await state.clear()
+        await message.answer("Отменено.", reply_markup=main_menu_keyboard())
+        return
+    if len(text) > 70:
+        await message.answer(
+            f"❌ Слишком длинно — максимум 70 символов (сейчас {len(text)}). Напиши короче:"
+        )
+        return
+    if text in ("-", "Пропустить"):
+        text = ""
+    await update_user(message.from_user.id, about=text)
+    await state.clear()
+    await message.answer("✅ «О себе» сохранено!", reply_markup=main_menu_keyboard())
 
 
 @router.callback_query(F.data == "profile:choose_status")
