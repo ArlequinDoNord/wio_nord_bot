@@ -4264,7 +4264,7 @@ async def get_ingredient_map(user_id: int) -> dict:
     рецепты кухни не могли «видеть» улов. Объединяем обе базы.
     """
     counts: dict = {}
-    inv = await get_inventory(user_id)
+    inv = [dict(i) for i in await get_inventory(user_id)]
     now = time.time()
     for i in inv:
         # Срок годности: протухшее сырьё в рецепты не идёт (например, купленная рыба).
