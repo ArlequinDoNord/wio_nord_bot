@@ -3708,6 +3708,8 @@ async def ensure_life_items():
          30, 15, 1, "seeds", 10, 0, "pilot", 1),
         ("Бутылка чистой воды", "Чистая вода из артезианской скважины. Основа для настоек и энергетиков.",
          20, 10, 1, "resource", -1, 0, "pilot", 1),
+        ("Соль", "Каменная соль из лавки. Специи для готовки рыбы: ни одно жареное блюдо не обходится без щепотки.",
+         5, 2, 1, "consumable", -1, 0, None, 1),
         ("Лапка паука", "Высушенная лапка обычного паука. Ингредиент для комбинированной наживки.",
          10, 5, 1, "resource", 0, 0, None, 0),
         ("Жареный сиг", "Жаренный на углях сиг. +15 HP в бою. Срок годности 4 суток.",
@@ -3986,18 +3988,18 @@ async def set_housing_slot(user_id: int, slot_index: int, expansion_type: str = 
 # ---------- Рецепты ----------
 
 RECIPES_DEF = [
-    {"name": "Пожарить сига", "desc": "Жареный сиг: +15 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Пожарить сига", "desc": "Жареный сиг со специями: +15 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный сиг", "qty": 1, "exp": "kitchen", "lvl": 1,
-     "ingredients": [("Сиг", 1)], "ap": 5, "time": 20, "rarity": 1},
-    {"name": "Пожарить муксуна", "desc": "Жареный муксун: +30 HP в бою подземелья. Срок годности: 4 суток.",
+     "ingredients": [("Сиг", 1), ("Соль", 1)], "ap": 5, "time": 20, "rarity": 1},
+    {"name": "Пожарить муксуна", "desc": "Жареный муксун со специями: +30 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный муксун", "qty": 1, "exp": "kitchen", "lvl": 1,
-     "ingredients": [("Муксун", 1)], "ap": 5, "time": 20, "rarity": 1},
-    {"name": "Пожарить чира", "desc": "Жареный чир: +45 HP в бою подземелья. Срок годности: 4 суток.",
+     "ingredients": [("Муксун", 1), ("Соль", 1)], "ap": 5, "time": 20, "rarity": 1},
+    {"name": "Пожарить чира", "desc": "Жареный чир со специями: +45 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный чир", "qty": 1, "exp": "kitchen", "lvl": 1,
-     "ingredients": [("Чир", 1)], "ap": 7, "time": 25, "rarity": 1},
-    {"name": "Пожарить налима", "desc": "Жареный налим: +55 HP в бою подземелья. Срок годности: 4 суток.",
+     "ingredients": [("Чир", 1), ("Соль", 1)], "ap": 7, "time": 25, "rarity": 1},
+    {"name": "Пожарить налима", "desc": "Жареный налим со специями: +55 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный налим", "qty": 1, "exp": "kitchen", "lvl": 1,
-     "ingredients": [("Налим", 1)], "ap": 8, "time": 25, "rarity": 1},
+     "ingredients": [("Налим", 1), ("Соль", 1)], "ap": 8, "time": 25, "rarity": 1},
     {"name": "Комбинированная наживка", "desc": "Собирается на верстаке. +30% к шансу улова.",
      "result": "Комбинированная наживка", "qty": 1, "exp": "workbench", "lvl": 1,
      "ingredients": [("Лапка паука", 1), ("Черви", 1)], "ap": 5, "time": 20, "rarity": 1},
@@ -4015,21 +4017,39 @@ RECIPES_DEF = [
 
 
 async def ensure_recipes():
-    """Идемпотентно засевает рецепты (если таблица пуста)."""
+    """Идемпотентно засевает рецепты и синхронизирует уже существующие.
+
+    Рецепты обновляются по названию: если строка уже есть — перезаписываем состав
+    и описание, иначе добавляем новую. Это нужно, чтобы смена рецептуры
+    (например, добавление соли в жареную рыбу) доезжала до существующих БД.
+    """
     conn = await get_db()
-    cursor = await conn.execute("SELECT COUNT(*) as c FROM recipes")
-    if (await cursor.fetchone())['c'] > 0:
-        return False
+    changed = False
     for r in RECIPES_DEF:
-        await conn.execute(
-            "INSERT INTO recipes (name, description, result_item_name, result_quantity, "
-            "required_expansion, required_level, ingredients, ap_cost, production_time, rarity) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (r['name'], r['desc'], r['result'], r.get('qty', 1), r['exp'], r['lvl'],
-             json.dumps(r['ingredients'], ensure_ascii=False), r['ap'], r['time'], r.get('rarity', 1))
-        )
-    await conn.commit()
-    return True
+        cursor = await conn.execute(
+            "SELECT id FROM recipes WHERE name = ? AND required_expansion = ? AND required_level = ?",
+            (r['name'], r['exp'], r['lvl']))
+        row = await cursor.fetchone()
+        ingredients = json.dumps(r['ingredients'], ensure_ascii=False)
+        if row:
+            await conn.execute(
+                "UPDATE recipes SET description = ?, result_item_name = ?, result_quantity = ?, "
+                "ingredients = ?, ap_cost = ?, production_time = ?, rarity = ? WHERE id = ?",
+                (r['desc'], r['result'], r.get('qty', 1), ingredients,
+                 r['ap'], r['time'], r.get('rarity', 1), row['id']))
+            changed = True
+        else:
+            await conn.execute(
+                "INSERT INTO recipes (name, description, result_item_name, result_quantity, "
+                "required_expansion, required_level, ingredients, ap_cost, production_time, rarity) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (r['name'], r['desc'], r['result'], r.get('qty', 1), r['exp'], r['lvl'],
+                 ingredients, r['ap'], r['time'], r.get('rarity', 1))
+            )
+            changed = True
+    if changed:
+        await conn.commit()
+    return changed
 
 
 async def get_recipes(expansion: str = None, level: int = None):

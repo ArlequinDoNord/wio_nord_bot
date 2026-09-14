@@ -406,14 +406,14 @@ async def fishing_lake_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data.regexp(r"^fish:lake:\d+$"))
 async def fish_lake_cb(callback: CallbackQuery):
-    if not _fish_ok(callback):
+    if not await _fish_ok(callback):
         return
     await fishing_lake_menu(callback)
 
 
 @router.callback_query(F.data.regexp(r"^fish:bait:\d+$"))
 async def fish_bait_menu(callback: CallbackQuery):
-    if not _fish_ok(callback):
+    if not await _fish_ok(callback):
         return
     await callback.answer()
     _mark_fishing_active(callback.from_user.id)
@@ -429,9 +429,9 @@ async def fish_bait_menu(callback: CallbackQuery):
         w_inv = await get_inventory_item(callback.from_user.id, worms['id'])
         worms_qty = w_inv['quantity'] if w_inv else 0
     spider_inv = await get_inventory_item(callback.from_user.id, spider['id']) if spider else None
-    spider_qty = spider_inv['quantity'] if spider else 0
+    spider_qty = spider_inv['quantity'] if spider_inv else 0
     combined_inv = await get_inventory_item(callback.from_user.id, combined['id']) if combined else None
-    combined_qty = combined_inv['quantity'] if combined else 0
+    combined_qty = combined_inv['quantity'] if combined_inv else 0
 
     selected = {
         "worms": WORMS_NAME,
@@ -455,7 +455,7 @@ async def fish_bait_menu(callback: CallbackQuery):
 
 @router.callback_query(F.data.regexp(r"^fish:bait:set:\d+:[a-z]+$"))
 async def fish_bait_choose(callback: CallbackQuery):
-    if not _fish_ok(callback):
+    if not await _fish_ok(callback):
         return
     await callback.answer()
     value = callback.data.split(":", 4)[4]
@@ -465,7 +465,7 @@ async def fish_bait_choose(callback: CallbackQuery):
 
 @router.callback_query(F.data.regexp(r"^fish:cast:\d+$"))
 async def fish_cast(callback: CallbackQuery):
-    if not _fish_ok(callback):
+    if not await _fish_ok(callback):
         return
     user_id = callback.from_user.id
     if user_id in FISHING_CASTING:

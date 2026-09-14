@@ -2,6 +2,8 @@
 
 import os
 
+from datetime import datetime
+
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -9,7 +11,7 @@ from database.db import (get_all_users, get_user,
                          can_enter_location, get_active_polls,
                          get_user_voted_polls_count)
 from config import get_effective_rank
-from utils.helpers import resolve_image
+from utils.helpers import resolve_image, MOSCOW_TZ
 
 router = Router()
 
@@ -38,7 +40,12 @@ def pilots_list_markup(users) -> InlineKeyboardMarkup:
 async def _show_hall(callback: CallbackQuery):
     """Показать главное меню Ратуши (переписывает текущее сообщение)."""
     hall_view = resolve_image("city/rathaus")
-    caption = "🏛️ РАТУША НОРДХАЙМА\n\nЗдесь собираются пилоты, проходят голосования и решаются вопросы города."
+    clock = datetime.now(MOSCOW_TZ).strftime("%H:%M")
+    caption = (
+        "🏛️ РАТУША НОРДХАЙМА\n\n"
+        "Здесь собираются пилоты, проходят голосования и решаются вопросы города.\n\n"
+        f"🕰 На башенных часах сейчас {clock}."
+    )
     voted = await get_user_voted_polls_count(callback.from_user.id)
     active = len(await get_active_polls())
     if os.path.isfile(hall_view):
