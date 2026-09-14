@@ -18,6 +18,7 @@ from database.db import (
     get_inventory_item, user_has_status_tag, log_activity,
     remove_nordmarks,
     get_housing_expansions_installed, increment_housing_expansions,
+    get_housing_tax_rate, pay_housing_tax,
 )
 from utils.helpers import resolve_image, rarity_emoji, rarity_label, edit_or_replace
 
@@ -190,8 +191,25 @@ async def housing_menu(cb: CallbackQuery):
                 f"housing:move:{item['id']}")])
 
     rows.append([_inv_row("🔙 В город", "city:menu")])
+
+    # Налог на недвижимость
+    tax_rate = await get_housing_tax_rate(ht)
+    if tax_rate > 0:
+        tax_line = f"\n🏛 Налог на жильё: {tax_rate} НМ/мес («за отопление и ремонт»)"
+        lines.append(tax_line)
+        rows.insert(-1, [_inv_row(f"💳 Оплатить налог ({tax_rate} НМ)", "housing:pay_tax")])
+
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
+
+
+@router.callback_query(F.data == "housing:pay_tax")
+async def housing_pay_tax(cb: CallbackQuery):
+    await cb.answer()
+    uid = cb.from_user.id
+    ok, msg = await pay_housing_tax(uid)
+    await cb.message.answer(msg)
+    await housing_menu(cb)
 
 
 # ───────── комната ─────────

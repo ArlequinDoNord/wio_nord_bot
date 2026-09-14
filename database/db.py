@@ -585,6 +585,11 @@ async def init_db():
     # Старые записи Пилота, которым ранее могли поставить высокий уровень, возвращаем к 0.
     await conn.execute("UPDATE statuses SET sort_order = 2 WHERE access_tag = 'pilot'")
     await conn.execute("UPDATE statuses SET sort_order = -10 WHERE access_tag = 'tourist'")
+    # v0.10.0: рынок (слоты продажи + лицензия) и налог на жильё
+    await _ensure_column(conn, "users", "market_license_expires", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "market_fish", "base_price", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "player_housing", "tax_last_check", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "player_housing", "tax_unpaid_months", "INTEGER DEFAULT 0")
     await conn.commit()
     await ensure_base_statuses()
     await conn.commit()
@@ -3099,13 +3104,13 @@ async def sell_one_fish_catch(user_id: int, item_id: int, weight: int) -> bool:
 # ============ МАРКЕТ УЛОВА: рыба, выставленная на продажу в магазине ============
 
 async def add_fish_offer(seller_id: int, item_id: int, weight: int,
-                         price: int, remaining_sec: int) -> int:
+                         price: int, remaining_sec: int, base_price: int = 0) -> int:
     """Выставляет свежий улов в магазин. Срок годности «замирает» на остатке."""
     conn = await get_db()
     cursor = await conn.execute(
-        "INSERT INTO market_fish (seller_id, item_id, weight, price, remaining_sec) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (seller_id, item_id, weight, price, max(1, remaining_sec))
+        "INSERT INTO market_fish (seller_id, item_id, weight, price, remaining_sec, base_price) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (seller_id, item_id, weight, price, max(1, remaining_sec), base_price)
     )
     await conn.commit()
     return cursor.lastrowid
@@ -3141,6 +3146,182 @@ async def remove_fish_offer(offer_id: int) -> bool:
     cursor = await conn.execute("DELETE FROM market_fish WHERE id = ?", (offer_id,))
     await conn.commit()
     return cursor.rowcount > 0
+
+
+# ──────────────── Рынок: слоты продажи + лицензия ────────────────
+
+async def get_market_slots_info(user_id: int) -> dict:
+    """Информация о слотах продажи: total, active_count, license_active, license_expires."""
+    from config import MARKET_BASE_SLOTS, MARKET_LICENSE_SLOTS
+    from utils.helpers import MOSCOW_TZ
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT market_license_expires FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    now_str = datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d %H:%M:%S")
+    license_expires = row['market_license_expires'] if row and 'market_license_expires' in row.keys() else None
+    license_active = False
+    if license_expires:
+        try:
+            license_active = license_expires > now_str
+        except TypeError:
+            license_active = False
+    total = MARKET_BASE_SLOTS + (MARKET_LICENSE_SLOTS if license_active else 0)
+
+    cursor = await conn.execute(
+        "SELECT COUNT(*) as c FROM market_fish WHERE seller_id = ?", (user_id,))
+    active_count = (await cursor.fetchone())['c']
+    return {"total_slots": total, "active_count": active_count,
+            "license_active": license_active, "license_expires": license_expires}
+
+
+async def count_user_market_offers(user_id: int) -> int:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT COUNT(*) as c FROM market_fish WHERE seller_id = ?", (user_id,))
+    return (await cursor.fetchone())['c']
+
+
+async def activate_market_license(user_id: int):
+    """Активировать торговую лицензию на 30 дней (или продлить)."""
+    from config import MARKET_LICENSE_DAYS
+    from utils.helpers import MOSCOW_TZ
+    conn = await get_db()
+    now = datetime.now(MOSCOW_TZ)
+    expires = (now + timedelta(days=MARKET_LICENSE_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+    cursor = await conn.execute(
+        "SELECT market_license_expires FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    if row and 'market_license_expires' in row.keys() and row['market_license_expires']:
+        try:
+            old_exp = datetime.strptime(row['market_license_expires'], "%Y-%m-%d %H:%M:%S")
+            if old_exp > now:
+                expires = (old_exp + timedelta(days=MARKET_LICENSE_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+        except (TypeError, ValueError):
+            pass
+    await conn.execute(
+        "UPDATE users SET market_license_expires = ? WHERE user_id = ?", (expires, user_id))
+    await conn.commit()
+
+
+async def ensure_market_license_item():
+    """Идемпотентно добавляет «Торговую лицензию» в магазин."""
+    from config import MARKET_LICENSE_PRICE
+    cursor = await (await get_db()).execute(
+        "SELECT COUNT(*) as c FROM items WHERE name = ?", ("Торговая лицензия",))
+    if (await cursor.fetchone())['c'] > 0:
+        return False
+    await add_item(
+        name="Торговая лицензия",
+        description="Даёт +2 слота для продажи на рыбном рынке на 30 дней. "
+                    "Продлевается при повторной покупке.",
+        price=MARKET_LICENSE_PRICE, sell_price=0, rarity=3,
+        category="license", stock=-1, added_by=0, ap_cost=0, damage=0, heal=0,
+    )
+    return True
+
+
+# ──────────────── Налог на недвижимость ────────────────
+
+async def get_housing_tax_rate(housing_type: str) -> int:
+    """Ставка налога (НМ/мес) по типу жилья."""
+    from config import HOUSING_TAX
+    return HOUSING_TAX.get(housing_type, 0)
+
+
+async def pay_housing_tax(user_id: int) -> tuple:
+    """Оплатить налог за текущий месяц. Возвращает (ok: bool, msg: str)."""
+    from utils.helpers import MOSCOW_TZ
+    h = await get_player_housing(user_id)
+    ht = h['housing_type']
+    rate = await get_housing_tax_rate(ht)
+    if rate <= 0:
+        return False, "🏠 Налог на муниципальное жильё не взимается."
+    user = await get_user(user_id)
+    if not user:
+        return False, "❌ Пользователь не найден."
+    now = datetime.now(MOSCOW_TZ)
+    current_month = now.strftime("%Y-%m")
+    last_check = h.get('tax_last_check')
+    if last_check == current_month:
+        return False, f"✅ Налог за {current_month} уже оплачен."
+    if user['nordmarks'] < rate:
+        need = rate - user['nordmarks']
+        return False, (
+            f"❌ Недостаточно! Нужно {rate} НМ, у тебя {user['nordmarks']} НМ "
+            f"(не хватает {need})."
+        )
+    await remove_nordmarks(user_id, rate, "housing_tax", f"Оплата налога за жильё ({ht})")
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE player_housing SET tax_last_check = ?, tax_unpaid_months = 0 "
+        "WHERE user_id = ?", (current_month, user_id))
+    await conn.commit()
+    return True, f"✅ Налог за {current_month} оплачен: {rate} НМ."
+
+
+async def run_housing_tax():
+    """Суточный прогон: списание налога, начисление просрочки, изъятие жилья.
+
+    Возвращает список user_id, у кого изъято жильё.
+    """
+    from config import HOUSING_TAX
+    from bot.handlers.housing import FURNITURE_BY_EXPANSION
+    from utils.helpers import MOSCOW_TZ
+    conn = await get_db()
+    now = datetime.now(MOSCOW_TZ)
+    current_month = now.strftime("%Y-%m")
+    forfeited = []
+
+    cursor = await conn.execute(
+        "SELECT ph.user_id, ph.housing_type, ph.tax_last_check, ph.tax_unpaid_months "
+        "FROM player_housing ph WHERE ph.housing_type != 'municipal'"
+    )
+    rows = await cursor.fetchall()
+    for r in rows:
+        uid = r['user_id']
+        ht = r['housing_type']
+        rate = HOUSING_TAX.get(ht, 0)
+        if rate <= 0:
+            continue
+        last_check = r['tax_last_check']
+        unpaid = r['tax_unpaid_months'] or 0
+        if last_check == current_month:
+            continue
+
+        user = await get_user(uid)
+        if user and user['nordmarks'] >= rate:
+            await remove_nordmarks(uid, rate, "housing_tax",
+                                   f"Ежемесячный налог за жильё ({ht})")
+            unpaid = 0
+        else:
+            unpaid += 1
+
+        await conn.execute(
+            "UPDATE player_housing SET tax_last_check = ?, tax_unpaid_months = ? "
+            "WHERE user_id = ?", (current_month, unpaid, uid))
+        await conn.commit()
+
+        if unpaid >= 3:
+            slots = await get_housing_slots(uid)
+            for i, s in slots.items():
+                et, lvl = s.get("expansion_type"), s.get("expansion_level", 1)
+                await set_housing_slot(uid, i, None)
+                if s.get("embedded"):
+                    continue
+                fname = FURNITURE_BY_EXPANSION.get((et, lvl))
+                if fname:
+                    fi = await get_item_by_name(fname)
+                    if fi:
+                        await add_inventory_item(uid, fi["id"], 1)
+            await set_player_housing(uid, "municipal")
+            await conn.execute(
+                "UPDATE player_housing SET tax_unpaid_months = 0 WHERE user_id = ?", (uid,))
+            await conn.commit()
+            await log_activity(uid, "housing_forfeit", "Жильё изъято за неуплату налога")
+            forfeited.append(uid)
+
+    return forfeited
 
 
 # ============ СИД: ТЕСТОВЫЕ ТОВАРЫ ============

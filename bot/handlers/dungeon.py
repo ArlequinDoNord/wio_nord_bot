@@ -21,6 +21,27 @@ from utils.combat import (
     _hp_bar,
 )
 from utils.notify import notify, player_display
+from config import (
+    DUNGEON_HEAL_SOFT_LIMIT, DUNGEON_HEAL_HARD_LIMIT,
+    DUNGEON_HEAL_SOFT_MULT, DUNGEON_HEAL_HARD_MULT,
+)
+
+
+def heal_limit_mult(uses: int) -> float:
+    """Множитель эффективности лечения: после 6-7 применений — -1/3, после 10 — -1/2."""
+    if uses >= DUNGEON_HEAL_HARD_LIMIT:
+        return DUNGEON_HEAL_HARD_MULT
+    if uses >= DUNGEON_HEAL_SOFT_LIMIT:
+        return DUNGEON_HEAL_SOFT_MULT
+    return 1.0
+
+
+def heal_limit_note(uses: int) -> str:
+    if uses >= DUNGEON_HEAL_HARD_LIMIT:
+        return f"\n⚠️ Лекарства почти не действуют: эффективность −1/2 (применено: {uses})."
+    if uses >= DUNGEON_HEAL_SOFT_LIMIT:
+        return f"\n⚠️ Лекарства действуют хуже: эффективность −1/3 (применено: {uses})."
+    return ""
 
 
 class DungeonFSM(StatesGroup):
@@ -242,6 +263,7 @@ async def dungeon_enter_confirm(callback: CallbackQuery, state: FSMContext):
 
     await start_dungeon_run(user_id, dungeon['id'])
     run = await get_active_run(user_id)
+    await state.update_data(dungeon_heal_uses=0)
     await log_activity(user_id, "dungeon_enter", f"Вошел в «{dungeon['name']}»")
 
     await callback.message.answer(
@@ -284,8 +306,15 @@ async def show_room(message, run, user_id, state: FSMContext):
     room_type = room_type_roll()
     hp_text = _hp_bar(run['hp'], run['hp_max'])
     slot_items = await get_equipment_slot_items(user_id)
-    poison = (await state.get_data()).get('active_poison')
+    sdata = await state.get_data()
+    poison = sdata.get('active_poison')
+    heal_uses = int(sdata.get('dungeon_heal_uses', 0) or 0)
     step = await dungeon_new_step(state)
+
+    heal_line = ""
+    if heal_uses >= DUNGEON_HEAL_SOFT_LIMIT:
+        mult = heal_limit_mult(heal_uses)
+        heal_line = f"💊 Лекарства: {heal_uses} применений (×{mult:.0%})\n"
 
     if room_type == "enemy":
         enemies = await get_floor_enemies(run['dungeon_id'], run['floor'])
@@ -299,7 +328,8 @@ async def show_room(message, run, user_id, state: FSMContext):
             f"🏰 {dungeon['name']}\n"
             f"Этаж {run['floor']} | Комната {run['room_number']}/10\n"
             f"❤️ {hp_text}\n"
-            f"{poison_line}\n"
+            f"{poison_line}"
+            f"{heal_line}\n"
             f"⚠️ Ты входишь в комнату и видишь врага!\n"
             f"👾 {enemy['name']} (HP: {enemy['hp']}, АТК: {enemy['attack']})\n\n"
             f"Что делаешь?"
@@ -564,19 +594,31 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         _ok, _msg = await consume_drink(user_id, item['id'])
         hp_note = ""
         if item['heal'] > 0:
-            new_hp = min(run['hp_max'], run['hp'] + item['heal'])
+            heal_uses = int(data.get('dungeon_heal_uses', 0) or 0) + 1
+            await state.update_data(dungeon_heal_uses=heal_uses)
+            mult = heal_limit_mult(heal_uses)
+            heal = max(1, round(item['heal'] * mult))
+            new_hp = min(run['hp_max'], run['hp'] + heal)
             await update_run_hp(run['id'], new_hp)
             hp_note = f"\n❤️ {_hp_bar(new_hp, run['hp_max'])}"
-        text = _msg + hp_note + "\n\nПродолжай бой:"
+            if mult < 1.0:
+                hp_note += f" (эффективность ×{mult:.0%}: {heal} HP вместо {item['heal']})"
+        text = _msg + hp_note + heal_limit_note(int(data.get('dungeon_heal_uses', 0) or 0)) + "\n\nПродолжай бой:"
 
     # Зелья лечения / яблоко / испорченная рыба.
     elif item['heal'] > 0:
-        new_hp = min(run['hp_max'], run['hp'] + item['heal'])
+        heal_uses = int(data.get('dungeon_heal_uses', 0) or 0) + 1
+        await state.update_data(dungeon_heal_uses=heal_uses)
+        mult = heal_limit_mult(heal_uses)
+        heal = max(1, round(item['heal'] * mult))
+        new_hp = min(run['hp_max'], run['hp'] + heal)
         await update_run_hp(run['id'], new_hp)
+        eff = "" if mult >= 1 else f" (эффективность ×{mult:.0%}: {heal} HP вместо {item['heal']})"
         text = (
-            f"💊 {item['name']} применено: +{item['heal']} HP!\n"
-            f"❤️ {_hp_bar(new_hp, run['hp_max'])}\n\n"
-            f"Продолжай бой:"
+            f"💊 {item['name']} применено: +{heal} HP{eff}!\n"
+            f"❤️ {_hp_bar(new_hp, run['hp_max'])}\n"
+            f"{heal_limit_note(heal_uses)}"
+            f"\n\nПродолжай бой:"
         )
 
         # Яблоко: иногда из него выпадает семечко (10%)
@@ -694,11 +736,18 @@ async def show_boss(message, run, user_id, state: FSMContext):
     await state.update_data(current_enemy_id=boss['id'], current_enemy_hp=boss['hp'])
 
     poison_line = f"☠️ Ты отравлен! Яд: −{poison} HP каждый ход\n" if poison else ""
+    boss_heal_line = ""
+    boss_data = await state.get_data()
+    boss_heal_uses = int(boss_data.get('dungeon_heal_uses', 0) or 0)
+    if boss_heal_uses >= DUNGEON_HEAL_SOFT_LIMIT:
+        bmult = heal_limit_mult(boss_heal_uses)
+        boss_heal_line = f"💊 Лекарства: {boss_heal_uses} применений (×{bmult:.0%})\n"
     text = (
         f"💀 КОМНАТА БОССА\n"
         f"Этаж {run['floor']} | БОСС\n"
         f"❤️ {hp_text}\n"
-        f"{poison_line}\n"
+        f"{poison_line}"
+        f"{boss_heal_line}\n"
         f"💀 {boss['name']} (HP: {boss['hp']}, АТК: {boss['attack']})\n\n"
         f"⚠️ Это решающий бой! Убежать нельзя!"
     )

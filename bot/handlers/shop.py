@@ -563,6 +563,15 @@ async def _buy_item(callback: CallbackQuery, item_id: int, qty: int, special_ver
             f"✅ Читательский билет активирован на 30 дней!\n"
             f"📚 Заходи в Библиотеку через Город."
         )
+    elif item['category'] == "license":
+        from database.db import activate_market_license, get_market_slots_info
+        await activate_market_license(user_id)
+        info = await get_market_slots_info(user_id)
+        await callback.message.answer(
+            f"📜 Торговая лицензия активирована!\n\n"
+            f"🗓 Действует до {info['license_expires']} (МСК)\n"
+            f"📦 Теперь у тебя {info['total_slots']} слота для продажи на рыбном рынке."
+        )
     else:
         await callback.message.answer(
             f"✅ Куплено: {item['name']} x{qty} за {total} {plural_nordmark(total)}!"
@@ -589,6 +598,12 @@ async def fish_offer_view(callback: CallbackQuery):
     seller = await get_user(offer['seller_id'])
     seller_name = (f"@{seller['username']}" if seller and seller['username']
                    else f"#{offer['seller_id']}")
+    base_price = offer['base_price'] if 'base_price' in offer.keys() else None
+    base_line = ""
+    if base_price and offer['price'] != base_price:
+        diff = offer['price'] - base_price
+        sign = "+" if diff > 0 else ""
+        base_line = f"\n📊 Рыночная цена: {base_price} НМ ({sign}{diff})"
 
     text = (
         f"{rarity_emoji(offer['rarity'])} {offer['name']} {rarity_emoji(offer['rarity'])}\n"
@@ -596,7 +611,8 @@ async def fish_offer_view(callback: CallbackQuery):
         f"⚖️ Вес: {tier['label']}\n"
         f"{fresh_line}\n"
         f"👨‍🏭 Продаёт: {seller_name}\n\n"
-        f"💰 Цена: {offer['price']} {plural_nordmark(offer['price'])}\n"
+        f"💰 Цена: {offer['price']} {plural_nordmark(offer['price'])}"
+        f"{base_line}\n"
         f"Срок годности в магазине заморожен — продолжится у покупателя."
     )
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton

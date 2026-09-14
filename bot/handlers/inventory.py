@@ -14,6 +14,7 @@ from database.db import (
     get_equipment, set_equipment_slot, clear_equipment_slot, log_activity,
     get_fish_catches, take_fish_catch, sell_one_fish_catch, get_active_run,
     process_food_expiry, add_fish_offer, RAW_FISH_SHELF_SEC,
+    get_market_slots_info,
 )
 from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text,
@@ -556,7 +557,7 @@ async def _show_fish_catch(message, user_id: int, item_id: int, weight: int):
         f"💰 Цена (с учётом веса): {sell_text}"
     )
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"🏪 На рынок (за {sell_text})",
+        [InlineKeyboardButton(text="🏪 На рынок",
                               callback_data=f"fishmarket:{item_id}:{weight}")],
         [InlineKeyboardButton(text=f"💵 Скупщику сразу (за {sell_text})",
                               callback_data=f"fishsell:{item_id}:{weight}")],
@@ -582,13 +583,124 @@ async def _show_fish_catch(message, user_id: int, item_id: int, weight: int):
 
 
 @router.callback_query(F.data.startswith("fishmarket:"))
-async def fish_market_sell(callback: CallbackQuery):
+async def fish_market_set_price(callback: CallbackQuery):
+    """Экран выбора цены ±30% от рыночной для вылова на рынок."""
     await callback.answer()
     user_id = callback.from_user.id
     _, item_id_s, weight_s = callback.data.split(":")
     item_id, weight = int(item_id_s), int(weight_s)
     item = await get_item(item_id)
     if not item:
+        return
+
+    catches = await get_fish_catches(user_id)
+    catch = next((c for c in catches if c['item_id'] == item_id and c['weight'] == weight), None)
+    if not catch:
+        await callback.message.answer("❌ Свежего улова уже нет.")
+        await _show_fish_catch(callback.message, user_id, item_id, weight)
+        return
+
+    base = fish_sell_price(item['sell_price'], weight)
+    await _show_price_screen(callback, item, weight, base, base)
+
+
+def _price_keyboard(item_id: int, weight: int, current: int, base: int):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    min_p = max(1, int(base * 0.7))
+    max_p = int(base * 1.3)
+    current = max(min_p, min(max_p, current))
+
+    adj_row = []
+    p10d = max(min_p, current - max(1, current // 10))
+    p1d = max(min_p, current - 1)
+    p1i = min(max_p, current + 1)
+    p10i = min(max_p, current + max(1, current // 10))
+    if p10d < current:
+        adj_row.append(InlineKeyboardButton(text="−10%", callback_data=f"fishprice:{item_id}:{weight}:{p10d}"))
+    if p1d < current and p1d != p10d:
+        adj_row.append(InlineKeyboardButton(text="−1%", callback_data=f"fishprice:{item_id}:{weight}:{p1d}"))
+    if p1i > current:
+        adj_row.append(InlineKeyboardButton(text="+1%", callback_data=f"fishprice:{item_id}:{weight}:{p1i}"))
+    if p10i > current and p10i != p1i:
+        adj_row.append(InlineKeyboardButton(text="+10%", callback_data=f"fishprice:{item_id}:{weight}:{p10i}"))
+
+    rows = []
+    if adj_row:
+        rows.append(adj_row)
+    rows.append([InlineKeyboardButton(
+        text=f"✅ Выставить за {current} НМ",
+        callback_data=f"fishgo:{item_id}:{weight}:{current}")])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"fishcatch:{item_id}:{weight}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _show_price_screen(callback, item, weight, current, base):
+    tier = fish_weight_tier(weight)
+    min_p = max(1, int(base * 0.7))
+    max_p = int(base * 1.3)
+    current = max(min_p, min(max_p, current))
+    text = (
+        f"🏪 ВЫСТАВЛЕНИЕ НА РЫНОК\n\n"
+        f"{rarity_emoji(item['rarity'])} {item['name']} {rarity_emoji(item['rarity'])}\n"
+        f"⚖️ Вес: {tier['label']}\n\n"
+        f"📊 Рыночная цена: {base} НМ\n"
+        f"💲 Цена продажи: {current} НМ\n"
+        f"📐 Диапазон: {min_p} – {max_p} НМ\n\n"
+        f"Выбери цену кнопками или подтверди."
+    )
+    kb = _price_keyboard(item['id'], weight, current, base)
+    try:
+        await callback.message.edit_text(text, reply_markup=kb)
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("fishprice:"))
+async def fish_price_adjust(callback: CallbackQuery):
+    await callback.answer()
+    _, item_id_s, weight_s, price_s = callback.data.split(":")
+    item_id, weight, price = int(item_id_s), int(weight_s), int(price_s)
+    user_id = callback.from_user.id
+    item = await get_item(item_id)
+    if not item:
+        return
+    catches = await get_fish_catches(user_id)
+    catch = next((c for c in catches if c['item_id'] == item_id and c['weight'] == weight), None)
+    if not catch:
+        await callback.answer("❌ Свежего улова уже нет.", show_alert=True)
+        return
+    base = fish_sell_price(item['sell_price'], weight)
+    await _show_price_screen(callback, item, weight, price, base)
+
+
+@router.callback_query(F.data.startswith("fishgo:"))
+async def fish_market_confirm(callback: CallbackQuery):
+    """Подтверждение выкладки на рынок с проверкой слотов."""
+    await callback.answer()
+    _, item_id_s, weight_s, price_s = callback.data.split(":")
+    item_id, weight, price = int(item_id_s), int(weight_s), int(price_s)
+    user_id = callback.from_user.id
+    item = await get_item(item_id)
+    if not item:
+        return
+
+    base = fish_sell_price(item['sell_price'], weight)
+    min_p = max(1, int(base * 0.7))
+    max_p = int(base * 1.3)
+    price = max(min_p, min(max_p, price))
+
+    slots = await get_market_slots_info(user_id)
+    if slots['active_count'] >= slots['total_slots']:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        await callback.message.answer(
+            f"❌ Нет свободных слотов!\n"
+            f"У тебя {slots['active_count']}/{slots['total_slots']} активных объявлений.\n\n"
+            f"💡 Купи «Торговую лицензию» в Магазине → «Торговые лицензии» — +2 слота на 30 дней.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛒 Магазин → Лицензии", callback_data="shopcat:license")],
+                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"fishcatch:{item_id}:{weight}")],
+            ])
+        )
         return
 
     c = await take_fish_catch(user_id, item_id, weight)
@@ -605,16 +717,15 @@ async def fish_market_sell(callback: CallbackQuery):
         expi = None
     remaining = max(1, (expi or (now + RAW_FISH_SHELF_SEC)) - now)
 
-    price = fish_sell_price(item['sell_price'], weight)
-    await add_fish_offer(user_id, item_id, weight, price, remaining)
+    await add_fish_offer(user_id, item_id, weight, price, remaining, base_price=base)
     await log_activity(user_id, "shop_sale",
-                       f"Выставил «{item['name']}» на рынок за {price} НМ")
+                       f"Выставил «{item['name']}» на рынок за {price} НМ (база {base})")
     await callback.message.answer(
         f"🏪 «{item['name']}» выставлен на продажу за "
-        f"{price} {plural_nordmark(price)}!\n"
-        "Его смогут купить другие пилоты в Магазине → «Расходники».\n"
-        "Срок годности рыбы в магазине замораживается, а Нордмарки придут "
-        "тебе после покупки (за вычетом налога)."
+        f"{price} {plural_nordmark(price)}!\n\n"
+        f"📊 Рыночная цена: {base} НМ | Твоя: {price} НМ\n"
+        f"💰 Нордмарки придут после покупки (за вычетом налога).\n"
+        f"⏳ Срок годности заморожен."
     )
     await _show_fish_catch(callback.message, user_id, item_id, weight)
 

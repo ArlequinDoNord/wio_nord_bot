@@ -11,7 +11,7 @@ from config import BOT_TOKEN
 from database.db import (
     init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon,
     ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, ensure_life_items, ensure_recipes,
-    pay_salaries, payout_reports,
+    ensure_market_license_item, pay_salaries, payout_reports, run_housing_tax,
 )
 from utils.notify import notify_treasury_shortage
 from utils.helpers import is_main_menu_text
@@ -86,6 +86,23 @@ async def scheduled_jobs(bot: Bot):
         except Exception as e:
             logger.error(f"Ошибка восстановления AP: {e}", exc_info=True)
         try:
+            forfeited = await run_housing_tax()
+            if forfeited:
+                for uid in forfeited:
+                    try:
+                        await bot.send_message(
+                            uid,
+                            "🏠 ВНИМАНИЕ! Жильё изъято!\n\n"
+                            "Твоё жильё было изъято за неуплату налогов (3 месяца просрочки).\n"
+                            "Ты возвращаешься в муниципальный кубрик.\n"
+                            "Вся установленная мебель вернулась в инвентарь."
+                        )
+                    except Exception:
+                        pass
+                logger.info(f"Изъято жильё у {len(forfeited)} игроков за неуплату налога")
+        except Exception as e:
+            logger.error(f"Ошибка начисления налога на жильё: {e}", exc_info=True)
+        try:
             res = await pay_salaries()
             if res['paid'] or res['debt']:
                 logger.info(
@@ -150,6 +167,10 @@ async def main():
     recipes_seeded = await ensure_recipes()
     if recipes_seeded:
         logger.info("Рецепты кухни и верстака добавлены")
+
+    license_seeded = await ensure_market_license_item()
+    if license_seeded:
+        logger.info("Торговая лицензия добавлена в магазин")
 
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
