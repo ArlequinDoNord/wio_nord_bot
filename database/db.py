@@ -10,7 +10,18 @@ async def get_db() -> aiosqlite.Connection:
     global db
     if db is None:
         db = await aiosqlite.connect(DB_PATH, isolation_level=None)
-        db.row_factory = aiosqlite.Row
+
+        def _dict_factory(cursor, row):
+            """Dict-строка БД вместо sqlite3.Row.
+
+            Row не имеет .get() — из-за этого handler'ы падают с
+            AttributeError повторяющимся классом. Dict даёт и [],
+            и .get(), и .keys(), и 'key in row' — все паттерны
+            кода работают без изменений.
+            """
+            return {col[0]: row[i] for i, col in enumerate(cursor.description)}
+
+        db.row_factory = _dict_factory
         await db.execute("PRAGMA journal_mode=WAL")
         await db.execute("PRAGMA foreign_keys=ON")
     return db
