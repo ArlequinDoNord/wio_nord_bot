@@ -3261,6 +3261,19 @@ async def get_housing_tax_rate(housing_type: str) -> int:
     return HOUSING_TAX.get(housing_type, 0)
 
 
+async def is_housing_tax_paid(user_id: int) -> bool:
+    """Оплачен ли налог за текущий месяц.
+
+    tax_last_check == текущий месяц означает, что месяц уже обработан суточным
+    прогоном или ручной оплатой. Но если денег не хватило, tax_unpaid_months
+    увеличивается — значит налог именно оплачен не был.
+    """
+    from utils.helpers import MOSCOW_TZ
+    h = await get_player_housing(user_id)
+    current_month = datetime.now(MOSCOW_TZ).strftime("%Y-%m")
+    return (h.get('tax_last_check') or '') == current_month and (h.get('tax_unpaid_months') or 0) == 0
+
+
 async def pay_housing_tax(user_id: int) -> tuple:
     """Оплатить налог за текущий месяц. Возвращает (ok: bool, msg: str)."""
     from utils.helpers import MOSCOW_TZ
@@ -3290,6 +3303,36 @@ async def pay_housing_tax(user_id: int) -> tuple:
         "WHERE user_id = ?", (current_month, user_id))
     await conn.commit()
     return True, f"✅ Налог за {current_month} оплачен: {rate} НМ."
+
+
+async def pay_housing_debt(user_id: int) -> tuple:
+    """Погасить всю накопленную задолженность по налогу. Возвращает (ok: bool, msg: str)."""
+    from utils.helpers import MOSCOW_TZ
+    h = await get_player_housing(user_id)
+    ht = h['housing_type']
+    rate = await get_housing_tax_rate(ht)
+    if rate <= 0:
+        return False, "🏠 Налог на муниципальное жильё не взимается."
+    unpaid = h.get('tax_unpaid_months') or 0
+    if unpaid <= 0:
+        return False, "✅ Задолженности по налогу нет."
+    debt = unpaid * rate
+    user = await get_user(user_id)
+    if not user:
+        return False, "❌ Пользователь не найден."
+    if user['nordmarks'] < debt:
+        need = debt - user['nordmarks']
+        return False, (
+            f"❌ Недостаточно! Нужно {debt} НМ для долга, у тебя {user['nordmarks']} НМ "
+            f"(не хватает {need})."
+        )
+    await remove_nordmarks(user_id, debt, "housing_tax",
+                           f"Погашение долга по налогу на жильё ({unpaid} мес.)")
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE player_housing SET tax_unpaid_months = 0 WHERE user_id = ?", (user_id,))
+    await conn.commit()
+    return True, f"✅ Задолженность погашена: {unpaid} мес. × {rate} НМ = {debt} НМ."
 
 
 async def run_housing_tax():

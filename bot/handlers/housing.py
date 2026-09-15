@@ -18,7 +18,7 @@ from database.db import (
     get_inventory_item, user_has_status_tag, log_activity,
     remove_nordmarks,
     get_housing_expansions_installed, increment_housing_expansions,
-    get_housing_tax_rate, pay_housing_tax,
+    get_housing_tax_rate, pay_housing_tax, is_housing_tax_paid, pay_housing_debt,
 )
 from utils.helpers import resolve_image, rarity_emoji, rarity_label, edit_or_replace
 
@@ -195,12 +195,37 @@ async def housing_menu(cb: CallbackQuery):
     # Налог на недвижимость
     tax_rate = await get_housing_tax_rate(ht)
     if tax_rate > 0:
+        tax_paid = await is_housing_tax_paid(uid)
+        unpaid = h.get('tax_unpaid_months') or 0
         tax_line = f"\n🏛 Налог на жильё: {tax_rate} НМ/мес («за отопление и ремонт»)"
+        if tax_paid:
+            tax_line += " — ✅ оплачен за этот месяц"
+        else:
+            tax_line += " — ⚠️ за этот месяц ещё не оплачен"
         lines.append(tax_line)
-        rows.insert(-1, [_inv_row(f"💳 Оплатить налог ({tax_rate} НМ)", "housing:pay_tax")])
+        if unpaid > 0:
+            debt = unpaid * tax_rate
+            lines.append(
+                f"🚨 Задолженность: {unpaid} {_month_word(unpaid)} ({debt} НМ). "
+                f"При 3 мес. неуплаты жильё будет изъято."
+            )
+            rows.insert(-1, [_inv_row(f"💳 Оплатить долг ({debt} НМ)", "housing:pay_debt")])
+        elif not tax_paid:
+            rows.insert(-1, [_inv_row(f"💳 Оплатить налог ({tax_rate} НМ)", "housing:pay_tax")])
 
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
+
+
+def _month_word(n: int) -> str:
+    if 11 <= n % 100 <= 14:
+        return "месяцев"
+    d = n % 10
+    if d == 1:
+        return "месяц"
+    if 2 <= d <= 4:
+        return "месяца"
+    return "месяцев"
 
 
 @router.callback_query(F.data == "housing:pay_tax")
@@ -208,6 +233,15 @@ async def housing_pay_tax(cb: CallbackQuery):
     await cb.answer()
     uid = cb.from_user.id
     ok, msg = await pay_housing_tax(uid)
+    await cb.message.answer(msg)
+    await housing_menu(cb)
+
+
+@router.callback_query(F.data == "housing:pay_debt")
+async def housing_pay_debt(cb: CallbackQuery):
+    await cb.answer()
+    uid = cb.from_user.id
+    ok, msg = await pay_housing_debt(uid)
     await cb.message.answer(msg)
     await housing_menu(cb)
 
