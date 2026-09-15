@@ -42,10 +42,12 @@ async def location_preview(callback: CallbackQuery):
     if 'preview_photo' in loc.keys() and loc['preview_photo']:
         candidate = resolve_image(loc['preview_photo'])
         if candidate and os.path.isfile(candidate):
-            photo = candidate
+            photo = FSInputFile(candidate)
+        else:
+            photo = loc['preview_photo']  # telegram file_id
     if photo:
         await callback.message.answer_photo(
-            photo=FSInputFile(photo),
+            photo=photo,
             caption=text,
             reply_markup=kb
         )

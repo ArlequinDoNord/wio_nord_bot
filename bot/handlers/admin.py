@@ -23,7 +23,7 @@ from database.db import (
     get_special_dept_code, set_special_dept_code,
     get_salaried_users, get_user_salary, set_user_salary, pay_salaries,
     get_all_locations, get_location, create_location, update_location_access,
-    location_access_label,
+    update_location_content, location_access_label,
     create_award, get_all_awards, get_award, delete_award, grant_award,
     get_user_awards, revoke_award,
     log_activity, get_user_activity, clear_user_photo,
@@ -2747,12 +2747,14 @@ async def loc_edit(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ Локация не найдена.")
         return
     acc = await location_access_label(loc['access_mode'], loc['required_status'])
-    blocking = ", ".join(loc['blocking_states'] or "[]") or "нет"
+    blocking = ", ".join(json.loads(loc['blocking_states'] or '[]')) or "нет"
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     await state.update_data(action="edit", target_id=loc_id)
     await callback.message.edit_text(
         f"✏️ {loc['name']} (доступ: {acc})\nБлокируют состояния: {blocking}\n\nЧто изменить?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📝 Описание", callback_data="loc:set_desc")],
+            [InlineKeyboardButton(text="🖼 Картинка", callback_data="loc:set_photo")],
             [InlineKeyboardButton(text="🎚 Режим доступа", callback_data="loc:set_mode")],
             [InlineKeyboardButton(text="🗂 Требуемый статус", callback_data="loc:set_status")],
             [InlineKeyboardButton(text="🍺 Блокирующие состояния", callback_data="loc:set_blocking")],
@@ -2878,9 +2880,57 @@ async def loc_step_name(message: Message, state: FSMContext):
     await message.answer("Шаг 3/7 — описание (или отправь «-»):")
 
 
+@router.callback_query(F.data == "loc:set_desc")
+async def loc_set_desc(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc = await get_location(data.get('target_id'))
+    if not loc:
+        await callback.message.answer("❌ Локация не найдена.")
+        return
+    await state.set_state(AdminLocation.description)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.edit_text(
+        f"📝 Описание «{loc['name']}».\n\nОтправь новый текст (или «-», чтобы очистить):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"loc:edit:{loc['id']}")]
+        ])
+    )
+
+
+@router.callback_query(F.data == "loc:set_photo")
+async def loc_set_photo(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc = await get_location(data.get('target_id'))
+    if not loc:
+        await callback.message.answer("❌ Локация не найдена.")
+        return
+    await state.set_state(AdminLocation.preview)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.edit_text(
+        f"🖼 Картинка «{loc['name']}».\n\nОтправь новое фото (или «-», чтобы убрать картинку):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"loc:edit:{loc['id']}")]
+        ])
+    )
+
+
 @router.message(AdminLocation.description)
 async def loc_step_desc(message: Message, state: FSMContext):
     text = message.text.strip()
+    data = await state.get_data()
+    if data.get('action') == 'edit' and data.get('target_id'):
+        await update_location_content(data['target_id'], description=None if text == "-" else text)
+        await log_action(message.from_user.id, 'edit_location', data['target_id'],
+                         f"description={text[:200] if text != '-' else 'cleared'}")
+        await state.clear()
+        await message.answer("✅ Описание локации обновлено.")
+        return
     await state.update_data(description=None if text == "-" else text)
     await state.set_state(AdminLocation.mode)
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -2892,3 +2942,25 @@ async def loc_step_desc(message: Message, state: FSMContext):
             [InlineKeyboardButton(text="🎯 Только конкретному", callback_data="loc:mode:exact")],
         ])
     )
+
+
+@router.message(AdminLocation.preview)
+async def loc_step_photo(message: Message, state: FSMContext):
+    data = await state.get_data()
+    loc = await get_location(data.get('target_id'))
+    if not loc:
+        await state.clear()
+        await message.answer("❌ Локация не найдена.")
+        return
+    if message.photo:
+        file_id = message.photo[-1].file_id
+    elif message.text and message.text.strip() in ("-", "—"):
+        file_id = None
+    else:
+        await message.answer("❌ Отправь именно фото (или «-» для очистки).")
+        return
+    await update_location_content(data['target_id'], preview_photo=file_id)
+    await log_action(message.from_user.id, 'edit_location', data['target_id'],
+                     f"preview_photo={'file_id' if file_id else 'cleared'}")
+    await state.clear()
+    await message.answer("✅ Картинка локации обновлена.")

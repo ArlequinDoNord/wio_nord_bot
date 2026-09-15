@@ -2894,6 +2894,27 @@ async def update_location_access(location_id: int, access_mode: str = None,
     return True
 
 
+_LOC_UNSET = object()
+
+
+async def update_location_content(location_id: int, *, name=_LOC_UNSET,
+                                  description=_LOC_UNSET, preview_photo=_LOC_UNSET):
+    """Обновить название/описание/картинку локации. _LOC_UNSET — поле не трогаем."""
+    conn = await get_db()
+    loc = await get_location(location_id)
+    if not loc:
+        return False
+    cur_name = name if name is not _LOC_UNSET else loc['name']
+    cur_desc = description if description is not _LOC_UNSET else loc['description']
+    cur_photo = preview_photo if preview_photo is not _LOC_UNSET else loc['preview_photo']
+    await conn.execute(
+        "UPDATE locations SET name = ?, description = ?, preview_photo = ? WHERE id = ?",
+        (cur_name, cur_desc, cur_photo, location_id)
+    )
+    await conn.commit()
+    return True
+
+
 async def user_has_exact_status(user_id: int, tag: str) -> bool:
     """Игрок имеет ровно этот статус в списке своих статусов (по access_tag)."""
     if not tag:
