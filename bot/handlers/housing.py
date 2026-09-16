@@ -295,7 +295,7 @@ async def _room_kitchen(cb, uid, idx, slot, ht, lvl):
         [_inv_row("🍳 Готовить", f"housing:kitchen:{idx}")],
     ]
     if not slot.get("embedded"):
-        rows.append([_inv_row("🔪 Убрать из слота", f"housing:uninstall:{idx}")])
+        rows.append([_inv_row("🛠️ Убрать из слота", f"housing:uninstall:{idx}")])
     rows.append([_inv_row("🔙 К жилью", "housing:menu")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
@@ -347,7 +347,7 @@ async def _room_workbench(cb, uid, idx, slot, ht, lvl):
     rows = []
     for r in recipes:
         rows.append([_inv_row(f"📋 {r['name']}", f"housing:recipe:{idx}:{r['id']}")])
-    rows.append([_inv_row("🔪 Убрать из слота", f"housing:uninstall:{idx}")])
+    rows.append([_inv_row("🛠️ Убрать из слота", f"housing:uninstall:{idx}")])
     rows.append([_inv_row("🔙 К жилью", "housing:menu")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
@@ -373,7 +373,7 @@ async def _room_plant(cb, uid, idx, slot, ht):
                 f"housing:plant:{idx}:{s['id']}")])
         if not seeds:
             lines.append("\nСемян в инвентаре нет.")
-        rows.append([_inv_row("🔪 Убрать кадку", f"housing:uninstall:{idx}")])
+        rows.append([_inv_row("🛠️ Убрать кадку", f"housing:uninstall:{idx}")])
         rows.append([_inv_row("🔙 К жилью", "housing:menu")])
         kb = InlineKeyboardMarkup(inline_keyboard=rows)
         photo = EMPTY_KADKA_PHOTO if os.path.isfile(EMPTY_KADKA_PHOTO) else _housing_photo(ht)
@@ -404,7 +404,7 @@ async def _room_plant(cb, uid, idx, slot, ht):
         else:
             label = f"🍎 Собрать {fruits} плодов"
         rows.append([_inv_row(label, f"housing:harvest:{idx}")])
-    rows.append([_inv_row("🔪 Убрать кадку", f"housing:uninstall:{idx}")])
+    rows.append([_inv_row("🛠️ Убрать кадку", f"housing:uninstall:{idx}")])
     rows.append([_inv_row("🔙 К жилью", "housing:menu")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
 
