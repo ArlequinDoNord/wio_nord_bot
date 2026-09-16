@@ -25,7 +25,7 @@ from database.db import (
     get_special_dept_code, set_special_dept_code,
     get_salaried_users, get_user_salary, set_user_salary, pay_salaries,
     get_all_locations, get_location, create_location, update_location_access,
-    update_location_content, location_access_label,
+    update_location_content, update_location_photos, location_access_label,
     create_award, get_all_awards, get_award, delete_award, grant_award,
     get_user_awards, revoke_award,
     log_activity, get_user_activity, clear_user_photo,
@@ -2800,7 +2800,7 @@ async def loc_building_edit(callback: CallbackQuery, state: FSMContext):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✏️ Название", callback_data="loc:set_name")],
             [InlineKeyboardButton(text="📝 Описание", callback_data="loc:set_desc")],
-            [InlineKeyboardButton(text="🖼 Картинка", callback_data="loc:set_photo")],
+            [InlineKeyboardButton(text="🖼 Картинки (время суток)", callback_data="loc:photos")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="loc:building_pick")],
         ])
     )
@@ -3054,24 +3054,57 @@ async def loc_set_desc(callback: CallbackQuery, state: FSMContext):
     )
 
 
-@router.callback_query(F.data == "loc:set_photo")
-async def loc_set_photo(callback: CallbackQuery, state: FSMContext):
+TOD_KEYS = ("dawn", "day", "sunset", "night")
+TOD_LABEL = {"dawn": "🌅 Рассвет", "day": "☀️ День", "sunset": "🌇 Закат", "night": "🌙 Ночь"}
+
+
+def _loc_photo_slots_text(loc):
+    keys = loc.keys()
+    filled = [TOD_LABEL[k] for k in TOD_KEYS
+              if f"photo_{k}" in keys and loc[f"photo_{k}"]]
+    return filled or ["нет"]
+
+
+async def _loc_photos_pick_send(source, loc_id: int):
+    """Показать пикер 4 картинок здания (source может быть CallbackQuery или Message)."""
+    loc = await get_location(loc_id)
+    if not loc:
+        if isinstance(source, CallbackQuery):
+            await source.message.edit_text("❌ Локация не найдена.")
+        else:
+            await source.answer("❌ Локация не найдена.")
+        return
+    filled = _loc_photo_slots_text(loc)
+    keys = loc.keys()
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = []
+    for k in TOD_KEYS:
+        mark = "✅" if f"photo_{k}" in keys and loc[f"photo_{k}"] else "—"
+        rows.append([InlineKeyboardButton(
+            text=f"{mark} {TOD_LABEL[k]}",
+            callback_data=f"loc:photo_set:{k}"
+        )])
+    rows.append([InlineKeyboardButton(text="🚫 Убрать все", callback_data="loc:photos:clear")])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="loc:building_pick")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    text = (
+        f"🖼 Картинки «{loc['name']}».\n"
+        f"Задано: {', '.join(filled)}\n\n"
+        f"Нажми время суток и отправь фото (или «-» чтобы убрать):"
+    )
+    if isinstance(source, CallbackQuery):
+        await source.message.edit_text(text, reply_markup=kb)
+    else:
+        await source.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data == "loc:photos")
+async def loc_photos_pick(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     if not await has_permission(callback.from_user.id, "can_manage_locations"):
         return
     data = await state.get_data()
-    loc = await get_location(data.get('target_id'))
-    if not loc:
-        await callback.message.answer("❌ Локация не найдена.")
-        return
-    await state.set_state(AdminLocation.preview)
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    await callback.message.edit_text(
-        f"🖼 Картинка «{loc['name']}».\n\nОтправь новое фото (или «-», чтобы убрать картинку):",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"loc:building:{loc['id']}")]
-        ])
-    )
+    await _loc_photos_pick_send(callback, data['target_id'])
 
 
 @router.message(AdminLocation.description)
@@ -3098,10 +3131,51 @@ async def loc_step_desc(message: Message, state: FSMContext):
     )
 
 
+@router.callback_query(F.data.startswith("loc:photo_set:"))
+async def loc_photo_set(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    tod = callback.data.split(":")[2]
+    if tod not in TOD_KEYS:
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    await state.set_state(AdminLocation.preview)
+    await state.update_data(photo_tod=tod)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.edit_text(
+        f"🖼 {TOD_LABEL[tod]}.\n\nОтправь фото (или «-» чтобы убрать для этого времени):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="loc:photos")]
+        ])
+    )
+
+
+@router.callback_query(F.data == "loc:photos:clear")
+async def loc_photos_clear(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    await update_location_photos(loc_id, {k: None for k in TOD_KEYS})
+    await _loc_photos_pick_send(callback, loc_id)
+
+
 @router.message(AdminLocation.preview)
 async def loc_step_photo(message: Message, state: FSMContext):
     data = await state.get_data()
-    loc = await get_location(data.get('target_id'))
+    loc_id = data.get('target_id')
+    if not loc_id:
+        await state.clear()
+        await message.answer("❌ Ошибка: нет локации в сессии.")
+        return
+    loc = await get_location(loc_id)
     if not loc:
         await state.clear()
         await message.answer("❌ Локация не найдена.")
@@ -3113,8 +3187,15 @@ async def loc_step_photo(message: Message, state: FSMContext):
     else:
         await message.answer("❌ Отправь именно фото (или «-» для очистки).")
         return
-    await update_location_content(data['target_id'], preview_photo=file_id)
-    await log_action(message.from_user.id, 'edit_location', data['target_id'],
+    photo_tod = data.get('photo_tod')
+    if photo_tod and photo_tod in TOD_KEYS:
+        await update_location_photos(loc_id, {photo_tod: file_id})
+        await log_action(message.from_user.id, 'edit_location', loc_id,
+                         f"photo_{photo_tod}={'file_id' if file_id else 'cleared'}")
+        await _loc_photos_pick_send(message, loc_id)
+        return
+    await update_location_content(loc_id, preview_photo=file_id)
+    await log_action(message.from_user.id, 'edit_location', loc_id,
                      f"preview_photo={'file_id' if file_id else 'cleared'}")
     await state.clear()
     await message.answer("✅ Картинка локации обновлена.")

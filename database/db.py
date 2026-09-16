@@ -399,6 +399,10 @@ async def init_db():
             required_status TEXT,
             blocking_states TEXT DEFAULT '[]',
             preview_photo TEXT,
+            photo_dawn TEXT,
+            photo_day TEXT,
+            photo_sunset TEXT,
+            photo_night TEXT,
             sort_order INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
@@ -552,6 +556,10 @@ async def init_db():
     await _ensure_column(conn, "dungeon_enemies", "poison_dmg", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "cure_poison", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "locations", "preview_photo", "TEXT")
+    await _ensure_column(conn, "locations", "photo_dawn", "TEXT")
+    await _ensure_column(conn, "locations", "photo_day", "TEXT")
+    await _ensure_column(conn, "locations", "photo_sunset", "TEXT")
+    await _ensure_column(conn, "locations", "photo_night", "TEXT")
     # Рыбалка: выбранная игроком наживка ('worms'/'spider'/'none', '' = авто)
     await _ensure_column(conn, "users", "fishing_bait", "TEXT DEFAULT ''")
     # Счётчик водорослей (для «несварения»: >6 в сутки → запрет расходников на 24 ч)
@@ -2950,6 +2958,31 @@ async def update_location_content(location_id: int, *, name=_LOC_UNSET,
     await conn.execute(
         "UPDATE locations SET name = ?, description = ?, preview_photo = ? WHERE id = ?",
         (cur_name, cur_desc, cur_photo, location_id)
+    )
+    await conn.commit()
+    return True
+
+
+LOCATION_PHOTO_KEYS = ("dawn", "day", "sunset", "night")
+
+
+async def update_location_photos(location_id: int, photos: dict):
+    """Задать file_id картинок здания по времени суток (ключи LOCATION_PHOTO_KEYS).
+
+    Один конкретный слот: update_location_photos(id, {'day': file_id}).
+    Сброс слота ('—'): update_location_photos(id, {'day': None}).
+    """
+    conn = await get_db()
+    loc = await get_location(location_id)
+    if not loc:
+        return False
+    cur = {}
+    for k in LOCATION_PHOTO_KEYS:
+        cur[k] = loc[f"photo_{k}"]
+    cur.update({k: v for k, v in photos.items() if k in LOCATION_PHOTO_KEYS})
+    await conn.execute(
+        "UPDATE locations SET photo_dawn = ?, photo_day = ?, photo_sunset = ?, photo_night = ? WHERE id = ?",
+        (cur["dawn"], cur["day"], cur["sunset"], cur["night"], location_id)
     )
     await conn.commit()
     return True

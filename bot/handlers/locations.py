@@ -12,7 +12,7 @@ from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.db import get_location_by_key, can_enter_location, location_access_label
-from utils.helpers import resolve_image
+from utils.helpers import resolve_image, time_of_day_key
 from utils.permissions import has_permission, is_admin
 
 router = Router()
@@ -44,12 +44,18 @@ async def location_preview(callback: CallbackQuery):
     ])
 
     photo = None
-    if 'preview_photo' in loc.keys() and loc['preview_photo']:
+    # Приоритет: file_id по текущему времени суток → asset-ключ (resolve_image) → единый file_id
+    tod = time_of_day_key()
+    keys = loc.keys()
+    for slot in (f"photo_{tod}", "photo_dawn", "photo_day", "photo_sunset", "photo_night"):
+        if slot in keys and loc[slot]:
+            photo = loc[slot]
+            break
+    if not photo and 'preview_photo' in keys and loc['preview_photo']:
         candidate = resolve_image(loc['preview_photo'])
         if os.path.isfile(candidate):
             photo = FSInputFile(candidate)
-        elif loc['preview_photo'] and not loc['preview_photo'].startswith("city/"):
-            # Не asset-ключ (нет локального файла) — пробуем как telegram file_id
+        elif not loc['preview_photo'].startswith("city/"):
             photo = loc['preview_photo']
     if photo:
         try:
