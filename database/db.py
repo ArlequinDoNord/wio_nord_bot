@@ -286,6 +286,7 @@ async def init_db():
             reward_nm INTEGER DEFAULT 5,
             is_boss INTEGER DEFAULT 0,
             drops TEXT DEFAULT '[]',
+            dodge INTEGER DEFAULT 0,
             FOREIGN KEY (dungeon_id) REFERENCES dungeons(id)
         );
 
@@ -567,6 +568,7 @@ async def init_db():
     await _ensure_column(conn, "dungeon_enemies", "poison_chance", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "dungeon_enemies", "poison_dmg", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "dungeon_enemies", "description", "TEXT")
+    await _ensure_column(conn, "dungeon_enemies", "dodge", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "cure_poison", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "locations", "preview_photo", "TEXT")
     await _ensure_column(conn, "locations", "photo_dawn", "TEXT")
@@ -3578,19 +3580,19 @@ DEFAULT_DUNGEON = {
     "floors": [
         {
             "enemies": [
-                ("Крыса", 15, 3, 0, False, [{"item": "Хвост крысы", "chance": 0.15, "qty": 1}], "assets/img/enemies/rat.jpg", 0, 0),
-                ("Ядовитая крыса", 20, 5, 0, False, [{"item": "Хвост крысы", "chance": 0.25, "qty": 1}], "assets/img/enemies/poison_rat.jpg", 35, 5),
+                ("Крыса", 15, 3, 0, False, [{"item": "Хвост крысы", "chance": 0.15, "qty": 1}], "assets/img/enemies/rat.jpg", 0, 0, 7),
+                ("Ядовитая крыса", 20, 5, 0, False, [{"item": "Хвост крысы", "chance": 0.25, "qty": 1}], "assets/img/enemies/poison_rat.jpg", 35, 5, 7),
                 ("Кристальный паук", 18, 4, 0, False, [
                     {"item": "Паутина паука", "chance": 0.15, "qty": 1},
                     {"item": "Осколок кристалла", "chance": 0.05, "qty": 1},
                     {"item": "Лапка кристального паука", "chance": 0.05, "qty": 1},
                     {"item": "Лапка паука", "chance": 0.2, "qty": 1},
-                ], "assets/img/enemies/crystal_spider.jpg", 0, 0),
+                ], "assets/img/enemies/crystal_spider.jpg", 0, 0, 12),
             ],
-            "boss": ("Король крыс", 50, 8, 15, True, [
+            "boss": ("Король крыс", 60, 8, 15, True, [
                 {"item": "Хвост крысы", "chance": 0.4, "qty": 2},
                 {"item": "Осколок кристалла", "chance": 0.2, "qty": 1},
-            ], "assets/img/enemies/rat_king.jpg", 0, 0),
+            ], "assets/img/enemies/rat_king.jpg", 0, 0, 10),
         },
     ],
 }
@@ -3616,20 +3618,22 @@ async def seed_dungeon():
             image = enemy[6] if len(enemy) > 6 else None
             poison_chance = enemy[7] if len(enemy) > 7 else 0
             poison_dmg = enemy[8] if len(enemy) > 8 else 0
+            dodge = enemy[9] if len(enemy) > 9 else 0
             await conn.execute(
-                "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, dodge) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (dungeon_id, floor_idx, name, hp, atk, reward, int(is_boss),
-                 json.dumps(drops, ensure_ascii=False), image, poison_chance, poison_dmg)
+                 json.dumps(drops, ensure_ascii=False), image, poison_chance, poison_dmg, dodge)
             )
         boss = floor_data["boss"]
         boss_drops = boss[5] if len(boss) > 5 else []
         boss_image = boss[6] if len(boss) > 6 else None
         boss_poison_chance = boss[7] if len(boss) > 7 else 0
         boss_poison_dmg = boss[8] if len(boss) > 8 else 0
+        boss_dodge = boss[9] if len(boss) > 9 else 0
         await conn.execute(
-            "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, dodge) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
             (dungeon_id, floor_idx, boss[0], boss[1], boss[2], boss[3], int(boss[4]),
-             json.dumps(boss_drops, ensure_ascii=False), boss_image, boss_poison_chance, boss_poison_dmg)
+             json.dumps(boss_drops, ensure_ascii=False), boss_image, boss_poison_chance, boss_poison_dmg, boss_dodge)
         )
 
     await conn.commit()
@@ -3642,6 +3646,14 @@ KVP_DUNGEON_NAME = "Курс Выживания для Пилотов (К.В.П.
 KVP_BADGE_NAME = "Значок В.У.С.П."
 KVP_MAX_COMPLETIONS = 4
 KVP_OD_COST = 5  # стоимость прохождения препятствия (одиночное действие)
+
+# Враги курса: (name, hp, atk, reward, is_boss, drops, image, poison_chance, poison_dmg, dodge, description)
+KVP_ENEMIES = [
+    ("Ефрейтор", 15, 2, 0, False, [], None, 0, 0, 5,
+     "Если Ефрейтор без оружия спотыкается о собственную нерасторопность, курс считается пройденным."),
+    ("Старший сержант", 40, 5, 0, True, [], None, 0, 0, 10,
+     "Командир курса. Самый страшный босс — способен отчитать так, что хочется покинуть часть."),
+]
 
 
 async def seed_kvp():
@@ -3657,6 +3669,14 @@ async def seed_kvp():
              existing['id'],
              "Тренировочный полигон для пилотов: 8 комнат со случайными препятствиями и боссом.")
         )
+        # Синхронизируем боевые характеристики врагов курса с кодом (HP/АТК/уклонение),
+        # не трогая описания и картинки, которые мог править админ.
+        for (name, hp, atk, reward, is_boss, drops, image, pc, pd, dodge, desc) in KVP_ENEMIES:
+            await conn.execute(
+                "UPDATE dungeon_enemies SET hp = ?, attack = ?, dodge = ? "
+                "WHERE dungeon_id = ? AND name = ? AND is_boss = ?",
+                (hp, atk, dodge, existing['id'], name, int(is_boss))
+            )
         await conn.commit()
         return existing['id']
 
@@ -3668,18 +3688,12 @@ async def seed_kvp():
     )
     dungeon_id = cur.lastrowid
 
-    enemies = [
-        ("Ефрейтор", 15, 2, 0, False, [], None, 0, 0,
-         "Если Ефрейтор без оружия спотыкается о собственную нерасторопность, курс считается пройденным."),
-        ("Старший сержант", 40, 6, 0, True, [], None, 0, 0,
-         "Командир курса. Самый страшный босс — способен отчитать так, что хочется покинуть часть."),
-    ]
-    for name, hp, atk, reward, is_boss, drops, image, poison_chance, poison_dmg, desc in enemies:
+    for name, hp, atk, reward, is_boss, drops, image, poison_chance, poison_dmg, dodge, desc in KVP_ENEMIES:
         await conn.execute(
-            "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, description) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, dodge, description) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (dungeon_id, 1, name, hp, atk, reward, int(is_boss),
-             json.dumps(drops, ensure_ascii=False), image, poison_chance, poison_dmg, desc)
+             json.dumps(drops, ensure_ascii=False), image, poison_chance, poison_dmg, dodge, desc)
         )
     await conn.commit()
     return dungeon_id
@@ -3952,6 +3966,21 @@ async def get_player_armor(user_id: int) -> int:
     )
     row = await cursor.fetchone()
     return row['armor'] if row else 0
+
+
+# Базовое уклонение пилота (%) и бонус за нашивку «Значок В.У.С.П.».
+PLAYER_BASE_DODGE = 3
+KVP_BADGE_DODGE_BONUS = 3
+
+
+async def get_player_dodge(user_id: int, dodge_mult: float = 1.0) -> int:
+    """Уклонение пилота в %: база 3% + 3% за нашивку «Значок В.У.С.П.», × модификатор состояний."""
+    dodge = PLAYER_BASE_DODGE
+    if await user_has_award_name(user_id, KVP_BADGE_NAME):
+        dodge += KVP_BADGE_DODGE_BONUS
+    if dodge_mult != 1.0:
+        dodge = int(round(dodge * dodge_mult))
+    return max(0, dodge)
 
 
 async def get_equipment(user_id: int) -> dict:
@@ -4360,6 +4389,7 @@ async def ensure_dungeon_enemy_drops():
             image = enemy[6] if len(enemy) > 6 else None
             poison_chance = enemy[7] if len(enemy) > 7 else 0
             poison_dmg = enemy[8] if len(enemy) > 8 else 0
+            dodge = enemy[9] if len(enemy) > 9 else 0
             expected.add(name)
             drops_json = json.dumps(drops, ensure_ascii=False)
             cursor = await conn.execute(
@@ -4368,14 +4398,14 @@ async def ensure_dungeon_enemy_drops():
             )
             if (await cursor.fetchone())['c'] == 0:
                 await conn.execute(
-                    "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                    (dungeon_id, floor_idx, name, hp, atk, reward, 0, drops_json, image, poison_chance, poison_dmg)
+                    "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, dodge) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (dungeon_id, floor_idx, name, hp, atk, reward, 0, drops_json, image, poison_chance, poison_dmg, dodge)
                 )
             else:
                 await conn.execute(
-                    "UPDATE dungeon_enemies SET hp = ?, attack = ?, reward_nm = ?, drops = ?, image = ?, poison_chance = ?, poison_dmg = ? "
+                    "UPDATE dungeon_enemies SET hp = ?, attack = ?, reward_nm = ?, drops = ?, image = ?, poison_chance = ?, poison_dmg = ?, dodge = ? "
                     "WHERE dungeon_id = ? AND name = ? AND is_boss = 0",
-                    (hp, atk, reward, drops_json, image, poison_chance, poison_dmg, dungeon_id, name)
+                    (hp, atk, reward, drops_json, image, poison_chance, poison_dmg, dodge, dungeon_id, name)
                 )
 
         boss = floor_data["boss"]
@@ -4384,20 +4414,21 @@ async def ensure_dungeon_enemy_drops():
         boss_image = boss[6] if len(boss) > 6 else None
         boss_poison_chance = boss[7] if len(boss) > 7 else 0
         boss_poison_dmg = boss[8] if len(boss) > 8 else 0
+        boss_dodge = boss[9] if len(boss) > 9 else 0
         cursor = await conn.execute(
             "SELECT COUNT(*) as c FROM dungeon_enemies WHERE dungeon_id = ? AND name = ? AND is_boss = 1",
             (dungeon_id, boss[0])
         )
         if (await cursor.fetchone())['c'] == 0:
             await conn.execute(
-                "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (dungeon_id, floor_idx, boss[0], boss[1], boss[2], boss[3], 1, boss_drops_json, boss_image, boss_poison_chance, boss_poison_dmg)
+                "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, dodge) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (dungeon_id, floor_idx, boss[0], boss[1], boss[2], boss[3], 1, boss_drops_json, boss_image, boss_poison_chance, boss_poison_dmg, boss_dodge)
             )
         else:
             await conn.execute(
-                "UPDATE dungeon_enemies SET hp = ?, attack = ?, reward_nm = ?, drops = ?, image = ?, poison_chance = ?, poison_dmg = ? "
+                "UPDATE dungeon_enemies SET hp = ?, attack = ?, reward_nm = ?, drops = ?, image = ?, poison_chance = ?, poison_dmg = ?, dodge = ? "
                 "WHERE dungeon_id = ? AND name = ? AND is_boss = 1",
-                (boss[1], boss[2], boss[3], boss_drops_json, boss_image, boss_poison_chance, boss_poison_dmg, dungeon_id, boss[0])
+                (boss[1], boss[2], boss[3], boss_drops_json, boss_image, boss_poison_chance, boss_poison_dmg, boss_dodge, dungeon_id, boss[0])
             )
 
     # Удаляем врагов, которых больше нет в конфиге (старый состав)

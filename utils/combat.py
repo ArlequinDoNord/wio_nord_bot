@@ -18,6 +18,13 @@ def calculate_enemy_damage(attack_power: int) -> int:
     return max(1, attack_power + bonus)
 
 
+def roll_dodge(dodge_percent: int) -> bool:
+    """True, если уклонение сработало (шанс dodge_percent %). 0 — никогда не уклоняется."""
+    if not dodge_percent or dodge_percent <= 0:
+        return False
+    return random.randint(1, 100) <= dodge_percent
+
+
 def escape_chance(player_hp_percent: float, dice_roll: int = None) -> bool:
     """
     Шанс убежать = 50% + (1 - hp_percent) * 30%.

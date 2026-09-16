@@ -11,13 +11,13 @@ from database.db import (
     get_active_run, update_run_hp, advance_room, end_run, add_run_item, add_run_nordmarks,
     get_run_items, clear_run_items, get_user, add_nordmarks, remove_nordmarks, remove_ap, get_db,
     get_player_weapon_damage, get_user_potions, get_item_by_name, remove_inventory_item,
-    get_user_contract_count, get_player_armor, add_inventory_item,
+    get_user_contract_count, get_player_armor, get_player_dodge, add_inventory_item,
     get_inventory_item, clear_equipment_slot,
     transfer_run_items_to_inventory, get_equipment_slot_items, log_activity,
     user_has_award_name,
 )
 from utils.combat import (
-    calculate_attack, calculate_enemy_damage,
+    calculate_attack, calculate_enemy_damage, roll_dodge,
     escape_chance, calculate_escape_damage, room_type_roll, resource_amount,
     _hp_bar,
 )
@@ -354,7 +354,7 @@ async def show_room(message, run, user_id, state: FSMContext):
             f"{poison_line}"
             f"{heal_line}\n"
             f"⚠️ Ты входишь в комнату и видишь врага!\n"
-            f"👾 {enemy['name']} (HP: {enemy['hp']}, АТК: {enemy['attack']})\n\n"
+            f"👾 {enemy['name']} (HP: {enemy['hp']}, АТК: {enemy['attack']}, УКЛ: {enemy['dodge'] if 'dodge' in enemy.keys() else 0}%)\n\n"
             f"Что делаешь?"
         )
         await answer_enemy_photo(message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items, step))
@@ -444,6 +444,13 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     if await user_has_award_name(user_id, "Значок В.У.С.П."):
         am *= 1.02
     damage_to_enemy = max(1, int(damage_to_enemy * am))
+
+    # Уклонение врага: может полностью избежать удара
+    enemy_dodge = enemy['dodge'] if 'dodge' in enemy.keys() else 0
+    enemy_dodged = roll_dodge(enemy_dodge)
+    if enemy_dodged:
+        damage_to_enemy = 0
+
     current_enemy_hp = max(0, current_enemy_hp - damage_to_enemy)
     await state.update_data(current_enemy_hp=current_enemy_hp)
 
@@ -496,29 +503,47 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
     from utils.combat import get_enemy_bar
     enemy_bar = get_enemy_bar(current_enemy_hp, enemy['hp'])
+    if enemy_dodged:
+        attack_line = f"💨 {enemy['name']} уклонился от удара! (−0 HP врагу)\n"
+    else:
+        attack_line = f"−{damage_to_enemy} HP врагу\n"
     text = (
         f"🗡️ Ты атакуешь {enemy['name']}!\n"
-        f"−{damage_to_enemy} HP врагу\n"
+        f"{attack_line}"
         f"{enemy_bar}\n\n"
     )
 
+    # Уклонение пилота: шанс избежать контратаки (база + нашивка, × состояния)
+    player_dodge = await get_player_dodge(user_id, mult.get('dodge_mult', 1.0))
+    player_dodged = roll_dodge(player_dodge)
     enemy_dmg = calculate_enemy_damage(enemy['attack'])
     armor = await get_player_armor(user_id)
-    reduced = max(1, enemy_dmg - armor)
-    blocked_line = f"\n🛡️ Броня поглотила {enemy_dmg - reduced} урона!" if armor > 0 and reduced < enemy_dmg else ""
+    blocked_line = ""
+    if player_dodged:
+        reduced = 0
+        dodge_line = f"💨 Ты уклонился от атаки {enemy['name']}! (−0 HP)"
+    else:
+        reduced = max(1, enemy_dmg - armor)
+        if armor > 0 and reduced < enemy_dmg:
+            blocked_line = f"\n🛡️ Броня поглотила {enemy_dmg - reduced} урона!"
+        dodge_line = ""
     player_hp = max(0, player_hp - reduced)
     await update_run_hp(run['id'], player_hp)
 
-    from utils.combat import get_enemy_attack_text
-    text += get_enemy_attack_text(enemy['name'], reduced, player_hp) + blocked_line
+    if player_dodged:
+        text += dodge_line
+    else:
+        from utils.combat import get_enemy_attack_text
+        text += get_enemy_attack_text(enemy['name'], reduced, player_hp) + blocked_line
 
-    # Навесить яд при укусе врага
-    pc = enemy['poison_chance'] if 'poison_chance' in enemy.keys() else 0
+    # Навесить яд при укусе врага (только если враг попал)
     poison_just_applied = False
-    if pc and enemy['poison_dmg'] and random.randint(1, 100) <= pc:
-        await state.update_data(active_poison=enemy['poison_dmg'])
-        text += f"\n☠️ {enemy['name']} отравил тебя! Яд: −{enemy['poison_dmg']} HP каждый ход."
-        poison_just_applied = True
+    if not player_dodged:
+        pc = enemy['poison_chance'] if 'poison_chance' in enemy.keys() else 0
+        if pc and enemy['poison_dmg'] and random.randint(1, 100) <= pc:
+            await state.update_data(active_poison=enemy['poison_dmg'])
+            text += f"\n☠️ {enemy['name']} отравил тебя! Яд: −{enemy['poison_dmg']} HP каждый ход."
+            poison_just_applied = True
 
     # Показывать текущий статус отравления, пока игрок не снял его антидотом
     data_after = await state.get_data()
@@ -773,7 +798,7 @@ async def show_boss(message, run, user_id, state: FSMContext):
         f"❤️ {hp_text}\n"
         f"{poison_line}"
         f"{boss_heal_line}\n"
-        f"💀 {boss['name']} (HP: {boss['hp']}, АТК: {boss['attack']})\n\n"
+        f"💀 {boss['name']} (HP: {boss['hp']}, АТК: {boss['attack']}, УКЛ: {boss['dodge'] if 'dodge' in boss.keys() else 0}%)\n\n"
         f"⚠️ Это решающий бой! Убежать нельзя!"
     )
     await answer_enemy_photo(message, boss, text, reply_markup=dungeon_boss_keyboard(boss['id'], slot_items, step))

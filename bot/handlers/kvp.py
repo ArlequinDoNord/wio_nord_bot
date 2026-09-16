@@ -17,12 +17,12 @@ from database.db import (
     get_db, get_dungeon, get_kvp_dungeon, start_dungeon_run, get_active_run,
     advance_room, end_run, update_run_hp, add_run_nordmarks, add_nordmarks,
     transfer_run_items_to_inventory, get_user, remove_ap, get_player_weapon_damage,
-    get_player_armor, get_item_by_name, add_inventory_item, get_kvp_progress,
+    get_player_armor, get_player_dodge, get_item_by_name, add_inventory_item, get_kvp_progress,
     increment_kvp_completions, mark_kvp_badge, mark_kvp_stick, grant_award,
     user_has_award_name, log_activity, KVP_BADGE_NAME, KVP_MAX_COMPLETIONS,
 )
 from utils.combat import (
-    calculate_attack, calculate_enemy_damage, _hp_bar,
+    calculate_attack, calculate_enemy_damage, roll_dodge, _hp_bar,
     get_enemy_bar, get_enemy_attack_text,
 )
 from utils.states import get_state_info, combat_multipliers
@@ -285,7 +285,7 @@ async def show_enemy_room(message, run, user_id, state: FSMContext):
         f"{_course_header(run, 'БОЙ')}\n"
         f"⚠️ Комната с Ефрейтором. Он смотрит угрюмо и без оружия — "
         f"проверка на умение убеждать.\n"
-        f"👾 {enemy['name']} (HP: {enemy['hp']}, АТК: {enemy['attack']})\n\n"
+        f"👾 {enemy['name']} (HP: {enemy['hp']}, АТК: {enemy['attack']}, УКЛ: {enemy['dodge'] if 'dodge' in enemy.keys() else 0}%)\n\n"
         f"Что делаешь?"
     )
     await answer_enemy_photo(message, enemy, text,
@@ -326,7 +326,7 @@ async def show_boss_room(message, run, user_id, state: FSMContext, current_hp=No
     text = (
         f"🎖️ {_course_header(run, 'БОСС')}\n"
         f"💀 КОМНАТА БОССА! В центре — «{boss['name']}» с «Офицерским стеком».\n"
-        f"👾 {boss['name']} (HP: {boss['hp']}, АТК: {boss['attack']})\n\n"
+        f"👾 {boss['name']} (HP: {boss['hp']}, АТК: {boss['attack']}, УКЛ: {boss['dodge'] if 'dodge' in boss.keys() else 0}%)\n\n"
         f"⚠️ Убежать с полигона нельзя — сдай экзамен!"
     )
     await answer_enemy_photo(message, boss, text,
@@ -479,11 +479,18 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     weapon_damage = await get_player_weapon_damage(user_id)
     damage_to_enemy = calculate_attack(0, weapon_damage)
     state_info = await get_state_info(user_id)
-    am = combat_multipliers(state_info['names']).get('attack_mult', 1.0)
+    mult = combat_multipliers(state_info['names'])
+    am = mult.get('attack_mult', 1.0)
     # Значок В.У.С.П. — постоянный +2% урона в подземельях и на курсе.
     if await user_has_award_name(user_id, KVP_BADGE_NAME):
         am *= 1.02
     damage_to_enemy = max(1, int(damage_to_enemy * am))
+
+    # Уклонение врага: может полностью избежать удара
+    enemy_dodge = enemy['dodge'] if 'dodge' in enemy.keys() else 0
+    enemy_dodged = roll_dodge(enemy_dodge)
+    if enemy_dodged:
+        damage_to_enemy = 0
 
     current_enemy_hp = max(0, current_enemy_hp - damage_to_enemy)
     await state.update_data(current_enemy_hp=current_enemy_hp)
@@ -504,22 +511,37 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
                                  reply_markup=kvp_continue_keyboard(new_step))
         return
 
-    # Враг контратакует
+    # Враг контратакует (с шансом пилот уклоняется)
+    player_dodge = await get_player_dodge(user_id, mult.get('dodge_mult', 1.0))
+    player_dodged = roll_dodge(player_dodge)
     enemy_dmg = calculate_enemy_damage(enemy['attack'])
     armor = await get_player_armor(user_id)
-    reduced = max(1, enemy_dmg - armor)
-    blocked_line = (f"\n🛡️ Броня поглотила {enemy_dmg - reduced} урона!"
-                    if armor > 0 and reduced < enemy_dmg else "")
+    blocked_line = ""
+    if player_dodged:
+        reduced = 0
+        dodge_line = f"💨 Ты уклонился от атаки {enemy['name']}! (−0 HP)"
+    else:
+        reduced = max(1, enemy_dmg - armor)
+        if armor > 0 and reduced < enemy_dmg:
+            blocked_line = f"\n🛡️ Броня поглотила {enemy_dmg - reduced} урона!"
+        dodge_line = ""
     player_hp = max(0, player_hp - reduced)
     await update_run_hp(run['id'], player_hp)
 
+    if enemy_dodged:
+        attack_line = f"💨 {enemy['name']} уклонился от удара! (−0 HP врагу)\n"
+    else:
+        attack_line = f"−{damage_to_enemy} HP врагу\n"
     enemy_bar = get_enemy_bar(current_enemy_hp, enemy['hp'])
     text = (
         f"🗡️ Ты атакуешь {enemy['name']}!\n"
-        f"−{damage_to_enemy} HP врагу\n"
+        f"{attack_line}"
         f"{enemy_bar}\n\n"
     )
-    text += get_enemy_attack_text(enemy['name'], reduced, player_hp) + blocked_line
+    if player_dodged:
+        text += dodge_line
+    else:
+        text += get_enemy_attack_text(enemy['name'], reduced, player_hp) + blocked_line
 
     if player_hp <= 0:
         await end_run(run['id'], 0)
