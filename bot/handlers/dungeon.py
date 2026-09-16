@@ -20,6 +20,7 @@ from utils.combat import (
     escape_chance, calculate_escape_damage, room_type_roll, resource_amount,
     _hp_bar,
 )
+from utils.helpers import time_of_day_key
 from utils.notify import notify, player_display
 from config import (
     DUNGEON_HEAL_SOFT_LIMIT, DUNGEON_HEAL_HARD_LIMIT,
@@ -128,6 +129,19 @@ async def answer_enemy_photo(where, enemy, text, reply_markup=None):
     return await where.answer(text, reply_markup=reply_markup)
 
 
+def dungeon_entrance_photo(dng):
+    """Входная картинка подземелья по времени суток: file_id или None.
+
+    Приоритет как у локаций: photo_{tod} → dawn → day → sunset → night.
+    """
+    keys = dng.keys()
+    tod = time_of_day_key()
+    for slot in (f"photo_{tod}", "photo_dawn", "photo_day", "photo_sunset", "photo_night"):
+        if slot in keys and dng[slot]:
+            return dng[slot]
+    return None
+
+
 async def count_potions(user_id: int) -> int:
     potions = await get_user_potions(user_id)
     return sum(p['quantity'] for p in potions)
@@ -174,7 +188,15 @@ async def dungeon_entry(callback: CallbackQuery, state: FSMContext):
     contracts = await get_user_contract_count(user_id)
     text += f"🎫 Контрактов на зачистку: {contracts}\n(покупаются в магазине, доступно Ветеранам)"
 
-    await callback.message.answer(text, reply_markup=dungeon_start_keyboard())
+    markup = dungeon_start_keyboard()
+    photo = dungeon_entrance_photo(dungeons[0])
+    if photo:
+        try:
+            await callback.message.answer_photo(photo=photo, caption=text, reply_markup=markup)
+        except Exception:
+            await callback.message.answer(text, reply_markup=markup)
+    else:
+        await callback.message.answer(text, reply_markup=markup)
 
 
 @router.callback_query(F.data == "dungeon:enter")

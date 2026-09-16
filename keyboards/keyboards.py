@@ -50,6 +50,7 @@ def admin_panel_keyboard(permissions: dict):
         buttons.append([InlineKeyboardButton(text="🏅 Награды", callback_data="admin:awards")])
     if permissions.get('can_manage_locations'):
         buttons.append([InlineKeyboardButton(text="📍 Локации", callback_data="admin:locations")])
+        buttons.append([InlineKeyboardButton(text="🏰 Подземелья", callback_data="admin:dungeons")])
     if permissions.get('can_view_logs'):
         buttons.append([InlineKeyboardButton(text="🧾 Логи действий", callback_data="admin:logs")])
         buttons.append([InlineKeyboardButton(text="📒 Лог игрока", callback_data="admin:player_log")])

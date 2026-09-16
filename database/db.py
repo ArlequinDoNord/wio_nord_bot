@@ -269,7 +269,11 @@ async def init_db():
             description TEXT,
             floors_count INTEGER DEFAULT 1,
             rooms_per_floor INTEGER DEFAULT 10,
-            is_active INTEGER DEFAULT 1
+            is_active INTEGER DEFAULT 1,
+            photo_dawn TEXT,
+            photo_day TEXT,
+            photo_sunset TEXT,
+            photo_night TEXT
         );
 
         CREATE TABLE IF NOT EXISTS dungeon_enemies (
@@ -560,6 +564,11 @@ async def init_db():
     await _ensure_column(conn, "locations", "photo_day", "TEXT")
     await _ensure_column(conn, "locations", "photo_sunset", "TEXT")
     await _ensure_column(conn, "locations", "photo_night", "TEXT")
+    # Подземелья: картинка входа по времени суток (как у локаций)
+    await _ensure_column(conn, "dungeons", "photo_dawn", "TEXT")
+    await _ensure_column(conn, "dungeons", "photo_day", "TEXT")
+    await _ensure_column(conn, "dungeons", "photo_sunset", "TEXT")
+    await _ensure_column(conn, "dungeons", "photo_night", "TEXT")
     # Рыбалка: выбранная игроком наживка ('worms'/'spider'/'none', '' = авто)
     await _ensure_column(conn, "users", "fishing_bait", "TEXT DEFAULT ''")
     # Счётчик водорослей (для «несварения»: >6 в сутки → запрет расходников на 24 ч)
@@ -2964,6 +2973,28 @@ async def update_location_content(location_id: int, *, name=_LOC_UNSET,
 
 
 LOCATION_PHOTO_KEYS = ("dawn", "day", "sunset", "night")
+
+
+async def update_dungeon_photos(dungeon_id: int, photos: dict):
+    """Задать file_id картинок входа подземелья по времени суток (ключи LOCATION_PHOTO_KEYS).
+
+    Один конкретный слот: update_dungeon_photos(id, {'day': file_id}).
+    Сброс слота ('—'): update_dungeon_photos(id, {'day': None}).
+    """
+    conn = await get_db()
+    dng = await get_dungeon(dungeon_id)
+    if not dng:
+        return False
+    cur = {}
+    for k in LOCATION_PHOTO_KEYS:
+        cur[k] = dng[f"photo_{k}"]
+    cur.update({k: v for k, v in photos.items() if k in LOCATION_PHOTO_KEYS})
+    await conn.execute(
+        "UPDATE dungeons SET photo_dawn = ?, photo_day = ?, photo_sunset = ?, photo_night = ? WHERE id = ?",
+        (cur["dawn"], cur["day"], cur["sunset"], cur["night"], dungeon_id)
+    )
+    await conn.commit()
+    return True
 
 
 async def update_location_photos(location_id: int, photos: dict):

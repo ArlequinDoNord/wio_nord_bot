@@ -26,6 +26,7 @@ from database.db import (
     get_salaried_users, get_user_salary, set_user_salary, pay_salaries,
     get_all_locations, get_location, create_location, update_location_access,
     update_location_content, update_location_photos, location_access_label,
+    get_all_dungeons, get_dungeon, update_dungeon_photos,
     create_award, get_all_awards, get_award, delete_award, grant_award,
     get_user_awards, revoke_award,
     log_activity, get_user_activity, clear_user_photo,
@@ -145,6 +146,12 @@ class AdminLocation(StatesGroup):
     req_status = State()
     blocking = State()
     preview = State()
+
+
+class AdminDungeon(StatesGroup):
+    """Редактирование подземелья: входная картинка по времени суток."""
+    target_id = State()
+    photo_tod = State()
 
 
 # ============ УТИЛИТЫ ============
@@ -2706,6 +2713,158 @@ async def admin_locations(callback: CallbackQuery):
         [InlineKeyboardButton(text="🔙 В меню", callback_data="admin:menu")],
     ])
     await callback.message.edit_text("\n".join(lines), reply_markup=kb)
+
+
+@router.callback_query(F.data == "admin:dungeons")
+async def admin_dungeons(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        await callback.message.answer("❌ Нет прав для управления подземельями.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    dungeons = await get_all_dungeons()
+    lines = ["🏰 ПОДЗЕМЕЛЬЯ\n"]
+    rows = []
+    if dungeons:
+        for d in dungeons:
+            lines.append(f"• {d['name']} — Этажей: {d['floors_count']}")
+            rows.append([InlineKeyboardButton(text=f"🏚 {d['name']}", callback_data=f"dungeon:edit:{d['id']}")])
+    else:
+        lines.append("Подземелий пока нет.")
+    rows.append([InlineKeyboardButton(text="🔙 В меню", callback_data="admin:menu")])
+    await callback.message.edit_text("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("dungeon:edit:"))
+async def dungeon_edit(callback: CallbackQuery, state: FSMContext):
+    """Редактирование подземелья: входная картинка по времени суток."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    dungeon_id = int(callback.data.split(":")[2])
+    dng = await get_dungeon(dungeon_id)
+    if not dng:
+        await callback.message.answer("❌ Подземелье не найдено.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await state.update_data(target_id=dungeon_id)
+    await callback.message.edit_text(
+        f"🏰 {dng['name']}\nЧто изменить во входе?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🖼 Картинка входа (время суток)", callback_data="dungeon:photos")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="admin:dungeons")],
+        ])
+    )
+
+
+def _dungeon_photo_slots_text(dng):
+    keys = dng.keys()
+    filled = [TOD_LABEL[k] for k in TOD_KEYS
+              if f"photo_{k}" in keys and dng[f"photo_{k}"]]
+    return filled or ["нет"]
+
+
+async def _dungeon_photos_pick_send(source, dungeon_id: int):
+    """Показывает пикер картинок входа подземелья; source — CallbackQuery или Message."""
+    dng = await get_dungeon(dungeon_id)
+    if not dng:
+        if isinstance(source, CallbackQuery):
+            await source.message.edit_text("❌ Подземелье не найдено.")
+        else:
+            await source.answer("❌ Подземелье не найдено.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    keys = dng.keys()
+    rows = []
+    for k in TOD_KEYS:
+        mark = "✅" if f"photo_{k}" in keys and dng[f"photo_{k}"] else "—"
+        rows.append([InlineKeyboardButton(
+            text=f"{mark} {TOD_LABEL[k]}",
+            callback_data=f"dungeon:photo_set:{k}",
+        )])
+    rows.append([InlineKeyboardButton(text="🚫 Убрать все", callback_data="dungeon:photos:clear")])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="dungeon:edit:" + str(dungeon_id))])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    text = (
+        f"🖼 Картинка входа «{dng['name']}».\n"
+        f"Задано: {', '.join(_dungeon_photo_slots_text(dng))}\n\n"
+        f"Нажми время суток и отправь фото (или «-» чтобы убрать):"
+    )
+    if isinstance(source, CallbackQuery):
+        await source.message.edit_text(text, reply_markup=kb)
+    else:
+        await source.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data == "dungeon:photos")
+async def dungeon_photos_pick(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    await _dungeon_photos_pick_send(callback, data['target_id'])
+
+
+@router.callback_query(F.data.startswith("dungeon:photo_set:"))
+async def dungeon_photo_set(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    tod = callback.data.split(":")[2]
+    if tod not in TOD_KEYS:
+        return
+    data = await state.get_data()
+    await state.update_data(photo_tod=tod)
+    await state.set_state(AdminDungeon.photo_tod)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.answer(
+        f"🖼 Отправь фото для «{TOD_LABEL[tod]}» (или «-» для очистки этого слота).",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="dungeon:photos")]
+        ])
+    )
+
+
+@router.callback_query(F.data == "dungeon:photos:clear")
+async def dungeon_photos_clear(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    await update_dungeon_photos(data['target_id'], {k: None for k in TOD_KEYS})
+    await _dungeon_photos_pick_send(callback, data['target_id'])
+
+
+@router.message(AdminDungeon.photo_tod)
+async def dungeon_step_photo(message: Message, state: FSMContext):
+    data = await state.get_data()
+    dungeon_id = data.get('target_id')
+    if not dungeon_id:
+        await state.clear()
+        await message.answer("❌ Ошибка: нет подземелья в сессии.")
+        return
+    dng = await get_dungeon(dungeon_id)
+    if not dng:
+        await state.clear()
+        await message.answer("❌ Подземелье не найдено.")
+        return
+    if message.photo:
+        file_id = message.photo[-1].file_id
+    elif message.text and message.text.strip() in ("-", "—"):
+        file_id = None
+    else:
+        await message.answer("❌ Отправь именно фото (или «-» для очистки).")
+        return
+    photo_tod = data.get('photo_tod')
+    if photo_tod and photo_tod in TOD_KEYS:
+        await update_dungeon_photos(dungeon_id, {photo_tod: file_id})
+        await log_action(message.from_user.id, 'edit_dungeon', None,
+                         f"dungeon_id={dungeon_id} photo_{photo_tod}={'file_id' if file_id else 'cleared'}")
+        await state.update_data(photo_tod=None)
+        await _dungeon_photos_pick_send(message, dungeon_id)
+        return
+    await state.clear()
+    await message.answer("✅ Картинка входа подземелья обновлена.")
 
 
 @router.callback_query(F.data == "loc:create")
