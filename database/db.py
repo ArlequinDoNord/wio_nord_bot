@@ -324,6 +324,14 @@ async def init_db():
             UNIQUE(run_id, item_id)
         );
 
+        CREATE TABLE IF NOT EXISTS player_kvp (
+            user_id INTEGER PRIMARY KEY,
+            completions INTEGER DEFAULT 0,
+            badge_awarded INTEGER DEFAULT 0,
+            stick_dropped INTEGER DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        );
+
         CREATE TABLE IF NOT EXISTS reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -558,6 +566,7 @@ async def init_db():
     await _ensure_column(conn, "dungeon_enemies", "image", "TEXT")
     await _ensure_column(conn, "dungeon_enemies", "poison_chance", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "dungeon_enemies", "poison_dmg", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "dungeon_enemies", "description", "TEXT")
     await _ensure_column(conn, "items", "cure_poison", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "locations", "preview_photo", "TEXT")
     await _ensure_column(conn, "locations", "photo_dawn", "TEXT")
@@ -616,6 +625,7 @@ async def init_db():
     await conn.execute("UPDATE statuses SET sort_order = 2 WHERE access_tag = 'pilot'")
     await conn.execute("UPDATE statuses SET sort_order = -10 WHERE access_tag = 'tourist'")
     # v0.10.0: рынок (слоты продажи + лицензия) и налог на жильё
+    await _ensure_column(conn, "dungeons", "is_training", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "market_license_expires", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "market_fish", "base_price", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "player_housing", "tax_last_check", "TEXT DEFAULT NULL")
@@ -645,6 +655,8 @@ async def seed_locations(conn):
          "all", None, ["пьян"], "city/media"),
         ("bank", "Банк", "НОРДБАНК — финансовое сердце Нордхайма: счета, переводы и казна. Для туристов счёт ограничен 200 НМ.",
          "all", None, ["пьян"], "city/bank"),
+        ("kvp", "Курс выживания", "Тренировочный полигон для пилотов. 8 комнат с препятствиями и босс — Старший сержант.",
+         "all", None, ["пьян"], "city/kvp"),
     ]
     for key, name, desc, mode, req_status, blocking, preview in base:
         await conn.execute(
@@ -3618,9 +3630,143 @@ async def seed_dungeon():
     return True
 
 
-async def get_all_dungeons():
+# ============ ДАНЖ: КУРС ВЫЖИВАНИЯ ДЛЯ ПИЛОТОВ (К.В.П.) ============
+
+KVP_DUNGEON_NAME = "Курс Выживания для Пилотов (К.В.П.)"
+KVP_BADGE_NAME = "Значок В.У.С.П."
+KVP_MAX_COMPLETIONS = 4
+KVP_OD_COST = 5  # стоимость прохождения препятствия (одиночное действие)
+
+
+async def seed_kvp():
+    """Создаёт тренировочный данж К.В.П. с врагами (Ефрейтор, Старший сержант), если его нет."""
     conn = await get_db()
-    cursor = await conn.execute("SELECT * FROM dungeons WHERE is_active = 1")
+    cursor = await conn.execute("SELECT id FROM dungeons WHERE name = ?", (KVP_DUNGEON_NAME,))
+    existing = await cursor.fetchone()
+    if existing:
+        return existing['id']
+
+    cur = await conn.execute(
+        "INSERT INTO dungeons (name, description, floors_count, rooms_per_floor, is_training) VALUES (?,?,?,?,?)",
+        (KVP_DUNGEON_NAME,
+         "Тренировочный полигон для пилотов: 8 комнат со случайными препятствиями и боссом.",
+         1, 8, 1)
+    )
+    dungeon_id = cur.lastrowid
+
+    enemies = [
+        ("Ефрейтор", 15, 2, 0, False, [], None, 0, 0,
+         "Если Ефрейтор без оружия спотыкается о собственную нерасторопность, курс считается пройденным."),
+        ("Старший сержант", 40, 6, 0, True, [], None, 0, 0,
+         "Командир курса. Самый страшный босс — способен отчитать так, что хочется покинуть часть."),
+    ]
+    for name, hp, atk, reward, is_boss, drops, image, poison_chance, poison_dmg, desc in enemies:
+        await conn.execute(
+            "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, description) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (dungeon_id, 1, name, hp, atk, reward, int(is_boss),
+             json.dumps(drops, ensure_ascii=False), image, poison_chance, poison_dmg, desc)
+        )
+    await conn.commit()
+    return dungeon_id
+
+
+async def get_kvp_dungeon():
+    """Возвращает тренировочный данж К.В.П. или None."""
+    dungeons = await get_all_dungeons(training=True)
+    return dungeons[0] if dungeons else None
+
+
+async def ensure_kvp_items():
+    """Добавляет предметы К.В.П. (Офицерский стек), если их ещё нет."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = 'Офицерский стек'")
+    if (await cursor.fetchone())['c'] == 0:
+        await add_item(
+            name="Офицерский стек",
+            description="Офицерский стек Старшего сержанта. Тяжёлый, но дисциплинирующий.",
+            price=100, sell_price=50, rarity=3, category="weapon",
+            stock=-1, added_by=0, ap_cost=0,
+            damage=2, heal=0, armor=0, drink_effect=None
+        )
+
+
+async def ensure_kvp_award():
+    """Создаёт награду «Значок В.У.С.П.», если её ещё нет."""
+    await create_award(
+        name=KVP_BADGE_NAME,
+        description="Выживание, уклонение, сопротивление и побег. Постоянный бонус +2% урона в подземельях.",
+        emoji="🎖️",
+        created_by=None,
+    )
+
+
+async def ensure_kvp_user(user_id: int):
+    """Гарантирует наличие строки прогресса К.В.П. для игрока."""
+    conn = await get_db()
+    await conn.execute(
+        "INSERT OR IGNORE INTO player_kvp (user_id) VALUES (?)", (user_id,))
+    await conn.commit()
+
+
+async def get_kvp_progress(user_id: int):
+    """Прогресс К.В.П.: {'completions', 'badge_awarded', 'stick_dropped'} или нулевые значения."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT completions, badge_awarded, stick_dropped FROM player_kvp WHERE user_id = ?",
+        (user_id,)
+    )
+    row = await cursor.fetchone()
+    if not row:
+        return {"completions": 0, "badge_awarded": 0, "stick_dropped": 0}
+    return dict(row)
+
+
+async def increment_kvp_completions(user_id: int):
+    await ensure_kvp_user(user_id)
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE player_kvp SET completions = completions + 1 WHERE user_id = ?", (user_id,))
+    await conn.commit()
+
+
+async def mark_kvp_badge(user_id: int):
+    await ensure_kvp_user(user_id)
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE player_kvp SET badge_awarded = 1 WHERE user_id = ?", (user_id,))
+    await conn.commit()
+
+
+async def mark_kvp_stick(user_id: int):
+    await ensure_kvp_user(user_id)
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE player_kvp SET stick_dropped = 1 WHERE user_id = ?", (user_id,))
+    await conn.commit()
+
+
+async def user_has_award_name(user_id: int, award_name: str) -> bool:
+    """Есть ли у игрока награда с данным названием (постоянный бонус, экипировка не нужна)."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT 1 FROM user_awards ua
+        JOIN awards a ON ua.award_id = a.id
+        WHERE ua.user_id = ? AND a.name = ?
+        LIMIT 1
+    """, (user_id, award_name))
+    return (await cursor.fetchone()) is not None
+
+
+async def get_all_dungeons(training=None):
+    """Все активные подземелья. training=None — все, True — только тренировочные, False — только боевые."""
+    conn = await get_db()
+    q = "SELECT * FROM dungeons WHERE is_active = 1"
+    if training is not None:
+        q += " AND is_training = ?"
+        cursor = await conn.execute(q, (int(training),))
+    else:
+        cursor = await conn.execute(q)
     return await cursor.fetchall()
 
 
@@ -4177,7 +4323,7 @@ async def ensure_dungeon_enemy_drops():
     """Синхронизирует врагов существующего данжа с DEFAULT_DUNGEON (дропы, HP, награды)."""
     conn = await get_db()
 
-    dungeons = await get_all_dungeons()
+    dungeons = await get_all_dungeons(training=False)
     if not dungeons:
         return
     dungeon_id = dungeons[0]['id']

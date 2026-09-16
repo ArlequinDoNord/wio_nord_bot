@@ -12,6 +12,7 @@ from database.db import (
     init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon,
     ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, ensure_life_items, ensure_recipes,
     ensure_market_license_item, pay_salaries, payout_reports, run_housing_tax,
+    seed_kvp, ensure_kvp_items, ensure_kvp_award,
 )
 from utils.notify import notify_treasury_shortage
 from utils.helpers import is_main_menu_text
@@ -31,6 +32,7 @@ from bot.handlers.park import router as park_router
 from bot.handlers.fishing import router as fishing_router
 from bot.handlers.housing import router as housing_router
 from bot.handlers.news import router as news_router
+from bot.handlers.kvp import router as kvp_router
 
 load_dotenv()
 
@@ -208,6 +210,15 @@ async def main():
     if license_seeded:
         logger.info("Торговая лицензия добавлена в магазин")
 
+    await seed_kvp()
+    logger.info("К.В.П. (Курс выживания) создан или проверен")
+
+    await ensure_kvp_items()
+    logger.info("Предметы К.В.П. (Офицерский стек) проверены")
+
+    await ensure_kvp_award()
+    logger.info("Награда К.В.П. («Значок В.У.С.П.») проверена")
+
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
@@ -234,11 +245,12 @@ async def main():
     dp.include_router(fishing_router)
     dp.include_router(housing_router)
     dp.include_router(news_router)
+    dp.include_router(kvp_router)
 
     for r in (start_router, profile_router, bank_router, admin_router, shop_router,
               inventory_router, reports_router, dungeon_router, pilots_router,
               polls_router, library_router, locations_router, park_router,
-              fishing_router, housing_router, news_router):
+              fishing_router, housing_router, news_router, kvp_router):
         r.message.middleware(FishingActiveLock())
         r.message.middleware(MainMenuFSMReset())
         r.callback_query.middleware(FishingActiveLock())

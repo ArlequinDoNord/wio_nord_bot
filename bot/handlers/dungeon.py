@@ -14,6 +14,7 @@ from database.db import (
     get_user_contract_count, get_player_armor, add_inventory_item,
     get_inventory_item, clear_equipment_slot,
     transfer_run_items_to_inventory, get_equipment_slot_items, log_activity,
+    user_has_award_name,
 )
 from utils.combat import (
     calculate_attack, calculate_enemy_damage,
@@ -176,7 +177,7 @@ async def dungeon_entry(callback: CallbackQuery, state: FSMContext):
         await show_room(callback.message, active, user_id, state)
         return
 
-    dungeons = await get_all_dungeons()
+    dungeons = await get_all_dungeons(training=False)
     if not dungeons:
         await callback.message.answer("❌ Подземелий пока нет.")
         return
@@ -203,7 +204,7 @@ async def dungeon_entry(callback: CallbackQuery, state: FSMContext):
 async def dungeon_enter(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     user_id = callback.from_user.id
-    dungeons = await get_all_dungeons()
+    dungeons = await get_all_dungeons(training=False)
     if not dungeons:
         return
 
@@ -249,7 +250,7 @@ async def dungeon_enter_confirm(callback: CallbackQuery, state: FSMContext):
     dungeon_id = data.get('dungeon_id')
     dungeon = await get_dungeon(dungeon_id) if dungeon_id else None
     if not dungeon:
-        dungeon = (await get_all_dungeons() or [None])[0]
+        dungeon = (await get_all_dungeons(training=False) or [None])[0]
         if not dungeon:
             return
 
@@ -440,6 +441,8 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     state_info = await get_state_info(user_id)
     mult = combat_multipliers(state_info['names'])
     am = mult.get('attack_mult', 1.0)
+    if await user_has_award_name(user_id, "Значок В.У.С.П."):
+        am *= 1.02
     damage_to_enemy = max(1, int(damage_to_enemy * am))
     current_enemy_hp = max(0, current_enemy_hp - damage_to_enemy)
     await state.update_data(current_enemy_hp=current_enemy_hp)
