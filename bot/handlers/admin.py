@@ -3,6 +3,8 @@
 Доступ разграничен по ролям (см. utils/permissions.py).
 """
 
+import json
+
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
@@ -137,6 +139,7 @@ class AdminLocation(StatesGroup):
     target_id = State()     # id локации для редактирования
     key = State()
     name = State()
+    set_name = State()      # редактирование названия существующей локации
     description = State()
     mode = State()
     req_status = State()
@@ -2699,6 +2702,7 @@ async def admin_locations(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Создать локацию", callback_data="loc:create")],
         [InlineKeyboardButton(text="✏️ Редактировать доступ", callback_data="loc:edit_pick")],
+        [InlineKeyboardButton(text="🏛 Редактировать здание", callback_data="loc:building_pick")],
         [InlineKeyboardButton(text="🔙 В меню", callback_data="admin:menu")],
     ])
     await callback.message.edit_text("\n".join(lines), reply_markup=kb)
@@ -2736,8 +2740,25 @@ async def loc_edit_pick(callback: CallbackQuery):
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
+@router.callback_query(F.data == "loc:building_pick")
+async def loc_building_pick(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    locs = await get_all_locations()
+    if not locs:
+        await callback.message.edit_text("Локаций пока нет. Сначала создай.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = [[InlineKeyboardButton(text=l['name'], callback_data=f"loc:building:{l['id']}")] for l in locs]
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:locations")])
+    await callback.message.edit_text("Выбери здание для редактирования (название/описание/картинка):",
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
 @router.callback_query(F.data.startswith("loc:edit:"))
 async def loc_edit(callback: CallbackQuery, state: FSMContext):
+    """Редактирование ДОСТУПА к локации (режим / статус / блокирующие состояния)."""
     await callback.answer()
     if not await has_permission(callback.from_user.id, "can_manage_locations"):
         return
@@ -2753,12 +2774,34 @@ async def loc_edit(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"✏️ {loc['name']} (доступ: {acc})\nБлокируют состояния: {blocking}\n\nЧто изменить?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📝 Описание", callback_data="loc:set_desc")],
-            [InlineKeyboardButton(text="🖼 Картинка", callback_data="loc:set_photo")],
             [InlineKeyboardButton(text="🎚 Режим доступа", callback_data="loc:set_mode")],
             [InlineKeyboardButton(text="🗂 Требуемый статус", callback_data="loc:set_status")],
             [InlineKeyboardButton(text="🍺 Блокирующие состояния", callback_data="loc:set_blocking")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="loc:edit_pick")],
+        ])
+    )
+
+
+@router.callback_query(F.data.startswith("loc:building:"))
+async def loc_building_edit(callback: CallbackQuery, state: FSMContext):
+    """Редактирование ЗДАНИЯ: название / описание / картинка."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    loc_id = int(callback.data.split(":")[2])
+    loc = await get_location(loc_id)
+    if not loc:
+        await callback.message.answer("❌ Локация не найдена.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await state.update_data(action="edit", target_id=loc_id)
+    await callback.message.edit_text(
+        f"🏛 {loc['name']}\nЧто изменить в здании?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✏️ Название", callback_data="loc:set_name")],
+            [InlineKeyboardButton(text="📝 Описание", callback_data="loc:set_desc")],
+            [InlineKeyboardButton(text="🖼 Картинка", callback_data="loc:set_photo")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="loc:building_pick")],
         ])
     )
 
@@ -2786,18 +2829,33 @@ async def loc_mode_chosen(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     loc_id = data.get('target_id')
     if data.get('action') == 'edit' and loc_id:
-        await update_location_access(loc_id, access_mode=mode)
-        await state.clear()
-        await callback.message.edit_text(f"✅ Режим доступа: {mode}")
+        if mode == "all":
+            await update_location_access(loc_id, access_mode="all", required_status=None)
+            await state.clear()
+            await callback.message.edit_text("✅ Режим доступа: 🌐 Всем")
+        else:
+            # min/exact — сначала выбрать требуемый статус
+            await state.update_data(mode=mode)
+            await state.set_state(AdminLocation.req_status)
+            await _loc_status_pick(callback, state)
     else:
         await state.update_data(mode=mode)
         if mode == "all":
             await state.update_data(req_status=None)
             await state.set_state(AdminLocation.blocking)
-            await callback.message.edit_text("Какие состояния блокируют вход?\n(через запятую, напр.: пьян)")
+            await _loc_blocking_pick(callback, state)
         else:
             await state.set_state(AdminLocation.req_status)
             await _loc_status_pick(callback, state)
+
+
+@router.callback_query(F.data == "loc:set_status")
+async def loc_set_status(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    await state.set_state(AdminLocation.req_status)
+    await _loc_status_pick(callback, state)
 
 
 @router.callback_query(AdminLocation.req_status, F.data.startswith("loc:req_status:"))
@@ -2805,25 +2863,57 @@ async def loc_req_status_chosen(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     tag = callback.data.split(":")[2]
     data = await state.get_data()
-    if data.get('action') == 'edit' and data.get('target_id'):
-        await update_location_access(data['target_id'], required_status=tag)
+    loc_id = data.get('target_id')
+    if data.get('action') == 'edit' and loc_id:
+        mode = data.get('mode')
+        await update_location_access(loc_id,
+                                     access_mode=mode if mode in ("min", "exact") else None,
+                                     required_status=tag)
         await state.clear()
         await callback.message.edit_text(f"✅ Требуемый статус: {tag}")
     else:
         await state.update_data(req_status=tag)
         await state.set_state(AdminLocation.blocking)
-        await callback.message.edit_text("Какие состояния блокируют вход?\n(через запятую, напр.: пьян, или отправь „нет“)")
+        await _loc_blocking_pick(callback, state)
+
+
+@router.callback_query(F.data == "loc:set_blocking")
+async def loc_set_blocking(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc = await get_location(data.get('target_id'))
+    if not loc:
+        await callback.message.answer("❌ Локация не найдена.")
+        return
+    current = json.loads(loc['blocking_states'] or '[]')
+    await state.update_data(pending_blocking=list(current))
+    await state.set_state(AdminLocation.blocking)
+    await _loc_blocking_pick(callback, state)
 
 
 @router.callback_query(AdminLocation.blocking, F.data.startswith("loc:blocking:"))
 async def loc_blocking_chosen(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     data = await state.get_data()
-    val = callback.data.split(":", 2)[2]
-    if val == "none":
+    action = callback.data.split(":", 2)[2]
+    if action.startswith("toggle:"):
+        key = action.split(":", 1)[1]
+        sel = list(data.get('pending_blocking') or [])
+        if key in sel:
+            sel.remove(key)
+        else:
+            sel.append(key)
+        await state.update_data(pending_blocking=sel)
+        await _loc_blocking_pick(callback, state)
+        return
+    if action == "none":
         blocking = []
+    elif action == "done":
+        blocking = list(data.get('pending_blocking') or [])
     else:
-        blocking = [s.strip() for s in val.split(",") if s.strip()]
+        blocking = [s.strip() for s in action.split(",") if s.strip()]
     if data.get('action') == 'edit' and data.get('target_id'):
         await update_location_access(data['target_id'], blocking_states=blocking)
         await state.clear()
@@ -2843,6 +2933,31 @@ async def _loc_status_pick(callback, state):
     rows.append([InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:locations")])
     await callback.message.edit_text("Выбери требуемый статус:",
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+async def _loc_blocking_pick(callback, state):
+    """Инлайн-выбор блокирующих состояний (мультиселект): toggle + готово."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from utils.states import state_keys
+    data = await state.get_data()
+    sel = data.get('pending_blocking') or []
+    rows = []
+    for k in state_keys():
+        mark = "✅" if k in sel else "✔️"
+        rows.append([InlineKeyboardButton(text=f"{mark} {k}", callback_data=f"loc:blocking:toggle:{k}")])
+    rows.append([
+        InlineKeyboardButton(text="✅ Готово", callback_data="loc:blocking:done"),
+        InlineKeyboardButton(text="🚫 Ничего", callback_data="loc:blocking:none"),
+    ])
+    rows.append([InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:locations")])
+    if data.get('action') == 'edit' and data.get('target_id'):
+        await callback.message.edit_text(
+            "Выбери состояния, которые блокируют вход (можно несколько):",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    else:
+        await callback.message.edit_text(
+            "Какие состояния блокируют вход? (можно несколько):",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 async def _finish_loc_create(callback, state):
@@ -2880,6 +2995,45 @@ async def loc_step_name(message: Message, state: FSMContext):
     await message.answer("Шаг 3/7 — описание (или отправь «-»):")
 
 
+@router.callback_query(F.data == "loc:set_name")
+async def loc_set_name(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc = await get_location(data.get('target_id'))
+    if not loc:
+        await callback.message.answer("❌ Локация не найдена.")
+        return
+    await state.set_state(AdminLocation.set_name)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.edit_text(
+        f"✏️ Название «{loc['name']}».\n\nОтправь новое название здания:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"loc:building:{loc['id']}")]
+        ])
+    )
+
+
+@router.message(AdminLocation.set_name)
+async def loc_step_set_name(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if not text or len(text) > 60:
+        await message.answer("❌ Название должно быть от 1 до 60 символов.")
+        return
+    data = await state.get_data()
+    if data.get('action') == 'edit' and data.get('target_id'):
+        await update_location_content(data['target_id'], name=text)
+        await log_action(message.from_user.id, 'edit_location', data['target_id'],
+                         f"name={text[:200]}")
+        await state.clear()
+        await message.answer("✅ Название локации обновлено.")
+    else:
+        await state.update_data(name=text)
+        await state.set_state(AdminLocation.description)
+        await message.answer("Шаг 3/7 — описание (или отправь «-»):")
+
+
 @router.callback_query(F.data == "loc:set_desc")
 async def loc_set_desc(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -2895,7 +3049,7 @@ async def loc_set_desc(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"📝 Описание «{loc['name']}».\n\nОтправь новый текст (или «-», чтобы очистить):",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"loc:edit:{loc['id']}")]
+            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"loc:building:{loc['id']}")]
         ])
     )
 
@@ -2915,7 +3069,7 @@ async def loc_set_photo(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"🖼 Картинка «{loc['name']}».\n\nОтправь новое фото (или «-», чтобы убрать картинку):",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"loc:edit:{loc['id']}")]
+            [InlineKeyboardButton(text="❌ Отмена", callback_data=f"loc:building:{loc['id']}")]
         ])
     )
 
