@@ -149,7 +149,8 @@ def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equip
         if sell5:
             buttons.append([InlineKeyboardButton(text="💵 Продать 5 шт", callback_data=f"inv_sell5:{item_id}")])
     buttons.append([InlineKeyboardButton(text="📤 Передать", callback_data=f"inv_transfer:{item_id}")])
-    buttons.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="inventory:list")])
+    buttons.append([InlineKeyboardButton(text="🔙 В категорию", callback_data=f"inventory:cat:{category}")])
+    buttons.append([InlineKeyboardButton(text="🔙 К списку категорий", callback_data="inventory:list")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -561,7 +562,8 @@ async def _show_fish_catch(message, user_id: int, item_id: int, weight: int):
                               callback_data=f"fishmarket:{item_id}:{weight}")],
         [InlineKeyboardButton(text=f"💵 Скупщику сразу (за {sell_text})",
                               callback_data=f"fishsell:{item_id}:{weight}")],
-        [InlineKeyboardButton(text="🔙 К категориям", callback_data="inventory:list")],
+        [InlineKeyboardButton(text="🔙 В категорию", callback_data=f"inventory:cat:{FISH_ALL_KEY}")],
+        [InlineKeyboardButton(text="🔙 К списку категорий", callback_data="inventory:list")],
     ])
 
     photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
