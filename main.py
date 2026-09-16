@@ -4,7 +4,7 @@ import sys
 
 from aiogram import Bot, Dispatcher, BaseMiddleware
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BotCommand, Message
+from aiogram.types import BotCommand, Message, CallbackQuery
 from dotenv import load_dotenv
 
 from config import BOT_TOKEN
@@ -75,6 +75,42 @@ class MainMenuFSMReset(BaseMiddleware):
                             await state.clear()
                     except Exception:
                         pass
+        return await handler(event, data)
+
+
+class FishingActiveLock(BaseMiddleware):
+    """Пока идёт активная фаза рыбалки (заброс → результат), игрок не может
+    уходить в другие меню: callback-кнопки других разделов и reply-клавиатура
+    отсекаются с подсказкой.
+
+    Иначе уход в другое меню приводит к инвалидации окна рыбалки (токен
+    сгорает), и кнопка «Ещё раз» после результата перестаёт работать.
+    """
+
+    async def __call__(self, handler, event, data):
+        from bot.handlers.fishing import FISHING_CASTING
+
+        uid = getattr(event, "from_user", None)
+        uid = uid.id if uid else None
+        if uid and uid in FISHING_CASTING:
+            # Свои рыболовные кнопки пропускаем, остальное — блокируем.
+            if isinstance(event, CallbackQuery):
+                cb_data = event.data or ""
+                if cb_data.startswith("fish:"):
+                    return await handler(event, data)
+                await event.answer(
+                    "🎣 Ты ещё ждёшь улов — дождись результата, а потом продолжим!",
+                    show_alert=True,
+                )
+                return
+            if isinstance(event, Message):
+                if (event.text and (is_main_menu_text(event.text) or event.text.startswith("/"))) \
+                        or not event.text:
+                    try:
+                        await event.answer("🎣 Ты ещё ждёшь улов — дождись результата!")
+                    except Exception:
+                        pass
+                    return
         return await handler(event, data)
 
 
@@ -202,8 +238,10 @@ async def main():
     for r in (start_router, profile_router, bank_router, admin_router, shop_router,
               inventory_router, reports_router, dungeon_router, pilots_router,
               polls_router, library_router, locations_router, park_router,
-              fishing_router, housing_router):
+              fishing_router, housing_router, news_router):
+        r.message.middleware(FishingActiveLock())
         r.message.middleware(MainMenuFSMReset())
+        r.callback_query.middleware(FishingActiveLock())
 
     logger.info("Хендлеры зарегистрированы")
 

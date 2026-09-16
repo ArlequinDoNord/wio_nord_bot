@@ -136,9 +136,9 @@ async def news_archive(callback: CallbackQuery):
             "Купи «Читательский билет» в Магазине → раздел «Читательские билеты»."
         )
         return
-    all_news = await get_all_news()
+    all_news = await get_all_news(min_age_days=7)
     if not all_news:
-        await edit_or_replace(callback.message, "Архив новостей пуст.", None)
+        await edit_or_replace(callback.message, "Архив новостей пуст — все выпуски новее 7 дней.", None)
         return
     await _archive_page(callback, all_news, 0)
 
@@ -183,9 +183,9 @@ async def news_archive_page(callback: CallbackQuery):
         )
         return
     page = int(callback.data.split(":")[2])
-    all_news = await get_all_news()
+    all_news = await get_all_news(min_age_days=7)
     if not all_news:
-        await edit_or_replace(callback.message, "Архив новостей пуст.", None)
+        await edit_or_replace(callback.message, "Архив новостей пуст — все выпуски новее 7 дней.", None)
         return
     await _archive_page(callback, all_news, page)
 

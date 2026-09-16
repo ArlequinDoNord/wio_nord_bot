@@ -573,6 +573,8 @@ async def init_db():
     await _ensure_column(conn, "polls", "closed_at", "TIMESTAMP")
     # Срок годности жареной рыбы (время истечения в инвентаре)
     await _ensure_column(conn, "inventory", "expires_at", "TIMESTAMP")
+    # Данные растения в кадке при хранении в инвентаре (переезд / снятие)
+    await _ensure_column(conn, "inventory", "plant_data", "TEXT")
     # Срок годности сырой (неприготовленной) рыбы: 4 дня с момента поимки.
     # У старых уловов expires_at пустой — они считаются свежими (фолбэк в коде).
     await _ensure_column(conn, "fish_catches", "expires_at", "TIMESTAMP")
@@ -1114,6 +1116,31 @@ async def get_inventory_item(user_id: int, item_id: int):
     return await cursor.fetchone()
 
 
+async def get_inventory_plant_data(user_id: int, item_id: int) -> dict | None:
+    """Данные растения (plant_data) из строки инвентаря или None."""
+    row = await get_inventory_item(user_id, item_id)
+    if not row:
+        return None
+    raw = row.get("plant_data") if hasattr(row, "get") else None
+    if raw:
+        try:
+            return json.loads(raw)
+        except Exception:
+            pass
+    return None
+
+
+async def set_inventory_plant_data(user_id: int, item_id: int, plant_data: dict | None):
+    """Сохранить / очистить plant_data в строке инвентаря."""
+    conn = await get_db()
+    val = json.dumps(plant_data, ensure_ascii=False) if plant_data else None
+    await conn.execute(
+        "UPDATE inventory SET plant_data = ? WHERE user_id = ? AND item_id = ?",
+        (val, user_id, item_id)
+    )
+    await conn.commit()
+
+
 async def get_inventory_expiry(user_id: int, item_id: int):
     """Срок годности предмета в инвентаре (секунды эпохи) или None."""
     conn = await get_db()
@@ -1357,10 +1384,23 @@ async def get_latest_news(limit: int = 10) -> list:
     return await cursor.fetchall()
 
 
-async def get_all_news() -> list:
-    """Все выпуски (для архива в библиотеке), новые сверху."""
+async def get_all_news(min_age_days: float = 0) -> list:
+    """Все выпуски (для архива в библиотеке), новые сверху.
+
+    min_age_days > 0: показывать только выпуски старше N дней.
+    """
     conn = await get_db()
-    cursor = await conn.execute("SELECT * FROM news_releases ORDER BY rowid DESC")
+    if min_age_days > 0:
+        from datetime import datetime, timedelta
+        from utils.helpers import MOSCOW_TZ
+        cutoff = (datetime.now(MOSCOW_TZ) - timedelta(days=min_age_days)).isoformat()
+        cursor = await conn.execute(
+            "SELECT * FROM news_releases WHERE (created_at IS NULL OR created_at <= ?) "
+            "ORDER BY rowid DESC",
+            (cutoff,)
+        )
+    else:
+        cursor = await conn.execute("SELECT * FROM news_releases ORDER BY rowid DESC")
     return await cursor.fetchall()
 
 

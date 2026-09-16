@@ -15,7 +15,8 @@ from database.db import (
     plant_seed, plant_stage_info, harvest_plant,
     get_inventory, get_item, get_item_by_name,
     remove_inventory_item, add_inventory_item, remove_ap, add_ap,
-    get_inventory_item, user_has_status_tag, log_activity,
+    get_inventory_item, get_inventory_plant_data, set_inventory_plant_data,
+    user_has_status_tag, log_activity,
     remove_nordmarks,
     get_housing_expansions_installed, increment_housing_expansions,
     get_housing_tax_rate, pay_housing_tax, is_housing_tax_paid, pay_housing_debt,
@@ -693,10 +694,30 @@ async def housing_install_item(cb: CallbackQuery):
 
     if cost:
         await remove_nordmarks(uid, cost, "replanning", f"Перепланировка жилья ({ht})")
-    await set_housing_slot(uid, empty, et, lvl)
+
+    # Кадка с растением: восстанавливаем plant_data из инвентария (заморозка снимается)
+    restored_pd = None
+    if et == "plant_pot":
+        stored_pd = await get_inventory_plant_data(uid, item_id)
+        if stored_pd and stored_pd.get("seed"):
+            stowed_at = float(stored_pd.pop("stowed_at", 0) or 0)
+            if stowed_at > 0:
+                shift = time.time() - stowed_at
+                if stored_pd.get("stage_started_at"):
+                    stored_pd["stage_started_at"] = float(stored_pd["stage_started_at"]) + shift
+                if stored_pd.get("last_harvest_at"):
+                    stored_pd["last_harvest_at"] = float(stored_pd["last_harvest_at"]) + shift
+            restored_pd = stored_pd
+        await set_inventory_plant_data(uid, item_id, None)
+
+    await set_housing_slot(uid, empty, et, lvl, restored_pd)
     await remove_inventory_item(uid, item_id, 1)
     await increment_housing_expansions(uid)
-    await cb.answer(f"✅ «{item['name']}» установлено в слот {empty+1}.", show_alert=True)
+    if restored_pd and restored_pd.get("seed"):
+        await cb.answer(f"✅ «{item['name']}» установлена — растение «{restored_pd['seed']}» восстановлено!",
+                        show_alert=True)
+    else:
+        await cb.answer(f"✅ «{item['name']}» установлено в слот {empty+1}.", show_alert=True)
     await housing_menu(cb)
 
 
@@ -861,6 +882,7 @@ async def housing_move(cb: CallbackQuery):
 
     # Все текущие расширения возвращаются в инвентарь (кроме встроенных)
     slots = await get_housing_slots(uid)
+    plant_saved = False
     for i, s in slots.items():
         et, lvl = s.get("expansion_type"), s.get("expansion_level", 1)
         await set_housing_slot(uid, i, None)
@@ -871,6 +893,16 @@ async def housing_move(cb: CallbackQuery):
             fi = await get_item_by_name(fname)
             if fi:
                 await add_inventory_item(uid, fi["id"], 1)
+                # Кадка с растением: сохраняем plant_data в инвентарь (прогресс замораживается)
+                if et == "plant_pot":
+                    try:
+                        pdata = json.loads(s.get("plant_data") or "{}")
+                    except Exception:
+                        pdata = {}
+                    if pdata.get("seed"):
+                        pdata["stowed_at"] = time.time()
+                        await set_inventory_plant_data(uid, fi["id"], pdata)
+                        plant_saved = True
 
     await remove_inventory_item(uid, item_id, 1)
     await set_player_housing(uid, target)
@@ -882,5 +914,6 @@ async def housing_move(cb: CallbackQuery):
     await log_activity(uid, "housing_move", target)
 
     new_name = HOUSING_TYPES[target]["name"]
-    await cb.answer(f"🎉 Переезд в «{new_name}» завершён!", show_alert=True)
+    plant_note = "\n\n🌱 Кадка с растением сохранена в инвентаре — прогресс заморожен." if plant_saved else ""
+    await cb.answer(f"🎉 Переезд в «{new_name}» завершён!{plant_note}", show_alert=True)
     await housing_menu(cb)

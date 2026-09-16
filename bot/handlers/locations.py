@@ -13,6 +13,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, Inli
 
 from database.db import get_location_by_key, can_enter_location, location_access_label
 from utils.helpers import resolve_image
+from utils.permissions import has_permission, is_admin
 
 router = Router()
 
@@ -26,12 +27,16 @@ async def location_preview(callback: CallbackQuery):
         await callback.message.answer("❌ Локация не найдена.")
         return
 
-    access_label = await location_access_label(loc['access_mode'], loc['required_status'])
+    if key == "gossmi":
+        access_line = "🎙 Вход: только сотрудники ГосСМИ (журналист / редактор)"
+    else:
+        access_label = await location_access_label(loc['access_mode'], loc['required_status'])
+        access_line = f"Доступ: {access_label}"
     text = (
         f"📍 {loc['name']}\n"
         f"────────────────\n"
         f"{loc['description'] or ''}\n\n"
-        f"Доступ: {access_label}"
+        f"{access_line}"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔑 Войти", callback_data=f"location:enter:{key}")],
@@ -41,18 +46,22 @@ async def location_preview(callback: CallbackQuery):
     photo = None
     if 'preview_photo' in loc.keys() and loc['preview_photo']:
         candidate = resolve_image(loc['preview_photo'])
-        if candidate and os.path.isfile(candidate):
+        if os.path.isfile(candidate):
             photo = FSInputFile(candidate)
-        else:
-            photo = loc['preview_photo']  # telegram file_id
+        elif loc['preview_photo'] and not loc['preview_photo'].startswith("city/"):
+            # Не asset-ключ (нет локального файла) — пробуем как telegram file_id
+            photo = loc['preview_photo']
     if photo:
-        await callback.message.answer_photo(
-            photo=photo,
-            caption=text,
-            reply_markup=kb
-        )
-    else:
-        await callback.message.answer(text, reply_markup=kb)
+        try:
+            await callback.message.answer_photo(
+                photo=photo,
+                caption=text,
+                reply_markup=kb
+            )
+            return
+        except Exception:
+            pass
+    await callback.message.answer(text, reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("location:enter:"))
@@ -71,6 +80,21 @@ async def location_enter(callback: CallbackQuery):
             f"которое блокирует вход."
         )
         return
+
+    # ГосСМИ: войти могут только сотрудники (журналист/редактор) и администрация.
+    # Кнопка «Войти» видна всем, но остальные получают предупреждение.
+    if key == "gossmi":
+        actor = callback.from_user.id
+        if not (await is_admin(actor) or await has_permission(actor, "can_post_news")):
+            await callback.message.answer(
+                f"⛔ Вход в здание «{loc['name']}» — только для сотрудников медиацентра.\n\n"
+                f"Обычным жителям Нордхайма внутрь попасть нельзя. Свежие выпуски "
+                f"новостей читай в главном меню — «📰 Новости Нордхайма».",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")]
+                ])
+            )
+            return
 
     # Передаём управление специфическому функционалу локации
     if key == "townhall":
