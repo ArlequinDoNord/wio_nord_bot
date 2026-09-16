@@ -1023,6 +1023,7 @@ async def edit_item_pick(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text="🖼 Картинка", callback_data="field:photo")],
             [InlineKeyboardButton(text="🍺 Тип напитка (действие)", callback_data="field:drink")],
             [InlineKeyboardButton(text="🚧 Вкл/выкл продажу", callback_data="field:is_available")],
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="shop_admin:edit")],
         ])
     )
 
@@ -1036,6 +1037,10 @@ async def edit_item_field_status(callback: CallbackQuery, state: FSMContext):
     for s in statuses:
         rows.append([InlineKeyboardButton(text=f"{s['name']}", callback_data=f"field_req:{s['id']}")])
     rows.append([InlineKeyboardButton(text="➖ Без статуса", callback_data="field_req:none")])
+    data = await state.get_data()
+    item_id = data.get('item_id')
+    if item_id:
+        rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"edit_item:{item_id}")])
     await callback.message.edit_text(
         "Выбери статус, требуемый для покупки этого товара:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
@@ -1103,10 +1108,17 @@ async def edit_item_field_drink(callback: CallbackQuery, state: FSMContext):
     cur = row_get(item, 'drink_effect') if item else None
     cur_label = (DRINK_EFFECT_LABELS.get(cur) if cur in DRINK_EFFECT_LABELS else
                  ("🥤 не напиток" if not cur else cur))
+    markup = drink_choice_markup(edit_mode=True)
+    from aiogram.types import InlineKeyboardButton
+    item_id = data.get('item_id')
+    if item_id:
+        markup.inline_keyboard.append(
+            [InlineKeyboardButton(text="🔙 Назад", callback_data=f"edit_item:{item_id}")]
+        )
     await callback.message.answer(
         f"🍺 Текущий тип напитка у «{item['name'] if item else 'товар'}»: {cur_label}.\n\n"
         f"Выбери новое действие:",
-        reply_markup=drink_choice_markup(edit_mode=True))
+        reply_markup=markup)
 
 
 @router.callback_query(F.data.startswith("editset:drink:"))
