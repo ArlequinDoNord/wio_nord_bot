@@ -655,7 +655,7 @@ async def seed_locations(conn):
          "all", None, ["пьян"], "city/media"),
         ("bank", "Банк", "НОРДБАНК — финансовое сердце Нордхайма: счета, переводы и казна. Для туристов счёт ограничен 200 НМ.",
          "all", None, ["пьян"], "city/bank"),
-        ("kvp", "Курс выживания", "Тренировочный полигон для пилотов. 8 комнат с препятствиями и босс — Старший сержант.",
+        ("kvp", "Курс выживания", "Курс выживания для пилотов. Набор испытаний для пилотов ВВС Нордхайма.",
          "all", None, ["пьян"], "city/kvp"),
     ]
     for key, name, desc, mode, req_status, blocking, preview in base:
@@ -664,6 +664,12 @@ async def seed_locations(conn):
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (key, name, desc, mode, req_status, json.dumps(blocking, ensure_ascii=False), preview)
         )
+    # Разовая миграция текста описания локации К.В.П. (не трогаем ручные правки админа).
+    await conn.execute(
+        "UPDATE locations SET description = ? WHERE key = 'kvp' AND description = ?",
+        ("Курс выживания для пилотов. Набор испытаний для пилотов ВВС Нордхайма.",
+         "Тренировочный полигон для пилотов. 8 комнат с препятствиями и босс — Старший сержант.")
+    )
     await conn.commit()
 
 
@@ -3644,12 +3650,20 @@ async def seed_kvp():
     cursor = await conn.execute("SELECT id FROM dungeons WHERE name = ?", (KVP_DUNGEON_NAME,))
     existing = await cursor.fetchone()
     if existing:
+        # Разовая миграция текста описания (не трогаем ручные правки админа).
+        await conn.execute(
+            "UPDATE dungeons SET description = ? WHERE id = ? AND description = ?",
+            ("Курс выживания для пилотов. Набор испытаний для пилотов ВВС Нордхайма.",
+             existing['id'],
+             "Тренировочный полигон для пилотов: 8 комнат со случайными препятствиями и боссом.")
+        )
+        await conn.commit()
         return existing['id']
 
     cur = await conn.execute(
         "INSERT INTO dungeons (name, description, floors_count, rooms_per_floor, is_training) VALUES (?,?,?,?,?)",
         (KVP_DUNGEON_NAME,
-         "Тренировочный полигон для пилотов: 8 комнат со случайными препятствиями и боссом.",
+         "Курс выживания для пилотов. Набор испытаний для пилотов ВВС Нордхайма.",
          1, 8, 1)
     )
     dungeon_id = cur.lastrowid

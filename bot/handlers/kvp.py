@@ -1,7 +1,7 @@
 """Курс Выживания для Пилотов (К.В.П.) — тренировочный данж.
 
 8 комнат: комнаты 0-6 — случайные (Ефрейтор / Водное препятствие / Верёвка),
-комната 7 — босс «Старший сержант». Вход бесплатный, препятствия стоят 5 AP.
+комната 7 — Инструктор «Старший сержант». Вход бесплатный, препятствия стоят 5 ОД.
 Лимит — 4 прохождения на пилота. Первое прохождение даёт награду
 «Значок В.У.С.П.» (+2% урона в подземельях и в К.В.П., постоянно).
 """
@@ -39,6 +39,8 @@ ROOM_WATER = "water"
 ROOM_ROPE = "rope"
 ROOM_BOSS = "boss"
 ROOM_TYPES_POOL = [ROOM_EFREITOR, ROOM_WATER, ROOM_ROPE]
+# Веса для random.choices: Ефрейтор встречается заметно чаще препятствий.
+ROOM_TYPES_WEIGHTS = [0.5, 0.25, 0.25]
 
 OD_ATTEMPT_COST = 5         # стоимость попытки преодоления препятствия
 WATER_FAIL_CHANCE = 0.10    # вероятность срыва на водном препятствии
@@ -87,9 +89,9 @@ def kvp_combat_keyboard(enemy_id: int, step: int = 0):
 
 def kvp_obstacle_keyboard(room_type: str, step: int = 0):
     if room_type == ROOM_WATER:
-        label = "🌊 Перейти вброд (−5 AP)"
+        label = "🌊 Перейти вброд (−5 ОД)"
     else:
-        label = "🪢 Перейти по верёвке (−5 AP)"
+        label = "🪢 Перейти по верёвке (−5 ОД)"
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=label, callback_data=f"kvp:attempt:{room_type}:{step}")],
         [InlineKeyboardButton(text="🚪 Выйти из курса", callback_data="kvp:exit")],
@@ -151,15 +153,10 @@ async def kvp_menu_cb(callback: CallbackQuery):
     text = (
         f"🎖️ КУРС ВЫЖИВАНИЯ ДЛЯ ПИЛОТОВ (К.В.П.)\n"
         f"────────────────────────────\n"
-        f"Тренировочный полигон для пилотов. "
-        f"{dng['description'] if dng else 'Проверь себя и своего Боевого Испарителя.'}\n\n"
+        f"{dng['description'] if dng else 'Набор испытаний для пилотов ВВС Нордхайма.'}\n\n"
         f"⚙️ Правила:\n"
-        f"• {ROOM_TOTAL} комнат: случайные препятствия и босс.\n"
-        f"• Вход бесплатный, препятствия — {OD_ATTEMPT_COST} AP за попытку.\n"
-        f"• Лимит прохождений: {progress['completions']}/{KVP_MAX_COMPLETIONS}.\n"
-        f"• Первое прохождение — награда «{KVP_BADGE_NAME}»: "
-        f"+2% урона в подземельях, постоянно.\n"
-        f"• С босса «{BOSS_NAME}» выпадает «{STICK_NAME}» (шанс {int(STICK_CHANCE*100)}%, один раз).\n\n"
+        f"• {ROOM_TOTAL} комнат: случайные препятствия и Инструктор.\n"
+        f"• Лимит прохождений: {progress['completions']}/{KVP_MAX_COMPLETIONS}.\n\n"
         f"📊 Прогресс курса: {progress['completions']}/{KVP_MAX_COMPLETIONS}"
     )
 
@@ -231,7 +228,7 @@ async def show_kvp_room(message, run, user_id, state: FSMContext):
         return
 
     if room_type not in ROOM_TYPES_POOL:
-        room_type = random.choice(ROOM_TYPES_POOL)
+        room_type = random.choices(ROOM_TYPES_POOL, weights=ROOM_TYPES_WEIGHTS, k=1)[0]
         await state.update_data(kvp_room_type=room_type, kvp_in_boss=0)
 
     if room_type == ROOM_EFREITOR:
@@ -246,7 +243,9 @@ async def show_enemy_room(message, run, user_id, state: FSMContext):
         await message.answer("❌ Ефрейтор не найден на курсе.")
         return
     data = await state.get_data()
-    current_hp = data.get('current_enemy_hp', enemy['hp'])
+    current_hp = data.get('current_enemy_hp')
+    if current_hp is None:
+        current_hp = enemy['hp']
     step = await dungeon_new_step(state)
     await state.update_data(current_enemy_id=enemy['id'], current_enemy_hp=current_hp,
                             kvp_room_type=ROOM_EFREITOR)
@@ -272,8 +271,8 @@ async def show_obstacle_room(message, run, user_id, state: FSMContext, room_type
     text = (
         f"{_course_header(run, title)}\n"
         f"{icon} {title}!\n{desc}\n\n"
-        f"Цена попытки: {OD_ATTEMPT_COST} AP. Шанс срыва: {int(fail*100)}%.\n"
-        f"При срыве попытаешься ещё раз (снова за AP)."
+        f"Цена попытки: {OD_ATTEMPT_COST} ОД. Шанс срыва: {int(fail*100)}%.\n"
+        f"При срыве попытаешься ещё раз (снова за ОД)."
     )
     await message.answer(text, reply_markup=kvp_obstacle_keyboard(room_type, step))
 
@@ -284,7 +283,11 @@ async def show_boss_room(message, run, user_id, state: FSMContext, current_hp=No
         await message.answer("❌ Старший сержант не найден на курсе.")
         return
     data = await state.get_data()
-    hp = current_hp if current_hp is not None else data.get('current_enemy_hp', boss['hp'])
+    hp = current_hp
+    if hp is None:
+        hp = data.get('current_enemy_hp')
+    if hp is None:
+        hp = boss['hp']
     step = await dungeon_new_step(state)
     await state.update_data(current_enemy_id=boss['id'], current_enemy_hp=hp,
                             kvp_room_type=ROOM_BOSS, kvp_in_boss=1)
@@ -338,6 +341,7 @@ async def kvp_attempt(callback: CallbackQuery, state: FSMContext):
 
     parts = callback.data.split(":")
     if len(parts) < 3:
+        await callback.message.answer("⚠️ Некорректная кнопка. Открой курс заново.")
         return
     room_type = parts[2]
     encoded_step = int(parts[3]) if len(parts) > 3 else 0
@@ -355,7 +359,7 @@ async def kvp_attempt(callback: CallbackQuery, state: FSMContext):
     user = await get_user(user_id)
     if (user['ap'] or 0) < OD_ATTEMPT_COST:
         await callback.message.answer(
-            f"⚡ Недостаточно очков действий: нужно {OD_ATTEMPT_COST} AP, у тебя {user['ap']} AP.\n"
+            f"⚡ Недостаточно очков действий: нужно {OD_ATTEMPT_COST} ОД, у тебя {user['ap']} ОД.\n"
             f"Очки восстанавливаются раз в сутки."
         )
         return
@@ -372,21 +376,21 @@ async def kvp_attempt(callback: CallbackQuery, state: FSMContext):
     if random.random() < fail_chance:
         text = (
             f"{icon} Попытка преодолеть {title} сорвалась!\n"
-            f"⚡ −{OD_ATTEMPT_COST} AP\n\n"
+            f"⚡ −{OD_ATTEMPT_COST} ОД\n\n"
             f"Ты вернулся на исходную позицию. Попробуй ещё раз."
         )
         await callback.message.answer(text)
         new_step = await dungeon_new_step(state)
         await callback.message.answer(
             f"{icon} {title.capitalize()}: новая попытка\n"
-            f"Цена: {OD_ATTEMPT_COST} AP. Шанс срыва: {int(fail_chance*100)}%.",
+            f"Цена: {OD_ATTEMPT_COST} ОД. Шанс срыва: {int(fail_chance*100)}%.",
             reply_markup=kvp_obstacle_keyboard(room_type, new_step)
         )
         return
 
     text = (
         f"{icon} Ты успешно преодолел {title}!\n"
-        f"⚡ −{OD_ATTEMPT_COST} AP\n\n"
+        f"⚡ −{OD_ATTEMPT_COST} ОД\n\n"
         f"Идти дальше?"
     )
     new_step = await dungeon_new_step(state)
@@ -407,6 +411,7 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
     parts = callback.data.split(":")
     if len(parts) < 4:
+        await callback.message.answer("⚠️ Некорректная кнопка. Открой курс заново.")
         return
     enemy_id = int(parts[2])
     encoded_step = int(parts[3])
@@ -425,9 +430,12 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     cursor = await conn.execute("SELECT * FROM dungeon_enemies WHERE id = ?", (enemy_id,))
     enemy = await cursor.fetchone()
     if not enemy:
+        await callback.message.answer("⚠️ Враг не найден. Открой курс заново.")
         return
 
-    current_enemy_hp = data.get('current_enemy_hp', enemy['hp'])
+    current_enemy_hp = data.get('current_enemy_hp')
+    if current_enemy_hp is None:
+        current_enemy_hp = enemy['hp']
     player_hp = run['hp']
 
     # Урон игрока
