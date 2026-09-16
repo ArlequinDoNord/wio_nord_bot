@@ -3692,17 +3692,28 @@ async def get_kvp_dungeon():
 
 
 async def ensure_kvp_items():
-    """Добавляет предметы К.В.П. (Офицерский стек), если их ещё нет."""
+    """Добавляет предметы К.В.П. (Офицерский стек), если их ещё нет.
+
+    «Офицерский стек» — эксклюзивный лут босса для новичков: в магазине не
+    продаётся (is_available=0), а продажа игроком не возвращает его в продажу.
+    """
     conn = await get_db()
-    cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = 'Офицерский стек'")
-    if (await cursor.fetchone())['c'] == 0:
-        await add_item(
-            name="Офицерский стек",
-            description="Офицерский стек Старшего сержанта. Тяжёлый, но дисциплинирующий.",
-            price=100, sell_price=50, rarity=3, category="weapon",
-            stock=-1, added_by=0, ap_cost=0,
-            damage=2, heal=0, armor=0, drink_effect=None
-        )
+    cursor = await conn.execute("SELECT id FROM items WHERE name = 'Офицерский стек'")
+    row = await cursor.fetchone()
+    if row:
+        # Миграция: скрыть из магазина уже созданный предмет.
+        await conn.execute(
+            "UPDATE items SET is_available = 0 WHERE name = 'Офицерский стек'")
+        await conn.commit()
+        return
+    item_id = await add_item(
+        name="Офицерский стек",
+        description="Офицерский стек Старшего сержанта. Тяжёлый, но дисциплинирующий.",
+        price=100, sell_price=50, rarity=3, category="weapon",
+        stock=-1, added_by=0, ap_cost=0,
+        damage=2, heal=0, armor=0, drink_effect=None
+    )
+    await update_item(item_id, is_available=0)
 
 
 async def ensure_kvp_award():

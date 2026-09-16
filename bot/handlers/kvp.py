@@ -52,6 +52,10 @@ EFREITOR_NAME = "Ефрейтор"
 BOSS_NAME = "Старший сержант"
 STICK_NAME = "Офицерский стек"
 
+# Допуск по снаряжению: на курс не пускают с овергиром (иначе врагов выносят за секунды).
+WPN_MAX_DAMAGE = 1          # максимальный урон оружия для входа
+ARMOR_MAX = 2               # максимальная защита брони для входа
+
 
 class KvpFSM(StatesGroup):
     in_course = State()
@@ -108,6 +112,24 @@ async def is_kvp_run(run) -> bool:
     return bool(dng and dng['is_training'])
 
 
+async def course_gear_block(user_id: int):
+    """Текст отказа, если снаряжение превышает допуск курса, иначе None."""
+    wpn = await get_player_weapon_damage(user_id)
+    armor = await get_player_armor(user_id)
+    issues = []
+    if wpn > WPN_MAX_DAMAGE:
+        issues.append(f"• оружие: урон {wpn} (макс. {WPN_MAX_DAMAGE})")
+    if armor > ARMOR_MAX:
+        issues.append(f"• броня: защита {armor} (макс. {ARMOR_MAX})")
+    if not issues:
+        return None
+    return (
+        "🎖️ На курс не пускают с тяжёлым снаряжением — это испытание для лёгкого снаряжения.\n"
+        f"Допуск: оружие с уроном до {WPN_MAX_DAMAGE}, броня с защитой до {ARMOR_MAX}.\n"
+        "Сними лишнее и попробуй снова:\n" + "\n".join(issues)
+    )
+
+
 async def get_course_enemy(name: str = EFREITOR_NAME, boss: bool = False):
     dng = await get_kvp_dungeon()
     if not dng:
@@ -156,6 +178,7 @@ async def kvp_menu_cb(callback: CallbackQuery):
         f"{dng['description'] if dng else 'Набор испытаний для пилотов ВВС Нордхайма.'}\n\n"
         f"⚙️ Правила:\n"
         f"• {ROOM_TOTAL} комнат: случайные препятствия и Инструктор.\n"
+        f"• Допуск: оружие — урон до {WPN_MAX_DAMAGE}, броня — защита до {ARMOR_MAX}.\n"
         f"• Лимит прохождений: {progress['completions']}/{KVP_MAX_COMPLETIONS}.\n\n"
         f"📊 Прогресс курса: {progress['completions']}/{KVP_MAX_COMPLETIONS}"
     )
@@ -190,6 +213,11 @@ async def kvp_start(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ Курс сейчас недоступен.")
         return
 
+    block = await course_gear_block(user_id)
+    if block:
+        await callback.message.answer(block, reply_markup=kvp_menu_keyboard())
+        return
+
     await start_dungeon_run(user_id, dng['id'])
     run = await get_active_run(user_id)
     await state.set_state(KvpFSM.in_course)
@@ -211,6 +239,10 @@ async def kvp_resume(callback: CallbackQuery, state: FSMContext):
     if not run or not await is_kvp_run(run):
         await callback.message.answer("❌ Активного забега нет. Начни курс заново.",
                                       reply_markup=kvp_menu_keyboard())
+        return
+    block = await course_gear_block(user_id)
+    if block:
+        await callback.message.answer(block, reply_markup=kvp_menu_keyboard())
         return
     await state.set_state(KvpFSM.in_course)
     await show_kvp_room(callback.message, run, user_id, state)
@@ -407,6 +439,11 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     if not run or not await is_kvp_run(run):
         await callback.message.answer("❌ Активный забег не найден.")
         await state.clear()
+        return
+
+    block = await course_gear_block(user_id)
+    if block:
+        await callback.message.answer(block)
         return
 
     parts = callback.data.split(":")
