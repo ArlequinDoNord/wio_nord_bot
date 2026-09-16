@@ -643,6 +643,8 @@ async def seed_locations(conn):
          "all", None, ["пьян"], "city/park"),
         ("gossmi", "ГосСМИ", "Медиацентр Нордхайма. Здесь корреспонденты готовят выпуски городских новостей.",
          "all", None, ["пьян"], "city/media"),
+        ("bank", "Банк", "НОРДБАНК — финансовое сердце Нордхайма: счета, переводы и казна. Для туристов счёт ограничен 200 НМ.",
+         "all", None, ["пьян"], "city/bank"),
     ]
     for key, name, desc, mode, req_status, blocking, preview in base:
         await conn.execute(
@@ -2792,6 +2794,23 @@ async def user_has_status_tag(user_id: int, tag: str) -> bool:
     if top is None:
         return False
     return top >= req['sort_order']
+
+
+async def user_is_tourist(user_id: int) -> bool:
+    """Турист ли (гость без статуса «Пилот» и выше).
+
+    Учитывает каноническую иерархию: Рекрут — 1, Пилот — 2.
+    """
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT MAX(s.sort_order) as top FROM user_statuses us
+        JOIN statuses s ON us.status_id = s.id
+        WHERE us.user_id = ?
+    """, (user_id,))
+    top = (await cursor.fetchone())['top']
+    if top is None:
+        return False
+    return top < 2
 
 
 async def create_award(name: str, description: str = None, emoji: str = "🏅",

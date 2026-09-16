@@ -5,7 +5,7 @@ def main_menu_keyboard(is_admin: bool = False, is_pilot: bool = True):
     keyboard = [
         [KeyboardButton(text="Профиль")],
         [KeyboardButton(text="Инвентарь"), KeyboardButton(text="Магазин")],
-        [KeyboardButton(text="Банк"), KeyboardButton(text="Город")],
+        [KeyboardButton(text="Город")],
         [KeyboardButton(text="📰 Новости Нордхайма")],
     ]
     if is_pilot:
@@ -127,6 +127,7 @@ def bank_keyboard():
         [InlineKeyboardButton(text="Перевести", callback_data="bank:transfer")],
         [InlineKeyboardButton(text="🏛️ В казну", callback_data="bank:treasury")],
         [InlineKeyboardButton(text="История транзакций", callback_data="bank:history")],
+        [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
     ])
 
 

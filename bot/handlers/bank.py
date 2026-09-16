@@ -2,7 +2,8 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from database.db import get_user, transfer_nordmarks, get_transactions_history, get_all_users, transfer_to_treasury, get_treasury_balance, log_activity
+from database.db import get_user, transfer_nordmarks, get_transactions_history, get_all_users, transfer_to_treasury, get_treasury_balance, log_activity, user_is_tourist
+from config import TOURIST_BALANCE_LIMIT
 from keyboards.keyboards import bank_keyboard, cancel_keyboard, main_menu_kb
 from utils.helpers import format_amount, plural_nordmark, is_main_menu_text
 
@@ -41,13 +42,29 @@ async def show_bank(message: Message):
         return
 
     await message.answer(
-        f"🏦 НОРДБАНК\n\n"
-        f"💰 Баланс: {user['nordmarks']} {plural_nordmark(user['nordmarks'])}\n"
-        f"⚡ Очки действия: {user['ap']}/{user['ap_max']}\n\n"
-        f"────────────────────\n"
-        f"Доступные операции:",
+        await bank_menu_text(message.from_user.id),
         reply_markup=bank_keyboard()
     )
+
+
+async def bank_menu_text(user_id: int) -> str:
+    """Текст меню банка с учётом лимита счёта туриста."""
+    user = await get_user(user_id)
+    if not user:
+        return "Сначала нажми /start"
+    text = (
+        f"🏦 НОРДБАНК\n\n"
+        f"💰 Баланс: {user['nordmarks']} {plural_nordmark(user['nordmarks'])}\n"
+        f"⚡ Очки действия: {user['ap']}/{user['ap_max']}\n"
+    )
+    if await user_is_tourist(user_id):
+        remaining = max(0, TOURIST_BALANCE_LIMIT - user['nordmarks'])
+        text += (
+            f"\n🗺 Турист: счёт ограничен {TOURIST_BALANCE_LIMIT} НМ.\n"
+            f"Свободно до лимита: {remaining} НМ\n"
+        )
+    text += "\n────────────────────\nДоступные операции:"
+    return text
 
 
 @router.callback_query(F.data == "bank:balance")
@@ -103,11 +120,18 @@ async def set_recipient(message, state, target):
         return
     await state.update_data(recipient_id=target['user_id'], recipient_name=target['first_name'])
     await state.set_state(BankStates.waiting_amount)
-    await message.answer(
+    text = (
         f"Получатель: {target['first_name']} (@{target['username']})\n"
-        f"Введи сумму в Нордмарках:",
-        reply_markup=cancel_keyboard()
+        f"Введи сумму в Нордмарках:"
     )
+    if await user_is_tourist(target['user_id']):
+        text = (
+            f"Получатель: {target['first_name']} (@{target['username']}) — 🗺 турист\n"
+            f"Его счёт ограничен {TOURIST_BALANCE_LIMIT} НМ.\n"
+            f"Если сумма превысит лимит, перевод не пройдёт и средства вернутся к тебе.\n\n"
+            f"Введи сумму в Нордмарках:"
+        )
+    await message.answer(text, reply_markup=cancel_keyboard())
 
 
 @router.callback_query(F.data.startswith("bank:pickrecipient:"))
@@ -132,11 +156,7 @@ async def bank_menu_cb(callback: CallbackQuery):
         await callback.message.answer("Сначала нажми /start")
         return
     await callback.message.answer(
-        f"🏦 НОРДБАНК\n\n"
-        f"💰 Баланс: {user['nordmarks']} {plural_nordmark(user['nordmarks'])}\n"
-        f"⚡ Очки действия: {user['ap']}/{user['ap_max']}\n\n"
-        f"────────────────────\n"
-        f"Доступные операции:",
+        await bank_menu_text(callback.from_user.id),
         reply_markup=bank_keyboard()
     )
 
@@ -239,6 +259,25 @@ async def process_amount(message: Message, state: FSMContext):
         await message.answer(f"❌ Недостаточно средств. Баланс: {sender['nordmarks']} НМ")
         return
 
+    recipient = await get_user(data['recipient_id'])
+    if recipient and await user_is_tourist(recipient['user_id']):
+        remaining = TOURIST_BALANCE_LIMIT - recipient['nordmarks']
+        if remaining <= 0:
+            await state.clear()
+            await message.answer(
+                f"❌ У туриста {recipient['first_name']} уже достигнут лимит счёта "
+                f"({TOURIST_BALANCE_LIMIT} НМ). Перевод отменён — средства возвращены.",
+                reply_markup=await main_menu_kb(message.from_user.id)
+            )
+            return
+        if amount > remaining:
+            await message.answer(
+                f"⚠️ {recipient['first_name']} — турист, счёт ограничен {TOURIST_BALANCE_LIMIT} НМ.\n"
+                f"Сейчас у него {recipient['nordmarks']} НМ, свободно до лимита {remaining} НМ.\n"
+                f"Сумма {amount} НМ превысит лимит. Введи сумму не больше {remaining} НМ:"
+            )
+            return
+
     await state.update_data(amount=amount)
     await state.set_state(BankStates.waiting_message)
     await message.answer(
@@ -277,6 +316,18 @@ async def process_message(message: Message, state: FSMContext):
     description = f"Перевод от {sender_label}"
     if text:
         description += f": {text}"
+
+    recipient = await get_user(recipient_id)
+    if recipient and await user_is_tourist(recipient['user_id']):
+        if recipient['nordmarks'] + amount > TOURIST_BALANCE_LIMIT:
+            await state.clear()
+            await message.answer(
+                f"❌ Перевод отменён: у туриста {recipient['first_name']} счёт ограничен "
+                f"{TOURIST_BALANCE_LIMIT} НМ. Сейчас у него {recipient['nordmarks']} НМ.\n"
+                f"Средства возвращены — твой баланс: {sender['nordmarks']} НМ.",
+                reply_markup=await main_menu_kb(message.from_user.id)
+            )
+            return
 
     await transfer_nordmarks(
         message.from_user.id,
