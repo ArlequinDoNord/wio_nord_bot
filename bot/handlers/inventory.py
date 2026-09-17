@@ -416,8 +416,11 @@ async def inventory_cat_cb(callback: CallbackQuery):
                                           back_label="🔙 К категориям"))
 
 
-async def _render_item_card(message, user_id: int, item_id: int):
-    """Перерисовывает карточку предмета в указанном сообщении (edit или replace)."""
+async def _render_item_card(message, user_id: int, item_id: int, note: str = ""):
+    """Перерисовывает карточку предмета в указанном сообщении (edit или replace).
+
+    note — строка об операции (например, чек продажи), показывается сверху карточки.
+    """
     item = await get_item(item_id)
     inv = await get_inventory_item(user_id, item_id)
     if not item or not inv:
@@ -485,6 +488,9 @@ async def _render_item_card(message, user_id: int, item_id: int):
                      f"продать можно не больше {sellable_qty} шт.")
         else:
             text += f"\n\n⚠️ Все {inventory_qty} шт. занято слотами — сними, чтобы продать."
+
+    if note:
+        text = f"{note}\n\n{text}"
 
     # Кто сейчас занимает слоты (для честной замены — без сюрпризов)
     occupied = {}
@@ -767,11 +773,14 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
         await db.execute("UPDATE items SET stock = stock + ? WHERE id = ?", (qty, item_id))
         await db.commit()
 
-    await edit_or_replace(
-        callback.message,
-        f"💵 Ты продал {item['name']} x{qty} за {total} {plural_nordmark(total)}!"
-    )
-    return
+    # Чек операции + возврат к карточке предмета с обновлённым количеством,
+    # чтобы можно было сразу продать ещё, не заходя в инвентарь заново.
+    receipt = f"💵 Ты продал {item['name']} x{qty} за {total} {plural_nordmark(total)}!"
+    after = await get_inventory_item(user_id, item_id)
+    if after and after['quantity'] > 0:
+        await _render_item_card(callback.message, user_id, item_id, note=receipt)
+    else:
+        await edit_or_replace(callback.message, receipt)
 
 
 @router.callback_query(F.data.startswith("fishcatch:"))
