@@ -550,6 +550,10 @@ async def init_db():
     await _ensure_column(conn, "users", "last_salary_date", "TIMESTAMP")
     await _ensure_column(conn, "users", "salary_debt", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "armor", "INTEGER DEFAULT 0")
+    # Слот тела для предметов снаряжения: 'head' | 'body' | 'hands' | 'legs'
+    await _ensure_column(conn, "items", "equip_slot", "TEXT")
+    await conn.execute("UPDATE items SET equip_slot = 'head' WHERE name = 'Лётный шлем' AND equip_slot IS NULL")
+    await conn.execute("UPDATE items SET equip_slot = 'body' WHERE category = 'equipment' AND armor > 0 AND equip_slot IS NULL")
     await _ensure_column(conn, "reports", "total_troops", "INTEGER DEFAULT 0")
     # credited_troops без DEFAULT: у старых отчётов (до миграции) будет NULL
     await _ensure_column(conn, "reports", "credited_troops", "INTEGER")
@@ -713,7 +717,7 @@ async def purge_retired_items():
     await conn.execute(f"UPDATE trades SET to_item_id = NULL WHERE to_item_id IN ({id_ph})", ids)
     await conn.execute(f"UPDATE buildings SET production_item_id = NULL WHERE production_item_id IN ({id_ph})", ids)
 
-    # Снаряжение игроков: слоты 'weapon'/'armor', ссылающиеся на удаляемые предметы.
+    # Снаряжение игроков: любые слоты equipment, ссылающиеся на удаляемые предметы.
     cur = await conn.execute("SELECT user_id, equipment FROM users WHERE equipment IS NOT NULL AND equipment != '{}'")
     for row in await cur.fetchall():
         try:
@@ -721,7 +725,8 @@ async def purge_retired_items():
         except (ValueError, TypeError):
             continue
         changed = False
-        for slot in ("weapon", "armor"):
+        for slot in ("weapon", "armor", "weapon_aux", "head", "body", "hands", "legs",
+                     "potion1", "potion2", "potion3"):
             if eq.get(slot) in ids:
                 eq.pop(slot, None)
                 changed = True
@@ -936,14 +941,14 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
                    photo_file_id: str = None, ap_cost: int = 0,
                    production_time_hours: int = 0, produced_by: int = None,
                    damage: int = 0, heal: int = 0, armor: int = 0,
-                   drink_effect: str = None):
+                   drink_effect: str = None, equip_slot: str = None):
     conn = await get_db()
     cursor = await conn.execute(
         """INSERT INTO items (name, description, photo_file_id, price, sell_price,
-           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (name, description, photo_file_id, price, sell_price, rarity, category,
-         stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect)
+         stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot)
     )
     await conn.commit()
     return cursor.lastrowid
@@ -3569,6 +3574,10 @@ async def seed_default_items():
             rarity=rarity, category=category, stock=stock, added_by=0, ap_cost=ap_cost,
             damage=damage, heal=heal, armor=armor,
         )
+    # Куда надевается базовая броня (fresh-BD: миграция выше в init_db ещё не видела эти строки)
+    await conn.execute("UPDATE items SET equip_slot = 'head' WHERE name = 'Лётный шлем' AND equip_slot IS NULL")
+    await conn.execute("UPDATE items SET equip_slot = 'body' WHERE category = 'equipment' AND armor > 0 AND equip_slot IS NULL")
+    await conn.commit()
     return True
 
 
@@ -3954,18 +3963,18 @@ async def get_player_weapon_damage(user_id: int) -> int:
 
 
 async def get_player_armor(user_id: int) -> int:
-    """Защита активного снаряжения игрока (слот 'armor' в equipment)."""
+    """Суммарная защита брони: голова + тело + руки + ноги."""
     eq = await get_equipment(user_id)
-    armor_id = eq.get('armor')
-    if not armor_id:
+    ids = [eq[s] for s in ARMOR_SLOTS if eq.get(s)]
+    if not ids:
         return 0
+    ph = ",".join("?" * len(ids))
     conn = await get_db()
     cursor = await conn.execute(
-        "SELECT armor FROM items WHERE id = ?",
-        (armor_id,)
+        f"SELECT COALESCE(SUM(armor), 0) AS s FROM items WHERE id IN ({ph})", ids
     )
     row = await cursor.fetchone()
-    return row['armor'] if row else 0
+    return row['s'] if row else 0
 
 
 # Базовое уклонение пилота (%) и бонус за нашивку «Значок В.У.С.П.».
@@ -3983,8 +3992,43 @@ async def get_player_dodge(user_id: int, dodge_mult: float = 1.0) -> int:
     return max(0, dodge)
 
 
+# Слоты снаряжения в users.equipment.
+ARMOR_SLOTS = ("head", "body", "hands", "legs")
+EQUIPMENT_SLOT_LABELS = {
+    "weapon": "Основное оружие",
+    "weapon_aux": "Вспомогательное оружие",
+    "head": "Голова",
+    "body": "Тело",
+    "hands": "Руки",
+    "legs": "Ноги",
+    "potion1": "Активный слот 1",
+    "potion2": "Активный слот 2",
+    "potion3": "Активный слот 3",
+}
+# Слоты, которые сейчас заблокированы (откроются позже).
+EQUIPMENT_LOCKED_SLOTS = {"weapon_aux", "potion3"}
+
+
+def item_fits_slot(item, slot: str) -> bool:
+    """Подходит ли предмет в слот снаряжения (для списка подходящего в инвентаре)."""
+    category = item['category']
+    if slot == 'weapon':
+        return category == 'weapon'
+    if slot in ARMOR_SLOTS:
+        if category != 'equipment' or not (item['armor'] or 0):
+            return False
+        if hasattr(item, 'keys'):
+            eq_slot = item['equip_slot'] if 'equip_slot' in item.keys() and item['equip_slot'] else 'body'
+        else:
+            eq_slot = item.get('equip_slot') or 'body'
+        return eq_slot == slot
+    if slot in ('potion1', 'potion2'):
+        return category == 'consumable'
+    return False
+
+
 async def get_equipment(user_id: int) -> dict:
-    """Возвращает активное снаряжение игрока: {"weapon": id, "armor": id}."""
+    """Возвращает активное снаряжение игрока: {slot: item_id}."""
     conn = await get_db()
     cursor = await conn.execute("SELECT equipment FROM users WHERE user_id = ?", (user_id,))
     row = await cursor.fetchone()
@@ -3994,6 +4038,9 @@ async def get_equipment(user_id: int) -> dict:
         eq = json.loads(row['equipment'])
         if not isinstance(eq, dict):
             return {}
+        # Миграция старого одиночного слота 'armor' → 'body'
+        if 'armor' in eq and not eq.get('body'):
+            eq['body'] = eq.pop('armor')
         return {slot: v for slot, v in eq.items() if v}
     except (ValueError, TypeError):
         return {}

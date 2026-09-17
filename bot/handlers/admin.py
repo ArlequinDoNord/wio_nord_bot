@@ -55,6 +55,7 @@ class AdminAddItem(StatesGroup):
     drink = State()
     stock = State()
     stats = State()
+    equip_slot = State()
     producer = State()
     producer_user = State()
     photo = State()
@@ -834,9 +835,31 @@ async def add_item_stats(message: Message, state: FSMContext):
     value = int(message.text)
     if data.get('category') == 'weapon':
         await state.update_data(damage=value)
+        await _go_add_item_producer(message, state)
     else:
         await state.update_data(armor=value)
-    await _go_add_item_producer(message, state)
+        if value > 0:
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            await state.set_state(AdminAddItem.equip_slot)
+            await message.answer(
+                "Шаг 8/9 — На какую часть тела надевается?",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🪖 Голова", callback_data="eqpart:head")],
+                    [InlineKeyboardButton(text="🦺 Тело", callback_data="eqpart:body")],
+                    [InlineKeyboardButton(text="🧤 Руки", callback_data="eqpart:hands")],
+                    [InlineKeyboardButton(text="🥾 Ноги", callback_data="eqpart:legs")],
+                ])
+            )
+        else:
+            await _go_add_item_producer(message, state)
+
+
+@router.callback_query(F.data.startswith("eqpart:"))
+async def add_item_equip_slot(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    slot = callback.data.split(":", 1)[1]
+    await state.update_data(equip_slot=slot)
+    await _go_add_item_producer(callback.message, state)
 
 
 @router.message(AdminAddItem.stats)
@@ -915,6 +938,7 @@ async def add_item_photo(message: Message, state: FSMContext):
         produced_by=data.get('produced_by'),
         damage=data.get('damage', 0), armor=data.get('armor', 0),
         heal=data.get('heal', 0), drink_effect=data.get('drink_effect'),
+        equip_slot=data.get('equip_slot'),
     )
     await log_action(admin_id, 'add_item', data.get('produced_by'),
                      f"item={data['name']} id={item_id}")
@@ -924,6 +948,10 @@ async def add_item_photo(message: Message, state: FSMContext):
         stats_line += f"\n⚔️ Урон: {data['damage']}"
     if data.get('armor'):
         stats_line += f"\n🛡️ Защита: {data['armor']}"
+    if data.get('equip_slot'):
+        part_label = {"head": "Голова", "body": "Тело", "hands": "Руки", "legs": "Ноги"}.get(
+            data['equip_slot'], data['equip_slot'])
+        stats_line += f"\n🪖 Надевается: {part_label}"
     await message.answer(
         f"✅ Товар добавлен!\n\n"
         f"«{data['name']}»\n"

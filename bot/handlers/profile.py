@@ -63,10 +63,13 @@ async def _profile_caption(user_id: int, owner: bool = True):
         w = await get_item(eq['weapon'])
         if w:
             eq_lines.append(f"⚔️ Оружие: {w['name']} ({w['damage']} ур.)")
-    if eq.get('armor'):
-        a = await get_item(eq['armor'])
-        if a:
-            eq_lines.append(f"🛡️ Броня: {a['name']} ({a['armor']} защ.)")
+    armor_parts = [('head', 'Голова'), ('body', 'Тело'), ('hands', 'Руки'), ('legs', 'Ноги')]
+    for slot, label in armor_parts:
+        aid = eq.get(slot)
+        if aid:
+            a = await get_item(aid)
+            if a:
+                eq_lines.append(f"{label}: {a['name']} ({a['armor']} защ.)")
 
     slot_by_name = {}
     for s, r in await get_equipment_slot_items(user_id):

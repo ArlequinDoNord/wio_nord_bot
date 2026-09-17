@@ -15,6 +15,7 @@ from database.db import (
     get_fish_catches, take_fish_catch, sell_one_fish_catch, get_active_run,
     process_food_expiry, add_fish_offer, RAW_FISH_SHELF_SEC,
     get_market_slots_info,
+    item_fits_slot, ARMOR_SLOTS, EQUIPMENT_SLOT_LABELS, EQUIPMENT_LOCKED_SLOTS,
 )
 from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text,
@@ -76,6 +77,7 @@ def inv_categories_markup(items, catches):
         counts[FISH_ALL_KEY] = fish_total
 
     rows = []
+    rows.append([InlineKeyboardButton(text="🛡️ Снаряжение", callback_data="inventory:eq")])
     for cat in INV_CATEGORIES:
         if cat not in counts or counts[cat] <= 0:
             continue
@@ -152,6 +154,196 @@ def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equip
     buttons.append([InlineKeyboardButton(text="🔙 В категорию", callback_data=f"inventory:cat:{category}")])
     buttons.append([InlineKeyboardButton(text="🔙 К списку категорий", callback_data="inventory:list")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+# ── Снаряжение: вкладка со слотами и списком подходящего из инвентаря ──
+
+_ARMOR_SLOT_EMOJI = {"head": "🪖", "body": "🦺", "hands": "🧤", "legs": "🥾"}
+
+
+def _slot_emoji(slot: str) -> str:
+    if slot == 'weapon':
+        return '⚔️'
+    if slot in _ARMOR_SLOT_EMOJI:
+        return _ARMOR_SLOT_EMOJI[slot]
+    return '⚗️'
+
+
+def _slot_extra(item, slot: str) -> str:
+    if slot == 'weapon' and item['damage']:
+        return f" ({item['damage']} ур.)"
+    if slot in ARMOR_SLOTS and item['armor']:
+        return f" ({item['armor']} защ.)"
+    return ""
+
+
+async def _equipment_view(user_id: int):
+    """Текст и клавиатура вкладки «Снаряжение»."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    eq = await get_equipment(user_id)
+    equipped = {}
+    for slot, item_id in eq.items():
+        if slot not in EQUIPMENT_SLOT_LABELS:
+            continue
+        it = await get_item(item_id)
+        if it:
+            equipped[slot] = it
+
+    def slot_line(slot):
+        it = equipped.get(slot)
+        emoji = _slot_emoji(slot)
+        label = EQUIPMENT_SLOT_LABELS[slot]
+        if not it:
+            return f"{emoji} {label}: —"
+        return f"{emoji} {label}: {it['name']}{_slot_extra(it, slot)}"
+
+    def slot_button(slot):
+        it = equipped.get(slot)
+        emoji = _slot_emoji(slot)
+        label = EQUIPMENT_SLOT_LABELS[slot]
+        if not it:
+            return f"{emoji} {label}: —"
+        return f"{emoji} {label}: {it['name']}{_slot_extra(it, slot)}"
+
+    lines = ["🛡️ СНАРЯЖЕНИЕ", "", "Нажми на слот — покажу подходящее из инвентаря."]
+    lines += ["", "▫️ ⚔️ ОРУЖИЕ"]
+    lines.append("• " + slot_line('weapon'))
+    if 'weapon_aux' in EQUIPMENT_LOCKED_SLOTS:
+        lines.append("• 🔒 Вспомогательное: заблокировано")
+    lines += ["", "▫️ 🛡️ ЗАЩИТА"]
+    for s in ARMOR_SLOTS:
+        lines.append("• " + slot_line(s))
+    lines += ["", "▫️ 🧪 РАСХОДНИКИ"]
+    for s in ('potion1', 'potion2'):
+        lines.append("• " + slot_line(s))
+    if 'potion3' in EQUIPMENT_LOCKED_SLOTS:
+        lines.append("• 🔒 Слот 3: заблокирован")
+
+    rows = []
+    rows.append([InlineKeyboardButton(text=slot_button('weapon'),
+                                      callback_data=f"eqslot:weapon")])
+    rows.append([InlineKeyboardButton(text="🔒 Вспомогательное оружие — заблокировано",
+                                      callback_data="eqlock:weapon_aux")])
+    for s in ARMOR_SLOTS:
+        rows.append([InlineKeyboardButton(text=slot_button(s),
+                                          callback_data=f"eqslot:{s}")])
+    for s in ('potion1', 'potion2'):
+        rows.append([InlineKeyboardButton(text=slot_button(s),
+                                          callback_data=f"eqslot:{s}")])
+    rows.append([InlineKeyboardButton(text="🔒 Слот 3 — заблокирован",
+                                      callback_data="eqlock:potion3")])
+    rows.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="inventory:list")])
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _render_equipment(message, user_id: int):
+    text, markup = await _equipment_view(user_id)
+    await edit_or_replace(message, text, markup)
+
+
+async def _render_equip_slot(message, user_id: int, slot: str):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    label = EQUIPMENT_SLOT_LABELS.get(slot, slot)
+    eq = await get_equipment(user_id)
+    equipped_id = eq.get(slot)
+    equipped = await get_item(equipped_id) if equipped_id else None
+    items = await get_inventory(user_id)
+    candidates = [it for it in items if item_fits_slot(it, slot)]
+
+    text = f"🛡️ СНАРЯЖЕНИЕ → {label}"
+    text += f" {_slot_emoji(slot)}\n\n"
+    if equipped:
+        text += (f"Надето: {equipped['name']}{_slot_extra(equipped, slot)}\n")
+    else:
+        text += "Слот пуст.\n"
+    if candidates:
+        text += "\nПодходит из инвентаря:"
+    else:
+        text += "\nВ инвентаре нет подходящих предметов."
+
+    rows = []
+    if equipped:
+        rows.append([InlineKeyboardButton(text="✖️ Снять с себя",
+                                          callback_data=f"equnequip:{slot}")])
+    for it in candidates:
+        marker = "✅ " if it['id'] == equipped_id else ""
+        rows.append([InlineKeyboardButton(
+            text=f"{marker}{it['name']} x{it['quantity']}",
+            callback_data=f"eqequip:{slot}:{it['id']}")])
+    rows.append([InlineKeyboardButton(text="🔙 К снаряжению",
+                                      callback_data="inventory:eq")])
+    await edit_or_replace(message, text, InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data == "inventory:eq")
+async def inventory_eq_cb(callback: CallbackQuery):
+    await callback.answer()
+    await _render_equipment(callback.message, callback.from_user.id)
+
+
+@router.callback_query(F.data.regexp(r"^eqlock:[a-z0-9_]+$"))
+async def equip_slot_locked_cb(callback: CallbackQuery):
+    await callback.answer("Слот заблокирован — откроется позже.", show_alert=True)
+
+
+@router.callback_query(F.data.regexp(r"^eqslot:[a-z0-9_]+$"))
+async def equip_slot_cb(callback: CallbackQuery):
+    await callback.answer()
+    slot = callback.data.split(":", 1)[1]
+    await _render_equip_slot(callback.message, callback.from_user.id, slot)
+
+
+@router.callback_query(F.data.regexp(r"^eqequip:[a-z0-9_]+:\d+$"))
+async def equip_from_slot_cb(callback: CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    if await get_active_run(user_id):
+        await callback.message.answer("⏳ Идёт забег в подземелье: менять снаряжение в бою нельзя.")
+        return
+    _, slot, item_id_s = callback.data.split(":")
+    item_id = int(item_id_s)
+    item = await get_item(item_id)
+    inv = await get_inventory_item(user_id, item_id)
+    if not item or not inv or inv['quantity'] < 1:
+        await callback.message.answer("❌ У тебя нет этого предмета.")
+        return
+    if not item_fits_slot(item, slot):
+        await callback.message.answer("❌ Этот предмет не подходит в этот слот.")
+        return
+    eq = await get_equipment(user_id)
+    replaced = eq.get(slot)
+    await set_equipment_slot(user_id, slot, item_id)
+    note = ""
+    if replaced and replaced != item_id:
+        old = await get_item(replaced)
+        note = f" (было заменено: «{old['name'] if old else replaced}»)"
+    await log_activity(user_id, "equip",
+                       f"Надел «{item['name']}» в слот «{EQUIPMENT_SLOT_LABELS[slot]}»")
+    await callback.message.answer(
+        f"✅ Надето: {item['name']} — {EQUIPMENT_SLOT_LABELS[slot]}.{note}"
+    )
+    await _render_equip_slot(callback.message, user_id, slot)
+
+
+@router.callback_query(F.data.regexp(r"^equnequip:[a-z0-9_]+$"))
+async def unequip_slot_cb(callback: CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    if await get_active_run(user_id):
+        await callback.message.answer("⏳ Идёт забег в подземелье: менять снаряжение в бою нельзя.")
+        return
+    slot = callback.data.split(":", 1)[1]
+    eq = await get_equipment(user_id)
+    item_id = eq.get(slot)
+    if not item_id:
+        await callback.message.answer("Этот слот пуст.")
+        return
+    item = await get_item(item_id)
+    await clear_equipment_slot(user_id, slot)
+    await log_activity(user_id, "unequip",
+                       f"Снял «{item['name'] if item else item_id}» со слота «{EQUIPMENT_SLOT_LABELS.get(slot, slot)}»")
+    await callback.message.answer(f"✖️ Снято: {item['name'] if item else 'предмет'}")
+    await _render_equip_slot(callback.message, user_id, slot)
 
 
 @router.message(F.text == "Инвентарь")
@@ -269,10 +461,10 @@ async def _render_item_card(message, user_id: int, item_id: int):
     if item['category'] == 'weapon':
         equip_slot = 'weapon'
     elif item['category'] == 'equipment' and item['armor']:
-        equip_slot = 'armor'
+        equip_slot = item['equip_slot'] if ('equip_slot' in item.keys() and item['equip_slot']) else 'body'
     is_equipped = eq.get(equip_slot) == item_id if equip_slot else False
     if is_equipped:
-        text += f"\n\n🔹 Экипировано: {'⚔️' if equip_slot == 'weapon' else '🛡️'}"
+        text += f"\n\n🔹 Экипировано: {_slot_emoji(equip_slot)} {EQUIPMENT_SLOT_LABELS.get(equip_slot, equip_slot)}"
 
     # Активные слоты зелий (potion1/potion2) — в каких стоит этот предмет
     potion_slots = [n for n, slot in ((1, 'potion1'), (2, 'potion2')) if eq.get(slot) == item_id]
@@ -346,15 +538,16 @@ async def inv_equip(callback: CallbackQuery):
     if item['category'] == 'weapon':
         slot = 'weapon'
     elif item['category'] == 'equipment' and item['armor']:
-        slot = 'armor'
+        slot = item['equip_slot'] if ('equip_slot' in item.keys() and item['equip_slot']) else 'body'
     else:
         await callback.message.answer("❌ Этот предмет нельзя экипировать.")
         return
 
     await set_equipment_slot(user_id, slot, item_id)
     await callback.message.answer(
-        f"✅ Экипировано: {item['name']}"
+        f"✅ Экипировано: {item['name']} — {EQUIPMENT_SLOT_LABELS.get(slot, slot)}"
     )
+    await _render_item_card(callback.message, user_id, item_id)
 
 
 @router.callback_query(F.data.startswith("inv_unequip:"))
@@ -370,12 +563,15 @@ async def inv_unequip(callback: CallbackQuery):
     if not item:
         return
 
-    if item['category'] == 'weapon':
-        slot = 'weapon'
-    else:
-        slot = 'armor'
+    eq = await get_equipment(user_id)
+    slot = next((s for s in ("weapon", "head", "body", "hands", "legs",
+                             "potion1", "potion2") if eq.get(s) == item_id), None)
+    if not slot:
+        await callback.message.answer("❌ Этот предмет сейчас не надет.")
+        return
     await clear_equipment_slot(user_id, slot)
     await callback.message.answer(f"✖️ Снято: {item['name']}")
+    await _render_item_card(callback.message, user_id, item_id)
 
 
 @router.callback_query(F.data.startswith("inv_slot:"))
@@ -477,13 +673,7 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
     # урон/защита берутся напрямую из items по id в equipment, без проверки инвентаря).
     eq = await get_equipment(user_id)
     if item_id in eq.values():
-        slot_names = {
-            'potion1': 'активный слот 1',
-            'potion2': 'активный слот 2',
-            'weapon': 'оружие',
-            'armor': 'броня',
-        }
-        used = [slot_names[s] for s in ('potion1', 'potion2', 'weapon', 'armor') if eq.get(s) == item_id]
+        used = [EQUIPMENT_SLOT_LABELS[s].lower() for s in EQUIPMENT_SLOT_LABELS if eq.get(s) == item_id]
         await callback.answer(
             f"❌ «{item['name']}» сейчас используется ({', '.join(used)}). "
             f"Сначала сними его.", show_alert=True
@@ -768,13 +958,7 @@ async def inv_transfer_start(callback: CallbackQuery, state: FSMContext):
 
     eq = await get_equipment(user_id)
     if item_id in eq.values():
-        slot_names = {
-            'potion1': 'активный слот 1',
-            'potion2': 'активный слот 2',
-            'weapon': 'оружие',
-            'armor': 'броня',
-        }
-        used = [slot_names[s] for s in ('potion1', 'potion2', 'weapon', 'armor') if eq.get(s) == item_id]
+        used = [EQUIPMENT_SLOT_LABELS[s].lower() for s in EQUIPMENT_SLOT_LABELS if eq.get(s) == item_id]
         await callback.message.answer(
             f"❌ «{item['name']}» сейчас используется ({', '.join(used)}). "
             f"Сначала сними его."
