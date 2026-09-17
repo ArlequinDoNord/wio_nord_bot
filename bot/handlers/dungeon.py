@@ -1,31 +1,36 @@
 import os
 import random
 import json
+import asyncio
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, FSInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
 from database.db import (
-    get_all_dungeons, get_dungeon, get_floor_enemies, start_dungeon_run,
-    get_active_run, update_run_hp, advance_room, end_run, add_run_item, add_run_nordmarks,
+    get_all_dungeons, get_dungeon, get_dungeon_rooms_map, get_floor_enemies,
+    start_dungeon_run, get_active_run, update_run_hp, advance_room, advance_floor,
+    end_run, add_run_item, add_run_nordmarks,
     get_run_items, clear_run_items, get_user, add_nordmarks, remove_nordmarks, remove_ap, get_db,
     get_player_weapon_damage, get_user_potions, get_item_by_name, remove_inventory_item,
     get_user_contract_count, get_player_armor, get_player_dodge, add_inventory_item,
     get_inventory_item, clear_equipment_slot,
     transfer_run_items_to_inventory, get_equipment_slot_items, log_activity,
     user_has_award_name,
+    get_inventory, get_equipment, set_equipment_slot, get_item,
+    item_fits_slot, EQUIPMENT_SLOT_LABELS,
 )
 from utils.combat import (
     calculate_attack, calculate_enemy_damage, roll_dodge,
     escape_chance, calculate_escape_damage, room_type_roll, resource_amount,
     _hp_bar,
 )
-from utils.helpers import time_of_day_key
+from utils.helpers import time_of_day_key, edit_or_replace
 from utils.notify import notify, player_display
 from config import (
     DUNGEON_HEAL_SOFT_LIMIT, DUNGEON_HEAL_HARD_LIMIT,
     DUNGEON_HEAL_SOFT_MULT, DUNGEON_HEAL_HARD_MULT,
+    FISH_AP_COST,
 )
 
 
@@ -51,9 +56,27 @@ class DungeonFSM(StatesGroup):
     in_combat = State()
     in_boss = State()
     confirm_enter = State()
+    in_reservoir = State()
 
 
 router = Router()
+
+
+# Кровотечение: урон каждый ход, спадает через BLEED_TICKS_MAX ходов.
+BLEED_TICKS_MAX = 3
+# Обморожение: лечение ×FROSTBITE_HEAL_MULT, само проходит через FROSTBITE_TURNS
+# ходов игрока либо сразу от напитка с cure_frostbite.
+FROSTBITE_TURNS = 4
+FROSTBITE_HEAL_MULT = 0.5
+FROSTBITE_CURE_HINT = "Снять: «Огненная вода (водка)» или «Горячий ягодный морс»."
+
+# Рыба подземного водохранилища (после победы над Крысиным капитаном): веса.
+RESERVOIR_AP_COST = FISH_AP_COST
+RESERVOIR_FISH_POOL = (
+    ("Мерцающий сом", 62),
+    ("Искрящийся угорь", 33),
+    ("Светящаяся форель", 5),
+)
 
 
 async def dungeon_current_step(state: FSMContext) -> int:
@@ -69,6 +92,31 @@ async def dungeon_new_step(state: FSMContext) -> int:
     return step
 
 
+async def rooms_total_now(run) -> int:
+    """Число обычных комнат до босса на текущем этаже забега."""
+    rooms_map = await get_dungeon_rooms_map(run['dungeon_id'])
+    if not rooms_map:
+        return 10
+    floor = run['floor']
+    if 1 <= floor <= len(rooms_map):
+        return rooms_map[floor - 1]
+    return rooms_map[0]
+
+
+def status_lines(data) -> list:
+    """Строки активных статусов боя (яд, кровотечение, обморожение)."""
+    lines = []
+    if data.get('active_poison'):
+        lines.append(f"☠️ Ты отравлен! Яд: −{data['active_poison']} HP каждый ход")
+    if data.get('active_bleed'):
+        ticks = int(data.get('bleed_ticks', 0) or 0)
+        rem = f" (спадёт через {ticks} х.)" if ticks else " (спадёт скоро)"
+        lines.append(f"🩸 Кровотечение: −{data['active_bleed']} HP каждый ход{rem}")
+    if data.get('active_frostbite'):
+        lines.append(f"🧊 Обморожение: лечение −50%. {FROSTBITE_CURE_HINT}")
+    return lines
+
+
 def dungeon_main_keyboard(step: int = 0):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -80,6 +128,8 @@ def dungeon_main_keyboard(step: int = 0):
 def _slot_button_label(row):
     if row['cure_poison']:
         return "⚗️ Антидот"
+    if row.get('cure_frostbite'):
+        return "🧊 " + row['name']
     if row['heal'] > 0:
         return f"💊 {row['name']}"
     return f"🧪 {row['name']}"
@@ -104,6 +154,27 @@ def dungeon_boss_keyboard(boss_id: int, slot_items: list = None, step: int = 0):
     for slot, row in (slot_items or []):
         buttons.append([InlineKeyboardButton(text=_slot_button_label(row), callback_data=f"dungeon:use_slot:{slot}:{step}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def post_captain_keyboard(step: int = 0):
+    """Выбор после победы над Крысиным капитаном: водохранилище или дальше."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎣 Порыбачить в водохранилище", callback_data=f"resv:enter:{step}")],
+        [InlineKeyboardButton(text="⚔️ Продолжить вглубь (Этаж 2)", callback_data=f"resv:deeper:{step}")],
+        [InlineKeyboardButton(text="🚪 Выйти из подземелья", callback_data="dungeon:exit")],
+    ])
+
+
+def reservoir_keyboard(step: int = 0):
+    """Меню подземного водохранилища: рыбалка, снаряжение, дальше, выход."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"🎣 Забросить удочку (−{RESERVOIR_AP_COST} ОД)", callback_data=f"resv:cast:{step}")],
+        [InlineKeyboardButton(text="🎒 Снаряжение", callback_data=f"resv:eq:{step}")],
+        [InlineKeyboardButton(text="⚔️ Продолжить вглубь (Этаж 2)", callback_data=f"resv:deeper:{step}")],
+        [InlineKeyboardButton(text="🚪 Выйти из подземелья", callback_data="dungeon:exit")],
+    ])
 
 
 def dungeon_start_keyboard():
@@ -174,7 +245,7 @@ async def dungeon_entry(callback: CallbackQuery, state: FSMContext):
     active = await get_active_run(user_id)
 
     if active:
-        await show_room(callback.message, active, user_id, state)
+        await resume_dungeon(callback.message, active, user_id, state)
         return
 
     dungeons = await get_all_dungeons(training=False)
@@ -289,15 +360,71 @@ async def dungeon_enter_confirm(callback: CallbackQuery, state: FSMContext):
     await state.update_data(dungeon_heal_uses=0)
     await log_activity(user_id, "dungeon_enter", f"Вошел в «{dungeon['name']}»")
 
+    rooms0 = await rooms_total_now(run)
     await callback.message.answer(
         f"🎫 Контракт использован! ⚡ −30 AP за вход\n"
         f"🏰 {dungeon['name']}\n"
-        f"Этаж 1 | Комната 0/10\n"
+        f"Этаж 1 | Комната 0/{rooms0}\n"
         f"❤️ {_hp_bar(run['hp'], run['hp_max'])}\n\n"
         f"Ты входишь в подземелье...",
     )
     await state.set_state(DungeonFSM.in_dungeon)
     await show_room(callback.message, run, user_id, state)
+
+
+async def post_captain_menu(where, run, state: FSMContext):
+    """Экран после победы над Крысиным капитаном: водохранилище или этаж 2."""
+    loot_nm = run['loot_nm'] or 0
+    text = (
+        "🏆 КРЫСИНЫЙ КАПИТАН ПОВЕРЖЁН!\n"
+        "💀 «Генерал» в кастрюлевом шлеме с жалким писком отползает в темноту, "
+        "и на этаже становится тихо.\n\n"
+        "Впереди развилка:\n"
+        "🎣 Боковое ответвление ведёт к подземному водохранилищу — там слышен плеск "
+        "невидимой рыбы. Говорят, в тёмной воде водится рыба, которой больше нигде нет.\n"
+        "⚔️ Вниз уходит ход в сердце подвала, где ждёт сам Король крыс.\n"
+    )
+    if loot_nm > 0:
+        text += f"\n💰 В лут с 1-го этажа накоплено: {loot_nm} НМ (заберёшь при выходе)."
+    text += "\n\nМожно порыбачить, а потом продолжить путь на 2-й этаж."
+    step = await dungeon_new_step(state)
+    await state.set_state(DungeonFSM.in_dungeon)
+    await where.answer(text, reply_markup=post_captain_keyboard(step))
+
+
+async def show_reservoir(where, user_id: int, state: FSMContext):
+    """Меню подземного водохранилища."""
+    run = await get_active_run(user_id)
+    inv = await get_inventory(user_id)
+    step = await dungeon_new_step(state)
+    text = (
+        "🌊 ПОДЗЕМНОЕ ВОДОХРАНИЛИЩЕ\n\n"
+        "Тёмная вода мерцает холодным светом. Тишина такая, что слышно собственные шаги. "
+        "Иногда по воде пробегает рябь — там кто-то есть, и рыба тут непугливая.\n\n"
+        "🎣 Заброс стоит 3 ОД, наживка не нужна: местная рыба клюёт на голый крючок.\n"
+        "🐟 Водится: Мерцающий сом (обычный), Искрящийся угорь (редкий)… "
+        "и что-то светящееся в глубине, чего не поймать нигде больше.\n\n"
+        "Здесь можно спокойно поменять слоты расходников — боя в этом зале нет."
+    )
+    caught = [it['name'] for it in inv
+              if it['category'] == 'fishing' and it['name'] in
+              {f[0] for f in RESERVOIR_FISH_POOL}]
+    if caught:
+        text += "\n\n🎒 Поймано тут:\n" + "\n".join(f"• {n}" for n in caught)
+    await where.answer(text, reply_markup=reservoir_keyboard(step))
+
+
+async def resume_dungeon(where, run, user_id: int, state: FSMContext):
+    """Возврат в активный забег: водохранилище, пост-капитанский выбор или комната."""
+    if await state.get_state() == DungeonFSM.in_reservoir.state:
+        await show_reservoir(where, user_id, state)
+        return
+    data = await state.get_data()
+    if run['floor'] == 1 and run['room_number'] >= await rooms_total_now(run) \
+            and data.get('captain_defeated'):
+        await post_captain_menu(where, run, state)
+        return
+    await show_room(where, run, user_id, state)
 
 
 @router.callback_query(F.data.startswith("dungeon:continue:"))
@@ -315,8 +442,17 @@ async def dungeon_continue(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("⚠️ Это устаревшая кнопка. Открой подземелье заново и продолжай с последнего сообщения.")
         return
 
-    if run['room_number'] >= 10:
-        await show_boss(callback.message, run, user_id, state)
+    if await state.get_state() == DungeonFSM.in_reservoir.state:
+        await show_reservoir(callback.message, user_id, state)
+        return
+
+    data = await state.get_data()
+    rooms_total = await rooms_total_now(run)
+    if run['room_number'] >= rooms_total:
+        if run['floor'] == 1 and data.get('captain_defeated'):
+            await post_captain_menu(callback.message, run, state)
+        else:
+            await show_boss(callback.message, run, user_id, state)
         return
 
     await advance_room(run['id'])
@@ -333,11 +469,19 @@ async def show_room(message, run, user_id, state: FSMContext):
     poison = sdata.get('active_poison')
     heal_uses = int(sdata.get('dungeon_heal_uses', 0) or 0)
     step = await dungeon_new_step(state)
+    rooms_total = await rooms_total_now(run)
 
     heal_line = ""
     if heal_uses >= DUNGEON_HEAL_SOFT_LIMIT:
         mult = heal_limit_mult(heal_uses)
         heal_line = f"💊 Лекарства: {heal_uses} применений (×{mult:.0%})\n"
+
+    room_header = f"Этаж {run['floor']} | Комната {run['room_number']}/{rooms_total}"
+    status_text = status_lines(sdata)
+    status_text.append(heal_line.strip())
+    status_block = "\n".join(s for s in status_text if s)
+    if status_block:
+        status_block += "\n"
 
     if room_type == "enemy":
         enemies = await get_floor_enemies(run['dungeon_id'], run['floor'])
@@ -346,15 +490,14 @@ async def show_room(message, run, user_id, state: FSMContext):
 
         await state.update_data(current_enemy_id=enemy['id'], current_enemy_hp=enemy['hp'])
 
-        poison_line = f"☠️ Ты отравлен! Яд: −{poison} HP каждый ход\n" if poison else ""
         text = (
             f"🏰 {dungeon['name']}\n"
-            f"Этаж {run['floor']} | Комната {run['room_number']}/10\n"
+            f"{room_header}\n"
             f"❤️ {hp_text}\n"
-            f"{poison_line}"
-            f"{heal_line}\n"
+            f"{status_block}"
             f"⚠️ Ты входишь в комнату и видишь врага!\n"
             f"👾 {enemy['name']} (HP: {enemy['hp']}, АТК: {enemy['attack']}, УКЛ: {enemy['dodge'] if 'dodge' in enemy.keys() else 0}%)\n\n"
+            f"{enemy['description'] if 'description' in enemy.keys() and enemy['description'] else ''}\n"
             f"Что делаешь?"
         )
         await answer_enemy_photo(message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items, step))
@@ -365,8 +508,9 @@ async def show_room(message, run, user_id, state: FSMContext):
 
         text = (
             f"🏰 {dungeon['name']}\n"
-            f"Этаж {run['floor']} | Комната {run['room_number']}/10\n"
-            f"❤️ {hp_text}\n\n"
+            f"{room_header}\n"
+            f"❤️ {hp_text}\n"
+            f"{status_block}"
             f"📦 Ты нашёл хранилище с припасами!\n"
             f"+{nm} Нордмарок (заберёшь при выходе)\n\n"
             f"Нажми «Продолжить путь» чтобы идти дальше."
@@ -376,8 +520,9 @@ async def show_room(message, run, user_id, state: FSMContext):
     else:
         text = (
             f"🏰 {dungeon['name']}\n"
-            f"Этаж {run['floor']} | Комната {run['room_number']}/10\n"
-            f"❤️ {hp_text}\n\n"
+            f"{room_header}\n"
+            f"❤️ {hp_text}\n"
+            f"{status_block}"
             f"🪨 Комната пуста. Здесь ничего нет.\n\n"
             f"Нажми «Продолжить путь» чтобы идти дальше."
         )
@@ -419,21 +564,44 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     poison = data.get('active_poison')
     player_hp = run['hp']
 
-    # Тик яда в начале хода игрока
+    # ── Тики статусов в начале хода игрока (яд, кровотечение, обморожение) ──
+    async def dot_death(line):
+        nm_penalty = max(5, enemy['reward_nm'] * 2)
+        await remove_nordmarks(user_id, nm_penalty, "dungeon_death", "Штраф за смерть в подземелье")
+        text = f"{line}\n💀 Ты погиб! −{nm_penalty} Нордмарок штраф.\nСобранный лут потерян."
+        await end_run(run['id'], 0)
+        await state.clear()
+        await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
+
+    # Яд (не спадает сам, снимается антидотом).
     if poison:
         player_hp = max(0, player_hp - poison)
         await update_run_hp(run['id'], player_hp)
         if player_hp <= 0:
-            nm_penalty = max(5, enemy['reward_nm'] * 2)
-            await remove_nordmarks(user_id, nm_penalty, "dungeon_death", "Штраф за смерть в подземелье")
-            text = (
-                f"☠️ Яд погубил тебя (−{poison} HP)\n"
-                f"💀 Ты погиб! −{nm_penalty} Нордмарок штраф.\nСобранный лут потерян."
-            )
-            await end_run(run['id'], 0)
-            await state.clear()
-            await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
+            await dot_death(f"☠️ Яд погубил тебя (−{poison} HP)")
             return
+
+    # Кровотечение (спадает через BLEED_TICKS_MAX ходов).
+    bleed = data.get('active_bleed')
+    if bleed:
+        player_hp = max(0, player_hp - bleed)
+        await update_run_hp(run['id'], player_hp)
+        if player_hp <= 0:
+            await dot_death(f"🩸 Ты истёк кровью (−{bleed} HP)")
+            return
+        bticks = int(data.get('bleed_ticks', 0) or 0) - 1
+        if bticks <= 0:
+            await state.update_data(active_bleed=None, bleed_ticks=0)
+        else:
+            await state.update_data(bleed_ticks=bticks)
+
+    # Обморожение спадает само через FROSTBITE_TURNS ходов игрока.
+    if data.get('active_frostbite'):
+        fticks = int(data.get('frostbite_ticks', 0) or 0) - 1
+        if fticks <= 0:
+            await state.update_data(active_frostbite=None, frostbite_ticks=0)
+        else:
+            await state.update_data(frostbite_ticks=fticks)
 
     weapon_damage = await get_player_weapon_damage(user_id)
     damage_to_enemy = calculate_attack(0, weapon_damage)
@@ -456,33 +624,47 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
     if current_enemy_hp <= 0:
         if enemy['is_boss']:
-            loot_nm = (run['loot_nm'] or 0) + enemy['reward_nm']
-            await add_run_nordmarks(run['id'], enemy['reward_nm'])
-            if loot_nm > 0:
-                await add_nordmarks(user_id, loot_nm, "dungeon_win", "Вынесено из подземелья")
+            reward = enemy['reward_nm'] or 0
+            if reward > 0:
+                await add_run_nordmarks(run['id'], reward)
 
-            transferred = await transfer_run_items_to_inventory(user_id, run['id'])
+            if run['floor'] == 1:
+                # Промежуточный босс «Крысиный капитан»: награда копится в луте,
+                # после победы — выбор: водохранилище или этаж 2.
+                await state.update_data(captain_defeated=1)
+                await log_activity(user_id, "dungeon_boss",
+                                   f"Победил промежуточного босса «{enemy['name']}» на 1 этаже")
+                run = await get_active_run(user_id)
+                await post_captain_menu(callback.message, run, state)
+            else:
+                # Финальный босс «Король крыс» (этаж 2): полная зачистка.
+                run = await get_active_run(user_id)
+                loot_nm = run['loot_nm'] or 0
+                if loot_nm > 0:
+                    await add_nordmarks(user_id, loot_nm, "dungeon_win", "Вынесено из подземелья")
 
-            text = (
-                f"🏆 БОСС ПОБЕЖДЁН!\n"
-                f"💀 {enemy['name']} повержен!\n\n"
-                f"🎉 Поздравляем! Ты прошёл подземелье!\n\n"
-                f"📦 Ты выносишь из подземелья:\n"
-            )
-            if loot_nm > 0:
-                text += f"💰 {loot_nm} Нордмарок\n"
-            for name, qty in transferred:
-                text += f"🎁 {name} x{qty}\n"
-            if loot_nm <= 0 and not transferred:
-                text += "… пусто."
+                transferred = await transfer_run_items_to_inventory(user_id, run['id'])
 
-            await end_run(run['id'], 0)
-            await state.clear()
-            await log_activity(user_id, "dungeon_win",
-                               f"Прошёл «{enemy['name']}»/подземелье на {run['floor']} этаже")
-            await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
-            pilot = await get_user(user_id)
-            await notify(bot, f"🏆 Пилот {await player_display(pilot)} прошёл подземелье и победил босса «{enemy['name']}»!", user_id)
+                text = (
+                    f"🏆 БОСС ПОБЕЖДЁН!\n"
+                    f"💀 {enemy['name']} повержен!\n\n"
+                    f"🎉 Поздравляем! Ты прошёл подземелье до конца!\n\n"
+                    f"📦 Ты выносишь из подземелья:\n"
+                )
+                if loot_nm > 0:
+                    text += f"💰 {loot_nm} Нордмарок\n"
+                for name, qty in transferred:
+                    text += f"🎁 {name} x{qty}\n"
+                if loot_nm <= 0 and not transferred:
+                    text += "… пусто."
+
+                await end_run(run['id'], 0)
+                await state.clear()
+                await log_activity(user_id, "dungeon_win",
+                                   f"Прошёл «{enemy['name']}»/подземелье на {run['floor']} этаже")
+                await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
+                pilot = await get_user(user_id)
+                await notify(bot, f"🏆 Пилот {await player_display(pilot)} прошёл подземелье и победил босса «{enemy['name']}»!", user_id)
         else:
             hp_text = _hp_bar(player_hp, run['hp_max'])
             text = (
@@ -536,20 +718,41 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         from utils.combat import get_enemy_attack_text
         text += get_enemy_attack_text(enemy['name'], reduced, player_hp) + blocked_line
 
-    # Навесить яд при укусе врага (только если враг попал)
+    # Навесить яд/кровотечение/обморожение при укусе врага (только если враг попал)
     poison_just_applied = False
+    bleed_just_applied = False
+    frost_just_applied = False
     if not player_dodged:
         pc = enemy['poison_chance'] if 'poison_chance' in enemy.keys() else 0
         if pc and enemy['poison_dmg'] and random.randint(1, 100) <= pc:
             await state.update_data(active_poison=enemy['poison_dmg'])
             text += f"\n☠️ {enemy['name']} отравил тебя! Яд: −{enemy['poison_dmg']} HP каждый ход."
             poison_just_applied = True
+        bc = enemy['bleed_chance'] if 'bleed_chance' in enemy.keys() else 0
+        bd = enemy['bleed_dmg'] if 'bleed_dmg' in enemy.keys() else 0
+        if bc and bd and random.randint(1, 100) <= bc:
+            await state.update_data(active_bleed=bd, bleed_ticks=BLEED_TICKS_MAX)
+            text += (f"\n🩸 {enemy['name']} ранил тебя! Кровотечение: −{bd} HP каждый ход "
+                     f"(спадёт через {BLEED_TICKS_MAX} ходов).")
+            bleed_just_applied = True
+        fc = enemy['frostbite_chance'] if 'frostbite_chance' in enemy.keys() else 0
+        if fc and random.randint(1, 100) <= fc:
+            await state.update_data(active_frostbite=1, frostbite_ticks=FROSTBITE_TURNS)
+            text += (f"\n🧊 {enemy['name']} окутал тебя морозом! Обморожение: лечение −50%. "
+                     f"{FROSTBITE_CURE_HINT} Или пройдёт само через {FROSTBITE_TURNS} хода.")
+            frost_just_applied = True
 
-    # Показывать текущий статус отравления, пока игрок не снял его антидотом
+    # Показывать текущие статусы, пока игрок их не снял
     data_after = await state.get_data()
     active_poison = data_after.get('active_poison')
     if active_poison and not poison_just_applied:
         text += f"\n☠️ Ты отравлен! Яд: −{active_poison} HP каждый ход."
+    if data_after.get('active_bleed') and not bleed_just_applied:
+        fticks = int(data_after.get('bleed_ticks', 0) or 0)
+        rem = f" (спадёт через {fticks} х.)" if fticks else " (спадёт скоро)"
+        text += f"\n🩸 Кровотечение: −{data_after['active_bleed']} HP каждый ход{rem}."
+    if data_after.get('active_frostbite') and not frost_just_applied:
+        text += f"\n🧊 Обморожение: лечение −50%. {FROSTBITE_CURE_HINT}"
 
     if player_hp <= 0:
         nm_penalty = max(5, enemy['reward_nm'] * 2)
@@ -643,27 +846,44 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         from database.db import consume_drink
         _ok, _msg = await consume_drink(user_id, item['id'])
         hp_note = ""
+        frost_note = ""
+        # Напитки с cure_frostbite (Огненная вода, Горячий ягодный морс) снимают обморожение.
+        if item.get('cure_frostbite') and data.get('active_frostbite'):
+            await state.update_data(active_frostbite=None, frostbite_ticks=0)
+            frost_note = "\n🧊 Обморожение снято!"
         if item['heal'] > 0:
             heal_uses = int(data.get('dungeon_heal_uses', 0) or 0) + 1
             await state.update_data(dungeon_heal_uses=heal_uses)
             mult = heal_limit_mult(heal_uses)
+            frozen = bool(data.get('active_frostbite'))
+            if frozen:
+                mult *= FROSTBITE_HEAL_MULT
             heal = max(1, round(item['heal'] * mult))
             new_hp = min(run['hp_max'], run['hp'] + heal)
             await update_run_hp(run['id'], new_hp)
             hp_note = f"\n❤️ {_hp_bar(new_hp, run['hp_max'])}"
             if mult < 1.0:
                 hp_note += f" (эффективность ×{mult:.0%}: {heal} HP вместо {item['heal']})"
-        text = _msg + hp_note + heal_limit_note(int(data.get('dungeon_heal_uses', 0) or 0)) + "\n\nПродолжай бой:"
+            if frozen:
+                hp_note += "\n🧊 Обморожение снизило лечение."
+        text = _msg + frost_note + hp_note + heal_limit_note(int(data.get('dungeon_heal_uses', 0) or 0)) + "\n\nПродолжай бой:"
 
     # Зелья лечения / яблоко / испорченная рыба.
     elif item['heal'] > 0:
         heal_uses = int(data.get('dungeon_heal_uses', 0) or 0) + 1
         await state.update_data(dungeon_heal_uses=heal_uses)
         mult = heal_limit_mult(heal_uses)
+        frozen = bool(data.get('active_frostbite'))
+        if frozen:
+            mult *= FROSTBITE_HEAL_MULT
         heal = max(1, round(item['heal'] * mult))
         new_hp = min(run['hp_max'], run['hp'] + heal)
         await update_run_hp(run['id'], new_hp)
-        eff = "" if mult >= 1 else f" (эффективность ×{mult:.0%}: {heal} HP вместо {item['heal']})"
+        eff = ""
+        if mult < 1.0:
+            eff = f" (эффективность ×{mult:.0%}: {heal} HP вместо {item['heal']})"
+        if frozen:
+            eff += "\n🧊 Обморожение снизило лечение."
         text = (
             f"💊 {item['name']} применено: +{heal} HP{eff}!\n"
             f"❤️ {_hp_bar(new_hp, run['hp_max'])}\n"
@@ -780,29 +1000,298 @@ async def show_boss(message, run, user_id, state: FSMContext):
     boss = boss_list[0]
     hp_text = _hp_bar(run['hp'], run['hp_max'])
     slot_items = await get_equipment_slot_items(user_id)
-    poison = (await state.get_data()).get('active_poison')
+    sdata = await state.get_data()
     step = await dungeon_new_step(state)
 
     await state.update_data(current_enemy_id=boss['id'], current_enemy_hp=boss['hp'])
 
-    poison_line = f"☠️ Ты отравлен! Яд: −{poison} HP каждый ход\n" if poison else ""
-    boss_heal_line = ""
-    boss_data = await state.get_data()
-    boss_heal_uses = int(boss_data.get('dungeon_heal_uses', 0) or 0)
+    boss_status = status_lines(sdata)
+    boss_heal_uses = int(sdata.get('dungeon_heal_uses', 0) or 0)
     if boss_heal_uses >= DUNGEON_HEAL_SOFT_LIMIT:
         bmult = heal_limit_mult(boss_heal_uses)
-        boss_heal_line = f"💊 Лекарства: {boss_heal_uses} применений (×{bmult:.0%})\n"
+        boss_status.append(f"💊 Лекарства: {boss_heal_uses} применений (×{bmult:.0%})")
+    status_block = "\n".join(boss_status)
+    if status_block:
+        status_block += "\n"
+    bdesc = boss['description'] if 'description' in boss.keys() and boss['description'] else ""
+    boss_name = "КОМНАТА БОССА" if run['floor'] == 2 else "ПРОМЕЖУТОЧНЫЙ БОСС"
     text = (
-        f"💀 КОМНАТА БОССА\n"
+        f"💀 {boss_name}\n"
         f"Этаж {run['floor']} | БОСС\n"
         f"❤️ {hp_text}\n"
-        f"{poison_line}"
-        f"{boss_heal_line}\n"
+        f"{status_block}"
         f"💀 {boss['name']} (HP: {boss['hp']}, АТК: {boss['attack']}, УКЛ: {boss['dodge'] if 'dodge' in boss.keys() else 0}%)\n\n"
+        f"{bdesc}\n\n"
         f"⚠️ Это решающий бой! Убежать нельзя!"
     )
     await answer_enemy_photo(message, boss, text, reply_markup=dungeon_boss_keyboard(boss['id'], slot_items, step))
     await state.set_state(DungeonFSM.in_boss)
+
+
+@router.callback_query(F.data.regexp(r"^resv:enter:\d+$"))
+async def resv_enter(callback: CallbackQuery, state: FSMContext):
+    """Вход в подземное водохранилище (доступно после победы над капитаном)."""
+    await callback.answer()
+    user_id = callback.from_user.id
+    parts = callback.data.split(":")
+    if parts[2] != str(await dungeon_current_step(state)):
+        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        return
+    run = await get_active_run(user_id)
+    if not run:
+        await callback.message.answer("❌ Активное подземелье не найдено.")
+        await state.clear()
+        return
+    data = await state.get_data()
+    if not (run['floor'] == 1 and data.get('captain_defeated')):
+        await callback.message.answer("⚠️ Водохранилище доступно только после победы над Крысиным капитаном.")
+        return
+    await state.set_state(DungeonFSM.in_reservoir)
+    await log_activity(user_id, "dungeon_reservoir", "Зашёл в подземное водохранилище")
+    await show_reservoir(callback.message, user_id, state)
+
+
+@router.callback_query(F.data.regexp(r"^resv:menu:\d+$"))
+async def resv_menu(callback: CallbackQuery, state: FSMContext):
+    """Назад в меню водохранилища."""
+    await callback.answer()
+    user_id = callback.from_user.id
+    parts = callback.data.split(":")
+    if parts[2] != str(await dungeon_current_step(state)):
+        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        return
+    await state.set_state(DungeonFSM.in_reservoir)
+    await show_reservoir(callback.message, user_id, state)
+
+
+@router.callback_query(F.data.regexp(r"^resv:cast:\d+$"))
+async def resv_cast(callback: CallbackQuery, state: FSMContext):
+    """Заброс удочки в подземном водохранилище."""
+    await callback.answer()
+    user_id = callback.from_user.id
+    parts = callback.data.split(":")
+    if parts[2] != str(await dungeon_current_step(state)):
+        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        return
+    if await state.get_state() != DungeonFSM.in_reservoir.state:
+        await callback.message.answer("❌ Ты больше не в водохранилище.")
+        return
+    run = await get_active_run(user_id)
+    if not run:
+        await callback.message.answer("❌ Подземелье не найдено.")
+        await state.clear()
+        return
+
+    user = await get_user(user_id)
+    if user['ap'] < RESERVOIR_AP_COST:
+        await callback.message.answer(
+            f"❌ Не хватает ОД: нужно {RESERVOIR_AP_COST}, у тебя {user['ap']}.\n"
+            f"⚡ Од восстанавливаются раз в сутки."
+        )
+        return
+    ok = await remove_ap(user_id, RESERVOIR_AP_COST)
+    if not ok:
+        await callback.message.answer("❌ Не удалось списать ОД.")
+        return
+
+    # Перебиваем старую кнопку заброса (защита от двойного списания ОД).
+    await dungeon_new_step(state)
+
+    try:
+        await callback.message.edit_text(
+            "🎣 Ты забрасываешь удочку в тёмную воду подземного водохранилища...\n"
+            "Поплавок замер неподвижно. Ждёшь..."
+        )
+    except Exception:
+        await callback.message.answer("🎣 Забрасываешь удочку...")
+
+    await asyncio.sleep(random.uniform(4, 7))
+
+    total = sum(w for _, w in RESERVOIR_FISH_POOL)
+    roll = random.randint(1, total)
+    acc, chosen = 0, RESERVOIR_FISH_POOL[0][0]
+    for fname, w in RESERVOIR_FISH_POOL:
+        acc += w
+        if roll <= acc:
+            chosen = fname
+            break
+    item = await get_item_by_name(chosen)
+    if not item:
+        await callback.message.answer("❌ Ошибка: рыба не определена.")
+        return
+    await add_inventory_item(user_id, item['id'], 1)
+
+    if chosen == "Светящаяся форель":
+        name_line = f"\n✨ СВЕТЯЩАЯСЯ ФОРЕЛЬ! Секретный улов, о котором шепчутся в Нордхайме!"
+    elif chosen == "Искрящийся угорь":
+        name_line = "\n🐡 Искрящийся угорь! Редкий улов."
+    else:
+        name_line = "\n🐟 Мерцающий сом. Обычный, но вкусный."
+    result = (
+        f"🎣 ПОКЛЁВКА {chosen.upper()}!\n"
+        f"{name_line}\n"
+        f"🎁 {item['name']} упакован в инвентарь.\n"
+    )
+    next_step = await dungeon_new_step(state)
+    await edit_or_replace(callback.message, result, reservoir_keyboard(next_step))
+    await log_activity(user_id, "dungeon_reservoir_fish", f"Поймал «{item['name']}» в водохранилище")
+
+
+@router.callback_query(F.data.regexp(r"^resv:deeper:\d+$"))
+async def resv_deeper(callback: CallbackQuery, state: FSMContext):
+    """Спуск на 2-й этаж (из выбора после капитана или из водохранилища)."""
+    await callback.answer()
+    user_id = callback.from_user.id
+    parts = callback.data.split(":")
+    if parts[2] != str(await dungeon_current_step(state)):
+        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        return
+    run = await get_active_run(user_id)
+    if not run:
+        await callback.message.answer("❌ Подземелье не найдено.")
+        await state.clear()
+        return
+    if run['floor'] >= 2:
+        await callback.message.answer("⚠️ Ты уже на самом нижнем этаже.")
+        return
+    await advance_floor(run['id'], 2)
+    await state.update_data(captain_defeated=None)
+    await state.set_state(DungeonFSM.in_dungeon)
+    run = await get_active_run(user_id)
+    await log_activity(user_id, "dungeon_floor", "Спустился на 2-й этаж (лог Короля крыс)")
+    await callback.message.answer(
+        "⬇️ Ты спускаешься по скрипучей лестнице во мрак. Здесь пахнет сыростью, "
+        "плесенью и старой королевской гордостью.\n"
+        "🏰 ЭТАЖ 2 | ЛОГОВО КОРОЛЯ КРЫС"
+    )
+    await show_room(callback.message, run, user_id, state)
+
+
+@router.callback_query(F.data.regexp(r"^resv:eq:\d+$"))
+async def resv_eq(callback: CallbackQuery, state: FSMContext):
+    """Смена слотов расходников в водохранилище."""
+    await callback.answer()
+    user_id = callback.from_user.id
+    parts = callback.data.split(":")
+    if parts[2] != str(await dungeon_current_step(state)):
+        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        return
+    if await state.get_state() != DungeonFSM.in_reservoir.state:
+        await callback.message.answer("❌ Ты больше не в водохранилище.")
+        return
+    await _resv_eq_view(callback.message, user_id, state)
+
+
+async def _resv_eq_view(where, user_id: int, state: FSMContext):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    eq = await get_equipment(user_id)
+    step = await dungeon_new_step(state)
+    lines = [
+        "🎒 СНАРЯЖЕНИЕ (водохранилище)",
+        "",
+        "Здесь нет врагов — можно спокойно сменить расходники в активных слотах.",
+        "",
+    ]
+    for slot in ('potion1', 'potion2'):
+        item_id = eq.get(slot)
+        it = await get_item(item_id) if item_id else None
+        lines.append(f"⚗️ {EQUIPMENT_SLOT_LABELS[slot]}: {it['name'] if it else '—'}")
+    rows = [
+        [InlineKeyboardButton(text="🔄 Слот 1", callback_data=f"resv:eqslot:potion1:{step}")],
+        [InlineKeyboardButton(text="🔄 Слот 2", callback_data=f"resv:eqslot:potion2:{step}")],
+        [InlineKeyboardButton(text="🔙 К водохранилищу", callback_data=f"resv:menu:{step}")],
+    ]
+    await edit_or_replace(where, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.regexp(r"^resv:eqslot:[a-z0-9_]+:\d+$"))
+async def resv_eqslot(callback: CallbackQuery, state: FSMContext):
+    """Выбор расходника для слота."""
+    await callback.answer()
+    user_id = callback.from_user.id
+    parts = callback.data.split(":")
+    slot = parts[2]
+    if parts[3] != str(await dungeon_current_step(state)):
+        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        return
+    if await state.get_state() != DungeonFSM.in_reservoir.state:
+        await callback.message.answer("❌ Ты больше не в водохранилище.")
+        return
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    eq = await get_equipment(user_id)
+    equipped_id = eq.get(slot)
+    items = await get_inventory(user_id)
+    candidates = [it for it in items if item_fits_slot(it, slot)]
+    step = await dungeon_new_step(state)
+
+    text = f"🎒 СНАРЯЖЕНИЕ → {EQUIPMENT_SLOT_LABELS[slot]}\n\n"
+    if equipped_id:
+        it = await get_item(equipped_id)
+        text += f"Поставлено: {it['name'] if it else equipped_id}\n"
+    else:
+        text += "Слот пуст.\n"
+    if candidates:
+        text += "\nПодходит из инвентаря:"
+    else:
+        text += "\nВ инвентаре нет подходящих расходников."
+
+    rows = []
+    if equipped_id:
+        rows.append([InlineKeyboardButton(text="✖️ Снять из слота",
+                                          callback_data=f"resv:eqclear:{slot}:{step}")])
+    for it in candidates:
+        marker = "✅ " if it['id'] == equipped_id else ""
+        rows.append([InlineKeyboardButton(
+            text=f"{marker}{it['name']} x{it['quantity']}",
+            callback_data=f"resv:eqset:{slot}:{it['id']}:{step}")])
+    rows.append([InlineKeyboardButton(text="🔙 К снаряжению", callback_data=f"resv:eq:{step}")])
+    await edit_or_replace(callback.message, text, InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.regexp(r"^resv:eqset:[a-z0-9_]+:\d+:\d+$"))
+async def resv_eqset(callback: CallbackQuery, state: FSMContext):
+    """Установка предмета в слот расходников."""
+    await callback.answer()
+    user_id = callback.from_user.id
+    parts = callback.data.split(":")
+    slot, item_id = parts[2], int(parts[3])
+    if parts[4] != str(await dungeon_current_step(state)):
+        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        return
+    if await state.get_state() != DungeonFSM.in_reservoir.state:
+        await callback.message.answer("❌ Ты больше не в водохранилище.")
+        return
+    item = await get_item(item_id)
+    if not item:
+        await callback.message.answer("❌ Предмет не найден.")
+        return
+    await set_equipment_slot(user_id, slot, item_id)
+    await callback.message.answer(f"⚗️ {item['name']} поставлен в активный слот.\n"
+                                  f"Используется в бою подземелья кнопкой слота.")
+    await _resv_eq_view(callback.message, user_id, state)
+
+
+@router.callback_query(F.data.regexp(r"^resv:eqclear:[a-z0-9_]+:\d+$"))
+async def resv_eqclear(callback: CallbackQuery, state: FSMContext):
+    """Снятие предмета из слота расходников."""
+    await callback.answer()
+    user_id = callback.from_user.id
+    parts = callback.data.split(":")
+    slot = parts[2]
+    if parts[3] != str(await dungeon_current_step(state)):
+        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        return
+    if await state.get_state() != DungeonFSM.in_reservoir.state:
+        await callback.message.answer("❌ Ты больше не в водохранилище.")
+        return
+    eq = await get_equipment(user_id)
+    item_id = eq.get(slot)
+    if item_id:
+        await clear_equipment_slot(user_id, slot)
+        it = await get_item(item_id)
+        await callback.message.answer(f"✖️ {it['name'] if it else 'Предмет'} снят из активного слота.")
+    await _resv_eq_view(callback.message, user_id, state)
 
 
 @router.callback_query(F.data == "dungeon:exit")

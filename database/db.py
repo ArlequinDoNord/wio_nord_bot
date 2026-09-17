@@ -639,6 +639,17 @@ async def init_db():
     await _ensure_column(conn, "market_fish", "base_price", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "player_housing", "tax_last_check", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "player_housing", "tax_unpaid_months", "INTEGER DEFAULT 0")
+    # v0.12.0: расширение Крысиного Подвала — 2 этажа, кровотечение и обморожение.
+    # Кровотечение (bleed): урон каждый ход, спадает через N ходов. Обморожение:
+    # снижает лечение, снимается напитками (cure_frostbite) или само через N ходов.
+    await _ensure_column(conn, "dungeon_enemies", "bleed_chance", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "dungeon_enemies", "bleed_dmg", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "dungeon_enemies", "frostbite_chance", "INTEGER DEFAULT 0")
+    # items.cure_frostbite=1 — напиток снимает обморожение в бою подземелья.
+    await _ensure_column(conn, "items", "cure_frostbite", "INTEGER DEFAULT 0")
+    # dungeons.rooms_map — число обычных комнат по этажам (JSON-массив, e.g. [9,8]).
+    # Босс этажа встречается, когда room_number >= rooms_map[floor-1].
+    await _ensure_column(conn, "dungeons", "rooms_map", "TEXT")
     await conn.commit()
     await ensure_base_statuses()
     await conn.commit()
@@ -3586,11 +3597,19 @@ async def seed_default_items():
 
 # ============ ДАНЖ: ТЕСТОВЫЙ ДАНЖ ============
 
+# Формат врага в конфиге (кортеж):
+#   (name, hp, atk, reward, is_boss, drops, image, poison_chance, poison_dmg,
+#    dodge, bleed_chance, bleed_dmg, frostbite_chance, description)
+# Кровотечение: урон каждый ход, спадает через 3 хода. Обморожение: снижает
+# лечение (×0.5), само проходит через 4 хода или сразу от напитка cure_frostbite.
 DEFAULT_DUNGEON = {
     "name": "Крысиный Подвал",
-    "description": "Тёмный подвал под штабом. Крысы мутировали и захватили его.",
+    "description": "Тёмный подвал под штабом. Крысы мутировали и захватили его. "
+                   "Ходят слухи, что в глубине подвала есть подземное водохранилище с невиданной рыбой.",
     "floors": [
         {
+            # Этаж 1: 9 комнат + 10-я — «Крысиный капитан» (промежуточный босс).
+            "rooms": 9,
             "enemies": [
                 ("Крыса", 15, 3, 0, False, [{"item": "Хвост крысы", "chance": 0.15, "qty": 1}], "assets/img/enemies/rat.jpg", 0, 0, 7),
                 ("Ядовитая крыса", 20, 5, 0, False, [{"item": "Хвост крысы", "chance": 0.25, "qty": 1}], "assets/img/enemies/poison_rat.jpg", 35, 5, 7),
@@ -3601,13 +3620,80 @@ DEFAULT_DUNGEON = {
                     {"item": "Лапка паука", "chance": 0.2, "qty": 1},
                 ], "assets/img/enemies/crystal_spider.jpg", 0, 0, 12),
             ],
-            "boss": ("Король крыс", 60, 8, 15, True, [
+            "boss": ("Крысиный капитан", 45, 7, 10, True, [
                 {"item": "Хвост крысы", "chance": 0.4, "qty": 2},
-                {"item": "Осколок кристалла", "chance": 0.2, "qty": 1},
-            ], "assets/img/enemies/rat_king.jpg", 0, 0, 10),
+                {"item": "Паутина паука", "chance": 0.2, "qty": 1},
+                {"item": "Осколок кристалла", "chance": 0.1, "qty": 1},
+            ], None, 0, 0, 8, 0, 0, 0,
+             "Старый главарь крысиной армады. Носит ржавый шлем от кастрюли и "
+             "считает себя генералом: отдаёт команды, но подопечные его не слушают. "
+             "Пока он жив — крысы будут лезть со всех сторон."),
+        },
+        {
+            # Этаж 2: 8 комнат + 9-я — «Король крыс» (главный босс).
+            "rooms": 8,
+            "enemies": [
+                ("Прислужник короля", 22, 5, 0, False, [
+                    {"item": "Хвост крысы", "chance": 0.3, "qty": 1},
+                    {"item": "Кусочек королевского сыра", "chance": 0.08, "qty": 1},
+                ], None, 0, 0, 9, 25, 3, 0,
+                 "Личный гонец Короля крыс. Крыса, которая научилась держать палку. "
+                 "Плохо говорит, хорошо дерётся — и очень больно кусается."),
+                ("Чумная крыса", 25, 6, 0, False, [
+                    {"item": "Хвост крысы", "chance": 0.35, "qty": 1},
+                    {"item": "Коготь чумной крысы", "chance": 0.1, "qty": 1},
+                ], None, 20, 3, 8, 35, 4, 0,
+                 "Носитель заразы. Укус оставляет рваные раны, которые долго кровоточат. "
+                 "Если она прокусит броню — считай, ты уже истекаешь кровью."),
+                ("Морозный паук", 26, 5, 0, False, [
+                    {"item": "Паутина паука", "chance": 0.15, "qty": 1},
+                    {"item": "Лапка паука", "chance": 0.2, "qty": 1},
+                    {"item": "Сосулька-паутина", "chance": 0.05, "qty": 1},
+                ], None, 15, 3, 10, 0, 0, 35,
+                 "Мутировавший паук с ледяной жилы. Плетёт паутину из мороза: "
+                 "затянет жертву — и та начинает мёрзнуть даже в летнем подвале."),
+            ],
+            "boss": ("Король крыс", 80, 9, 20, True, [
+                {"item": "Хвост крысы", "chance": 0.5, "qty": 3},
+                {"item": "Осколок кристалла", "chance": 0.3, "qty": 1},
+                {"item": "Метка Короля крыс", "chance": 0.1, "qty": 1},
+            ], "assets/img/enemies/rat_king.jpg", 0, 0, 12, 30, 5, 0,
+             "Повелитель крыс и хозяин подвала. Набрал вес, но не потерял хватку. "
+             "Один свист — и на защиту логова поднимается вся крысиная армада."),
         },
     ],
 }
+
+
+def _enemy_to_fields(enemy):
+    """Раскладывает кортеж врага DEFAULT_DUNGEON в словарь полей БД.
+
+    Позиции: name, hp, atk, reward, is_boss, drops, image, poison_chance,
+    poison_dmg, dodge, bleed_chance, bleed_dmg, frostbite_chance, description.
+    """
+    (name, hp, atk, reward, is_boss, drops) = enemy[:6]
+    return {
+        "name": name,
+        "hp": hp,
+        "attack": atk,
+        "reward_nm": reward,
+        "is_boss": int(is_boss),
+        "drops": drops,
+        "image": enemy[6] if len(enemy) > 6 else None,
+        "poison_chance": enemy[7] if len(enemy) > 7 else 0,
+        "poison_dmg": enemy[8] if len(enemy) > 8 else 0,
+        "dodge": enemy[9] if len(enemy) > 9 else 0,
+        "bleed_chance": enemy[10] if len(enemy) > 10 else 0,
+        "bleed_dmg": enemy[11] if len(enemy) > 11 else 0,
+        "frostbite_chance": enemy[12] if len(enemy) > 12 else 0,
+        "description": enemy[13] if len(enemy) > 13 else None,
+    }
+
+
+DUNGEON_ENEMY_INSERT_COLS = (
+    "dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, "
+    "poison_chance, poison_dmg, dodge, bleed_chance, bleed_dmg, frostbite_chance, description"
+)
 
 
 async def seed_dungeon():
@@ -3617,35 +3703,36 @@ async def seed_dungeon():
     if row['c'] > 0:
         return False
 
+    rooms_map = ",".join(["?"] * len(DEFAULT_DUNGEON["floors"]))
+    rooms_vals = [floor_data.get("rooms", 10) for floor_data in DEFAULT_DUNGEON["floors"]]
     cur = await conn.execute(
-        "INSERT INTO dungeons (name, description, floors_count, rooms_per_floor) VALUES (?, ?, ?, ?)",
+        "INSERT INTO dungeons (name, description, floors_count, rooms_per_floor, rooms_map) VALUES (?, ?, ?, ?, ?)",
         (DEFAULT_DUNGEON["name"], DEFAULT_DUNGEON["description"],
-         len(DEFAULT_DUNGEON["floors"]), 10)
+         len(DEFAULT_DUNGEON["floors"]), rooms_vals[0] if rooms_vals else 10,
+         json.dumps(rooms_vals, ensure_ascii=False))
     )
     dungeon_id = cur.lastrowid
 
     for floor_idx, floor_data in enumerate(DEFAULT_DUNGEON["floors"], 1):
         for enemy in floor_data["enemies"]:
-            (name, hp, atk, reward, is_boss, drops) = enemy[:6]
-            image = enemy[6] if len(enemy) > 6 else None
-            poison_chance = enemy[7] if len(enemy) > 7 else 0
-            poison_dmg = enemy[8] if len(enemy) > 8 else 0
-            dodge = enemy[9] if len(enemy) > 9 else 0
+            f = _enemy_to_fields(enemy)
             await conn.execute(
-                "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, dodge) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                (dungeon_id, floor_idx, name, hp, atk, reward, int(is_boss),
-                 json.dumps(drops, ensure_ascii=False), image, poison_chance, poison_dmg, dodge)
+                f"INSERT INTO dungeon_enemies ({DUNGEON_ENEMY_INSERT_COLS}) "
+                f"VALUES ({','.join(['?'] * 16)})",
+                (dungeon_id, floor_idx, f["name"], f["hp"], f["attack"], f["reward_nm"],
+                 f["is_boss"], json.dumps(f["drops"], ensure_ascii=False), f["image"],
+                 f["poison_chance"], f["poison_dmg"], f["dodge"],
+                 f["bleed_chance"], f["bleed_dmg"], f["frostbite_chance"], f["description"])
             )
         boss = floor_data["boss"]
-        boss_drops = boss[5] if len(boss) > 5 else []
-        boss_image = boss[6] if len(boss) > 6 else None
-        boss_poison_chance = boss[7] if len(boss) > 7 else 0
-        boss_poison_dmg = boss[8] if len(boss) > 8 else 0
-        boss_dodge = boss[9] if len(boss) > 9 else 0
+        bf = _enemy_to_fields(boss)
         await conn.execute(
-            "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, dodge) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            (dungeon_id, floor_idx, boss[0], boss[1], boss[2], boss[3], int(boss[4]),
-             json.dumps(boss_drops, ensure_ascii=False), boss_image, boss_poison_chance, boss_poison_dmg, boss_dodge)
+            f"INSERT INTO dungeon_enemies ({DUNGEON_ENEMY_INSERT_COLS}) "
+            f"VALUES ({','.join(['?'] * 16)})",
+            (dungeon_id, floor_idx, bf["name"], bf["hp"], bf["attack"], bf["reward_nm"],
+             bf["is_boss"], json.dumps(bf["drops"], ensure_ascii=False), bf["image"],
+             bf["poison_chance"], bf["poison_dmg"], bf["dodge"],
+             bf["bleed_chance"], bf["bleed_dmg"], bf["frostbite_chance"], bf["description"])
         )
 
     await conn.commit()
@@ -3841,6 +3928,27 @@ async def get_dungeon(dungeon_id: int):
     return await cursor.fetchone()
 
 
+async def get_dungeon_rooms_map(dungeon_id: int) -> list:
+    """Число обычных комнат до босса по этажам данжа (JSON-массив, e.g. [9, 8]).
+
+    Босс этажа встречается, когда room_number >= rooms_map[floor-1].
+    Для старых данжей без rooms_map — фолбэк на rooms_per_floor.
+    """
+    dng = await get_dungeon(dungeon_id)
+    if not dng:
+        return []
+    raw = dng.get('rooms_map') if 'rooms_map' in (dng.keys() if hasattr(dng, 'keys') else []) else None
+    if not raw:
+        return [int(dng['rooms_per_floor'] or 10)]
+    try:
+        rooms = json.loads(raw)
+        if not isinstance(rooms, list) or not rooms:
+            return [int(dng['rooms_per_floor'] or 10)]
+        return [int(r) for r in rooms]
+    except (ValueError, TypeError):
+        return [int(dng['rooms_per_floor'] or 10)]
+
+
 async def get_floor_enemies(dungeon_id: int, floor: int):
     conn = await get_db()
     cursor = await conn.execute(
@@ -3867,7 +3975,8 @@ async def get_dungeon_enemies(dungeon_id: int):
 
 # Поля врага, которые админ правит через бота.
 ENEMY_EDITABLE_FIELDS = ("hp", "attack", "dodge", "poison_chance",
-                         "poison_dmg", "reward_nm", "drops")
+                         "poison_dmg", "reward_nm", "drops",
+                         "bleed_chance", "bleed_dmg", "frostbite_chance")
 
 
 async def update_enemy_fields(enemy_id: int, **fields):
@@ -3939,6 +4048,16 @@ async def advance_room(run_id: int):
     await conn.execute(
         "UPDATE player_dungeon_run SET room_number = room_number + 1 WHERE id = ?",
         (run_id,)
+    )
+    await conn.commit()
+
+
+async def advance_floor(run_id: int, floor: int):
+    """Переводит забег на следующий этаж: сбрасывает комнаты на 0."""
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE player_dungeon_run SET floor = ?, room_number = 0 WHERE id = ?",
+        (floor, run_id)
     )
     await conn.commit()
 
@@ -4169,7 +4288,8 @@ async def get_equipment_slot_items(user_id: int):
             continue
         conn = await get_db()
         cursor = await conn.execute("""
-            SELECT i.id, i.name, i.heal, i.cure_poison, COALESCE(inv.quantity, 0) as quantity
+            SELECT i.id, i.name, i.heal, i.cure_poison, i.cure_frostbite,
+                   COALESCE(inv.quantity, 0) as quantity
             FROM items i LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.user_id = ?
             WHERE i.id = ? AND i.category = 'consumable'
         """, (user_id, item_id))
@@ -4233,10 +4353,28 @@ async def ensure_dungeon_shop_items():
         )
         added = True
 
+    # Трофеи 2-го этажа Крысиного Подвала (v0.12.0).
+    for trophy in (
+        ("Кусочек королевского сыра", "Пахучий ломоть сыра, который ворует свита Короля крыс.", 25, 12, 3),
+        ("Коготь чумной крысы", "Коготь, оставляющий рваные раны. Приносит удачу на рыбалке.", 35, 17, 3),
+        ("Сосулька-паутина", "Застывшая паутина морозного паука. Ингредиент для будущего крафта.", 45, 22, 3),
+        ("Метка Короля крыс", "Клеймо, которое Король крыс ставит верным слугам. Любопытный трофей.", 150, 75, 4),
+    ):
+        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (trophy[0],))
+        if (await cursor.fetchone())['c'] == 0:
+            await add_item(
+                name=trophy[0], description=trophy[1], price=trophy[2], sell_price=trophy[3],
+                rarity=trophy[4], category="resource", stock=-1,
+                added_by=0, ap_cost=0, damage=0, heal=0,
+            )
+            added = True
+
     # Трофеи данжа: появляются в магазине, только когда кто-то продаёт их из инвентаря.
     # Продажа игроком добавляет stock (+1) и включает is_available; при остатке 0 товар снова скрыт.
     await conn.execute("UPDATE items SET is_available = 0, stock = 0 WHERE name IN "
-                       "('Хвост крысы','Паутина паука','Осколок кристалла')")
+                       "('Хвост крысы','Паутина паука','Осколок кристалла',"
+                       "'Кусочек королевского сыра','Коготь чумной крысы',"
+                       "'Сосулька-паутина','Метка Короля крыс')")
 
     # --- Рыбалка ---
     for (fname, fdesc, fprice, fsell, frarity) in (
@@ -4480,8 +4618,65 @@ async def ensure_life_items():
     return added
 
 
+async def ensure_dungeon_reservoir_items():
+    """Идемпотентно добавляет предметы водохранилища подземелья (v0.12.0).
+
+    Рыба водохранилища ловится только в подземном водохранилище и в магазин
+    не попадает. Напитки-лечение снимают обморожение в бою подземелья.
+    """
+    conn = await get_db()
+    added = False
+
+    # Рыба водохранилища: (имя, описание, цена, продажа, рарность).
+    reservoir_fish = (
+        ("Мерцающий сом", "Рыба из подземного водохранилища. Тёмная чешуя мерцает, как вода. Обычный, но вкусный улов.",
+         240, 120, 2),
+        ("Искрящийся угорь", "Редкая рыба-электрик из подземного водохранилища. При разряде светится изнутри.",
+         500, 250, 3),
+        ("Светящаяся форель", "Секретная рыба водохранилища. Сияет холодным светом, как маленькая луна. Такой почти никто не видел.",
+         1200, 600, 4),
+    )
+    for (fname, fdesc, fprice, fsell, frarity) in reservoir_fish:
+        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (fname,))
+        if (await cursor.fetchone())['c'] == 0:
+            await add_item(
+                name=fname, description=fdesc, price=fprice, sell_price=fsell, rarity=frarity,
+                category="fishing", stock=-1, added_by=0, ap_cost=0, damage=0, heal=0,
+            )
+            added = True
+        await conn.execute("UPDATE items SET is_available = 0 WHERE name = ?", (fname,))
+
+    # Напитки-лечение обморожения. (имя, описание, цена, продажа, рарность, heal, drink_effect).
+    cure_frostbite_drinks = (
+        ("Огненная вода (водка)", "Крепкая, жгучая, «настоящая» — греет до костей. "
+         "В бою подземелья снимает обморожение и восстанавливает 10 HP. Не злоупотребляй.",
+         70, 35, 2, 10, "alcohol_strong"),
+        ("Горячий ягодный морс", "Горячий морс из северных ягод. Согревает и лечит: "
+         "в бою подземелья снимает обморожение и восстанавливает 10 HP.",
+         35, 17, 1, 10, "none"),
+    )
+    for (dname, ddesc, dprice, dsell, drarity, dheal, deffect) in cure_frostbite_drinks:
+        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (dname,))
+        if (await cursor.fetchone())['c'] == 0:
+            item_id = await add_item(
+                name=dname, description=ddesc, price=dprice, sell_price=dsell, rarity=drarity,
+                category="consumable", stock=-1, added_by=0, ap_cost=0, damage=0, heal=dheal,
+            )
+            await update_item(item_id, drink_effect=deffect, cure_frostbite=1)
+            added = True
+        else:
+            await conn.execute(
+                "UPDATE items SET drink_effect = ?, cure_frostbite = 1, heal = ? WHERE name = ?",
+                (deffect, dheal, dname)
+            )
+
+    await conn.commit()
+    return added
+
+
 async def ensure_dungeon_enemy_drops():
-    """Синхронизирует врагов существующего данжа с DEFAULT_DUNGEON (дропы, HP, награды)."""
+    """Синхронизирует врагов существующего данжа с DEFAULT_DUNGEON (дропы, HP, награды,
+    этажи, описания боссов, новые статусные поля кровотечения/обморожения)."""
     conn = await get_db()
 
     dungeons = await get_all_dungeons(training=False)
@@ -4489,56 +4684,52 @@ async def ensure_dungeon_enemy_drops():
         return
     dungeon_id = dungeons[0]['id']
 
+    # Комнат по этажам (JSON) и число этажей — из конфига.
+    rooms_vals = [floor_data.get("rooms", 10) for floor_data in DEFAULT_DUNGEON["floors"]]
+    await conn.execute(
+        "UPDATE dungeons SET rooms_map = ?, rooms_per_floor = ?, floors_count = ? WHERE id = ?",
+        (json.dumps(rooms_vals, ensure_ascii=False), rooms_vals[0], len(DEFAULT_DUNGEON["floors"]), dungeon_id)
+    )
+
     expected = set()
     for floor_idx, floor_data in enumerate(DEFAULT_DUNGEON["floors"], 1):
-        for enemy in floor_data["enemies"]:
-            (name, hp, atk, reward, is_boss, drops) = enemy[:6]
-            image = enemy[6] if len(enemy) > 6 else None
-            poison_chance = enemy[7] if len(enemy) > 7 else 0
-            poison_dmg = enemy[8] if len(enemy) > 8 else 0
-            dodge = enemy[9] if len(enemy) > 9 else 0
-            expected.add(name)
-            drops_json = json.dumps(drops, ensure_ascii=False)
+        for enemy in floor_data["enemies"] + [floor_data["boss"]]:
+            f = _enemy_to_fields(enemy)
+            expected.add(f["name"])
+            drops_json = json.dumps(f["drops"], ensure_ascii=False)
             cursor = await conn.execute(
-                "SELECT admin_tuned FROM dungeon_enemies WHERE dungeon_id = ? AND name = ? AND is_boss = 0",
-                (dungeon_id, name)
+                "SELECT admin_tuned FROM dungeon_enemies WHERE dungeon_id = ? AND name = ? AND is_boss = ?",
+                (dungeon_id, f["name"], f["is_boss"])
             )
             existing = await cursor.fetchone()
             if existing is None:
                 await conn.execute(
-                    "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, dodge) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (dungeon_id, floor_idx, name, hp, atk, reward, 0, drops_json, image, poison_chance, poison_dmg, dodge)
+                    f"INSERT INTO dungeon_enemies ({DUNGEON_ENEMY_INSERT_COLS}) "
+                    f"VALUES ({','.join(['?'] * 16)})",
+                    (dungeon_id, floor_idx, f["name"], f["hp"], f["attack"], f["reward_nm"],
+                     f["is_boss"], drops_json, f["image"],
+                     f["poison_chance"], f["poison_dmg"], f["dodge"],
+                     f["bleed_chance"], f["bleed_dmg"], f["frostbite_chance"], f["description"])
                 )
-            elif not existing['admin_tuned']:
+            else:
+                # Этаж и описание синхронизируем всегда (этаж нужен для переезда
+                # боссов между ярусами; описание не правится админом). Остальную
+                # боевую статистику не трогаем, если врага калибровал админ.
+                base = "floor = ?, description = ?"
+                base_vals = [floor_idx, f["description"]]
+                if not existing['admin_tuned']:
+                    base += ", hp = ?, attack = ?, reward_nm = ?, drops = ?, image = ?, " \
+                            "poison_chance = ?, poison_dmg = ?, dodge = ?, " \
+                            "bleed_chance = ?, bleed_dmg = ?, frostbite_chance = ?"
+                    base_vals += [f["hp"], f["attack"], f["reward_nm"], drops_json, f["image"],
+                                  f["poison_chance"], f["poison_dmg"], f["dodge"],
+                                  f["bleed_chance"], f["bleed_dmg"], f["frostbite_chance"]]
+                base_vals += [dungeon_id, f["name"], f["is_boss"]]
                 await conn.execute(
-                    "UPDATE dungeon_enemies SET hp = ?, attack = ?, reward_nm = ?, drops = ?, image = ?, poison_chance = ?, poison_dmg = ?, dodge = ? "
-                    "WHERE dungeon_id = ? AND name = ? AND is_boss = 0",
-                    (hp, atk, reward, drops_json, image, poison_chance, poison_dmg, dodge, dungeon_id, name)
+                    f"UPDATE dungeon_enemies SET {base} "
+                    f"WHERE dungeon_id = ? AND name = ? AND is_boss = ?",
+                    base_vals
                 )
-
-        boss = floor_data["boss"]
-        expected.add(boss[0])
-        boss_drops_json = json.dumps(boss[5] if len(boss) > 5 else [], ensure_ascii=False)
-        boss_image = boss[6] if len(boss) > 6 else None
-        boss_poison_chance = boss[7] if len(boss) > 7 else 0
-        boss_poison_dmg = boss[8] if len(boss) > 8 else 0
-        boss_dodge = boss[9] if len(boss) > 9 else 0
-        cursor = await conn.execute(
-            "SELECT admin_tuned FROM dungeon_enemies WHERE dungeon_id = ? AND name = ? AND is_boss = 1",
-            (dungeon_id, boss[0])
-        )
-        existing = await cursor.fetchone()
-        if existing is None:
-            await conn.execute(
-                "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, dodge) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                (dungeon_id, floor_idx, boss[0], boss[1], boss[2], boss[3], 1, boss_drops_json, boss_image, boss_poison_chance, boss_poison_dmg, boss_dodge)
-            )
-        elif not existing['admin_tuned']:
-            await conn.execute(
-                "UPDATE dungeon_enemies SET hp = ?, attack = ?, reward_nm = ?, drops = ?, image = ?, poison_chance = ?, poison_dmg = ?, dodge = ? "
-                "WHERE dungeon_id = ? AND name = ? AND is_boss = 1",
-                (boss[1], boss[2], boss[3], boss_drops_json, boss_image, boss_poison_chance, boss_poison_dmg, boss_dodge, dungeon_id, boss[0])
-            )
 
     # Удаляем врагов, которых больше нет в конфиге (старый состав).
     # Врагов, которых правил админ через бота, не трогаем.
@@ -4550,8 +4741,6 @@ async def ensure_dungeon_enemy_drops():
     for row in to_delete:
         await conn.execute("DELETE FROM dungeon_enemies WHERE id = ?", (row['id'],))
 
-    # этажей в данже = 1
-    await conn.execute("UPDATE dungeons SET floors_count = ? WHERE id = ?", (len(DEFAULT_DUNGEON["floors"]), dungeon_id))
     await conn.commit()
 
 

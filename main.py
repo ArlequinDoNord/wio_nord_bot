@@ -11,8 +11,8 @@ from config import BOT_TOKEN
 from database.db import (
     init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon,
     ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, ensure_life_items, ensure_recipes,
-    ensure_market_license_item, pay_salaries, payout_reports, run_housing_tax,
-    seed_kvp, ensure_kvp_items, ensure_kvp_award,
+    ensure_dungeon_reservoir_items, ensure_market_license_item, pay_salaries, payout_reports,
+    run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award,
 )
 from utils.notify import notify_treasury_shortage
 from utils.helpers import is_main_menu_text
@@ -201,6 +201,10 @@ async def main():
     life_seeded = await ensure_life_items()
     if life_seeded:
         logger.info("Предметы жилья, мебели, еды и семян добавлены")
+
+    reservoir_seeded = await ensure_dungeon_reservoir_items()
+    if reservoir_seeded:
+        logger.info("Рыба водохранилища и напитки-лечение обморожения добавлены")
 
     recipes_seeded = await ensure_recipes()
     if recipes_seeded:
