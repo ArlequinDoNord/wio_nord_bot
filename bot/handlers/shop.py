@@ -271,7 +271,11 @@ async def shop_item_view(callback: CallbackQuery):
     if not item:
         await edit_or_replace(callback.message, "Товар не найден.", None)
         return
+    await _show_item_card(callback.message, item, callback.from_user.id)
 
+
+async def _item_card_text(item, user_id: int) -> str:
+    """Текст карточки товара с актуальными данными по игроку."""
     header = (
         f"{rarity_emoji(item['rarity'])} {item['name']} {rarity_emoji(item['rarity'])}\n"
         f"Редкость: {rarity_label(item['rarity'])}\n"
@@ -289,7 +293,7 @@ async def shop_item_view(callback: CallbackQuery):
     stock_text = "безлимит" if item['stock'] == -1 else item['stock']
     body += f"\n📦 Остаток: {stock_text}"
 
-    inv_have = await get_inventory_item(callback.from_user.id, item['id'])
+    inv_have = await get_inventory_item(user_id, item['id'])
     if inv_have and inv_have['quantity'] > 0:
         body += f"\n🎒 У тебя уже есть: {inv_have['quantity']} шт."
 
@@ -314,17 +318,15 @@ async def shop_item_view(callback: CallbackQuery):
             f"📊 Налог с продажи: {sale_tax}% (выручка продавцу за вычетом налога)"
         )
 
-    has_access = await user_has_status_tag(callback.from_user.id, item['required_status'])
-    cannot_buy = (item['stock'] == 0) or not has_access
-    markup = item_card_keyboard(item['id'], item['price'], can_buy_nord=not cannot_buy)
-
     # Мебель (расширения жилья): предупреждение, если устанавливать некуда
-    block_reason = await furniture_block_reason(callback.from_user.id, item)
+    block_reason = await furniture_block_reason(user_id, item)
     if block_reason:
         body += f"\n⚠️ {block_reason}"
 
     # Нехватка Нордмарок: показываем сразу в карточке, а не только при покупке
-    user = await get_user(callback.from_user.id)
+    has_access = await user_has_status_tag(user_id, item['required_status'])
+    cannot_buy = (item['stock'] == 0) or not has_access
+    user = await get_user(user_id)
     balance = user['nordmarks'] if user else 0
     if item['price'] > 0 and not cannot_buy and balance < item['price']:
         body += (
@@ -333,10 +335,18 @@ async def shop_item_view(callback: CallbackQuery):
             f"(нужно {item['price']}, у тебя {balance})"
         )
 
+    return header + body
+
+
+async def _item_card_markup(item, user_id: int) -> InlineKeyboardMarkup:
+    """Кнопки карточки товара."""
+    has_access = await user_has_status_tag(user_id, item['required_status'])
+    cannot_buy = (item['stock'] == 0) or not has_access
+    markup = item_card_keyboard(item['id'], item['price'], can_buy_nord=not cannot_buy)
+
     # Для безлимитных расходников и наживки — кнопка «Купить 5 шт»
     if (item['stock'] == -1 and not cannot_buy and item['price'] > 0
             and _allow_multi_buy(item)):
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
         rows = list(markup.inline_keyboard)
         buy5_price = item['price'] * 5
         rows.insert(-1, [InlineKeyboardButton(
@@ -344,8 +354,19 @@ async def shop_item_view(callback: CallbackQuery):
             callback_data=f"buy5_nord:{item['id']}"
         )])
         markup = InlineKeyboardMarkup(inline_keyboard=rows)
+    return markup
 
-    text = header + body
+
+async def _show_item_card(message, item, user_id: int, bought_line: str = ""):
+    """Показывает карточку товара с актуальными данными.
+
+    bought_line — строка об успешной покупке, показывается сверху карточки.
+    """
+    text = await _item_card_text(item, user_id)
+    if bought_line:
+        text = f"{bought_line}\n\n{text}"
+    markup = await _item_card_markup(item, user_id)
+
     photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
     local_photo = None if photo_id else item_local_photo(item['name'])
     if not photo_id and not local_photo and item['category'] == "housing":
@@ -356,18 +377,18 @@ async def shop_item_view(callback: CallbackQuery):
         from aiogram.types import InputMediaPhoto, FSInputFile
         media = photo_id or FSInputFile(local_photo)
         try:
-            if callback.message.photo:
-                await callback.message.edit_media(
+            if message.photo:
+                await message.edit_media(
                     media=InputMediaPhoto(media=media, caption=text),
                     reply_markup=markup
                 )
             else:
-                await callback.message.delete()
-                await callback.message.answer_photo(photo=media, caption=text, reply_markup=markup)
+                await message.delete()
+                await message.answer_photo(photo=media, caption=text, reply_markup=markup)
         except Exception:
-            await callback.message.answer_photo(photo=media, caption=text, reply_markup=markup)
+            await message.answer_photo(photo=media, caption=text, reply_markup=markup)
     else:
-        await callback.message.edit_text(text, reply_markup=markup)
+        await edit_or_replace(message, text, markup)
 
 
 @router.callback_query(F.data.startswith("buy_nord:"))
@@ -579,10 +600,16 @@ async def _buy_item(callback: CallbackQuery, item_id: int, qty: int, special_ver
     else:
         inv_after = await get_inventory_item(user_id, item_id)
         have = (inv_after['quantity'] if inv_after else qty)
-        await callback.message.answer(
+        bought_line = (
             f"✅ Куплено: {item['name']} x{qty} за {total} {plural_nordmark(total)}!\n"
             f"🎒 В инвентаре стало: {have} шт."
         )
+        # Покупка из спец-отдела: код вводили отдельным сообщением, карточки нет
+        if isinstance(callback, _MsgSender):
+            await callback.message.answer(bought_line)
+            return
+        card_item = refreshed if item['stock'] != -1 else item
+        await _show_item_card(callback.message, card_item, user_id, bought_line=bought_line)
 
 
 @router.callback_query(F.data.startswith("fishoffer:"))
