@@ -11,3 +11,6 @@ services:
 
 volumes:
   nordmark_data:
+    # Volume создан вручную при миграции rootful → rootless (сохранены данные
+    # 10 игроков). external: true — чтобы не было предупреждения о пересоздании.
+    external: true
