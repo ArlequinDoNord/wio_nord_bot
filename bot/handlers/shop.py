@@ -10,7 +10,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
-    get_available_items, get_item, add_inventory_item,
+    get_available_items, get_item, add_inventory_item, get_inventory_item,
     get_user, remove_nordmarks, add_nordmarks, get_db, user_has_status_tag, get_status_by_tag,
     activate_library_card, get_library_cards,
     add_treasury, get_sale_tax_percent, log_activity, update_item,
@@ -288,6 +288,10 @@ async def shop_item_view(callback: CallbackQuery):
     body += f"💰 Цена: {item['price']} {plural_nordmark(item['price'])}"
     stock_text = "безлимит" if item['stock'] == -1 else item['stock']
     body += f"\n📦 Остаток: {stock_text}"
+
+    inv_have = await get_inventory_item(callback.from_user.id, item['id'])
+    if inv_have and inv_have['quantity'] > 0:
+        body += f"\n🎒 У тебя уже есть: {inv_have['quantity']} шт."
 
     req = await status_req_label(item['required_status'])
     if req:
@@ -573,8 +577,11 @@ async def _buy_item(callback: CallbackQuery, item_id: int, qty: int, special_ver
             f"📦 Теперь у тебя {info['total_slots']} слота для продажи на рыбном рынке."
         )
     else:
+        inv_after = await get_inventory_item(user_id, item_id)
+        have = (inv_after['quantity'] if inv_after else qty)
         await callback.message.answer(
-            f"✅ Куплено: {item['name']} x{qty} за {total} {plural_nordmark(total)}!"
+            f"✅ Куплено: {item['name']} x{qty} за {total} {plural_nordmark(total)}!\n"
+            f"🎒 В инвентаре стало: {have} шт."
         )
 
 

@@ -120,7 +120,7 @@ def inv_list_markup(items, catches=None, back_cb: str = "back:main", back_label:
 
 def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equipped: bool = False,
                     equip_slot: str = None, potion_slots: list = None, sellable: bool = True,
-                    sell5: bool = False, occupied: dict = None):
+                    qty: int = 1, occupied: dict = None):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = []
     if can_use:
@@ -147,9 +147,13 @@ def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equip
         else:
             buttons.append([InlineKeyboardButton(text="⚔️ Экипировать", callback_data=f"inv_equip:{item_id}")])
     if sellable:
-        buttons.append([InlineKeyboardButton(text="💵 Продать", callback_data=f"inv_sell:{item_id}")])
-        if sell5:
-            buttons.append([InlineKeyboardButton(text="💵 Продать 5 шт", callback_data=f"inv_sell5:{item_id}")])
+        if qty > 1:
+            buttons.append([
+                InlineKeyboardButton(text="💵 Продать 1", callback_data=f"inv_sell:{item_id}"),
+                InlineKeyboardButton(text=f"💵 Продать всё ({qty})", callback_data=f"inv_sellall:{item_id}"),
+            ])
+        else:
+            buttons.append([InlineKeyboardButton(text="💵 Продать", callback_data=f"inv_sell:{item_id}")])
     buttons.append([InlineKeyboardButton(text="📤 Передать", callback_data=f"inv_transfer:{item_id}")])
     buttons.append([InlineKeyboardButton(text="🔙 В категорию", callback_data=f"inventory:cat:{category}")])
     buttons.append([InlineKeyboardButton(text="🔙 К списку категорий", callback_data="inventory:list")])
@@ -490,7 +494,7 @@ async def _render_item_card(message, user_id: int, item_id: int):
                              is_equipped=is_equipped, equip_slot=equip_slot,
                              potion_slots=potion_slots,
                              sellable=(item['sell_price'] or 0) > 0,
-                             sell5=(inv['quantity'] or 0) >= 5,
+                             qty=(inv['quantity'] or 0),
                              occupied=occupied)
 
     photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
@@ -652,13 +656,62 @@ async def inv_use(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("inv_sell:"))
 async def inv_sell(callback: CallbackQuery):
     item_id = int(callback.data.split(":")[1])
-    await _sell_item(callback, item_id, 1)
+    inv = await get_inventory_item(callback.from_user.id, item_id)
+    if inv and inv['quantity'] > 1:
+        await _sell_confirm(callback, item_id, 1)
+    else:
+        await _sell_item(callback, item_id, 1)
 
 
-@router.callback_query(F.data.startswith("inv_sell5:"))
-async def inv_sell5(callback: CallbackQuery):
+@router.callback_query(F.data.startswith("inv_sellall:"))
+async def inv_sellall(callback: CallbackQuery):
     item_id = int(callback.data.split(":")[1])
-    await _sell_item(callback, item_id, 5)
+    inv = await get_inventory_item(callback.from_user.id, item_id)
+    if not inv:
+        await callback.answer("❌ Такого предмета нет в инвентаре.", show_alert=True)
+        return
+    await _sell_confirm(callback, item_id, inv['quantity'])
+
+
+async def _sell_confirm(callback: CallbackQuery, item_id: int, qty: int):
+    """Подтверждение продажи: сколько и за сколько, перед списанием."""
+    user_id = callback.from_user.id
+    item = await get_item(item_id)
+    inv = await get_inventory_item(user_id, item_id)
+    if not item or not inv or inv['quantity'] < qty:
+        await callback.answer(f"❌ У тебя меньше {qty} шт. этого предмета.", show_alert=True)
+        return
+
+    # Нельзя продать предмет, стоящий в любом активном слоте (иначе останется «призрачный слот»)
+    eq = await get_equipment(user_id)
+    if item_id in eq.values():
+        used = [EQUIPMENT_SLOT_LABELS[s].lower() for s in EQUIPMENT_SLOT_LABELS if eq.get(s) == item_id]
+        await callback.answer(
+            f"❌ «{item['name']}» сейчас используется ({', '.join(used)}). "
+            f"Сначала сними его.", show_alert=True
+        )
+        return
+
+    total = item['sell_price'] * qty
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, продать", callback_data=f"inv_sell_ok:{item_id}:{qty}")],
+        [InlineKeyboardButton(text="↩️ Нет, отмена", callback_data=f"invitem:{item_id}")],
+    ])
+    await callback.answer()
+    await edit_or_replace(
+        callback.message,
+        f"💵 Продать «{item['name']}» x{qty} за {total} {plural_nordmark(total)}?\n\n"
+        f"Предмет будет списан сразу.",
+        markup
+    )
+
+
+@router.callback_query(F.data.startswith("inv_sell_ok:"))
+async def inv_sell_ok(callback: CallbackQuery):
+    await callback.answer()
+    _, _, item_s, qty_s = callback.data.split(":")
+    await _sell_item(callback, int(item_s), int(qty_s))
 
 
 async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
@@ -694,9 +747,11 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
         await db.execute("UPDATE items SET stock = stock + ? WHERE id = ?", (qty, item_id))
         await db.commit()
 
-    await callback.message.answer(
+    await edit_or_replace(
+        callback.message,
         f"💵 Ты продал {item['name']} x{qty} за {total} {plural_nordmark(total)}!"
     )
+    return
 
 
 @router.callback_query(F.data.startswith("fishcatch:"))
