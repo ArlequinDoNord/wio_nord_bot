@@ -155,7 +155,8 @@ class AdminDungeon(StatesGroup):
     target_id = State()
     photo_tod = State()
     enemy_id = State()       # выбранный враг
-    enemy_field = State()    # поле врага, для которого ждём значение
+    enemy_field = State()    # поле врага, которое правим
+    enemy_value = State()    # ждём новое значение поля врага
 
 
 # ============ УТИЛИТЫ ============
