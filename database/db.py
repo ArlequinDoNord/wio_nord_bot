@@ -573,6 +573,9 @@ async def init_db():
     await _ensure_column(conn, "dungeon_enemies", "poison_dmg", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "dungeon_enemies", "description", "TEXT")
     await _ensure_column(conn, "dungeon_enemies", "dodge", "INTEGER DEFAULT 0")
+    # admin_tuned=1 — врага правил админ через бота: стартовая синхронизация
+    # (ensure_dungeon_enemy_drops / seed_kvp) больше не перезаписывает его характеристики.
+    await _ensure_column(conn, "dungeon_enemies", "admin_tuned", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "cure_poison", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "locations", "preview_photo", "TEXT")
     await _ensure_column(conn, "locations", "photo_dawn", "TEXT")
@@ -3680,10 +3683,11 @@ async def seed_kvp():
         )
         # Синхронизируем боевые характеристики врагов курса с кодом (HP/АТК/уклонение),
         # не трогая описания и картинки, которые мог править админ.
+        # Врагов, которых правил админ через бота (admin_tuned=1), не перезаписываем.
         for (name, hp, atk, reward, is_boss, drops, image, pc, pd, dodge, desc) in KVP_ENEMIES:
             await conn.execute(
                 "UPDATE dungeon_enemies SET hp = ?, attack = ?, dodge = ? "
-                "WHERE dungeon_id = ? AND name = ? AND is_boss = ?",
+                "WHERE dungeon_id = ? AND name = ? AND is_boss = ? AND admin_tuned = 0",
                 (hp, atk, dodge, existing['id'], name, int(is_boss))
             )
         await conn.commit()
@@ -3740,13 +3744,26 @@ async def ensure_kvp_items():
 
 
 async def ensure_kvp_award():
-    """Создаёт награду «Значок В.У.С.П.», если её ещё нет."""
+    """Создаёт награду «Значок В.У.С.П.», если её ещё нет; обновляет описание у существующей."""
+    KVP_BADGE_DESCRIPTION = (
+        "Выживание, уклонение, сопротивление и побег. Постоянный бонус: "
+        "+2% урона и +3% уклонения в подземельях."
+    )
     await create_award(
         name=KVP_BADGE_NAME,
-        description="Выживание, уклонение, сопротивление и побег. Постоянный бонус +2% урона в подземельях.",
+        description=KVP_BADGE_DESCRIPTION,
         emoji="🎖️",
         created_by=None,
     )
+    conn = await get_db()
+    cursor = await conn.execute("SELECT id FROM awards WHERE name = ?", (KVP_BADGE_NAME,))
+    row = await cursor.fetchone()
+    if row:
+        await conn.execute(
+            "UPDATE awards SET description = ? WHERE id = ? AND description != ?",
+            (KVP_BADGE_DESCRIPTION, row['id'], KVP_BADGE_DESCRIPTION)
+        )
+        await conn.commit()
 
 
 async def ensure_kvp_user(user_id: int):
@@ -3831,6 +3848,49 @@ async def get_floor_enemies(dungeon_id: int, floor: int):
         (dungeon_id, floor)
     )
     return await cursor.fetchall()
+
+
+async def get_enemy(enemy_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM dungeon_enemies WHERE id = ?", (enemy_id,))
+    return await cursor.fetchone()
+
+
+async def get_dungeon_enemies(dungeon_id: int):
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM dungeon_enemies WHERE dungeon_id = ? ORDER BY is_boss, floor, id",
+        (dungeon_id,)
+    )
+    return await cursor.fetchall()
+
+
+# Поля врага, которые админ правит через бота.
+ENEMY_EDITABLE_FIELDS = ("hp", "attack", "dodge", "poison_chance",
+                         "poison_dmg", "reward_nm", "drops")
+
+
+async def update_enemy_fields(enemy_id: int, **fields):
+    """Правит характеристики врага через админ-бота; помечает admin_tuned=1,
+    чтобы стартовая синхронизация (ensure_dungeon_enemy_drops / seed_kvp)
+    больше не перезаписывала эти значения."""
+    conn = await get_db()
+    sets, vals = [], []
+    for key, val in fields.items():
+        if key not in ENEMY_EDITABLE_FIELDS:
+            continue
+        if key == "drops" and isinstance(val, list):
+            val = json.dumps(val, ensure_ascii=False)
+        sets.append(f"{key} = ?")
+        vals.append(val)
+    if not sets:
+        return False
+    sets.append("admin_tuned = 1")
+    vals.append(enemy_id)
+    await conn.execute(
+        f"UPDATE dungeon_enemies SET {', '.join(sets)} WHERE id = ?", vals)
+    await conn.commit()
+    return True
 
 
 async def start_dungeon_run(user_id: int, dungeon_id: int):
@@ -4440,15 +4500,16 @@ async def ensure_dungeon_enemy_drops():
             expected.add(name)
             drops_json = json.dumps(drops, ensure_ascii=False)
             cursor = await conn.execute(
-                "SELECT COUNT(*) as c FROM dungeon_enemies WHERE dungeon_id = ? AND name = ? AND is_boss = 0",
+                "SELECT admin_tuned FROM dungeon_enemies WHERE dungeon_id = ? AND name = ? AND is_boss = 0",
                 (dungeon_id, name)
             )
-            if (await cursor.fetchone())['c'] == 0:
+            existing = await cursor.fetchone()
+            if existing is None:
                 await conn.execute(
                     "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, dodge) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                     (dungeon_id, floor_idx, name, hp, atk, reward, 0, drops_json, image, poison_chance, poison_dmg, dodge)
                 )
-            else:
+            elif not existing['admin_tuned']:
                 await conn.execute(
                     "UPDATE dungeon_enemies SET hp = ?, attack = ?, reward_nm = ?, drops = ?, image = ?, poison_chance = ?, poison_dmg = ?, dodge = ? "
                     "WHERE dungeon_id = ? AND name = ? AND is_boss = 0",
@@ -4463,24 +4524,26 @@ async def ensure_dungeon_enemy_drops():
         boss_poison_dmg = boss[8] if len(boss) > 8 else 0
         boss_dodge = boss[9] if len(boss) > 9 else 0
         cursor = await conn.execute(
-            "SELECT COUNT(*) as c FROM dungeon_enemies WHERE dungeon_id = ? AND name = ? AND is_boss = 1",
+            "SELECT admin_tuned FROM dungeon_enemies WHERE dungeon_id = ? AND name = ? AND is_boss = 1",
             (dungeon_id, boss[0])
         )
-        if (await cursor.fetchone())['c'] == 0:
+        existing = await cursor.fetchone()
+        if existing is None:
             await conn.execute(
                 "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, dodge) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                 (dungeon_id, floor_idx, boss[0], boss[1], boss[2], boss[3], 1, boss_drops_json, boss_image, boss_poison_chance, boss_poison_dmg, boss_dodge)
             )
-        else:
+        elif not existing['admin_tuned']:
             await conn.execute(
                 "UPDATE dungeon_enemies SET hp = ?, attack = ?, reward_nm = ?, drops = ?, image = ?, poison_chance = ?, poison_dmg = ?, dodge = ? "
                 "WHERE dungeon_id = ? AND name = ? AND is_boss = 1",
                 (boss[1], boss[2], boss[3], boss_drops_json, boss_image, boss_poison_chance, boss_poison_dmg, boss_dodge, dungeon_id, boss[0])
             )
 
-    # Удаляем врагов, которых больше нет в конфиге (старый состав)
+    # Удаляем врагов, которых больше нет в конфиге (старый состав).
+    # Врагов, которых правил админ через бота, не трогаем.
     cursor = await conn.execute(
-        "SELECT id, name FROM dungeon_enemies WHERE dungeon_id = ? AND name NOT IN (%s)"
+        "SELECT id, name FROM dungeon_enemies WHERE dungeon_id = ? AND name NOT IN (%s) AND admin_tuned = 0"
         % ",".join("?" * len(expected)), (dungeon_id, *expected)
     )
     to_delete = await cursor.fetchall()

@@ -27,6 +27,7 @@ from database.db import (
     get_all_locations, get_location, create_location, update_location_access,
     update_location_content, update_location_photos, location_access_label,
     get_all_dungeons, get_dungeon, update_dungeon_photos,
+    get_dungeon_enemies, get_enemy, update_enemy_fields,
     create_award, get_all_awards, get_award, delete_award, grant_award,
     get_user_awards, revoke_award,
     log_activity, get_user_activity, clear_user_photo,
@@ -150,9 +151,11 @@ class AdminLocation(StatesGroup):
 
 
 class AdminDungeon(StatesGroup):
-    """Редактирование подземелья: входная картинка по времени суток."""
+    """Редактирование подземелья: входная картинка по времени суток; правка врагов."""
     target_id = State()
     photo_tod = State()
+    enemy_id = State()       # выбранный враг
+    enemy_field = State()    # поле врага, для которого ждём значение
 
 
 # ============ УТИЛИТЫ ============
@@ -2792,6 +2795,7 @@ async def dungeon_edit(callback: CallbackQuery, state: FSMContext):
         f"🏰 {dng['name']}\nЧто изменить во входе?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🖼 Картинка входа (время суток)", callback_data="dungeon:photos")],
+            [InlineKeyboardButton(text="👾 Враги (HP/АТК/уклонение/яд/дропы)", callback_data="dungeon:enemies")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="admin:dungeons")],
         ])
     )
@@ -2905,6 +2909,259 @@ async def dungeon_step_photo(message: Message, state: FSMContext):
         return
     await state.clear()
     await message.answer("✅ Картинка входа подземелья обновлена.")
+
+
+# ============ АДМИН: РЕДАКТОР ВРАГОВ ПОДЗЕМЕЛИЙ ============
+
+ENEMY_FIELD_LABELS = {
+    "hp": "💙 HP",
+    "attack": "⚔️ АТК",
+    "dodge": "💨 УКЛ (%)",
+    "poison_chance": "☠️ Шанс яда (%)",
+    "poison_dmg": "☠️ Урон яда (HP/ход)",
+    "reward_nm": "💰 Награда (НМ)",
+    "drops": "💼 Дропы",
+}
+
+ENEMY_INPUT_PROMPTS = {
+    "hp": "Введи HP врага (целое число ≥ 0):",
+    "attack": "Введи АТК врага (целое число ≥ 0):",
+    "dodge": "Введи уклонение врага, % (0–100):",
+    "poison_chance": "Введи шанс яда при попадании, % (0–100; 0 = нет):",
+    "poison_dmg": "Введи урон яда за ход, HP (целое число ≥ 0):",
+    "reward_nm": "Введи награду за победу, Нордмарок (целое число ≥ 0):",
+    "drops": "Введи дропы — по одному на строку:\n"
+             "Название | шанс % | кол-во\n\n"
+             "Например:\n"
+             "Хвост крысы | 15 | 1\n"
+             "Осколок кристалла | 5 | 1\n\n"
+             "«-» — убрать все дропы.",
+}
+
+
+def _parse_drops_text(text: str):
+    """Разбирает текст дропов («Название | шанс% | кол-во»). На ошибку — None."""
+    drops = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        if len(parts) < 2:
+            return None
+        name = parts[0]
+        if not name:
+            return None
+        try:
+            chance = int(parts[1].replace("%", ""))
+        except ValueError:
+            return None
+        if not (0 <= chance <= 100):
+            return None
+        qty = 1
+        if len(parts) > 2:
+            try:
+                qty = int(parts[2])
+            except ValueError:
+                return None
+            if qty < 1:
+                return None
+        drops.append({"item": name, "chance": chance / 100.0, "qty": qty})
+    return drops or []
+
+
+async def _enemy_card_send(source, enemy_id: int, edit: bool = False):
+    """Карточка врага с кнопками правки; source — CallbackQuery или Message."""
+    enemy = await get_enemy(enemy_id)
+    if not enemy:
+        if hasattr(source, 'message'):
+            await source.message.answer("❌ Враг не найден.")
+        else:
+            await source.answer("❌ Враг не найден.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    drops = []
+    if enemy.get('drops'):
+        try:
+            drops = json.loads(enemy['drops'])
+        except (json.JSONDecodeError, TypeError):
+            drops = []
+    drop_lines = []
+    if drops:
+        for d in drops:
+            ch = d.get('chance', 0)
+            ch_pct = f"{int(ch * 100)}%" if ch <= 1 else f"{int(ch)}%"
+            qty = d.get('qty', 1)
+            drop_lines.append(f"   • {d.get('item', '?')} — {ch_pct}" +
+                              (f" ×{qty}" if qty != 1 else ""))
+    else:
+        drop_lines.append("   — дропов нет")
+
+    if enemy.get('poison_chance') and enemy.get('poison_dmg'):
+        poison_line = (f"☠️ Яд: шанс {enemy['poison_chance']}%, "
+                       f"урон −{enemy['poison_dmg']} HP/ход")
+    else:
+        poison_line = "☠️ Яда нет"
+
+    text = (
+        f"👾 {enemy['name']}{'  👑 БОСС' if enemy.get('is_boss') else ''}\n"
+        f"──────────────\n"
+        f"💙 HP: {enemy['hp']}\n"
+        f"⚔️ АТК: {enemy['attack']}\n"
+        f"💨 УКЛ: {enemy.get('dodge', 0)}%\n"
+        f"{poison_line}\n"
+        f"💰 Награда: {enemy.get('reward_nm', 0)} НМ\n"
+        f"💼 Дропы:\n" + "\n".join(drop_lines) +
+        f"\n\n⚠️ После правки стартовая синхронизация больше не перезапишет "
+        f"характеристики этого врага.\nЧто изменить?"
+    )
+
+    rows = [
+        [InlineKeyboardButton(text="💙 HP", callback_data="enemy_field:hp")],
+        [InlineKeyboardButton(text="⚔️ АТК", callback_data="enemy_field:attack")],
+        [InlineKeyboardButton(text="💨 УКЛ (%)", callback_data="enemy_field:dodge")],
+        [InlineKeyboardButton(text="☠️ Шанс яда", callback_data="enemy_field:poison_chance")],
+        [InlineKeyboardButton(text="☠️ Урон яда (HP/ход)", callback_data="enemy_field:poison_dmg")],
+        [InlineKeyboardButton(text="💰 Награда (НМ)", callback_data="enemy_field:reward_nm")],
+        [InlineKeyboardButton(text="💼 Дропы", callback_data="enemy_field:drops")],
+        [InlineKeyboardButton(text="🔙 К списку врагов", callback_data="dungeon:enemies")],
+    ]
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+
+    if edit and hasattr(source, 'message'):
+        try:
+            await source.message.edit_text(text, reply_markup=kb)
+            return
+        except Exception:
+            pass
+    if hasattr(source, 'message'):
+        await source.message.answer(text, reply_markup=kb)
+    else:
+        await source.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data == "dungeon:enemies")
+async def dungeon_enemies_list(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    data = await state.get_data()
+    dungeon_id = data.get('target_id')
+    dng = await get_dungeon(dungeon_id) if dungeon_id else None
+    if not dng:
+        await callback.message.answer("❌ Подземелье не найдено.")
+        return
+    enemies = await get_dungeon_enemies(dungeon_id)
+    lines = [f"👾 ВРАГИ «{dng['name']}»\n"]
+    rows = []
+    if enemies:
+        for e in enemies:
+            boss_mark = "👑 " if e.get('is_boss') else ""
+            lines.append(f"• {boss_mark}{e['name']} — HP {e['hp']}, "
+                         f"АТК {e['attack']}, УКЛ {e.get('dodge', 0)}%")
+            rows.append([InlineKeyboardButton(
+                text=f"{boss_mark}{e['name']}",
+                callback_data=f"dungeon:enemy:{e['id']}",
+            )])
+    else:
+        lines.append("Врагов пока нет.")
+    lines.append("\nНажми на врага, чтобы настроить.")
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"dungeon:edit:{dungeon_id}")])
+    await callback.message.edit_text("\n".join(lines),
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("dungeon:enemy:"))
+async def dungeon_enemy_view(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        enemy_id = int(callback.data.split(":")[2])
+    except (ValueError, IndexError):
+        return
+    await state.update_data(enemy_id=enemy_id)
+    await _enemy_card_send(callback, enemy_id, edit=True)
+
+
+@router.callback_query(F.data.startswith("enemy_field:"))
+async def dungeon_enemy_field_pick(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    field = callback.data.split(":")[1]
+    if field not in ENEMY_FIELD_LABELS:
+        return
+    data = await state.get_data()
+    if not data.get('enemy_id'):
+        await callback.message.answer("❌ Враг не выбран. Открой карточку врага заново.")
+        return
+    await state.update_data(enemy_field=field)
+    await state.set_state(AdminDungeon.enemy_value)
+    await callback.message.answer(ENEMY_INPUT_PROMPTS[field], reply_markup=cancel_keyboard())
+
+
+@router.message(AdminDungeon.enemy_value)
+async def dungeon_enemy_value(message: Message, state: FSMContext):
+    data = await state.get_data()
+    enemy_id = data.get('enemy_id')
+    field = data.get('enemy_field')
+    enemy = await get_enemy(enemy_id) if enemy_id else None
+    if not enemy:
+        await state.clear()
+        await message.answer("❌ Враг не найден. Начни заново: админ → подземелья → враги.")
+        return
+    if field not in ENEMY_FIELD_LABELS:
+        await state.clear()
+        await message.answer("❌ Поле не распознано. Начни заново.")
+        return
+
+    text = (message.text or "").strip()
+    parsed = None
+    if field in ("hp", "attack", "poison_dmg", "reward_nm"):
+        if text.isdigit():
+            parsed = int(text)
+    elif field in ("dodge", "poison_chance"):
+        if text.isdigit():
+            parsed = int(text)
+    elif field == "drops":
+        if text == "-":
+            parsed = []
+        else:
+            parsed = _parse_drops_text(text)
+
+    if field in ("hp", "attack", "poison_dmg", "reward_nm"):
+        valid = parsed is not None and parsed >= 0
+    elif field in ("dodge", "poison_chance"):
+        valid = parsed is not None and 0 <= parsed <= 100
+    else:
+        valid = parsed is not None
+
+    if not valid:
+        await message.answer(f"❌ Неверный формат.\n{ENEMY_INPUT_PROMPTS[field]}",
+                             reply_markup=cancel_keyboard())
+        return
+
+    await update_enemy_fields(enemy_id, **{field: parsed})
+    await log_action(message.from_user.id, 'edit_enemy', None,
+                     f"enemy_id={enemy_id} {field}={parsed}")
+    await state.clear()
+
+    if field == "drops":
+        label = f"{len(parsed)} позиция(и)"
+    elif field in ("dodge", "poison_chance"):
+        label = f"{parsed}%"
+    elif field == "poison_dmg":
+        label = f"{parsed} HP/ход"
+    elif field == "reward_nm":
+        label = f"{parsed} НМ"
+    else:
+        label = str(parsed)
+
+    await message.answer(f"✅ «{enemy['name']}»: {ENEMY_FIELD_LABELS[field]} = {label}.")
+    await _enemy_card_send(message, enemy_id)
 
 
 @router.callback_query(F.data == "loc:create")
