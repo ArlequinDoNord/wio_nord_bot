@@ -82,7 +82,7 @@ def inv_categories_markup(items, catches):
         if cat not in counts or counts[cat] <= 0:
             continue
         label = category_label(cat)
-        emoji = {"weapon": "⚔️", "equipment": "🛡️", "consumable": "🧪",
+        emoji = {"weapon": "⚔️", "equipment": "👕", "consumable": "🧪",
                  "resource": "⛏️", "seeds": "🌱", "fishing": "🎣",
                  "housing": "🏠", "furniture": "🪑", "special": "💎",
                  "souvenirs": "🏺", "library_card": "📚", "building": "🏗️"}.get(cat, "📦")
