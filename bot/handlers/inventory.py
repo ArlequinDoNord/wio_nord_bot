@@ -710,7 +710,7 @@ async def _sell_confirm(callback: CallbackQuery, item_id: int, qty: int):
 @router.callback_query(F.data.startswith("inv_sell_ok:"))
 async def inv_sell_ok(callback: CallbackQuery):
     await callback.answer()
-    _, _, item_s, qty_s = callback.data.split(":")
+    _, item_s, qty_s = callback.data.split(":")
     await _sell_item(callback, int(item_s), int(qty_s))
 
 
