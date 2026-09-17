@@ -475,6 +475,17 @@ async def _render_item_card(message, user_id: int, item_id: int):
     if potion_slots:
         text += f"\n\n⚗️ В активном слоте: {', '.join(str(n) for n in potion_slots)}"
 
+    # Сколько экземпляров занято активными слотами — их продать нельзя, пока не снято
+    used_slots = [s for s in EQUIPMENT_SLOT_LABELS if eq.get(s) == item_id]
+    inventory_qty = inv['quantity'] or 0
+    sellable_qty = max(0, inventory_qty - len(used_slots)) if used_slots else inventory_qty
+    if used_slots:
+        if sellable_qty > 0:
+            text += (f"\n\n⚠️ {len(used_slots)} шт. занято слотами — "
+                     f"продать можно не больше {sellable_qty} шт.")
+        else:
+            text += f"\n\n⚠️ Все {inventory_qty} шт. занято слотами — сними, чтобы продать."
+
     # Кто сейчас занимает слоты (для честной замены — без сюрпризов)
     occupied = {}
     if item['category'] == 'consumable':
@@ -493,8 +504,8 @@ async def _render_item_card(message, user_id: int, item_id: int):
     markup = inv_item_markup(item_id, item['category'], can_use=can_use,
                              is_equipped=is_equipped, equip_slot=equip_slot,
                              potion_slots=potion_slots,
-                             sellable=(item['sell_price'] or 0) > 0,
-                             qty=(inv['quantity'] or 0),
+                             sellable=(item['sell_price'] or 0) > 0 and sellable_qty > 0,
+                             qty=sellable_qty,
                              occupied=occupied)
 
     photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
@@ -682,15 +693,20 @@ async def _sell_confirm(callback: CallbackQuery, item_id: int, qty: int):
         await callback.answer(f"❌ У тебя меньше {qty} шт. этого предмета.", show_alert=True)
         return
 
-    # Нельзя продать предмет, стоящий в любом активном слоте (иначе останется «призрачный слот»)
+    # Занятые слотом экземпляры продать нельзя (иначе останется «призрачный слот»);
+    # продаются только лишние, сверх надетых/занятых.
     eq = await get_equipment(user_id)
-    if item_id in eq.values():
-        used = [EQUIPMENT_SLOT_LABELS[s].lower() for s in EQUIPMENT_SLOT_LABELS if eq.get(s) == item_id]
-        await callback.answer(
-            f"❌ «{item['name']}» сейчас используется ({', '.join(used)}). "
-            f"Сначала сними его.", show_alert=True
-        )
-        return
+    used_slots = [s for s in EQUIPMENT_SLOT_LABELS if eq.get(s) == item_id]
+    if used_slots:
+        max_sellable = max(0, inv['quantity'] - len(used_slots))
+        if qty > max_sellable:
+            used = [EQUIPMENT_SLOT_LABELS[s].lower() for s in used_slots]
+            extra = "" if max_sellable > 0 else " Сначала сними его."
+            await callback.answer(
+                f"❌ «{item['name']}» сейчас используется ({', '.join(used)}). "
+                f"Можно продать не больше {max_sellable} шт.{extra}", show_alert=True
+            )
+            return
 
     total = item['sell_price'] * qty
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -722,16 +738,20 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
         await callback.answer(f"❌ У тебя меньше {qty} шт. этого предмета.", show_alert=True)
         return
 
-    # Нельзя продать предмет, стоящий в любом активном слоте (иначе останется «призрачный слот»:
+    # Занятые слотом экземпляры продать нельзя (иначе останется «призрачный слот»:
     # урон/защита берутся напрямую из items по id в equipment, без проверки инвентаря).
     eq = await get_equipment(user_id)
-    if item_id in eq.values():
-        used = [EQUIPMENT_SLOT_LABELS[s].lower() for s in EQUIPMENT_SLOT_LABELS if eq.get(s) == item_id]
-        await callback.answer(
-            f"❌ «{item['name']}» сейчас используется ({', '.join(used)}). "
-            f"Сначала сними его.", show_alert=True
-        )
-        return
+    used_slots = [s for s in EQUIPMENT_SLOT_LABELS if eq.get(s) == item_id]
+    if used_slots:
+        max_sellable = max(0, inv['quantity'] - len(used_slots))
+        if qty > max_sellable:
+            used = [EQUIPMENT_SLOT_LABELS[s].lower() for s in used_slots]
+            extra = "" if max_sellable > 0 else " Сначала сними его."
+            await callback.answer(
+                f"❌ «{item['name']}» сейчас используется ({', '.join(used)}). "
+                f"Можно продать не больше {max_sellable} шт.{extra}", show_alert=True
+            )
+            return
 
     await callback.answer()
     await remove_inventory_item(user_id, item_id, qty)
