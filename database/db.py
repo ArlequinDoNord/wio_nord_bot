@@ -687,6 +687,18 @@ async def init_db():
     # v0.13.2: предметы, которые можно выставлять на рыночную витрину
     # (рынок), а не только продавать скупщику. Не выставленные — только скупщик.
     await _ensure_column(conn, "items", "market_ok", "INTEGER DEFAULT 0")
+    # v0.13.3: тип улова — 'fish' (рыба: вес, порча) или 'resource' (находка:
+    # без срока годности, ингредиент). Также тип на записи водоёма.
+    await _ensure_column(conn, "fish_catches", "kind", "TEXT DEFAULT 'fish'")
+    await _ensure_column(conn, "water_fish", "kind", "TEXT DEFAULT 'fish'")
+    # v0.13.3: рыба (предметы категории fishing) выставляется на рынок по
+    # умолчанию. Разовое обновление для уже существующих предметов.
+    cur = await conn.execute(
+        "SELECT value FROM settings WHERE key = 'mig_v0133_fish_market_ok'")
+    if not (await cur.fetchone()):
+        await conn.execute("UPDATE items SET market_ok = 1 WHERE category = 'fishing'")
+        await conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('mig_v0133_fish_market_ok', '1')")
     await conn.commit()
     await ensure_base_statuses()
     await conn.commit()
@@ -993,8 +1005,12 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
                    production_time_hours: int = 0, produced_by: int = None,
                    damage: int = 0, heal: int = 0, armor: int = 0,
                    drink_effect: str = None, equip_slot: str = None,
-                   market_ok: int = 0):
+                   market_ok: int = None):
     conn = await get_db()
+    # v0.13.3: рыба (категория fishing) по умолчанию выставляется на рынок;
+    # у остальных предметов — только скупщик, пока админ не включит флаг.
+    if market_ok is None:
+        market_ok = 1 if category == "fishing" else 0
     cursor = await conn.execute(
         """INSERT INTO items (name, description, photo_file_id, price, sell_price,
            rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok)
@@ -3270,16 +3286,21 @@ async def update_park_statue(statue_id: int, **fields):
 
 # ============ УЛОВ (рыбалка): рыба с весом ============
 
-async def add_fish_catch(user_id: int, item_id: int, weight: int = 1) -> int:
-    """Записывает пойманную рыбу с весом (отдельный экземпляр).
+async def add_fish_catch(user_id: int, item_id: int, weight: int = 1,
+                         kind: str = "fish", expires_at: str | None = None) -> int:
+    """Записывает пойманный улов с весом/типом.
 
-    Сырая рыба портится через 4 дня после поимки (срок годности).
+    kind='fish' — рыба, портится через 4 дня по умолчанию.
+    kind='resource' — ресурс/находка, портится не портится (expires_at=None).
+    Если expires_at передан явно (рынок: мороз улова), используется он.
     """
     conn = await get_db()
-    expires_at = str(int(time.time()) + RAW_FISH_SHELF_SEC)
+    if expires_at is None and kind == "fish":
+        expires_at = str(int(time.time()) + RAW_FISH_SHELF_SEC)
     cursor = await conn.execute(
-        "INSERT INTO fish_catches (user_id, item_id, weight, expires_at) VALUES (?, ?, ?, ?)",
-        (user_id, item_id, weight, expires_at)
+        "INSERT INTO fish_catches (user_id, item_id, weight, kind, expires_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (user_id, item_id, weight, kind or "fish", expires_at)
     )
     await conn.commit()
     return cursor.lastrowid
@@ -3300,7 +3321,7 @@ async def get_fish_catches(user_id: int):
     )
     await conn.commit()
     cursor = await conn.execute("""
-        SELECT fc.id, fc.user_id, fc.item_id, fc.weight, fc.created_at, fc.expires_at,
+        SELECT fc.id, fc.user_id, fc.item_id, fc.weight, fc.kind, fc.created_at, fc.expires_at,
                i.name, i.sell_price, i.rarity, i.description
         FROM fish_catches fc
         JOIN items i ON i.id = fc.item_id
@@ -3311,15 +3332,20 @@ async def get_fish_catches(user_id: int):
     result = []
     for r in rows:
         r = dict(r)
+        kind = r.get('kind', 'fish') or 'fish'
+        r['kind'] = kind
         exp = r.get('expires_at')
         try:
             expi = int(float(exp)) if exp else None
         except (TypeError, ValueError):
             expi = None
-        if expi is None:
-            # Уловы до введения срока годности считаем свежими (полные 4 дня).
-            expi = now + RAW_FISH_SHELF_SEC
-        r['remaining_sec'] = max(0, expi - now)
+        if kind == 'resource' or expi is None:
+            # Уловы ресурсов и уловы до введения срока годности не портятся.
+            if kind != 'resource':
+                expi = now + RAW_FISH_SHELF_SEC
+            else:
+                expi = None
+        r['remaining_sec'] = max(0, expi - now) if expi else 0
         result.append(r)
     return result
 
@@ -3373,6 +3399,39 @@ async def sell_one_fish_catch(user_id: int, item_id: int, weight: int) -> bool:
     await conn.execute("DELETE FROM fish_catches WHERE id = ?", (row['id'],))
     await conn.commit()
     return True
+
+
+async def migrate_legacy_junk():
+    """Переносит старые копии мусора (сапог, водоросли) из инвентаря в улов.
+
+    v0.13.3: всё, что добыто рыбалкой, хранится в fish_catches (kind='resource',
+    вес 1, без срока годности). До этого «мусор» выдавался в items/inventory.
+    """
+    conn = await get_db()
+    names = ("Старый сапог", "Кусочек водорослей")
+    placeholders = ",".join("?" * len(names))
+    cursor = await conn.execute(
+        f"SELECT id, name, is_available FROM items WHERE name IN ({placeholders})", names)
+    items = {r['name']: r['id'] for r in await cursor.fetchall()}
+    if not items:
+        return 0
+    moved = 0
+    for name, item_id in items.items():
+        rows = await (await conn.execute(
+            "SELECT id, user_id, quantity FROM inventory WHERE item_id = ? AND quantity > 0",
+            (item_id,))).fetchall()
+        for r in rows:
+            for _ in range(r['quantity']):
+                await conn.execute(
+                    "INSERT INTO fish_catches (user_id, item_id, weight, kind, expires_at) "
+                    "VALUES (?, ?, 1, 'resource', NULL)",
+                    (r['user_id'], item_id)
+                )
+                moved += 1
+            await conn.execute("DELETE FROM inventory WHERE id = ?", (r['id'],))
+    if moved:
+        await conn.commit()
+    return moved
 
 
 # ============ МАРКЕТ УЛОВА: рыба, выставленная на продажу в магазине ============
@@ -3530,8 +3589,8 @@ async def get_water_fish_rows(water: str):
     conn = await get_db()
     cursor = await conn.execute("""
         SELECT wf.id, wf.water, wf.item_id, wf.day_weight, wf.night_weight,
-               wf.photo_file_id, wf.admin_tuned,
-               i.name, i.sell_price, i.rarity, i.price
+               wf.photo_file_id, wf.admin_tuned, wf.kind,
+               i.name, i.sell_price, i.rarity, i.price, i.market_ok
         FROM water_fish wf
         JOIN items i ON i.id = wf.item_id
         WHERE wf.water = ? AND wf.excluded = 0
@@ -3545,8 +3604,8 @@ async def get_water_fish_row(wf_id: int):
     conn = await get_db()
     cursor = await conn.execute("""
         SELECT wf.id, wf.water, wf.item_id, wf.day_weight, wf.night_weight,
-               wf.photo_file_id, wf.admin_tuned,
-               i.name, i.sell_price, i.rarity, i.price
+               wf.photo_file_id, wf.admin_tuned, wf.kind,
+               i.name, i.sell_price, i.rarity, i.price, i.market_ok
         FROM water_fish wf
         JOIN items i ON i.id = wf.item_id
         WHERE wf.id = ?
@@ -3558,7 +3617,7 @@ async def get_water_fish_pool(water: str):
     """Пулы: список рыб водоёма с весами (день/ночь), фото и ценой продажи."""
     conn = await get_db()
     cursor = await conn.execute("""
-        SELECT wf.id, wf.item_id, wf.day_weight, wf.night_weight, wf.photo_file_id,
+        SELECT wf.id, wf.item_id, wf.day_weight, wf.night_weight, wf.photo_file_id, wf.kind,
                i.name, i.sell_price, i.rarity
         FROM water_fish wf
         JOIN items i ON i.id = wf.item_id
@@ -3581,13 +3640,33 @@ async def get_water_fish_photo_by_name(water: str, name: str):
     return row['photo_file_id'] if row else None
 
 
+async def get_water_fish_kind(water: str, name: str) -> str:
+    """Тип записи водоёма: 'fish' или 'resource' (по умолчанию 'fish')."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT wf.kind FROM water_fish wf
+        JOIN items i ON i.id = wf.item_id
+        WHERE wf.water = ? AND i.name = ?
+        LIMIT 1
+    """, (water, name))
+    row = await cursor.fetchone()
+    kind = (row['kind'] if row else None) or 'fish'
+    return kind if kind in ("fish", "resource") else "fish"
+
+
 async def update_water_fish_field(wf_id: int, field: str, value) -> bool:
-    """Правка рыбы в водоёме (day_weight/night_weight/photo_file_id). Помечает admin_tuned."""
+    """Правка рыбы в водоёме (day_weight/night_weight/kind/photo_file_id). Помечает admin_tuned."""
     conn = await get_db()
     if field in ("day_weight", "night_weight"):
         await conn.execute(
             f"UPDATE water_fish SET {field} = ?, admin_tuned = 1 WHERE id = ?",
             (int(value), wf_id)
+        )
+    elif field == "kind":
+        kind = "resource" if str(value) == "resource" else "fish"
+        await conn.execute(
+            "UPDATE water_fish SET kind = ?, admin_tuned = 1 WHERE id = ?",
+            (kind, wf_id)
         )
     elif field == "photo_file_id":
         await conn.execute(
@@ -3652,13 +3731,14 @@ async def remove_water_fish(wf_id: int) -> bool:
 
 
 async def get_water_fish_candidates(water: str):
-    """Рыбы (предметы категории fishing), которых ещё нет в водоёме, —
-    для кнопки «Добавить рыбу»."""
+    """Рыбы и ресурсы (предметы категорий fishing/resource/consumable вне магазина),
+    которых ещё нет в водоёме, — для кнопки «Добавить рыбу»."""
     conn = await get_db()
     cursor = await conn.execute("""
-        SELECT i.id, i.name, i.sell_price, i.rarity
+        SELECT i.id, i.name, i.sell_price, i.rarity, i.category
         FROM items i
-        WHERE i.category = 'fishing'
+        WHERE i.category IN ('fishing', 'resource', 'consumable')
+          AND i.is_available = 0
           AND i.id NOT IN (
               SELECT item_id FROM water_fish WHERE water = ? AND excluded = 0
           )

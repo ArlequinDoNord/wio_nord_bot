@@ -13,7 +13,7 @@ from database.db import (
     add_inventory_item, update_item, get_db,
     get_equipment, set_equipment_slot, clear_equipment_slot, log_activity,
     get_fish_catches, take_fish_catch, sell_one_fish_catch, get_active_run,
-    process_food_expiry, add_fish_offer, RAW_FISH_SHELF_SEC,
+    process_food_expiry, add_fish_offer, add_fish_catch, RAW_FISH_SHELF_SEC,
     place_item_offer,
     get_market_slots_info,
     item_fits_slot, ARMOR_SLOTS, EQUIPMENT_SLOT_LABELS, EQUIPMENT_LOCKED_SLOTS,
@@ -46,13 +46,15 @@ async def find_user(text: str):
 
 
 def _fish_groups(catches):
-    """Уловы рыбы, сгруппированные по (предмет, вес) с подсчётом."""
+    """Уловы (рыба и находки), сгруппированные по (предмет, вес) с подсчётом."""
     from collections import OrderedDict
     groups = OrderedDict()
     for c in catches:
         key = (c['item_id'], c['weight'])
+        kind = c.get('kind', 'fish') or 'fish'
         if key not in groups:
-            groups[key] = {"count": 0, "name": c['name'], "rarity": c['rarity']}
+            groups[key] = {"count": 0, "name": c['name'], "rarity": c['rarity'], "kind": kind}
+        groups[key]["kind"] = kind
         groups[key]["count"] += 1
     return groups
 
@@ -112,12 +114,13 @@ def inv_list_markup(items, catches=None, back_cb: str = "back:main", back_label:
         )])
     for key, g in _fish_groups(catches or []).items():
         item_id, weight = key
-        tier = fish_weight_tier(weight)
         emoji = rarity_emoji(g['rarity'])
-        buttons.append([InlineKeyboardButton(
-            text=f"{emoji} {g['name']} — {tier['label']} x{g['count']}",
-            callback_data=f"fishcatch:{item_id}:{weight}"
-        )])
+        if g['kind'] == 'resource':
+            text = f"{emoji} {g['name']} x{g['count']}"
+        else:
+            tier = fish_weight_tier(weight)
+            text = f"{emoji} {g['name']} — {tier['label']} x{g['count']}"
+        buttons.append([InlineKeyboardButton(text=text, callback_data=f"fishcatch:{item_id}:{weight}")])
     buttons.append([InlineKeyboardButton(text=back_label, callback_data=back_cb)])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -946,56 +949,126 @@ async def fish_catch_view(callback: CallbackQuery):
                            int(item_id_s), int(weight_s))
 
 
+@router.callback_query(F.data.startswith("fishuse:"))
+async def fish_catch_use(callback: CallbackQuery):
+    """«Использовать» улов-ресурс (например, водоросли на +1 ОД).
+
+    Берём копию улова, временно кладём в инвентарь и используем через общий
+    process_item_use (одна логика с обычными расходниками). Если не вышло —
+    возвращаем улов обратно.
+    """
+    await callback.answer()
+    user_id = callback.from_user.id
+    run = await get_active_run(user_id)
+    if run:
+        await callback.message.answer("⏳ Идёт забег в подземелье: использовать ресурсы из улова нельзя.")
+        return
+    _, item_id_s, weight_s = callback.data.split(":")
+    item_id, weight = int(item_id_s), int(weight_s)
+    catches = await get_fish_catches(user_id)
+    catch = next((c for c in catches
+                  if c['item_id'] == item_id and c['weight'] == weight
+                  and (c.get('kind') or 'fish') == 'resource'), None)
+    if not catch:
+        await callback.message.answer("❌ Такого улова больше нет.")
+        await _show_fish_catch(callback.message, user_id, item_id, weight)
+        return
+
+    taken = await take_fish_catch(user_id, catch['id'])
+    if not taken:
+        await callback.message.answer("❌ Не удалось взять улов.")
+        return
+    await add_inventory_item(user_id, item_id, 1)
+    ok, msg = await process_item_use(user_id, item_id)
+    if ok:
+        item = await get_item(item_id)
+        await log_activity(user_id, "item_use",
+                           f"Использовал «{item['name']}» из улова" if item else f"item #{item_id}")
+    else:
+        await remove_inventory_item(user_id, item_id, 1)
+        await add_fish_catch(user_id, item_id, weight, kind='resource')
+    await callback.message.answer(("✅ " if ok else "❌ ") + msg)
+    await _show_fish_catch(callback.message, user_id, item_id, weight)
+
+
 async def _show_fish_catch(message, user_id: int, item_id: int, weight: int):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     item = await get_item(item_id)
     if not item:
-        await edit_or_replace(message, "Рыба не найдена.", None)
+        await edit_or_replace(message, "Улов не найден.", None)
         return
     catches = await get_fish_catches(user_id)
-    count = sum(1 for c in catches if c['item_id'] == item_id and c['weight'] == weight)
+    mine = [c for c in catches if c['item_id'] == item_id and c['weight'] == weight]
+    count = len(mine)
     if count < 1:
-        await edit_or_replace(message, "Такой рыбы у тебя больше нет.", None)
+        await edit_or_replace(message, "Такого улова у тебя больше нет.", None)
         return
+    kind = (mine[0].get('kind') or 'fish') if mine else 'fish'
 
     tier = fish_weight_tier(weight)
     sell = fish_sell_price(item['sell_price'], weight)
     sell_text = f"{sell} {plural_nordmark(sell)}"
+    market_allowed = bool(item.get('market_ok'))
 
-    remaining = 0
-    for c in catches:
-        if c['item_id'] == item_id and c['weight'] == weight:
-            remaining = c.get('remaining_sec', 0)
-            break
-    if remaining > 0:
-        d, rem = divmod(remaining, 86400)
-        h, m = rem // 3600, (rem % 3600) // 60
-        if d > 0:
-            fresh_line = f"⏳ Свежесть: {d} дн {h} ч"
-        else:
-            fresh_line = f"⏳ Свежесть: {h} ч {m} мин"
+    if kind == 'resource':
+        use_ok = (item.get('category') == 'consumable'
+                  and (item.get('ap_cost') or 0) > 0
+                  and item['name'] not in NOT_EDIBLE_ITEMS)
+        text = (
+            f"{rarity_emoji(item['rarity'])} {item['name']} {rarity_emoji(item['rarity'])}\n"
+            f"Категория: {item.get('category')}\n\n"
+            f"В наличии: {count} шт.\n"
+            f"🧺 Находка из улова: не портится.\n\n"
+            f"{item['description']}\n\n"
+            f"💰 Цена: {sell_text}"
+        )
+        rows = []
+        if market_allowed:
+            rows.append([InlineKeyboardButton(text="🏪 На рынок",
+                                              callback_data=f"fishmarket:{item_id}:{weight}")])
+        if use_ok:
+            rows.append([InlineKeyboardButton(text="💊 Использовать",
+                                              callback_data=f"fishuse:{item_id}:{weight}")])
+        rows.append([InlineKeyboardButton(text=f"💵 Скупщику сразу (за {sell_text})",
+                                          callback_data=f"fishsell:{item_id}:{weight}")])
+        rows.append([InlineKeyboardButton(text="🔙 В категорию",
+                                          callback_data=f"inventory:cat:{FISH_ALL_KEY}")])
+        rows.append([InlineKeyboardButton(text="🔙 К списку категорий",
+                                          callback_data="inventory:list")])
+        markup = InlineKeyboardMarkup(inline_keyboard=rows)
     else:
-        fresh_line = "⏳ Свежий улов"
+        remaining = mine[0].get('remaining_sec', 0)
+        if remaining > 0:
+            d, rem = divmod(remaining, 86400)
+            h, m = rem // 3600, (rem % 3600) // 60
+            if d > 0:
+                fresh_line = f"⏳ Свежесть: {d} дн {h} ч"
+            else:
+                fresh_line = f"⏳ Свежесть: {h} ч {m} мин"
+        else:
+            fresh_line = "⏳ Свежий улов"
+        text = (
+            f"{rarity_emoji(item['rarity'])} {item['name']} {rarity_emoji(item['rarity'])}\n"
+            f"Редкость: {rarity_label(item['rarity'])}\n\n"
+            f"⚖️ Вес: {tier['label']}\n"
+            f"В наличии: {count} шт.\n"
+            f"{fresh_line}\n\n"
+            f"{item['description']}\n\n"
+            f"💰 Цена (с учётом веса): {sell_text}"
+        )
+        rows = []
+        if market_allowed:
+            rows.append([InlineKeyboardButton(text="🏪 На рынок",
+                                              callback_data=f"fishmarket:{item_id}:{weight}")])
+        rows.append([InlineKeyboardButton(text=f"💵 Скупщику сразу (за {sell_text})",
+                                          callback_data=f"fishsell:{item_id}:{weight}")])
+        rows.append([InlineKeyboardButton(text="🔙 В категорию",
+                                          callback_data=f"inventory:cat:{FISH_ALL_KEY}")])
+        rows.append([InlineKeyboardButton(text="🔙 К списку категорий",
+                                          callback_data="inventory:list")])
+        markup = InlineKeyboardMarkup(inline_keyboard=rows)
 
-    text = (
-        f"{rarity_emoji(item['rarity'])} {item['name']} {rarity_emoji(item['rarity'])}\n"
-        f"Редкость: {rarity_label(item['rarity'])}\n\n"
-        f"⚖️ Вес: {tier['label']}\n"
-        f"В наличии: {count} шт.\n"
-        f"{fresh_line}\n\n"
-        f"{item['description']}\n\n"
-        f"💰 Цена (с учётом веса): {sell_text}"
-    )
-    markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏪 На рынок",
-                              callback_data=f"fishmarket:{item_id}:{weight}")],
-        [InlineKeyboardButton(text=f"💵 Скупщику сразу (за {sell_text})",
-                              callback_data=f"fishsell:{item_id}:{weight}")],
-        [InlineKeyboardButton(text="🔙 В категорию", callback_data=f"inventory:cat:{FISH_ALL_KEY}")],
-        [InlineKeyboardButton(text="🔙 К списку категорий", callback_data="inventory:list")],
-    ])
-
-    photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
+    photo_id = item.get('photo_file_id')
     local_photo = None if photo_id else item_local_photo(item['name'])
     if photo_id or local_photo:
         media = photo_id or FSInputFile(local_photo)

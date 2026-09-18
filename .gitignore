@@ -6,3 +6,7 @@ database/nordmark.db
 database/nordmark.db-shm
 database/nordmark.db-wal
 bot.log
+_test_smoke*.db
+_test_*.py
+smoke_out.txt
+_smoke_result.txt

@@ -13,7 +13,7 @@ from database.db import (
     ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, ensure_life_items, ensure_recipes,
     ensure_dungeon_reservoir_items, ensure_market_license_item, pay_salaries, payout_reports,
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award,
-    ensure_water_fish,
+    ensure_water_fish, migrate_legacy_junk,
 )
 from utils.notify import notify_treasury_shortage
 from utils.helpers import is_main_menu_text
@@ -218,6 +218,10 @@ async def main():
     license_seeded = await ensure_market_license_item()
     if license_seeded:
         logger.info("Торговая лицензия добавлена в магазин")
+
+    junk_moved = await migrate_legacy_junk()
+    if junk_moved:
+        logger.info("Легаси-мусор (сапог, водоросли) перенесён из инвентаря в «Улов»")
 
     await seed_kvp()
     logger.info("К.В.П. (Курс выживания) создан или проверен")

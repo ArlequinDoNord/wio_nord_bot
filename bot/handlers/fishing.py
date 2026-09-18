@@ -17,9 +17,9 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.db import (
     get_item_by_name, get_inventory_item, remove_inventory_item,
-    add_fish_catch, add_inventory_item, get_user, update_user,
+    add_fish_catch, get_user, update_user,
     remove_ap, log_activity, get_active_run,
-    get_water_fish_pool, get_water_fish_photo_by_name, get_award_bonus,
+    get_water_fish_pool, get_water_fish_kind, get_water_fish_photo_by_name, get_award_bonus,
 )
 from utils.helpers import resolve_image, time_of_day_key, plural_nordmark, item_local_photo, fish_weight_tier, fish_sell_price
 from config import FISH_AP_COST, FISH_WEIGHTS
@@ -559,13 +559,14 @@ async def fish_cast(callback: CallbackQuery):
                     weight_idx = _roll_fish_weight()
                     tier = fish_weight_tier(weight_idx)
                     sell = fish_sell_price(fish_item['sell_price'], weight_idx)
-                    await add_fish_catch(user_id, fish_item['id'], weight_idx)
+                    kind = await get_water_fish_kind("lake", fish_name)
+                    await add_fish_catch(user_id, fish_item['id'], weight_idx, kind=kind)
                     await log_activity(user_id, "fishing", f"Поймал «{fish_name}» ({tier['label']})")
                     text = (
                         f"{FISH_EMOJI.get(fish_name, '🐟')} РЫБАЛКА\n\n"
                         f"Поплавок дёрнулся — поклёвка!\n"
                         f"Ты поймал: «{fish_name}» — {tier['label'].lower()}!\n\n"
-                        f"🎒 Улов отправлен в инвентарь.\n"
+                        f"🎒 Улов записан в «Улов».\n"
                         f"Вес влияет на цену: продажа за {sell} {plural_nordmark(sell)}."
                     )
                     wf_photo = await get_water_fish_photo_by_name("lake", fish_name)
@@ -590,7 +591,7 @@ async def fish_cast(callback: CallbackQuery):
             if junk_name:
                 junk_item = await get_item_by_name(junk_name)
                 if junk_item:
-                    await add_inventory_item(user_id, junk_item['id'], 1)
+                    await add_fish_catch(user_id, junk_item['id'], 1, kind="resource")
                     await log_activity(user_id, "fishing", f"Выловил «{junk_name}»")
                     sell_line = ""
                     if junk_item['sell_price'] > 0:
@@ -602,7 +603,7 @@ async def fish_cast(callback: CallbackQuery):
                         f"🎣 РЫБАЛКА\n\n"
                         f"Поплавок дёрнулся, ты подсекаешь...\n"
                         f"Из воды появляется: «{junk_name}»!\n\n"
-                        f"🎒 Предмет отправлен в инвентарь.{sell_line}"
+                        f"🎒 Улов записан в «Улов».{sell_line}"
                     )
                     local_photo = item_local_photo(junk_name)
                     if local_photo:

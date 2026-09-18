@@ -22,6 +22,7 @@ from database.db import (
     is_special_blocked, special_dept_block_left_minutes, clear_special_blocked,
     get_fish_offers, get_fish_offer, remove_fish_offer,
     get_item_offers, get_item_offer, remove_item_offer,
+    add_fish_catch,
 )
 from keyboards.keyboards import (
     shop_catalog_keyboard, item_card_keyboard, cancel_keyboard, main_menu_kb,
@@ -734,9 +735,14 @@ async def fish_buy(callback: CallbackQuery):
     now = int(time.time())
     await remove_nordmarks(user_id, price, "shop_purchase",
                            f"Покупка улова: {offer['name']}")
-    # Срок продолжает идти у покупателя (в магазине он был заморожен).
-    await add_inventory_item(user_id, offer['item_id'], 1,
-                             expires_at=str(now + max(1, offer['remaining_sec'])))
+    # Покупка улова попадает в «Улов», а не в инвентарь. Рыба продолжает портиться
+    # у покупателя (в магазине срок был заморожен), находки-ресурсы не портятся.
+    bought_item = await get_item(offer['item_id'])
+    kind = "fish" if (bought_item and bought_item.get('category') == 'fishing') else "resource"
+    remaining = offer.get('remaining_sec')
+    expires_at = str(now + max(1, int(remaining))) if kind == "fish" and remaining else None
+    await add_fish_catch(user_id, offer['item_id'], offer['weight'] or 1, kind=kind,
+                         expires_at=expires_at)
 
     sale_tax = await get_sale_tax_percent()
     tax_amount = int(price * sale_tax / 100)
@@ -750,9 +756,13 @@ async def fish_buy(callback: CallbackQuery):
                        f"Купил улов «{offer['name']}» за {price} НМ")
     await log_activity(offer['seller_id'], "shop_sale",
                        f"Продан улов «{offer['name']}» за {price} НМ")
+    if kind == "fish":
+        restock_line = "⏳ Срок годности продолжился — храни в прохладном месте."
+    else:
+        restock_line = "🧺 Находка добавлена в «Улов» — не портится."
     await callback.message.answer(
         f"✅ Куплено: {offer['name']} за {price} {plural_nordmark(price)}!\n"
-        f"⏳ Срок годности продолжился — храни в прохладном месте."
+        f"🎒 Улов записан в «Улов».\n{restock_line}"
     )
 
 

@@ -20,7 +20,7 @@ from database.db import (
     get_inventory, get_equipment, set_equipment_slot, get_item,
     item_fits_slot, EQUIPMENT_SLOT_LABELS,
     update_user, get_fish_catches, add_fish_catch,
-    get_water_fish_pool, get_water_fish_photo_by_name,
+    get_water_fish_pool, get_water_fish_photo_by_name, get_water_fish_kind,
 )
 from utils.combat import (
     calculate_attack, calculate_enemy_damage, roll_dodge,
@@ -1364,7 +1364,8 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                 weight_idx = _roll_fish_weight()
                 tier = fish_weight_tier(weight_idx)
                 sell = fish_sell_price(item['sell_price'], weight_idx)
-                await add_fish_catch(user_id, item['id'], weight_idx)
+                kind = await get_water_fish_kind("reservoir", fish_name)
+                await add_fish_catch(user_id, item['id'], weight_idx, kind=kind)
                 await log_activity(user_id, "dungeon_reservoir_fish",
                                    f"Поймал «{fish_name}» ({tier['label']}) в водохранилище")
                 if fish_name == "Светящаяся форель":
@@ -1398,7 +1399,7 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
         if junk_name:
             junk_item = await get_item_by_name(junk_name)
             if junk_item:
-                await add_inventory_item(user_id, junk_item['id'], 1)
+                await add_fish_catch(user_id, junk_item['id'], 1, kind="resource")
                 await log_activity(user_id, "dungeon_reservoir_fish", f"Выловил «{junk_name}»")
                 sell_line = ""
                 if junk_item['sell_price'] > 0:
@@ -1410,7 +1411,7 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                     f"🎣 РЫБАЛКА\n\n"
                     f"Поплавок дёрнулся, ты подсекаешь...\n"
                     f"Из тёмной воды появляется: «{junk_name}»!\n\n"
-                    f"🎒 Предмет отправлен в инвентарь.{sell_line}"
+                    f"🎒 Улов записан в «Улов».{sell_line}"
                 ) + ap_block
                 local_photo = item_local_photo(junk_name)
                 if local_photo:
