@@ -5294,6 +5294,12 @@ PLANT_STAGES = [
 FRUIT_EVERY_DAYS = 2
 APPLE_SEED_NAME = "Яблочное семечко"
 APPLE_NAME = "Яблоко"
+# Название растения в кадке: seed_name → как называется выросшее растение
+# (семечко — это товар в магазине, в кадке выращивается само растение).
+# Неизвестные семечки показываются своим названием (как раньше).
+PLANT_NAMES = {
+    "Яблочное семечко": "Яблоня",
+}
 FOOD_SHELF_DAYS = 4  # срок годности жареной рыбы (96 часов)
 # Срок годности сырой (неприготовленной) рыбы: 4 дня с момента поимки.
 RAW_FISH_SHELF_DAYS = 4
@@ -5600,6 +5606,7 @@ async def plant_seed(user_id: int, slot_index: int, seed_item_id: int):
     now = time.time()
     plant_data = {
         "seed": seed['name'],
+        "plant_name": PLANT_NAMES.get(seed['name'], seed['name']),
         "stage_started_at": now,
         "last_harvest_at": None,
         "fruits": 0,

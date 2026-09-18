@@ -11,6 +11,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, Inli
 from database.db import (
     get_user, get_player_housing, set_player_housing, get_housing_slots, set_housing_slot,
     ensure_player_housing, HOUSING_TYPES, HOUSING_ORDER, PLANT_STAGES, FRUIT_EVERY_DAYS,
+    PLANT_NAMES,
     get_recipes, get_recipe, get_ingredient_map, consume_ingredient,
     plant_seed, plant_stage_info, harvest_plant,
     get_inventory, get_item, get_item_by_name,
@@ -362,6 +363,7 @@ async def _room_plant(cb, uid, idx, slot, ht):
         pass
 
     seed_name = data.get("seed")
+    plant_name = data.get("plant_name") or (PLANT_NAMES.get(seed_name, seed_name) if seed_name else seed_name)
     if not seed_name:
         # Пустая кадка — список семян в инвентаре
         inv = await get_inventory(uid)
@@ -388,7 +390,7 @@ async def _room_plant(cb, uid, idx, slot, ht):
     fruits = info["fruits"]
     next_in = info["next_in"]
 
-    lines = [f"🌱 *Растение: {seed_name}*\nСтадия: {stage_name}"]
+    lines = [f"🌱 *Растение: {plant_name}*\nСтадия: {stage_name}"]
     if stage < 4 and next_in > 0:
         lines.append(f"До следующей стадии: {next_in/86400:.1f} сут.")
     elif fruits > 0:
@@ -718,7 +720,8 @@ async def housing_install_item(cb: CallbackQuery):
     await remove_inventory_item(uid, item_id, 1)
     await increment_housing_expansions(uid)
     if restored_pd and restored_pd.get("seed"):
-        await cb.answer(f"✅ «{item['name']}» установлена — растение «{restored_pd['seed']}» восстановлено!",
+        rp_name = restored_pd.get("plant_name") or PLANT_NAMES.get(restored_pd["seed"], restored_pd["seed"])
+        await cb.answer(f"✅ «{item['name']}» установлена — растение «{rp_name}» восстановлено!",
                         show_alert=True)
     else:
         await cb.answer(f"✅ «{item['name']}» установлено в слот {empty+1}.", show_alert=True)
@@ -753,6 +756,7 @@ async def housing_uninstall(cb: CallbackQuery):
             ht = (await get_player_housing(uid))["housing_type"]
             info = plant_stage_info(data, time.time())
             stage_name = PLANT_STAGES[info["stage"]][0]
+            plant_name = data.get("plant_name") or PLANT_NAMES.get(data["seed"], data["seed"])
             installed = await get_housing_expansions_installed(uid)
             cost = replanning_cost(ht) if installed > 0 else 0
             cost_line = (f"\n💸 Повторная установка расширения будет платной "
@@ -766,7 +770,7 @@ async def housing_uninstall(cb: CallbackQuery):
             await _paint(
                 cb,
                 f"🌱 *Убрать кадку с растением?*\n\n"
-                f"Растение «{data['seed']}» (стадия: {stage_name}) будет удалено "
+                f"Растение «{plant_name}» (стадия: {stage_name}) будет удалено "
                 f"безвозвратно — семечко и прогресс не вернутся.\n"
                 f"Кадка снова станет обычной пустой.{cost_line}",
                 _housing_photo(ht),
