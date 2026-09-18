@@ -61,20 +61,21 @@ HOUSING_ITEM_BY_NAME = {
     "Особняк": "mansion",
 }
 
-# Картинки стадий растений: seed_name → {0..4: путь}. Файлы в assets/img/housing.
-# Паттерн: пустая кадка показывает базовую картинку (EMPTY_KADKA_PHOTO), после
-# посадки — индивидуальную картинку под каждый вид семечек по стадиям роста.
-# Сейчас ключи пустые (пользователь готовит изображения) — действует фолбэк
-# на фото жилья. Как только файлы появятся, картинки включатся сами.
+# Картинки стадий растений: seed_name → {1..4: путь}. Файлы в assets/img/housing.
+# Под стадией 0 («Семя») показывается общая «стоковая» кадка — EMPTY_KADKA_PHOTO
+# (фото кадки без растения, подпись стадии идёт в тексте описания).
+# Стадии 1..4 — индивидуальные картинки под каждый вид семечек.
+# Новое семечко из админ-мастера без своих файлов просто получит фолбэк
+# на фото комнаты (см. _room_plant).
 EMPTY_KADKA_PHOTO = "assets/img/housing/kadka.jpg"
 PLANT_PHOTOS: dict[str, dict[int, str]] = {
-    # "Яблочное семечко": {
-    #     0: "assets/img/housing/plant_apple_0.jpg",  # Семя
-    #     1: "assets/img/housing/plant_apple_1.jpg",  # Росток
-    #     2: "assets/img/housing/plant_apple_2.jpg",  # Куст
-    #     3: "assets/img/housing/plant_apple_3.jpg",  # Зрелое дерево
-    #     4: "assets/img/housing/plant_apple_4.jpg",  # Плодоносит
-    # },
+    "Яблочное семечко": {
+        # 0: общая кадка (EMPTY_KADKA_PHOTO) — отдельный файл не нужен
+        1: "assets/img/housing/plant_apple_1.jpg",  # Росток
+        2: "assets/img/housing/plant_apple_2.jpg",  # Саженец
+        3: "assets/img/housing/plant_apple_3.jpg",  # Цветущее
+        4: "assets/img/housing/plant_apple_4.jpg",  # Плодоносящее
+    },
 }
 
 FRIED_PREFIX = "Жареный "
@@ -408,11 +409,14 @@ async def _room_plant(cb, uid, idx, slot, ht):
     rows.append([_inv_row("🔙 К жилью", "housing:menu")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
 
-    # Картинка стадии растения: индивидуальная под вид семечка (если загружена),
-    # иначе — фото жилья как раньше.
-    seed_photos = PLANT_PHOTOS.get(seed_name) or {}
-    p = seed_photos.get(stage)
-    plant_photo = p if p and os.path.isfile(p) else _housing_photo(ht)
+    # Картинка стадии растения: «Семя» — общая стоковая кадка, дальше —
+    # индивидуальная под вид семечка (если её файл загружен), иначе — фото комнаты.
+    if stage == 0:
+        plant_photo = EMPTY_KADKA_PHOTO if os.path.isfile(EMPTY_KADKA_PHOTO) else _housing_photo(ht)
+    else:
+        seed_photos = PLANT_PHOTOS.get(seed_name) or {}
+        p = seed_photos.get(stage)
+        plant_photo = p if p and os.path.isfile(p) else _housing_photo(ht)
     await _paint(cb, "\n".join(lines), plant_photo, kb)
 
 

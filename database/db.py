@@ -5287,9 +5287,9 @@ HOUSING_ORDER = ["municipal", "studio", "apartment", "improved", "mansion"]
 PLANT_STAGES = [
     ("Семя", 2),
     ("Росток", 4),
-    ("Куст", 8),
-    ("Зрелое дерево", 16),
-    ("Плодоносит", None),
+    ("Саженец", 8),
+    ("Цветущее", 16),
+    ("Плодоносящее", None),
 ]
 FRUIT_EVERY_DAYS = 2
 APPLE_SEED_NAME = "Яблочное семечко"
