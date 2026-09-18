@@ -1378,7 +1378,7 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
             chance = _catch_chance(rod, bait_name, (await get_award_bonus(callback.from_user.id))['fishing'])
             caught = random.random() * 100 < chance
             if caught:
-                fish_name = _pick_reservoir_fish()
+                fish_name = await _pick_reservoir_fish()
                 item = await get_item_by_name(fish_name)
                 if not item:
                     result = "❌ Ошибка: рыба не определена."
