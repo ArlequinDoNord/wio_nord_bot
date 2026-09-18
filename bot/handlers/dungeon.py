@@ -283,8 +283,11 @@ def contract_missing_keyboard():
 async def answer_enemy_photo(where, enemy, text, reply_markup=None):
     """Отправляет сообщение с фото врага; если файла нет — падает на текстовое."""
     image = enemy['image'] if 'image' in enemy.keys() and enemy['image'] else None
-    if image and os.path.isfile(image):
-        return await where.answer_photo(photo=FSInputFile(image), caption=text, reply_markup=reply_markup)
+    if image:
+        if os.path.isfile(image):
+            return await where.answer_photo(photo=FSInputFile(image), caption=text, reply_markup=reply_markup)
+        # Админ мог прислать фото ботом — сохраняем Telegram file_id.
+        return await where.answer_photo(photo=image, caption=text, reply_markup=reply_markup)
     return await where.answer(text, reply_markup=reply_markup)
 
 
@@ -317,7 +320,11 @@ async def roll_enemy_drops(run_id: int, enemy) -> list:
             drops = []
     for d in drops:
         if random.random() < d.get('chance', 0):
-            item = await get_item_by_name(d.get('item', ''))
+            item = None
+            if d.get('item_id'):
+                item = await get_item(int(d['item_id']))
+            if not item:
+                item = await get_item_by_name(d.get('item', '') or '')
             if item:
                 qty = max(1, int(d.get('qty', 1)))
                 await add_run_item(run_id, item['id'], qty)

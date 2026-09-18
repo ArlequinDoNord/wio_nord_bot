@@ -21,6 +21,7 @@ from database.db import (
     get_special_dept_code, get_special_fails, register_special_fail,
     is_special_blocked, special_dept_block_left_minutes, clear_special_blocked,
     get_fish_offers, get_fish_offer, remove_fish_offer,
+    get_item_offers, get_item_offer, remove_item_offer,
 )
 from keyboards.keyboards import (
     shop_catalog_keyboard, item_card_keyboard, cancel_keyboard, main_menu_kb,
@@ -40,7 +41,7 @@ router = Router()
 CATEGORIES = [
     "weapon", "consumable", "equipment", "building", "resource",
     "special", "special_dept", "souvenirs", "library_card", "fishing",
-    "housing", "furniture", "seeds",
+    "housing", "furniture", "seeds", "license", "market",
 ]
 PER_PAGE = 6
 
@@ -116,11 +117,12 @@ async def visible_items(user_id: int, items) -> list:
 
 
 def fish_offer_items(offers) -> list:
-    """Псевдо-товары рыбного рынка для ленты каталога «Расходники»."""
+    """Псевдо-товары рыбного рынка для ленты каталога «Рынок»."""
     out = []
     for o in offers:
         out.append({
             "__offer__": True,
+            "__offer_type__": "fish",
             "id": o["id"],
             "name": o["name"],
             "rarity": o["rarity"],
@@ -131,6 +133,29 @@ def fish_offer_items(offers) -> list:
             "armor": 0,
         })
     return out
+
+
+def item_offer_items(offers) -> list:
+    """Псевдо-товары предметного рынка для ленты каталога «Рынок»."""
+    out = []
+    for o in offers:
+        out.append({
+            "__offer__": True,
+            "__offer_type__": "item",
+            "id": o["id"],
+            "name": o["name"],
+            "rarity": o["rarity"],
+            "price": o["price"],
+            "damage": 0,
+            "armor": 0,
+        })
+    return out
+
+
+async def market_offer_items() -> list:
+    """Лента «Рынка»: обычные предметы + рыба."""
+    return (item_offer_items(await get_item_offers())
+            + fish_offer_items(await get_fish_offers()))
 
 
 async def status_req_label(tag: str) -> str:
@@ -157,9 +182,9 @@ async def shop_menu(message: Message):
     for it in items:
         if it['category'] in counts:
             counts[it['category']] += 1
-    padder = fish_offer_items(await get_fish_offers())
+    padder = await market_offer_items()
     if padder:
-        counts['consumable'] = counts.get('consumable', 0) + len(padder)
+        counts['market'] = counts.get('market', 0) + len(padder)
     counts = {k: v for k, v in counts.items() if v > 0}
 
     if not counts:
@@ -183,9 +208,9 @@ async def shop_catalog(callback: CallbackQuery):
     for it in items:
         if it['category'] in counts:
             counts[it['category']] += 1
-    padder = fish_offer_items(await get_fish_offers())
+    padder = await market_offer_items()
     if padder:
-        counts['consumable'] = counts.get('consumable', 0) + len(padder)
+        counts['market'] = counts.get('market', 0) + len(padder)
     counts = {k: v for k, v in counts.items() if v > 0}
     await edit_or_replace(
         callback.message,
@@ -198,9 +223,10 @@ async def shop_catalog(callback: CallbackQuery):
 async def shop_category(callback: CallbackQuery):
     await callback.answer()
     category = callback.data.split(":")[1]
-    items = await visible_items(callback.from_user.id, await get_available_items(category=category))
-    if category == "consumable":
-        items = items + fish_offer_items(await get_fish_offers())
+    if category == "market":
+        items = await market_offer_items()
+    else:
+        items = await visible_items(callback.from_user.id, await get_available_items(category=category))
     if not items:
         await callback.message.edit_text(
             "В этой категории пока нет доступных товаров.", reply_markup=None)
@@ -219,10 +245,16 @@ def items_page_markup(items, category, page: int):
     buttons = []
     for it in chunk:
         if isinstance(it, dict) and it.get("__offer__"):
-            buttons.append([InlineKeyboardButton(
-                text=f"🐟 {it['name']} — {it['price']} НМ",
-                callback_data=f"fishoffer:{it['id']}"
-            )])
+            if it.get("__offer_type__") == "item":
+                buttons.append([InlineKeyboardButton(
+                    text=f"📦 {it['name']} — {it['price']} НМ",
+                    callback_data=f"itemoffer:{it['id']}"
+                )])
+            else:
+                buttons.append([InlineKeyboardButton(
+                    text=f"🐟 {it['name']} — {it['price']} НМ",
+                    callback_data=f"fishoffer:{it['id']}"
+                )])
             continue
         emoji = rarity_emoji(it['rarity'])
         stats = ""
@@ -259,9 +291,10 @@ async def show_items_page(callback: CallbackQuery, category: str, items, page: i
 async def shop_category_page(callback: CallbackQuery):
     await callback.answer()
     category, page = callback.data.split(":")[1], int(callback.data.split(":")[2])
-    items = await visible_items(callback.from_user.id, await get_available_items(category=category))
-    if category == "consumable":
-        items = items + fish_offer_items(await get_fish_offers())
+    if category == "market":
+        items = await market_offer_items()
+    else:
+        items = await visible_items(callback.from_user.id, await get_available_items(category=category))
     await show_items_page(callback, category, items, page)
 
 
@@ -656,7 +689,7 @@ async def fish_offer_view(callback: CallbackQuery):
         [InlineKeyboardButton(
             text=f"💰 Купить за {offer['price']} {plural_nordmark(offer['price'])}",
             callback_data=f"fishbuy:{offer['id']}")],
-        [InlineKeyboardButton(text="🔙 Расходники", callback_data="shopcat:consumable")],
+        [InlineKeyboardButton(text="🔙 Рынок", callback_data="shopcat:market")],
     ])
 
     photo_id = item['photo_file_id'] if item and 'photo_file_id' in item.keys() else None
@@ -720,6 +753,108 @@ async def fish_buy(callback: CallbackQuery):
     await callback.message.answer(
         f"✅ Куплено: {offer['name']} за {price} {plural_nordmark(price)}!\n"
         f"⏳ Срок годности продолжился — храни в прохладном месте."
+    )
+
+
+@router.callback_query(F.data.startswith("itemoffer:"))
+async def item_offer_view(callback: CallbackQuery):
+    await callback.answer()
+    offer_id = int(callback.data.split(":")[1])
+    offer = await get_item_offer(offer_id)
+    if not offer:
+        await edit_or_replace(callback.message, "❌ Этот предмет уже продан.", None)
+        return
+
+    item = await get_item(offer['item_id'])
+    seller = await get_user(offer['seller_id'])
+    seller_name = (f"@{seller['username']}" if seller and seller['username']
+                   else f"#{offer['seller_id']}")
+    text = (
+        f"{rarity_emoji(offer['rarity'])} {offer['name']} {rarity_emoji(offer['rarity'])}\n"
+        f"Редкость: {rarity_label(offer['rarity'])}\n\n"
+    )
+    dots = []
+    if item:
+        if item['damage']:
+            dots.append(f"⚔️ Урон: {item['damage']}")
+        if item['armor']:
+            dots.append(f"🛡 Броня: {item['armor']}")
+        if item['heal']:
+            dots.append(f"💚 Лечение: {item['heal']}")
+        if item['description']:
+            dots.append(f"📝 {item['description']}")
+    if dots:
+        text += " • ".join(dots) + "\n\n"
+    text += (
+        f"👨‍🏭 Продаёт: {seller_name}\n"
+        f"📊 База (скупщик): {offer['sell_price'] or 0} НМ\n\n"
+        f"💰 Цена: {offer['price']} {plural_nordmark(offer['price'])}"
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"💰 Купить за {offer['price']} {plural_nordmark(offer['price'])}",
+            callback_data=f"itembuy:{offer['id']}")],
+        [InlineKeyboardButton(text="🔙 Рынок", callback_data="shopcat:market")],
+    ])
+
+    photo_id = item['photo_file_id'] if item and 'photo_file_id' in item.keys() else None
+    local_photo = None if photo_id else (item_local_photo(offer['name'])
+                                         if item else None)
+    if photo_id or local_photo:
+        from aiogram.types import InputMediaPhoto, FSInputFile
+        media = photo_id or FSInputFile(local_photo)
+        try:
+            if callback.message.photo:
+                await callback.message.edit_media(
+                    media=InputMediaPhoto(media=media, caption=text), reply_markup=kb)
+            else:
+                await callback.message.delete()
+                await callback.message.answer_photo(photo=media, caption=text, reply_markup=kb)
+        except Exception:
+            await callback.message.answer_photo(photo=media, caption=text, reply_markup=kb)
+    else:
+        await edit_or_replace(callback.message, text, kb)
+
+
+@router.callback_query(F.data.startswith("itembuy:"))
+async def item_buy(callback: CallbackQuery):
+    await callback.answer()
+    user_id = callback.from_user.id
+    offer_id = int(callback.data.split(":")[1])
+    offer = await get_item_offer(offer_id)
+    if not offer:
+        await edit_or_replace(callback.message, "❌ Этот предмет уже продан.", None)
+        return
+    if offer['seller_id'] == user_id:
+        await callback.message.answer("❌ Это твоё собственное объявление — купить его нельзя.")
+        return
+
+    user = await get_user(user_id)
+    price = offer['price']
+    if user['nordmarks'] < price:
+        await callback.message.answer(
+            f"❌ Недостаточно. Нужно {price} {plural_nordmark(price)}")
+        return
+
+    await remove_nordmarks(user_id, price, "shop_purchase",
+                           f"Покупка с рынка: {offer['name']}")
+    await add_inventory_item(user_id, offer['item_id'], 1)
+
+    sale_tax = await get_sale_tax_percent()
+    tax_amount = int(price * sale_tax / 100)
+    seller_pay = price - tax_amount
+    await add_nordmarks(offer['seller_id'], seller_pay, "shop_payout",
+                        f"Продажа с рынка: {offer['name']} ({sale_tax}% налог)")
+    await add_treasury(tax_amount, f"Налог: {offer['name']}")
+
+    await remove_item_offer(offer_id)
+    await log_activity(user_id, "shop_purchase",
+                       f"Купил с рынка «{offer['name']}» за {price} НМ")
+    await log_activity(offer['seller_id'], "shop_sale",
+                       f"Продан с рынка «{offer['name']}» за {price} НМ")
+    await callback.message.answer(
+        f"✅ Куплено: {offer['name']} за {price} {plural_nordmark(price)}!\n"
+        f"🎒 Предмет уже в твоём инвентаре."
     )
 
 

@@ -458,6 +458,17 @@ async def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_market_fish ON market_fish(created_at);
 
+        CREATE TABLE IF NOT EXISTS market_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            seller_id INTEGER NOT NULL,
+            item_id INTEGER NOT NULL,
+            price INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (seller_id) REFERENCES users(user_id),
+            FOREIGN KEY (item_id) REFERENCES items(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_market_items ON market_items(created_at);
+
         CREATE TABLE IF NOT EXISTS statuses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
@@ -673,6 +684,9 @@ async def init_db():
     # dungeons.rooms_map — число обычных комнат по этажам (JSON-массив, e.g. [9,8]).
     # Босс этажа встречается, когда room_number >= rooms_map[floor-1].
     await _ensure_column(conn, "dungeons", "rooms_map", "TEXT")
+    # v0.13.2: предметы, которые можно выставлять на рыночную витрину
+    # (рынок), а не только продавать скупщику. Не выставленные — только скупщик.
+    await _ensure_column(conn, "items", "market_ok", "INTEGER DEFAULT 0")
     await conn.commit()
     await ensure_base_statuses()
     await conn.commit()
@@ -978,14 +992,15 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
                    photo_file_id: str = None, ap_cost: int = 0,
                    production_time_hours: int = 0, produced_by: int = None,
                    damage: int = 0, heal: int = 0, armor: int = 0,
-                   drink_effect: str = None, equip_slot: str = None):
+                   drink_effect: str = None, equip_slot: str = None,
+                   market_ok: int = 0):
     conn = await get_db()
     cursor = await conn.execute(
         """INSERT INTO items (name, description, photo_file_id, price, sell_price,
-           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (name, description, photo_file_id, price, sell_price, rarity, category,
-         stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot)
+         stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok)
     )
     await conn.commit()
     return cursor.lastrowid
@@ -3388,6 +3403,52 @@ async def get_fish_offers():
     return await cursor.fetchall()
 
 
+# ──────────────── Рынок: обычные предметы (market_items) ────────────────
+
+async def place_item_offer(seller_id: int, item_id: int, price: int) -> int:
+    """Выставляет обычный предмет на рыночную витрину. Возвращает id объявления."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "INSERT INTO market_items (seller_id, item_id, price) VALUES (?, ?, ?)",
+        (seller_id, item_id, price)
+    )
+    await conn.commit()
+    return cursor.lastrowid
+
+
+async def get_item_offers():
+    """Активные объявления обычных предметов на рынке (со сведениями о предмете)."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT mi.id, mi.seller_id, mi.item_id, mi.price,
+               i.name, i.rarity, i.sell_price
+        FROM market_items mi
+        JOIN items i ON i.id = mi.item_id
+        ORDER BY mi.id
+    """)
+    return await cursor.fetchall()
+
+
+async def get_item_offer(offer_id: int):
+    """Одно объявление обычного предмета (со сведениями о предмете)."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT mi.*, i.name, i.rarity, i.sell_price
+        FROM market_items mi
+        JOIN items i ON i.id = mi.item_id
+        WHERE mi.id = ?
+    """, (offer_id,))
+    return await cursor.fetchone()
+
+
+async def remove_item_offer(offer_id: int) -> bool:
+    """Удаляет объявление обычного предмета (куплено или снято)."""
+    conn = await get_db()
+    cursor = await conn.execute("DELETE FROM market_items WHERE id = ?", (offer_id,))
+    await conn.commit()
+    return cursor.rowcount > 0
+
+
 async def get_fish_offer(offer_id: int):
     conn = await get_db()
     cursor = await conn.execute("""
@@ -3628,8 +3689,11 @@ async def get_market_slots_info(user_id: int) -> dict:
 
     cursor = await conn.execute(
         "SELECT COUNT(*) as c FROM market_fish WHERE seller_id = ?", (user_id,))
-    active_count = (await cursor.fetchone())['c']
-    return {"total_slots": total, "active_count": active_count,
+    fish_count = (await cursor.fetchone())['c']
+    cursor = await conn.execute(
+        "SELECT COUNT(*) as c FROM market_items WHERE seller_id = ?", (user_id,))
+    item_count = (await cursor.fetchone())['c']
+    return {"total_slots": total, "active_count": fish_count + item_count,
             "license_active": license_active, "license_expires": license_expires}
 
 
@@ -3637,7 +3701,11 @@ async def count_user_market_offers(user_id: int) -> int:
     conn = await get_db()
     cursor = await conn.execute(
         "SELECT COUNT(*) as c FROM market_fish WHERE seller_id = ?", (user_id,))
-    return (await cursor.fetchone())['c']
+    fish_count = (await cursor.fetchone())['c']
+    cursor = await conn.execute(
+        "SELECT COUNT(*) as c FROM market_items WHERE seller_id = ?", (user_id,))
+    item_count = (await cursor.fetchone())['c']
+    return fish_count + item_count
 
 
 async def activate_market_license(user_id: int):
@@ -4247,7 +4315,8 @@ async def get_dungeon_enemies(dungeon_id: int):
 # Поля врага, которые админ правит через бота.
 ENEMY_EDITABLE_FIELDS = ("hp", "attack", "dodge", "poison_chance",
                          "poison_dmg", "reward_nm", "drops",
-                         "bleed_chance", "bleed_dmg", "frostbite_chance")
+                         "bleed_chance", "bleed_dmg", "frostbite_chance",
+                         "description", "image")
 
 
 async def update_enemy_fields(enemy_id: int, **fields):
@@ -4270,6 +4339,50 @@ async def update_enemy_fields(enemy_id: int, **fields):
     await conn.execute(
         f"UPDATE dungeon_enemies SET {', '.join(sets)} WHERE id = ?", vals)
     await conn.commit()
+    return True
+
+
+async def get_enemy_drops(enemy_id: int) -> list:
+    """Дропы врага как список dict; пустой список, если дропов нет."""
+    enemy = await get_enemy(enemy_id)
+    if not enemy or not enemy.get('drops'):
+        return []
+    try:
+        drops = json.loads(enemy['drops'])
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return drops if isinstance(drops, list) else []
+
+
+async def set_enemy_drops(enemy_id: int, drops: list):
+    """Сохраняет список дропов врага (JSON) и помечает admin_tuned=1."""
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE dungeon_enemies SET drops = ?, admin_tuned = 1 WHERE id = ?",
+        (json.dumps(drops, ensure_ascii=False), enemy_id))
+    await conn.commit()
+
+
+async def add_enemy_drop(enemy_id: int, item_id: int, chance: float, qty: int):
+    """Добавляет дроп: item_id + шанс (0–1) + кол-во. Существующий item_id — заменяется."""
+    drops = await get_enemy_drops(enemy_id)
+    entry = {"item_id": item_id, "chance": chance, "qty": max(1, int(qty))}
+    for d in drops:
+        if d.get('item_id') == item_id:
+            d.update(entry)
+            await set_enemy_drops(enemy_id, drops)
+            return
+    drops.append(entry)
+    await set_enemy_drops(enemy_id, drops)
+
+
+async def remove_enemy_drop(enemy_id: int, index: int) -> bool:
+    """Удаляет дроп по индексу. True, если удалено."""
+    drops = await get_enemy_drops(enemy_id)
+    if not 0 <= index < len(drops):
+        return False
+    del drops[index]
+    await set_enemy_drops(enemy_id, drops)
     return True
 
 
@@ -5032,16 +5145,17 @@ async def ensure_dungeon_enemy_drops():
                      f["bleed_chance"], f["bleed_dmg"], f["frostbite_chance"], f["description"])
                 )
             else:
-                # Этаж и описание синхронизируем всегда (этаж нужен для переезда
-                # боссов между ярусами; описание не правится админом). Остальную
-                # боевую статистику не трогаем, если врага калибровал админ.
-                base = "floor = ?, description = ?"
-                base_vals = [floor_idx, f["description"]]
+                # Этаж синхронизируем всегда (нужен для переезда боссов между ярусами).
+                # Описание/картинка тоже правится админом через бота — поэтому их,
+                # как и боевую статистику, не трогаем, если врага калибровал админ.
+                base = "floor = ?"
+                base_vals = [floor_idx]
                 if not existing['admin_tuned']:
-                    base += ", hp = ?, attack = ?, reward_nm = ?, drops = ?, image = ?, " \
+                    base += ", description = ?, hp = ?, attack = ?, reward_nm = ?, drops = ?, image = ?, " \
                             "poison_chance = ?, poison_dmg = ?, dodge = ?, " \
                             "bleed_chance = ?, bleed_dmg = ?, frostbite_chance = ?"
-                    base_vals += [f["hp"], f["attack"], f["reward_nm"], drops_json, f["image"],
+                    base_vals += [f["description"], f["hp"], f["attack"], f["reward_nm"],
+                                  drops_json, f["image"],
                                   f["poison_chance"], f["poison_dmg"], f["dodge"],
                                   f["bleed_chance"], f["bleed_dmg"], f["frostbite_chance"]]
                 base_vals += [dungeon_id, f["name"], f["is_boss"]]

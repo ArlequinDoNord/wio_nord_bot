@@ -14,6 +14,7 @@ from database.db import (
     get_equipment, set_equipment_slot, clear_equipment_slot, log_activity,
     get_fish_catches, take_fish_catch, sell_one_fish_catch, get_active_run,
     process_food_expiry, add_fish_offer, RAW_FISH_SHELF_SEC,
+    place_item_offer,
     get_market_slots_info,
     item_fits_slot, ARMOR_SLOTS, EQUIPMENT_SLOT_LABELS, EQUIPMENT_LOCKED_SLOTS,
 )
@@ -123,7 +124,7 @@ def inv_list_markup(items, catches=None, back_cb: str = "back:main", back_label:
 
 def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equipped: bool = False,
                     equip_slot: str = None, potion_slots: list = None, sellable: bool = True,
-                    qty: int = 1, occupied: dict = None):
+                    qty: int = 1, occupied: dict = None, market_ok: bool = False):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = []
     if can_use:
@@ -157,6 +158,8 @@ def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equip
             ])
         else:
             buttons.append([InlineKeyboardButton(text="💵 Продать", callback_data=f"inv_sell:{item_id}")])
+    if market_ok:
+        buttons.append([InlineKeyboardButton(text="🏪 На рынок", callback_data=f"itemmarket:{item_id}")])
     buttons.append([InlineKeyboardButton(text="📤 Передать", callback_data=f"inv_transfer:{item_id}")])
     buttons.append([InlineKeyboardButton(text="🔙 В категорию", callback_data=f"inventory:cat:{category}")])
     buttons.append([InlineKeyboardButton(text="🔙 К списку категорий", callback_data="inventory:list")])
@@ -519,7 +522,8 @@ async def _render_item_card(message, user_id: int, item_id: int, note: str = "")
                              potion_slots=potion_slots,
                              sellable=(item['sell_price'] or 0) > 0 and sellable_qty > 0,
                              qty=sellable_qty,
-                             occupied=occupied)
+                             occupied=occupied,
+                             market_ok=bool(item.get('market_ok')) and sellable_qty > 0)
 
     photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
     local_photo = None if photo_id else item_local_photo(item['name'])
@@ -788,6 +792,150 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
         await _render_item_card(callback.message, user_id, item_id, note=receipt)
     else:
         await edit_or_replace(callback.message, receipt)
+
+
+# ── Рынок: выкладка обычного предмета (±30% от sell_price) ──
+
+@router.callback_query(F.data.startswith("itemmarket:"))
+async def item_market_set_price(callback: CallbackQuery):
+    """Экран выбора цены ±30% от sell_price для обычного предмета."""
+    await callback.answer()
+    item_id = int(callback.data.split(":")[1])
+    user_id = callback.from_user.id
+    item = await get_item(item_id)
+    if not item:
+        return
+    if not item.get('market_ok'):
+        await callback.message.answer("❌ Этот предмет запрещён к продаже на рынке.")
+        return
+    inv = await get_inventory_item(user_id, item_id)
+    if not inv or inv['quantity'] < 1:
+        await callback.message.answer("❌ Предмета уже нет в инвентаре.")
+        return
+    base = item['sell_price']
+    if not base:
+        await callback.message.answer("❌ У предмета нет базовой цены (sell_price = 0).")
+        return
+    await _show_item_price_screen(callback, item, base, base)
+
+
+def _item_price_keyboard(item_id: int, current: int, base: int):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    min_p = max(1, int(base * 0.7))
+    max_p = int(base * 1.3)
+    current = max(min_p, min(max_p, current))
+
+    adj_row = []
+    p10d = max(min_p, current - max(1, current // 10))
+    p1d = max(min_p, current - 1)
+    p1i = min(max_p, current + 1)
+    p10i = min(max_p, current + max(1, current // 10))
+    if p10d < current:
+        adj_row.append(InlineKeyboardButton(text="−10", callback_data=f"itemprice:{item_id}:{p10d}"))
+    if p1d < current and p1d != p10d:
+        adj_row.append(InlineKeyboardButton(text="−1", callback_data=f"itemprice:{item_id}:{p1d}"))
+    if p1i > current:
+        adj_row.append(InlineKeyboardButton(text="+1", callback_data=f"itemprice:{item_id}:{p1i}"))
+    if p10i > current and p10i != p1i:
+        adj_row.append(InlineKeyboardButton(text="+10", callback_data=f"itemprice:{item_id}:{p10i}"))
+
+    rows = []
+    if adj_row:
+        rows.append(adj_row)
+    rows.append([InlineKeyboardButton(
+        text=f"✅ Выставить за {current} НМ",
+        callback_data=f"itemgo:{item_id}:{current}")])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"invitem:{item_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _show_item_price_screen(callback, item, current, base):
+    min_p = max(1, int(base * 0.7))
+    max_p = int(base * 1.3)
+    current = max(min_p, min(max_p, current))
+    text = (
+        f"🏪 ВЫСТАВЛЕНИЕ НА РЫНОК\n\n"
+        f"{rarity_emoji(item['rarity'])} {item['name']} {rarity_emoji(item['rarity'])}\n\n"
+        f"📊 Базовая цена (скупщик): {base} НМ\n"
+        f"💲 Цена продажи: {current} НМ\n"
+        f"📐 Диапазон: {min_p} – {max_p} НМ\n\n"
+        f"Выбери цену кнопками или подтверди."
+    )
+    if current <= min_p:
+        text += "\n\n⚠️ Достигнут нижний предел (−30% от базы). Ниже выставить нельзя."
+    elif current >= max_p:
+        text += "\n\n⚠️ Достигнут верхний предел (+30% от базы). Выше выставить нельзя."
+    kb = _item_price_keyboard(item['id'], current, base)
+    try:
+        await callback.message.edit_text(text, reply_markup=kb)
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("itemprice:"))
+async def item_price_adjust(callback: CallbackQuery):
+    await callback.answer()
+    _, item_id_s, price_s = callback.data.split(":")
+    item_id, price = int(item_id_s), int(price_s)
+    item = await get_item(item_id)
+    if not item or not item.get('market_ok'):
+        return
+    await _show_item_price_screen(callback, item, price, item['sell_price'])
+
+
+@router.callback_query(F.data.startswith("itemgo:"))
+async def item_market_confirm(callback: CallbackQuery):
+    """Подтверждение выкладки: проверка слотов, списание 1 шт., объявление."""
+    await callback.answer()
+    _, item_id_s, price_s = callback.data.split(":")
+    item_id, price = int(item_id_s), int(price_s)
+    user_id = callback.from_user.id
+    item = await get_item(item_id)
+    if not item or not item.get('market_ok'):
+        return
+
+    base = item['sell_price'] or 0
+    min_p = max(1, int(base * 0.7))
+    max_p = int(base * 1.3)
+    price = max(min_p, min(max_p, price))
+
+    slots = await get_market_slots_info(user_id)
+    if slots['active_count'] >= slots['total_slots']:
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        await callback.message.answer(
+            f"❌ Нет свободных слотов!\n"
+            f"У тебя {slots['active_count']}/{slots['total_slots']} активных объявлений.\n\n"
+            f"💡 Купи «Торговую лицензию» в Магазине → «Торговые лицензии» — +2 слота на 30 дней.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛒 Магазин → Лицензии", callback_data="shopcat:license")],
+                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"invitem:{item_id}")],
+            ])
+        )
+        return
+
+    eq = await get_equipment(user_id)
+    used_slots = [s for s in EQUIPMENT_SLOT_LABELS if eq.get(s) == item_id]
+    if used_slots:
+        await callback.message.answer(
+            f"❌ «{item['name']}» используется в снаряжении — сначала сними его.")
+        return
+
+    inv = await get_inventory_item(user_id, item_id)
+    if not inv or inv['quantity'] < 1:
+        await callback.message.answer("❌ Предмета уже нет в инвентаре.")
+        return
+
+    await remove_inventory_item(user_id, item_id, 1)
+    await place_item_offer(user_id, item_id, price)
+    await log_activity(user_id, "shop_sale",
+                       f"Выставил «{item['name']}» на рынок за {price} НМ (база {base})")
+    await callback.message.answer(
+        f"🏪 «{item['name']}» выставлен на продажу за "
+        f"{price} {plural_nordmark(price)}!\n\n"
+        f"📊 База (скупщик): {base} НМ | Твоя: {price} НМ\n"
+        f"💰 Нордмарки придут после покупки (за вычетом налога)."
+    )
+    await _render_item_card(callback.message, user_id, item_id)
 
 
 @router.callback_query(F.data.startswith("fishcatch:"))

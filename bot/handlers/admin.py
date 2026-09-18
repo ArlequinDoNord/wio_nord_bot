@@ -28,6 +28,7 @@ from database.db import (
     update_location_content, update_location_photos, location_access_label,
     get_all_dungeons, get_dungeon, update_dungeon_photos,
     get_dungeon_enemies, get_enemy, update_enemy_fields,
+    get_enemy_drops, set_enemy_drops, add_enemy_drop, remove_enemy_drop,
     create_award, get_all_awards, get_award, delete_award, grant_award,
     get_user_awards, revoke_award,
     get_water_fish_rows, get_water_fish_row, update_water_fish_field,
@@ -62,6 +63,7 @@ class AdminAddItem(StatesGroup):
     equip_slot = State()
     producer = State()
     producer_user = State()
+    market = State()
     photo = State()
 
 
@@ -173,6 +175,9 @@ class AdminDungeon(StatesGroup):
     enemy_id = State()       # выбранный враг
     enemy_field = State()    # поле врага, которое правим
     enemy_value = State()    # ждём новое значение поля врага
+    drop_chance = State()    # ждём шанс дропа (%, 1–100)
+    drop_qty = State()       # ждём кол-во дропа (1 и более)
+    pending_enemy_id = State()  # враг, которому назначаем только что созданный предмет
 
 
 # ============ УТИЛИТЫ ============
@@ -420,6 +425,8 @@ def category_choice_markup():
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     rows = []
     for key, label in ITEM_CATEGORIES.items():
+        if key == "market":
+            continue  # витрина «Рынок» собирается из офферов игроков, а не обычных товаров
         rows.append([InlineKeyboardButton(text=f"{label}", callback_data=f"cat:{key}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -973,17 +980,13 @@ async def add_item_producer(callback: CallbackQuery, state: FSMContext):
     if choice == "player":
         await state.set_state(AdminAddItem.producer_user)
         await callback.message.answer(
-            "Шаг 8/9 — Введи @username или ID игрока, который продаёт этот товар "
+            "Шаг 8/10 — Введи @username или ID игрока, который продаёт этот товар "
             "(выручка с налогом уйдёт ему):",
             reply_markup=cancel_keyboard()
         )
         return
     await state.update_data(produced_by=None)
-    await state.set_state(AdminAddItem.photo)
-    await callback.message.answer(
-        "Шаг 9/9 — Загрузи фото товара (или «-» если без фото):",
-        reply_markup=cancel_keyboard()
-    )
+    await _go_add_item_market(callback.message, state)
 
 
 @router.message(AdminAddItem.producer_user)
@@ -993,9 +996,31 @@ async def add_item_producer_user(message: Message, state: FSMContext):
         await message.answer("❌ Игрок не найден. Попробуй @username или ID (или /cancel):")
         return
     await state.update_data(produced_by=producer['user_id'])
-    await state.set_state(AdminAddItem.photo)
+    await _go_add_item_market(message, state)
+
+
+async def _go_add_item_market(message: Message, state: FSMContext):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await state.set_state(AdminAddItem.market)
     await message.answer(
-        "Шаг 9/9 — Загрузи фото товара (или «-» если без фото):",
+        "Шаг 9/10 — Можно ли продавать этот предмет на РЫНКЕ "
+        "(другие игроки смогут покупать его с витрины)?\n"
+        "Если нет — предмет продаётся только скупщику.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🏪 Да, можно на рынок", callback_data="marketok:yes")],
+            [InlineKeyboardButton(text="💵 Нет, только скупщику", callback_data="marketok:no")],
+        ])
+    )
+
+
+@router.callback_query(F.data.startswith("marketok:"))
+async def add_item_market_choice(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    choice = callback.data.split(":")[1]
+    await state.update_data(market_ok=1 if choice == "yes" else 0)
+    await state.set_state(AdminAddItem.photo)
+    await callback.message.answer(
+        "Шаг 10/10 — Загрузи фото товара (или «-» если без фото):",
         reply_markup=cancel_keyboard()
     )
 
@@ -1026,10 +1051,27 @@ async def add_item_photo(message: Message, state: FSMContext):
         damage=data.get('damage', 0), armor=data.get('armor', 0),
         heal=data.get('heal', 0), drink_effect=data.get('drink_effect'),
         equip_slot=data.get('equip_slot'),
+        market_ok=data.get('market_ok', 0),
     )
     await log_action(admin_id, 'add_item', data.get('produced_by'),
                      f"item={data['name']} id={item_id}")
     await state.clear()
+
+    # Если мастер запущен из менеджера дропов — предмет создан как дроп врага:
+    # сразу просим шанс выпадения и добавляем в дроп-лист врага.
+    pending_enemy = data.get('pending_enemy_id')
+    if pending_enemy:
+        enemy = await get_enemy(int(pending_enemy))
+        await state.update_data(enemy_id=int(pending_enemy), drop_item_id=item_id,
+                                drop_index=None, pending_enemy_id=None)
+        await state.set_state(AdminDungeon.drop_chance)
+        await message.answer(
+            f"✅ Предмет «{data['name']}» создан.\n\n"
+            f"💼 Добавляем его в дропы «{enemy['name'] if enemy else '?»'}.\n"
+            f"Введи шанс выпадения, % (1–100):",
+            reply_markup=cancel_keyboard(),
+        )
+        return
     stats_line = ""
     if data.get('damage'):
         stats_line += f"\n⚔️ Урон: {data['damage']}"
@@ -1047,6 +1089,7 @@ async def add_item_photo(message: Message, state: FSMContext):
         f"Редкость: {RARITY_LEVELS.get(data['rarity'])}\n"
         f"Категория: {ITEM_CATEGORIES.get(data['category'], data['category'])}\n"
         f"Остаток: {'безлимит' if stock == -1 else stock}"
+        f"\n🏪 Рынок: {'можно продавать' if data.get('market_ok') else 'только скупщик'}"
         f"{stats_line}"
     )
 
@@ -1137,6 +1180,7 @@ async def edit_item_pick(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text="🔒 Требуемый статус", callback_data="field:required_status")],
             [InlineKeyboardButton(text="🖼 Картинка", callback_data="field:photo")],
             [InlineKeyboardButton(text="🍺 Тип напитка (действие)", callback_data="field:drink")],
+            [InlineKeyboardButton(text="🏪 Рынок (вкл/выкл)", callback_data="field:market_ok")],
             [InlineKeyboardButton(text="🚧 Вкл/выкл продажу", callback_data="field:is_available")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="shop_admin:edit")],
         ])
@@ -1255,6 +1299,26 @@ async def edit_item_set_drink(callback: CallbackQuery, state: FSMContext):
                      f"item_id={item_id} drink_effect={new_effect}")
     await state.clear()
     await callback.message.answer(f"✅ Тип напитка «{item['name']}» установлен: {label}.")
+
+
+@router.callback_query(F.data == "field:market_ok")
+async def edit_item_field_market_toggle(callback: CallbackQuery, state: FSMContext):
+    """Вкл/выкл флага «можно продавать на рынке» без ввода текста."""
+    await callback.answer()
+    data = await state.get_data()
+    item_id = data.get('item_id')
+    item = await get_item(item_id) if item_id else None
+    if not item:
+        await state.clear()
+        await callback.message.answer("❌ Товар не найден.")
+        return
+    new_val = 0 if item.get('market_ok') else 1
+    await update_item(item_id, market_ok=new_val)
+    await log_action(callback.from_user.id, 'edit_item', None,
+                     f"item_id={item_id} market_ok={new_val}")
+    label = "можно продавать" if new_val else "только скупщик"
+    await callback.message.answer(f"✅ «{item['name']}»: 🏪 Рынок → {label}.")
+    await state.clear()
 
 
 @router.callback_query(F.data.startswith("field:"))
@@ -3175,6 +3239,8 @@ ENEMY_FIELD_LABELS = {
     "poison_dmg": "☠️ Урон яда (HP/ход)",
     "reward_nm": "💰 Награда (НМ)",
     "drops": "💼 Дропы",
+    "description": "📝 Описание",
+    "image": "🖼 Картинка",
 }
 
 ENEMY_INPUT_PROMPTS = {
@@ -3189,7 +3255,11 @@ ENEMY_INPUT_PROMPTS = {
              "Например:\n"
              "Хвост крысы | 15 | 1\n"
              "Осколок кристалла | 5 | 1\n\n"
-             "«-» — убрать все дропы.",
+             "«-» — убрать все дропы.\n\n"
+             "💡 Удобнее пользоваться меню «💼 Дропы» в карточке врага — "
+             "там можно добавлять предметы из игры или создавать новые.",
+    "description": "Введи описание врага (или «-» чтобы очистить):",
+    "image": "Отправь фото врага (Telegram-фото). Или «-» чтобы убрать картинку:",
 }
 
 
@@ -3243,11 +3313,16 @@ async def _enemy_card_send(source, enemy_id: int, edit: bool = False):
             drops = []
     drop_lines = []
     if drops:
-        for d in drops:
+        for n, d in enumerate(drops):
             ch = d.get('chance', 0)
             ch_pct = f"{int(ch * 100)}%" if ch <= 1 else f"{int(ch)}%"
             qty = d.get('qty', 1)
-            drop_lines.append(f"   • {d.get('item', '?')} — {ch_pct}" +
+            if d.get('item_id'):
+                it = await get_item(int(d['item_id']))
+                item_label = it['name'] if it else f"#{d['item_id']}"
+            else:
+                item_label = d.get('item', '?')
+            drop_lines.append(f"   {n + 1}. {item_label} — {ch_pct}" +
                               (f" ×{qty}" if qty != 1 else ""))
     else:
         drop_lines.append("   — дропов нет")
@@ -3258,6 +3333,9 @@ async def _enemy_card_send(source, enemy_id: int, edit: bool = False):
     else:
         poison_line = "☠️ Яда нет"
 
+    photo_state = "есть" if enemy.get('image') else "нет"
+    desc_line = f"📝 {enemy['description']}" if enemy.get('description') else "📝 описания нет"
+
     text = (
         f"👾 {enemy['name']}{'  👑 БОСС' if enemy.get('is_boss') else ''}\n"
         f"──────────────\n"
@@ -3266,6 +3344,8 @@ async def _enemy_card_send(source, enemy_id: int, edit: bool = False):
         f"💨 УКЛ: {enemy.get('dodge', 0)}%\n"
         f"{poison_line}\n"
         f"💰 Награда: {enemy.get('reward_nm', 0)} НМ\n"
+        f"🖼 Картинка: {photo_state}\n"
+        f"{desc_line}\n"
         f"💼 Дропы:\n" + "\n".join(drop_lines) +
         f"\n\n⚠️ После правки стартовая синхронизация больше не перезапишет "
         f"характеристики этого врага.\nЧто изменить?"
@@ -3278,7 +3358,9 @@ async def _enemy_card_send(source, enemy_id: int, edit: bool = False):
         [InlineKeyboardButton(text="☠️ Шанс яда", callback_data="enemy_field:poison_chance")],
         [InlineKeyboardButton(text="☠️ Урон яда (HP/ход)", callback_data="enemy_field:poison_dmg")],
         [InlineKeyboardButton(text="💰 Награда (НМ)", callback_data="enemy_field:reward_nm")],
-        [InlineKeyboardButton(text="💼 Дропы", callback_data="enemy_field:drops")],
+        [InlineKeyboardButton(text="📝 Описание", callback_data="enemy_field:description")],
+        [InlineKeyboardButton(text="🖼 Картинка", callback_data="enemy_field:image")],
+        [InlineKeyboardButton(text="💼 Дропы", callback_data=f"enemy_drops:{enemy_id}")],
         [InlineKeyboardButton(text="🔙 К списку врагов", callback_data="dungeon:enemies")],
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
@@ -3374,6 +3456,37 @@ async def dungeon_enemy_value(message: Message, state: FSMContext):
 
     text = (message.text or "").strip()
     parsed = None
+
+    # Картинка: принимаем только фото (или «-» для очистки).
+    if field == "image":
+        if message.photo:
+            parsed = message.photo[-1].file_id
+        elif text in ("-", "—"):
+            parsed = None
+        else:
+            await message.answer(f"❌ Отправь именно фото (или «-» для очистки).\n"
+                                 f"{ENEMY_INPUT_PROMPTS[field]}",
+                                 reply_markup=cancel_keyboard())
+            return
+        await update_enemy_fields(enemy_id, image=parsed)
+        await log_action(message.from_user.id, 'edit_enemy', None,
+                         f"enemy_id={enemy_id} image={'file_id' if parsed else 'cleared'}")
+        await state.clear()
+        await message.answer(f"✅ «{enemy['name']}»: 🖼 Картинка {'обновлена' if parsed else 'убрана'}.")
+        await _enemy_card_send(message, enemy_id)
+        return
+
+    if field == "description":
+        parsed = None if text in ("-", "—") else text
+        await update_enemy_fields(enemy_id, description=parsed)
+        await log_action(message.from_user.id, 'edit_enemy', None,
+                         f"enemy_id={enemy_id} description={'cleared' if parsed is None else parsed[:200]}")
+        await state.clear()
+        await message.answer(f"✅ «{enemy['name']}»: 📝 Описание "
+                             + ("очищено." if parsed is None else "обновлено."))
+        await _enemy_card_send(message, enemy_id)
+        return
+
     if field in ("hp", "attack", "poison_dmg", "reward_nm"):
         if text.isdigit():
             parsed = int(text)
@@ -3416,6 +3529,300 @@ async def dungeon_enemy_value(message: Message, state: FSMContext):
 
     await message.answer(f"✅ «{enemy['name']}»: {ENEMY_FIELD_LABELS[field]} = {label}.")
     await _enemy_card_send(message, enemy_id)
+
+
+# ============ АДМИН: МЕНЕДЖЕР ДРОПОВ ВРАГА ============
+
+DROPS_PER_PAGE = 8
+
+
+async def _drop_label(d: dict) -> str:
+    """Человечный заголовок дропа: имя предмета (или «#id») + шанс + кол-во."""
+    if d.get('item_id'):
+        it = await get_item(int(d['item_id']))
+        label = it['name'] if it else f"#{d['item_id']}"
+    else:
+        label = d.get('item', '?')
+    ch = d.get('chance', 0)
+    ch_pct = f"{int(ch * 100)}%" if ch <= 1 else f"{int(ch)}%"
+    qty = d.get('qty', 1)
+    return f"{label} — {ch_pct}" + (f" ×{qty}" if qty != 1 else ""), label, ch_pct, qty
+
+
+async def _drops_manager_send(source, enemy_id: int):
+    """Экран менеджера дропов врага; source — CallbackQuery или Message."""
+    enemy = await get_enemy(enemy_id)
+    if not enemy:
+        await source.answer("❌ Враг не найден.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    drops = await get_enemy_drops(enemy_id)
+    lines = [f"💼 ДРОПЫ «{enemy['name']}»\n"]
+    rows = []
+    if drops:
+        for n, d in enumerate(drops):
+            label, *_ = await _drop_label(d)
+            lines.append(f"{n + 1}. {label}")
+            rows.append([InlineKeyboardButton(
+                text=f"⚙️ {n + 1}. {label}",
+                callback_data=f"eddrop:{enemy_id}:{n}",
+            )])
+    else:
+        lines.append("Дропов пока нет.")
+    lines.append("\nДобавь предметы из игры или создай новый — он будет падать с врага.")
+    rows.append([InlineKeyboardButton(text="➕ Предмет из игры",
+                                      callback_data=f"editem_pick:{enemy_id}:0")])
+    rows.append([InlineKeyboardButton(text="➕ Создать новый предмет",
+                                      callback_data=f"editem_new:{enemy_id}")])
+    rows.append([InlineKeyboardButton(text="🔙 В карточку врага",
+                                      callback_data=f"dungeon:enemy:{enemy_id}")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    if hasattr(source, 'message') and source.message is not None:
+        try:
+            await source.message.edit_text("\n".join(lines), reply_markup=kb)
+            return
+        except Exception:
+            pass
+    if hasattr(source, 'message'):
+        await source.message.answer("\n".join(lines), reply_markup=kb)
+    else:
+        await source.answer("\n".join(lines), reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("enemy_drops:"))
+async def enemy_drops_manager(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        enemy_id = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        return
+    await state.update_data(enemy_id=enemy_id)
+    await _drops_manager_send(callback, enemy_id)
+
+
+@router.callback_query(F.data.startswith("editem_pick:"))
+async def enemy_drop_pick_items(callback: CallbackQuery, state: FSMContext):
+    """Выбор предмета из существующих в игре (постранично)."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        _, _, enemy_id_s, page_s = callback.data.split(":")
+        enemy_id, page = int(enemy_id_s), int(page_s)
+    except ValueError:
+        return
+    enemy = await get_enemy(enemy_id)
+    if not enemy:
+        await callback.message.answer("❌ Враг не найден.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    all_items = await get_all_items()
+    pages = max(1, (len(all_items) + DROPS_PER_PAGE - 1) // DROPS_PER_PAGE)
+    page = max(0, min(page, pages - 1))
+    chunk = all_items[page * DROPS_PER_PAGE:(page + 1) * DROPS_PER_PAGE]
+    rows = []
+    for it in chunk:
+        emoji = RARITY_EMOJI.get(it['rarity'], "❔")
+        cat = ITEM_CATEGORIES.get(it['category'], it['category'])
+        rows.append([InlineKeyboardButton(
+            text=f"{emoji} {it['name']} — {cat}",
+            callback_data=f"editem_add:{enemy_id}:{it['id']}",
+        )])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"editem_pick:{enemy_id}:{page - 1}"))
+    nav.append(InlineKeyboardButton(text=f"{page + 1}/{pages}", callback_data="noop"))
+    if page < pages - 1:
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"editem_pick:{enemy_id}:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text="➕ Создать новый предмет",
+                                      callback_data=f"editem_new:{enemy_id}")])
+    rows.append([InlineKeyboardButton(text="🔙 К дропам", callback_data=f"enemy_drops:{enemy_id}")])
+    await callback.message.edit_text(
+        f"💼 ДРОПЫ «{enemy['name']}» → выбери предмет из игры:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    )
+
+
+@router.callback_query(F.data.startswith("editem_add:"))
+async def enemy_drop_pick_item(callback: CallbackQuery, state: FSMContext):
+    """Выбран предмет из игры: просим шанс выпадения."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        _, _, enemy_id_s, item_id_s = callback.data.split(":")
+        enemy_id, item_id = int(enemy_id_s), int(item_id_s)
+    except ValueError:
+        return
+    item = await get_item(item_id)
+    enemy = await get_enemy(enemy_id)
+    if not item or not enemy:
+        await callback.message.answer("❌ Предмет или враг не найдены.")
+        return
+    await state.update_data(enemy_id=enemy_id, drop_item_id=item_id, drop_index=None)
+    await state.set_state(AdminDungeon.drop_chance)
+    await callback.message.answer(
+        f"💼 Дроп «{item['name']}» у врага «{enemy['name']}».\n"
+        f"Введи шанс выпадения, % (1–100):",
+        reply_markup=cancel_keyboard(),
+    )
+
+
+@router.callback_query(F.data.startswith("editem_new:"))
+async def enemy_drop_new_item(callback: CallbackQuery, state: FSMContext):
+    """Создание нового предмета (полный мастер, как в магазине) для дропа врага."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        enemy_id = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        return
+    enemy = await get_enemy(enemy_id)
+    if not enemy:
+        await callback.message.answer("❌ Враг не найден.")
+        return
+    await state.update_data(pending_enemy_id=enemy_id, pending_enemy_name=enemy['name'])
+    await state.set_state(AdminAddItem.name)
+    await callback.message.answer(
+        f"💼 Создание предмета-дропа для врага «{enemy['name']}».\n\n"
+        f"🛒 Шаг 1/10 — Введи название предмета (или /cancel):",
+        reply_markup=cancel_keyboard(),
+    )
+
+
+@router.callback_query(F.data.startswith("eddrop:"))
+async def enemy_drop_edit_menu(callback: CallbackQuery, state: FSMContext):
+    """Подменю правки конкретного дропа (шанс / кол-во / удалить)."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        _, _, enemy_id_s, idx_s = callback.data.split(":")
+        enemy_id, idx = int(enemy_id_s), int(idx_s)
+    except ValueError:
+        return
+    enemy = await get_enemy(enemy_id)
+    drops = await get_enemy_drops(enemy_id)
+    if not enemy or not 0 <= idx < len(drops):
+        await callback.message.answer("❌ Дроп не найден (список изменился).")
+        return
+    label, _, ch_pct, qty = await _drop_label(drops[idx])
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"🎲 Шанс: {ch_pct}", callback_data=f"eddrop_set_ch:{enemy_id}:{idx}")],
+        [InlineKeyboardButton(text=f"🔢 Кол-во: {qty}", callback_data=f"eddrop_set_q:{enemy_id}:{idx}")],
+        [InlineKeyboardButton(text="🗑 Удалить из дропов", callback_data=f"eddrop_del:{enemy_id}:{idx}")],
+        [InlineKeyboardButton(text="🔙 К дропам", callback_data=f"enemy_drops:{enemy_id}")],
+    ])
+    await callback.message.edit_text(
+        f"💼 Дроп: {label}\n\nЧто изменить?",
+        reply_markup=kb,
+    )
+
+
+@router.callback_query(F.data.startswith("eddrop_set_ch:"))
+async def enemy_drop_set_chance(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        _, _, enemy_id_s, idx_s = callback.data.split(":")
+        enemy_id, idx = int(enemy_id_s), int(idx_s)
+    except ValueError:
+        return
+    await state.update_data(enemy_id=enemy_id, drop_index=idx, drop_item_id=None)
+    await state.set_state(AdminDungeon.drop_chance)
+    await callback.message.answer("🎲 Введи новый шанс выпадения, % (1–100):",
+                                  reply_markup=cancel_keyboard())
+
+
+@router.callback_query(F.data.startswith("eddrop_set_q:"))
+async def enemy_drop_set_qty(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        _, _, enemy_id_s, idx_s = callback.data.split(":")
+        enemy_id, idx = int(enemy_id_s), int(idx_s)
+    except ValueError:
+        return
+    await state.update_data(enemy_id=enemy_id, drop_index=idx)
+    await state.set_state(AdminDungeon.drop_qty)
+    await callback.message.answer("🔢 Введи новое кол-во (целое число ≥ 1):",
+                                  reply_markup=cancel_keyboard())
+
+
+@router.callback_query(F.data.startswith("eddrop_del:"))
+async def enemy_drop_delete(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        _, _, enemy_id_s, idx_s = callback.data.split(":")
+        enemy_id, idx = int(enemy_id_s), int(idx_s)
+    except ValueError:
+        return
+    if await remove_enemy_drop(enemy_id, idx):
+        await log_action(callback.from_user.id, 'edit_enemy', None,
+                         f"enemy_id={enemy_id} drop_{idx} removed")
+    await _drops_manager_send(callback, enemy_id)
+
+
+@router.message(AdminDungeon.drop_chance)
+async def enemy_drop_chance_value(message: Message, state: FSMContext):
+    data = await state.get_data()
+    text = (message.text or "").strip()
+    if not text.isdigit() or not (1 <= int(text) <= 100):
+        await message.answer("❌ Введи целое число от 1 до 100 (шанс в %):",
+                             reply_markup=cancel_keyboard())
+        return
+    chance = int(text) / 100.0
+    await state.update_data(drop_chance=chance)
+    await state.set_state(AdminDungeon.drop_qty)
+    await message.answer("🔢 Введи кол-во за выпадение (целое число ≥ 1):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminDungeon.drop_qty)
+async def enemy_drop_qty_value(message: Message, state: FSMContext):
+    data = await state.get_data()
+    text = (message.text or "").strip()
+    if not text.isdigit() or int(text) < 1:
+        await message.answer("❌ Введи целое число ≥ 1:", reply_markup=cancel_keyboard())
+        return
+    qty = int(text)
+    enemy_id = data.get('enemy_id')
+    enemy = await get_enemy(enemy_id) if enemy_id else None
+    if not enemy:
+        await state.clear()
+        await message.answer("❌ Враг не найден. Начни заново.")
+        return
+    chance = data.get('drop_chance', 0.1)
+    idx = data.get('drop_index')
+    if idx is not None:
+        drops = await get_enemy_drops(enemy_id)
+        if 0 <= idx < len(drops):
+            drops[idx]['chance'] = chance
+            drops[idx]['qty'] = qty
+            await set_enemy_drops(enemy_id, drops)
+    else:
+        item_id = data.get('drop_item_id')
+        if not item_id:
+            await state.clear()
+            await message.answer("❌ Предмет дропа не выбран. Начни заново.")
+            return
+        await add_enemy_drop(enemy_id, int(item_id), chance, qty)
+    await log_action(message.from_user.id, 'edit_enemy', None,
+                     f"enemy_id={enemy_id} drop chance={int(chance * 100)}% qty={qty}")
+    await state.update_data(drop_chance=None, drop_qty=None, drop_index=None, drop_item_id=None)
+    await state.set_state(None)
+    await message.answer("✅ Дроп обновлён.")
+    await _drops_manager_send(message, enemy_id)
 
 
 # ============ АДМИН: РЕДАКТОР РЫБАЛКИ (пулы по водоёмам) ============
