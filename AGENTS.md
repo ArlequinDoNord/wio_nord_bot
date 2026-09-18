@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Проект: игровой Telegram-бот (aiogram 3, aiosqlite). Python: `.venv\Scripts\python.exe`.
-Smoke-тест: `smoke_057.py`, ожидается 28/28 PASSED (регресс: 053/054/055/056).
+Smoke-тест: `smoke_058.py`, ожидается 32/32 PASSED (регресс: 053/054/055/056/057).
 
 ## Деплой
 - py_compile + smoke → бамп `VERSION`/`VERSION_NOTES` в `config.py`, `CHANGELOG.md` → commit → tag `vX.Y.Z` → `git push origin main --tags` (github ArlequinDoNord/wio_nord_bot) → `git push server main:master --tags` (server `arlequin@89.19.210.194:/opt/arlequin.git`, хук сам пересобирает контейнер).

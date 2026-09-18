@@ -37,6 +37,7 @@ from bot.handlers.fishing import (
     BAIT_BONUS, ROD_BONUS_PER_RANK,
     _rod_for, _resolve_bait, _bait_label, _bait_line,
     _catch_chance, _roll_fish_weight, _pick_junk,
+    FISHING_CASTING,
 )
 from utils.notify import notify, player_display
 from config import (
@@ -591,6 +592,10 @@ async def dungeon_continue(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     if len(parts) < 3 or int(parts[2]) != await dungeon_current_step(state):
         await callback.message.answer("⚠️ Это устаревшая кнопка. Открой подземелье заново и продолжай с последнего сообщения.")
+        return
+
+    if user_id in FISHING_CASTING:
+        await callback.answer("⏳ Сначала дождись улова из водохранилища!", show_alert=True)
         return
 
     if await state.get_state() == DungeonFSM.in_reservoir.state:
@@ -1292,6 +1297,9 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
     if await state.get_state() != DungeonFSM.in_reservoir.state:
         await callback.message.answer("❌ Ты больше не в водохранилище.")
         return
+    if user_id in FISHING_CASTING:
+        await callback.answer("🎣 Ты уже ждёшь улов — дождись результата!", show_alert=True)
+        return
     run = await get_active_run(user_id)
     if not run:
         await callback.message.answer("❌ Подземелье не найдено.")
@@ -1328,108 +1336,124 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
     # Перебиваем старую кнопку заброса (защита от двойного списания ОД).
     await dungeon_new_step(state)
 
-    bait_part = f" с наживкой «{bait_name}»" if bait_name else " без наживки"
+    # Пока идёт ожидание улова — держим лок: выйти, продолжить путь и
+    # повторный заброс блокируются (middleware FishingActiveLock + гарды ниже).
+    FISHING_CASTING.add(user_id)
     try:
-        await callback.message.edit_text(
-            f"🎣 Ты забрасываешь удочку{bait_part} в тёмную воду подземного водохранилища...\n"
-            "Поплавок замер неподвижно. Ждёшь..."
-        )
-    except Exception:
-        await callback.message.answer("🎣 Забрасываешь удочку...")
-
-    await asyncio.sleep(random.uniform(4, 7))
-
-    fresh = await get_user(user_id) or {}
-    _ap = fresh.get('ap', 0) or 0
-    _ap_max = fresh.get('ap_max', _ap) or _ap
-    ap_line = f"⚡ ОД: {_ap}/{_ap_max}"
-    if _ap < RESERVOIR_AP_COST:
-        ap_line += f" — на следующий заброс не хватит ({RESERVOIR_AP_COST} ОД)"
-    else:
-        ap_line += f" — можно забрасывать"
-    bait = await _bait_line(user_id, chosen)
-    ap_block = f"\n\n{ap_line}\n{bait}"
-
-    next_step = await dungeon_new_step(state)
-
-    if bait_name:
-        chance = _catch_chance(rod, bait_name, (await get_award_bonus(callback.from_user.id))['fishing'])
-        caught = random.random() * 100 < chance
-        if caught:
-            fish_name = _pick_reservoir_fish()
-            item = await get_item_by_name(fish_name)
-            if not item:
-                result = "❌ Ошибка: рыба не определена."
-            else:
-                weight_idx = _roll_fish_weight()
-                tier = fish_weight_tier(weight_idx)
-                sell = fish_sell_price(item['sell_price'], weight_idx)
-                kind = await get_water_fish_kind("reservoir", fish_name)
-                await add_fish_catch(user_id, item['id'], weight_idx, kind=kind)
-                await log_activity(user_id, "dungeon_reservoir_fish",
-                                   f"Поймал «{fish_name}» ({tier['label']}) в водохранилище")
-                if fish_name == "Светящаяся форель":
-                    name_line = "\n✨ СВЕТЯЩАЯСЯ ФОРЕЛЬ! Секретный улов, о котором шепчутся в Нордхайме!"
-                elif fish_name == "Искрящийся угорь":
-                    name_line = "\n🐡 Искрящийся угорь! Редкий улов."
-                else:
-                    name_line = "\n🐟 Мерцающий сом. Обычный, но вкусный."
-                result = (
-                    f"🎣 ПОКЛЁВКА!\n"
-                    f"{RESERVOIR_EMOJI.get(fish_name, '🐟')} Ты поймал: «{fish_name}» — "
-                    f"{tier['label'].lower()}!\n"
-                    f"{name_line}\n\n"
-                    f"🎒 Улов записан в «Улов» (Рыба). Раз в 4 дня сырая рыба портится.\n"
-                    f"Вес влияет на цену: продажа за {sell} {plural_nordmark(sell)}."
-                ) + ap_block
-                wf_photo = await get_water_fish_photo_by_name("reservoir", fish_name)
-                local_photo = item_local_photo(fish_name) if not wf_photo else None
-                await _resv_answer(callback.message, result, _reservoir_result_markup(next_step),
-                                   photo=local_photo, photo_id=wf_photo)
-                return
-        else:
-            result = (
-                "🎣 РЫБАЛКА\n\n"
-                "Поплавок дёрнулся, ты подсекаешь... и вдруг пусто.\n"
-                "Сорвалось. Но рыба никуда не денется — пробуй ещё!"
+        bait_part = f" с наживкой «{bait_name}»" if bait_name else " без наживки"
+        try:
+            await callback.message.edit_text(
+                f"🎣 Ты забрасываешь удочку{bait_part} в тёмную воду подземного водохранилища...\n"
+                "Поплавок замер неподвижно. Ждёшь..."
             )
-    else:
-        # Без наживки рыба не клюёт — из глубины достаётся только мусор.
-        junk_name = _pick_junk()
-        if junk_name:
-            junk_item = await get_item_by_name(junk_name)
-            if junk_item:
-                await add_fish_catch(user_id, junk_item['id'], 1, kind="resource")
-                await log_activity(user_id, "dungeon_reservoir_fish", f"Выловил «{junk_name}»")
-                sell_line = ""
-                if junk_item['sell_price'] > 0:
-                    sell_line = (
-                        f"\nПродать можно за {junk_item['sell_price']} "
-                        f"{plural_nordmark(junk_item['sell_price'])}."
-                    )
-                result = (
-                    f"🎣 РЫБАЛКА\n\n"
-                    f"Поплавок дёрнулся, ты подсекаешь...\n"
-                    f"Из тёмной воды появляется: «{junk_name}»!\n\n"
-                    f"🎒 Улов записан в «Улов».{sell_line}"
-                ) + ap_block
-                local_photo = item_local_photo(junk_name)
-                if local_photo:
+        except Exception:
+            await callback.message.answer("🎣 Забрасываешь удочку...")
+
+        await asyncio.sleep(random.uniform(4, 7))
+
+        # Забег мог завершиться (рестарт/форс-выход), пока мы ждали —
+        # результат не отдаём и улов не пишем.
+        run = await get_active_run(user_id)
+        if not run or await state.get_state() != DungeonFSM.in_reservoir.state:
+            try:
+                await edit_or_replace(callback.message, "🌊 Вода в водохранилище снова гладкая…", None)
+            except Exception:
+                pass
+            return
+
+        fresh = await get_user(user_id) or {}
+        _ap = fresh.get('ap', 0) or 0
+        _ap_max = fresh.get('ap_max', _ap) or _ap
+        ap_line = f"⚡ ОД: {_ap}/{_ap_max}"
+        if _ap < RESERVOIR_AP_COST:
+            ap_line += f" — на следующий заброс не хватит ({RESERVOIR_AP_COST} ОД)"
+        else:
+            ap_line += f" — можно забрасывать"
+        bait = await _bait_line(user_id, chosen)
+        ap_block = f"\n\n{ap_line}\n{bait}"
+
+        next_step = await dungeon_new_step(state)
+
+        if bait_name:
+            chance = _catch_chance(rod, bait_name, (await get_award_bonus(callback.from_user.id))['fishing'])
+            caught = random.random() * 100 < chance
+            if caught:
+                fish_name = _pick_reservoir_fish()
+                item = await get_item_by_name(fish_name)
+                if not item:
+                    result = "❌ Ошибка: рыба не определена."
+                else:
+                    weight_idx = _roll_fish_weight()
+                    tier = fish_weight_tier(weight_idx)
+                    sell = fish_sell_price(item['sell_price'], weight_idx)
+                    kind = await get_water_fish_kind("reservoir", fish_name)
+                    await add_fish_catch(user_id, item['id'], weight_idx, kind=kind)
+                    await log_activity(user_id, "dungeon_reservoir_fish",
+                                       f"Поймал «{fish_name}» ({tier['label']}) в водохранилище")
+                    if fish_name == "Светящаяся форель":
+                        name_line = "\n✨ СВЕТЯЩАЯСЯ ФОРЕЛЬ! Секретный улов, о котором шепчутся в Нордхайме!"
+                    elif fish_name == "Искрящийся угорь":
+                        name_line = "\n🐡 Искрящийся угорь! Редкий улов."
+                    else:
+                        name_line = "\n🐟 Мерцающий сом. Обычный, но вкусный."
+                    result = (
+                        f"🎣 ПОКЛЁВКА!\n"
+                        f"{RESERVOIR_EMOJI.get(fish_name, '🐟')} Ты поймал: «{fish_name}» — "
+                        f"{tier['label'].lower()}!\n"
+                        f"{name_line}\n\n"
+                        f"🎒 Улов записан в «Улов» (Рыба). Раз в 4 дня сырая рыба портится.\n"
+                        f"Вес влияет на цену: продажа за {sell} {plural_nordmark(sell)}."
+                    ) + ap_block
+                    wf_photo = await get_water_fish_photo_by_name("reservoir", fish_name)
+                    local_photo = item_local_photo(fish_name) if not wf_photo else None
                     await _resv_answer(callback.message, result, _reservoir_result_markup(next_step),
-                                       photo=local_photo)
-                else:
-                    await edit_or_replace(callback.message, result, _reservoir_result_markup(next_step))
-                return
+                                       photo=local_photo, photo_id=wf_photo)
+                    return
             else:
-                result = "🎣 Рыбалка\n\n👢 Что-то выловил, но предмет потерялся. Сообщи хранителю."
+                result = (
+                    "🎣 РЫБАЛКА\n\n"
+                    "Поплавок дёрнулся, ты подсекаешь... и вдруг пусто.\n"
+                    "Сорвалось. Но рыба никуда не денется — пробуй ещё!"
+                )
         else:
-            result = (
-                "🎣 РЫБАЛКА\n\n"
-                "Поплавок даже не дрогнул. Без наживки рыба не клюёт — "
-                "с дна достаётся только мусор. Попробуй с наживкой!"
-            )
-    result += ap_block
-    await edit_or_replace(callback.message, result, _reservoir_result_markup(next_step))
+            # Без наживки рыба не клюёт — из глубины достаётся только мусор.
+            junk_name = _pick_junk()
+            if junk_name:
+                junk_item = await get_item_by_name(junk_name)
+                if junk_item:
+                    await add_fish_catch(user_id, junk_item['id'], 1, kind="resource")
+                    await log_activity(user_id, "dungeon_reservoir_fish", f"Выловил «{junk_name}»")
+                    sell_line = ""
+                    if junk_item['sell_price'] > 0:
+                        sell_line = (
+                            f"\nПродать можно за {junk_item['sell_price']} "
+                            f"{plural_nordmark(junk_item['sell_price'])}."
+                        )
+                    result = (
+                        f"🎣 РЫБАЛКА\n\n"
+                        f"Поплавок дёрнулся, ты подсекаешь...\n"
+                        f"Из тёмной воды появляется: «{junk_name}»!\n\n"
+                        f"🎒 Улов записан в «Улов».{sell_line}"
+                    ) + ap_block
+                    local_photo = item_local_photo(junk_name)
+                    if local_photo:
+                        await _resv_answer(callback.message, result, _reservoir_result_markup(next_step),
+                                           photo=local_photo)
+                    else:
+                        await edit_or_replace(callback.message, result, _reservoir_result_markup(next_step))
+                    return
+                else:
+                    result = "🎣 Рыбалка\n\n👢 Что-то выловил, но предмет потерялся. Сообщи хранителю."
+            else:
+                result = (
+                    "🎣 РЫБАЛКА\n\n"
+                    "Поплавок даже не дрогнул. Без наживки рыба не клюёт — "
+                    "с дна достаётся только мусор. Попробуй с наживкой!"
+                )
+        result += ap_block
+        await edit_or_replace(callback.message, result, _reservoir_result_markup(next_step))
+    finally:
+        FISHING_CASTING.discard(user_id)
 
 
 @router.callback_query(F.data.regexp(r"^resv:deeper:\d+$"))
@@ -1440,6 +1464,9 @@ async def resv_deeper(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     if parts[2] != str(await dungeon_current_step(state)):
         await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        return
+    if user_id in FISHING_CASTING:
+        await callback.answer("⏳ Сначала дождись улова из водохранилища!", show_alert=True)
         return
     run = await get_active_run(user_id)
     if not run:
@@ -1591,38 +1618,91 @@ async def resv_eqclear(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "dungeon:exit")
 async def dungeon_exit(callback: CallbackQuery, state: FSMContext):
+    """Запрос подтверждения выхода из подземелья (против случайного клика)."""
     await callback.answer()
     user_id = callback.from_user.id
 
-    # Во время боя с боссом покинуть подземелье нельзя
+    # Во время боя с боссом покинуть подземелье нельзя.
     if await state.get_state() == DungeonFSM.in_boss.state:
-        run = await get_active_run(user_id)
         await callback.message.answer(
             "⚠️ Идёт бой с боссом! Убежать нельзя — это решающий бой.\n"
             "Продолжай бой кнопками последнего сообщения."
         )
         return
 
+    # Пока идёт рыбалка — сначала дождись улова.
+    if user_id in FISHING_CASTING:
+        await callback.answer("⏳ Сначала дождись улова из водохранилища!", show_alert=True)
+        return
+
     run = await get_active_run(user_id)
-    if run:
-        loot_nm = run['loot_nm'] or 0
-        items = await transfer_run_items_to_inventory(user_id, run['id'])
-        if loot_nm > 0:
-            await add_nordmarks(user_id, loot_nm, "dungeon_exit", "Вынесено из подземелья")
-        await end_run(run['id'], 0)
-        await log_activity(user_id, "dungeon_exit", "Покинул подземелье (досрочный выход)")
+    if not run:
+        await callback.message.answer("❌ Подземелье не найдено.")
+        await state.clear()
+        return
 
-        parts = []
-        if loot_nm > 0:
-            parts.append(f"💰 {loot_nm} Нордмарок")
-        parts.extend(f"🎁 {n} x{q}" for n, q in items)
+    loot_nm = run['loot_nm'] or 0
+    run_items = await get_run_items(run['id'])
 
-        if parts:
-            text = "📦 Ты выносишь из подземелья:\n" + "\n".join(parts) + "\n\nТы покидаешь подземелье."
-        else:
-            text = "Ты покидаешь подземелье ни с чем."
+    parts = []
+    if loot_nm > 0:
+        parts.append(f"💰 {loot_nm} Нордмарок")
+    parts.extend(f"🎁 {n} x{q}" for n, q in run_items)
+    loot_text = "\n".join(parts) if parts else "Ничего."
 
-        await callback.message.answer(text + "\n\nВойти снова?", reply_markup=dungeon_start_keyboard())
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.answer(
+        f"🚪 ПОКИНУТЬ ПОДЗЕМЕЛЬЕ?\n\n"
+        f"Ты уверен, что хочешь покинуть подземелье?\n\n"
+        f"📦 Ты выносишь:\n{loot_text}\n\n"
+        f"Вернуться в забег с этого момента будет нельзя.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, выйти", callback_data="dungeon:exit:confirm")],
+            [InlineKeyboardButton(text="↩️ Нет, остаться", callback_data="dungeon:exit:cancel")],
+        ])
+    )
+
+
+@router.callback_query(F.data == "dungeon:exit:confirm")
+async def dungeon_exit_confirm(callback: CallbackQuery, state: FSMContext):
+    """Фактический выход: перенос лута, начисление НМ, завершение забега."""
+    await callback.answer()
+    user_id = callback.from_user.id
+    run = await get_active_run(user_id)
+    if not run:
+        await callback.message.answer("❌ Подземелье не найдено.")
+        await state.clear()
+        return
+
+    loot_nm = run['loot_nm'] or 0
+    items = await transfer_run_items_to_inventory(user_id, run['id'])
+    if loot_nm > 0:
+        await add_nordmarks(user_id, loot_nm, "dungeon_exit", "Вынесено из подземелья")
+    await end_run(run['id'], 0)
+    await log_activity(user_id, "dungeon_exit", "Покинул подземелье (досрочный выход)")
+
+    parts = []
+    if loot_nm > 0:
+        parts.append(f"💰 {loot_nm} Нордмарок")
+    parts.extend(f"🎁 {n} x{q}" for n, q in items)
+
+    if parts:
+        text = "📦 Ты выносишь из подземелья:\n" + "\n".join(parts) + "\n\nТы покидаешь подземелье."
     else:
-        await callback.message.answer("Ты покидаешь подземелье.", reply_markup=dungeon_start_keyboard())
+        text = "Ты покидаешь подземелье ни с чем."
+
+    await callback.message.answer(text + "\n\nВойти снова?", reply_markup=dungeon_start_keyboard())
     await state.clear()
+
+
+@router.callback_query(F.data == "dungeon:exit:cancel")
+async def dungeon_exit_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена выхода — возврат к текущему экрану подземелья."""
+    await callback.answer("Продолжаем подземелье!", show_alert=False)
+    user_id = callback.from_user.id
+    run = await get_active_run(user_id)
+    if not run:
+        await callback.message.answer("❌ Подземелье не найдено.")
+        await state.clear()
+        return
+    await resume_dungeon(callback.message, run, user_id, state)
