@@ -598,6 +598,9 @@ async def init_db():
     await _ensure_column(conn, "dungeons", "photo_day", "TEXT")
     await _ensure_column(conn, "dungeons", "photo_sunset", "TEXT")
     await _ensure_column(conn, "dungeons", "photo_night", "TEXT")
+    # excluded=1 — рыбу убрали из водоёма через админа: пул её не показывает,
+    # а стартовая синхронизация (ensure_water_fish) не возвращает её обратно.
+    await _ensure_column(conn, "water_fish", "excluded", "INTEGER DEFAULT 0")
     # Рыбалка: выбранная игроком наживка ('worms'/'spider'/'none', '' = авто)
     await _ensure_column(conn, "users", "fishing_bait", "TEXT DEFAULT ''")
     # Позывной пилота (игровой ник, выставляется админом; показывается в карточке)
@@ -3436,7 +3439,7 @@ async def ensure_water_fish():
             if not item:
                 continue
             cursor = await conn.execute(
-                "SELECT id, admin_tuned, day_weight, night_weight FROM water_fish "
+                "SELECT id, admin_tuned, day_weight, night_weight, excluded FROM water_fish "
                 "WHERE water = ? AND item_id = ?",
                 (water, item['id'])
             )
@@ -3448,7 +3451,9 @@ async def ensure_water_fish():
                     (water, item['id'], day_w, night_w)
                 )
                 changed = True
-            elif not row['admin_tuned'] and (row['day_weight'] != day_w or row['night_weight'] != night_w):
+            elif not row['excluded'] and not row['admin_tuned'] and (
+                    row['day_weight'] != day_w or row['night_weight'] != night_w
+            ):
                 await conn.execute(
                     "UPDATE water_fish SET day_weight = ?, night_weight = ? WHERE id = ?",
                     (day_w, night_w, row['id'])
@@ -3468,7 +3473,7 @@ async def get_water_fish_rows(water: str):
                i.name, i.sell_price, i.rarity, i.price
         FROM water_fish wf
         JOIN items i ON i.id = wf.item_id
-        WHERE wf.water = ?
+        WHERE wf.water = ? AND wf.excluded = 0
         ORDER BY wf.id
     """, (water,))
     return await cursor.fetchall()
@@ -3496,7 +3501,7 @@ async def get_water_fish_pool(water: str):
                i.name, i.sell_price, i.rarity
         FROM water_fish wf
         JOIN items i ON i.id = wf.item_id
-        WHERE wf.water = ? AND (wf.day_weight > 0 OR wf.night_weight > 0)
+        WHERE wf.water = ? AND wf.excluded = 0 AND (wf.day_weight > 0 OR wf.night_weight > 0)
         ORDER BY wf.id
     """, (water,))
     return await cursor.fetchall()
@@ -3545,6 +3550,60 @@ async def set_water_fish_sell_price(wf_id: int, sell_price: int) -> bool:
     await conn.execute("UPDATE water_fish SET admin_tuned = 1 WHERE id = ?", (wf_id,))
     await conn.commit()
     return True
+
+
+async def add_water_fish(water: str, item_id: int, day_weight: int = 1,
+                         night_weight: int = 1) -> int | None:
+    """Добавляет рыбу в водоём (или возвращает убранную). Помечает admin_tuned,
+    чтобы стартовая синхронизация не перезаписала настройки. Возвращает wf_id."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id FROM water_fish WHERE water = ? AND item_id = ?",
+        (water, item_id)
+    )
+    row = await cursor.fetchone()
+    if row:
+        wf_id = row['id']
+        await conn.execute(
+            "UPDATE water_fish SET excluded = 0, day_weight = ?, night_weight = ?, "
+            "admin_tuned = 1 WHERE id = ?",
+            (int(day_weight), int(night_weight), wf_id)
+        )
+    else:
+        cursor = await conn.execute(
+            "INSERT INTO water_fish (water, item_id, day_weight, night_weight, admin_tuned) "
+            "VALUES (?, ?, ?, ?, 1)",
+            (water, item_id, int(day_weight), int(night_weight))
+        )
+        wf_id = cursor.lastrowid
+    await conn.commit()
+    return wf_id
+
+
+async def remove_water_fish(wf_id: int) -> bool:
+    """Убирает рыбу из водоёма (мягкое удаление: excluded=1)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "UPDATE water_fish SET excluded = 1, admin_tuned = 1 WHERE id = ?", (wf_id,)
+    )
+    await conn.commit()
+    return cursor.rowcount > 0
+
+
+async def get_water_fish_candidates(water: str):
+    """Рыбы (предметы категории fishing), которых ещё нет в водоёме, —
+    для кнопки «Добавить рыбу»."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT i.id, i.name, i.sell_price, i.rarity
+        FROM items i
+        WHERE i.category = 'fishing'
+          AND i.id NOT IN (
+              SELECT item_id FROM water_fish WHERE water = ? AND excluded = 0
+          )
+        ORDER BY i.name
+    """, (water,))
+    return await cursor.fetchall()
 
 
 # ──────────────── Рынок: слоты продажи + лицензия ────────────────

@@ -31,7 +31,8 @@ from database.db import (
     create_award, get_all_awards, get_award, delete_award, grant_award,
     get_user_awards, revoke_award,
     get_water_fish_rows, get_water_fish_row, update_water_fish_field,
-    set_water_fish_sell_price, WATER_LABELS, set_callsign,
+    set_water_fish_sell_price, add_water_fish, remove_water_fish,
+    get_water_fish_candidates, WATER_LABELS, set_callsign,
     log_activity, get_user_activity, clear_user_photo,
 )
 from keyboards.keyboards import cancel_keyboard
@@ -3433,7 +3434,7 @@ FISHING_INPUT_PROMPTS = {
 }
 
 
-async def _admin_fishing_card(source, wf_id: int):
+async def _admin_fishing_card(source, wf_id: int, prefix: str = ""):
     """Карточка рыбы в водоёме с кнопками правки."""
     fish = await get_water_fish_row(wf_id)
     if not fish:
@@ -3442,7 +3443,7 @@ async def _admin_fishing_card(source, wf_id: int):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     photo_state = "есть" if fish.get('photo_file_id') else "нет"
     text = (
-        f"🐟 {fish['name']}\n"
+        f"{prefix}🐟 {fish['name']}\n"
         f"──────────────\n"
         f"☀️ Вес дня: {fish['day_weight']}\n"
         f"🌙 Вес ночи: {fish['night_weight']}\n"
@@ -3456,13 +3457,14 @@ async def _admin_fishing_card(source, wf_id: int):
         [InlineKeyboardButton(text="🌙 Вес ночи", callback_data="fishing_field:night_weight")],
         [InlineKeyboardButton(text="🖼 Фото рыбы", callback_data="fishing_field:photo")],
         [InlineKeyboardButton(text="💰 Цена продажи", callback_data="fishing_field:sell_price")],
+        [InlineKeyboardButton(text="🗑 Удалить из водоёма", callback_data=f"fishing:del:{wf_id}")],
         [InlineKeyboardButton(text="🔙 К списку рыб", callback_data=f"fishing:water:{fish['water']}")],
     ]
     markup = InlineKeyboardMarkup(inline_keyboard=rows)
-    if hasattr(source, 'message'):
+    if hasattr(source, 'message') and source.message is not None:
         await source.message.edit_text(text, reply_markup=markup)
     else:
-        await source.edit_text(text, reply_markup=markup)
+        await source.answer(text, reply_markup=markup)
 
 
 @router.callback_query(F.data == "admin:fishing")
@@ -3495,10 +3497,14 @@ async def admin_fishing_water(callback: CallbackQuery, state: FSMContext):
         return
     await state.clear()
     await state.update_data(water=water)
+    await _admin_fishing_water_list(callback, water)
 
+
+async def _admin_fishing_water_list(callback: CallbackQuery, water: str, prefix: str = ""):
+    """Меню водоёма: список рыбы + кнопки «Добавить рыбу» и возврата."""
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     fishes = await get_water_fish_rows(water)
-    lines = [f"🐟 {WATER_LABELS[water]}\n"]
+    lines = [f"{prefix}🐟 {WATER_LABELS[water]}\n"]
     rows = []
     if fishes:
         for f in fishes:
@@ -3508,6 +3514,7 @@ async def admin_fishing_water(callback: CallbackQuery, state: FSMContext):
     else:
         lines.append("Рыб в этом водоёме пока нет.")
     lines.append("\nНажми на рыбу, чтобы настроить.")
+    rows.append([InlineKeyboardButton(text="➕ Добавить рыбу", callback_data=f"fishing:addlist:{water}")])
     rows.append([InlineKeyboardButton(text="🔙 К водоёмам", callback_data="admin:fishing")])
     await callback.message.edit_text("\n".join(lines),
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
@@ -3525,6 +3532,83 @@ async def admin_fishing_fish(callback: CallbackQuery, state: FSMContext):
         return
     await state.update_data(wf_id=wf_id)
     await _admin_fishing_card(callback, wf_id)
+
+
+@router.callback_query(F.data.startswith("fishing:addlist:"))
+async def admin_fishing_add_list(callback: CallbackQuery, state: FSMContext):
+    """Выбор рыбы для добавления в водоём."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    water = callback.data.split(":", 2)[2]
+    if water not in WATER_LABELS:
+        return
+    await state.update_data(water=water)
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    candidates = await get_water_fish_candidates(water)
+    lines = [f"➕ Добавление рыбы\n🐟 {WATER_LABELS[water]}\n"]
+    rows = []
+    if candidates:
+        for c in candidates:
+            rows.append([InlineKeyboardButton(
+                text=f"{c['name']} (продажа {c['sell_price']} НМ)",
+                callback_data=f"fishing:addfish:{water}:{c['id']}",
+            )])
+    else:
+        lines.append("Все рыбы (категория fishing) уже есть в этом водоёме.")
+    lines.append("\nРыба добавится с весом 1/1 — потом настроишь веса, фото и цену.")
+    rows.append([InlineKeyboardButton(text="🔙 К списку рыб", callback_data=f"fishing:water:{water}")])
+    await callback.message.edit_text("\n".join(lines),
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("fishing:addfish:"))
+async def admin_fishing_add(callback: CallbackQuery, state: FSMContext):
+    """Добавляет рыбу в водоём и сразу показывает её карточку."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        water, item_id = callback.data.split(":", 2)[2].split(":")
+        item_id = int(item_id)
+    except ValueError:
+        return
+    if water not in WATER_LABELS:
+        return
+    wf_id = await add_water_fish(water, item_id, 1, 1)
+    fish = await get_water_fish_row(wf_id) if wf_id else None
+    if not fish:
+        await callback.message.answer("❌ Не удалось добавить рыбу.")
+        return
+    await state.update_data(water=water, wf_id=wf_id)
+    await _admin_fishing_card(callback, wf_id,
+                              prefix=f"✅ «{fish['name']}» добавлена в водоём.\n\n")
+
+
+@router.callback_query(F.data.startswith("fishing:del:"))
+async def admin_fishing_del(callback: CallbackQuery, state: FSMContext):
+    """Убирает рыбу из водоёма и возвращает в меню водоёма."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        wf_id = int(callback.data.split(":", 2)[2])
+    except (ValueError, IndexError):
+        return
+    fish = await get_water_fish_row(wf_id)
+    if not fish:
+        await callback.message.answer("❌ Рыба не найдена.")
+        return
+    removed = await remove_water_fish(wf_id)
+    await log_action(callback.from_user.id, 'edit_fishing', None,
+                     f"wf_id={wf_id} removed={removed}")
+    await state.clear()
+    await state.update_data(water=fish['water'])
+    await _admin_fishing_water_list(
+        callback, fish['water'],
+        prefix=f"🗑 «{fish['name']}» убрана из водоёма.\n\n",
+    )
 
 
 @router.callback_query(F.data.startswith("fishing_field:"))
@@ -3587,8 +3671,10 @@ async def admin_fishing_value(message: Message, state: FSMContext):
                      f"wf_id={wf_id} {field}={parsed}")
     await state.clear()
     await state.update_data(water=fish['water'], wf_id=wf_id)
-    await message.answer(f"✅ «{fish['name']}»: {FISHING_FIELD_LABELS[field]} = {label}.")
-    await _admin_fishing_card(message, wf_id)
+    await _admin_fishing_card(
+        message, wf_id,
+        prefix=f"✅ «{fish['name']}»: {FISHING_FIELD_LABELS[field]} = {label}.\n\n",
+    )
 
 
 @router.callback_query(F.data == "loc:create")
