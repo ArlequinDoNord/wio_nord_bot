@@ -182,7 +182,8 @@ async def perm_flags(user_id: int) -> dict:
              "can_approve_reports", "can_manage_admins", "can_view_logs",
              "can_manage_statuses", "can_grant_statuses", "can_grant_troops",
              "can_manage_states", "can_manage_locations", "can_manage_salaries",
-             "can_manage_awards", "can_grant_awards", "can_manage_storage"]
+             "can_manage_awards", "can_grant_awards", "can_manage_storage",
+             "can_manage_users"]
     return {p: await has_permission(user_id, p) for p in perms}
 
 

@@ -21,6 +21,18 @@ def _callsign(user) -> str:
     return f"@{username}" if username else "—"
 
 
+def _pilot_name(user) -> str:
+    """Имя пилота: @username, иначе позывной, иначе реальное имя."""
+    username = (user.get('username') or '').strip()
+    if username:
+        return f"@{username}"
+    if user.get('callsign'):
+        return user['callsign']
+    first = (user.get('first_name') or '').strip()
+    last = (user.get('last_name') or '').strip()
+    return (f"{first} {last}").strip() or "—"
+
+
 class ProfileStates(StatesGroup):
     waiting_photo = State()
     waiting_about = State()
@@ -44,7 +56,7 @@ async def _profile_caption(user_id: int, owner: bool = True):
     photo = user['photo_file_id']
 
     caption = (
-        f"🪪 Пилот: {user['first_name']} {user['last_name'] or ''}\n"
+        f"🪪 Пилот: {_pilot_name(user)}\n"
         f"📡 Позывной: {_callsign(user)}\n"
     )
     if is_pilot:
@@ -149,7 +161,7 @@ async def render_other_profile(where, user_id: int):
         await out.answer("❌ Пилот не найден.")
         return
 
-    name = (user['first_name'] + " " + (user['last_name'] or "")).strip()
+    name = _pilot_name(user)
     rank = get_effective_rank(user['troops'], user['promoted_rank'] if 'promoted_rank' in user.keys() else None)
     status = await selected_status_label(user_id)
     about = (user.get('about') or '').strip()
@@ -337,7 +349,7 @@ async def pilot_card(callback: CallbackQuery):
         f"═══════════════════════════\n\n"
         f"ШТАБНОЙ ОТДЕЛ НОРДХАЙМА\n"
         f"───────────────────────────\n"
-        f"Имя: {user['first_name']} {user['last_name'] or ''}\n"
+        f"Имя: {_pilot_name(user)}\n"
         f"📡 Позывной: {_callsign(user)}\n"
         + rank_line
         + f"───────────────────────────\n"
