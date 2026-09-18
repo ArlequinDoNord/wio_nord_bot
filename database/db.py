@@ -691,6 +691,14 @@ async def init_db():
     # без срока годности, ингредиент). Также тип на записи водоёма.
     await _ensure_column(conn, "fish_catches", "kind", "TEXT DEFAULT 'fish'")
     await _ensure_column(conn, "water_fish", "kind", "TEXT DEFAULT 'fish'")
+    # v0.13.7: как называется выросшее растение в кадке (для предметов-семечек).
+    # Задаётся админом в мастере создания товара (шаг для категории "seeds").
+    await _ensure_column(conn, "items", "plant_name", "TEXT")
+    # v0.13.7: разовый backfill — у уже существующего семечка яблони
+    # название растения в кадке = «Яблоня».
+    await conn.execute(
+        "UPDATE items SET plant_name = 'Яблоня' "
+        "WHERE category = 'seeds' AND name = 'Яблочное семечко' AND plant_name IS NULL")
     # v0.13.3: рыба (предметы категории fishing) выставляется на рынок по
     # умолчанию. Разовое обновление для уже существующих предметов.
     cur = await conn.execute(
@@ -1005,7 +1013,7 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
                    production_time_hours: int = 0, produced_by: int = None,
                    damage: int = 0, heal: int = 0, armor: int = 0,
                    drink_effect: str = None, equip_slot: str = None,
-                   market_ok: int = None):
+                   market_ok: int = None, plant_name: str = None):
     conn = await get_db()
     # v0.13.3: рыба (категория fishing) по умолчанию выставляется на рынок;
     # у остальных предметов — только скупщик, пока админ не включит флаг.
@@ -1013,10 +1021,10 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
         market_ok = 1 if category == "fishing" else 0
     cursor = await conn.execute(
         """INSERT INTO items (name, description, photo_file_id, price, sell_price,
-           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (name, description, photo_file_id, price, sell_price, rarity, category,
-         stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok)
+         stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name)
     )
     await conn.commit()
     return cursor.lastrowid
@@ -5604,9 +5612,10 @@ async def plant_seed(user_id: int, slot_index: int, seed_item_id: int):
     if not inv or inv['quantity'] < 1:
         return False, "Семечка нет в инвентаре."
     now = time.time()
+    seed_plant_name = seed.get('plant_name') or PLANT_NAMES.get(seed['name'], seed['name'])
     plant_data = {
         "seed": seed['name'],
-        "plant_name": PLANT_NAMES.get(seed['name'], seed['name']),
+        "plant_name": seed_plant_name,
         "stage_started_at": now,
         "last_harvest_at": None,
         "fruits": 0,

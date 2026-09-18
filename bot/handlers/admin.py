@@ -58,6 +58,7 @@ class AdminAddItem(StatesGroup):
     rarity = State()
     category = State()
     drink = State()
+    plant_name = State()
     stock = State()
     stats = State()
     equip_slot = State()
@@ -870,6 +871,18 @@ async def add_item_category(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     category = callback.data.split(":")[1]
     await state.update_data(category=category)
+    if category == 'seeds':
+        # Семечку нужно имя выросшего растения: в кадке показывается растение,
+        # а не семечко-товар (например «Яблочное семечко» → «Яблоня»).
+        await state.set_state(AdminAddItem.plant_name)
+        await callback.message.answer(
+            "🌱 Это семечко — дополнительный шаг.\n\n"
+            "Как будет называться растение в кадке после посадки?\n"
+            "Например: «Яблочное семечко» → «Яблоня».\n\n"
+            "Введи название растения (или «-» = называть как семечко):",
+            reply_markup=cancel_keyboard()
+        )
+        return
     if category == 'consumable':
         # Напитку нужен тип действия на состояние; остальные расходники идут дальше.
         await state.set_state(AdminAddItem.drink)
@@ -894,6 +907,15 @@ async def add_item_drink_choice(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminAddItem.stock)
     await callback.message.answer("Шаг 7/9 — Остаток на складе (или «-» = безлимит):",
                                   reply_markup=cancel_keyboard())
+
+
+@router.message(AdminAddItem.plant_name)
+async def add_item_plant_name(message: Message, state: FSMContext):
+    text = message.text.strip()
+    await state.update_data(plant_name=None if text in ("-", "—") else text)
+    await state.set_state(AdminAddItem.stock)
+    await message.answer("Шаг 7/9 — Остаток на складе (или «-» = безлимит):",
+                         reply_markup=cancel_keyboard())
 
 
 @router.message(AdminAddItem.stock)
@@ -1052,6 +1074,7 @@ async def add_item_photo(message: Message, state: FSMContext):
         heal=data.get('heal', 0), drink_effect=data.get('drink_effect'),
         equip_slot=data.get('equip_slot'),
         market_ok=data.get('market_ok', 0),
+        plant_name=data.get('plant_name'),
     )
     await log_action(admin_id, 'add_item', data.get('produced_by'),
                      f"item={data['name']} id={item_id}")
@@ -1081,6 +1104,9 @@ async def add_item_photo(message: Message, state: FSMContext):
         part_label = {"head": "Голова", "body": "Тело", "hands": "Руки", "legs": "Ноги"}.get(
             data['equip_slot'], data['equip_slot'])
         stats_line += f"\n🪖 Надевается: {part_label}"
+    if data.get('category') == 'seeds':
+        pn = data.get('plant_name')
+        stats_line += f"\n🌳 Растение в кадке: «{pn}»" if pn else "\n🌳 Растение называется как семечко"
     await message.answer(
         f"✅ Товар добавлен!\n\n"
         f"«{data['name']}»\n"
@@ -1180,6 +1206,7 @@ async def edit_item_pick(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text="🔒 Требуемый статус", callback_data="field:required_status")],
             [InlineKeyboardButton(text="🖼 Картинка", callback_data="field:photo")],
             [InlineKeyboardButton(text="🍺 Тип напитка (действие)", callback_data="field:drink")],
+            [InlineKeyboardButton(text="🌳 Растение в кадке (семечко)", callback_data="field:plant_name")],
             [InlineKeyboardButton(text="🏪 Рынок (вкл/выкл)", callback_data="field:market_ok")],
             [InlineKeyboardButton(text="🚧 Вкл/выкл продажу", callback_data="field:is_available")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="shop_admin:edit")],
