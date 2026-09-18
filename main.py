@@ -13,6 +13,7 @@ from database.db import (
     ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, ensure_life_items, ensure_recipes,
     ensure_dungeon_reservoir_items, ensure_market_license_item, pay_salaries, payout_reports,
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award,
+    ensure_water_fish,
 )
 from utils.notify import notify_treasury_shortage
 from utils.helpers import is_main_menu_text
@@ -209,6 +210,10 @@ async def main():
     recipes_seeded = await ensure_recipes()
     if recipes_seeded:
         logger.info("Рецепты кухни и верстака добавлены")
+
+    wf_seeded = await ensure_water_fish()
+    if wf_seeded:
+        logger.info("Пулы рыбалки по водоёмам (water_fish) приведены к дефолтам")
 
     license_seeded = await ensure_market_license_item()
     if license_seeded:

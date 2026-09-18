@@ -64,6 +64,9 @@ INV_CATEGORIES = [
 ]
 FISH_ALL_KEY = "__fish__"
 
+# Расходники, которые нельзя «употребить» из меню предмета (ингредиенты).
+NOT_EDIBLE_ITEMS = {"Соль"}
+
 
 def inv_categories_markup(items, catches):
     """Подменю категорий: сколько предметов в каждой + улов."""
@@ -501,7 +504,11 @@ async def _render_item_card(message, user_id: int, item_id: int, note: str = "")
                 occ_item = await get_item(occ_id)
                 occupied[slot] = occ_item['name'] if occ_item else f"#{occ_id}"
 
-    can_use = item['category'] == "consumable" and (not (item['heal'] or 0) or bool(row_get(item, 'drink_effect')))
+    can_use = (
+        item['category'] == "consumable"
+        and item['name'] not in NOT_EDIBLE_ITEMS
+        and (not (item['heal'] or 0) or bool(row_get(item, 'drink_effect')))
+    )
     if in_run:
         can_use = False
         equip_slot = None
@@ -892,13 +899,13 @@ def _price_keyboard(item_id: int, weight: int, current: int, base: int):
     p1i = min(max_p, current + 1)
     p10i = min(max_p, current + max(1, current // 10))
     if p10d < current:
-        adj_row.append(InlineKeyboardButton(text="−10%", callback_data=f"fishprice:{item_id}:{weight}:{p10d}"))
+        adj_row.append(InlineKeyboardButton(text="−10", callback_data=f"fishprice:{item_id}:{weight}:{p10d}"))
     if p1d < current and p1d != p10d:
-        adj_row.append(InlineKeyboardButton(text="−1%", callback_data=f"fishprice:{item_id}:{weight}:{p1d}"))
+        adj_row.append(InlineKeyboardButton(text="−1", callback_data=f"fishprice:{item_id}:{weight}:{p1d}"))
     if p1i > current:
-        adj_row.append(InlineKeyboardButton(text="+1%", callback_data=f"fishprice:{item_id}:{weight}:{p1i}"))
+        adj_row.append(InlineKeyboardButton(text="+1", callback_data=f"fishprice:{item_id}:{weight}:{p1i}"))
     if p10i > current and p10i != p1i:
-        adj_row.append(InlineKeyboardButton(text="+10%", callback_data=f"fishprice:{item_id}:{weight}:{p10i}"))
+        adj_row.append(InlineKeyboardButton(text="+10", callback_data=f"fishprice:{item_id}:{weight}:{p10i}"))
 
     rows = []
     if adj_row:
@@ -924,6 +931,10 @@ async def _show_price_screen(callback, item, weight, current, base):
         f"📐 Диапазон: {min_p} – {max_p} НМ\n\n"
         f"Выбери цену кнопками или подтверди."
     )
+    if current <= min_p:
+        text += "\n\n⚠️ Достигнут нижний предел (−30% от рыночной). Ниже выставить нельзя."
+    elif current >= max_p:
+        text += "\n\n⚠️ Достигнут верхний предел (+30% от рыночной). Выше выставить нельзя."
     kb = _price_keyboard(item['id'], weight, current, base)
     try:
         await callback.message.edit_text(text, reply_markup=kb)

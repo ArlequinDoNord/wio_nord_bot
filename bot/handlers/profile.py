@@ -13,6 +13,14 @@ from config import get_rank, get_effective_rank, get_next_rank, get_rank_index, 
 router = Router()
 
 
+def _callsign(user) -> str:
+    """Позывной пилота: введённый админом, иначе @username, иначе «—»."""
+    if user.get('callsign'):
+        return user['callsign']
+    username = user.get('username')
+    return f"@{username}" if username else "—"
+
+
 class ProfileStates(StatesGroup):
     waiting_photo = State()
     waiting_about = State()
@@ -37,7 +45,7 @@ async def _profile_caption(user_id: int, owner: bool = True):
 
     caption = (
         f"🪪 Пилот: {user['first_name']} {user['last_name'] or ''}\n"
-        f"Позывной: @{user['username']}\n"
+        f"📡 Позывной: {_callsign(user)}\n"
     )
     if is_pilot:
         caption += f"⭐ Звание: {rank}\n"
@@ -148,7 +156,7 @@ async def render_other_profile(where, user_id: int):
 
     caption = (
         f"🪪 Пилот: {name}\n"
-        f"Позывной: @{user['username'] or '—'}\n"
+        f"📡 Позывной: {_callsign(user)}\n"
         f"⭐ Звание: {rank}\n"
         f"🎖️ Статус: {status}\n"
     )
@@ -330,7 +338,7 @@ async def pilot_card(callback: CallbackQuery):
         f"ШТАБНОЙ ОТДЕЛ НОРДХАЙМА\n"
         f"───────────────────────────\n"
         f"Имя: {user['first_name']} {user['last_name'] or ''}\n"
-        f"Позывной: @{user['username']}\n"
+        f"📡 Позывной: {_callsign(user)}\n"
         + rank_line
         + f"───────────────────────────\n"
         f"БОЕВАЯ СТАТИСТИКА\n"

@@ -533,6 +533,17 @@ async def init_db():
             is_available INTEGER DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+
+        CREATE TABLE IF NOT EXISTS water_fish (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            water TEXT NOT NULL,
+            item_id INTEGER NOT NULL,
+            day_weight INTEGER DEFAULT 0,
+            night_weight INTEGER DEFAULT 0,
+            photo_file_id TEXT,
+            admin_tuned INTEGER DEFAULT 0,
+            UNIQUE(water, item_id)
+        );
     """)
     await conn.commit()
 
@@ -589,6 +600,15 @@ async def init_db():
     await _ensure_column(conn, "dungeons", "photo_night", "TEXT")
     # Рыбалка: выбранная игроком наживка ('worms'/'spider'/'none', '' = авто)
     await _ensure_column(conn, "users", "fishing_bait", "TEXT DEFAULT ''")
+    # Позывной пилота (игровой ник, выставляется админом; показывается в карточке)
+    await _ensure_column(conn, "users", "callsign", "TEXT")
+    # Награды: картинка и процентные бонусы (в % к атаке/защите/уклонению/рыбалке и +HP)
+    await _ensure_column(conn, "awards", "image", "TEXT")
+    await _ensure_column(conn, "awards", "bonus_attack", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "awards", "bonus_defense", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "awards", "bonus_dodge", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "awards", "bonus_fishing", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "awards", "bonus_hp", "INTEGER DEFAULT 0")
     # Счётчик водорослей (для «несварения»: >6 в сутки → запрет расходников на 24 ч)
     await _ensure_column(conn, "users", "seaweed_used_today", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "seaweed_used_day", "TEXT DEFAULT NULL")
@@ -2885,6 +2905,48 @@ async def delete_award(award_id: int):
     await conn.commit()
 
 
+async def update_award(award_id: int, **fields) -> bool:
+    """Обновление награды: описание, картинка, процентные бонусы. None = очистить."""
+    allowed = {"description", "image", "bonus_attack", "bonus_defense",
+               "bonus_dodge", "bonus_fishing", "bonus_hp"}
+    updates = {k: v for k, v in fields.items() if k in allowed}
+    if not updates:
+        return False
+    conn = await get_db()
+    sets = ", ".join(f"{k} = ?" for k in updates)
+    await conn.execute(
+        f"UPDATE awards SET {sets} WHERE id = ?",
+        (*updates.values(), award_id)
+    )
+    await conn.commit()
+    return True
+
+
+async def get_award_bonus(user_id: int) -> dict:
+    """Суммарные бонусы всех наград игрока (в %; hp — в единицах HP)."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT COALESCE(SUM(a.bonus_attack), 0) AS attack,
+               COALESCE(SUM(a.bonus_defense), 0) AS defense,
+               COALESCE(SUM(a.bonus_dodge), 0) AS dodge,
+               COALESCE(SUM(a.bonus_fishing), 0) AS fishing,
+               COALESCE(SUM(a.bonus_hp), 0) AS hp
+        FROM user_awards ua
+        JOIN awards a ON ua.award_id = a.id
+        WHERE ua.user_id = ?
+    """, (user_id,))
+    row = await cursor.fetchone()
+    return dict(row) if row else {"attack": 0, "defense": 0, "dodge": 0, "fishing": 0, "hp": 0}
+
+
+async def set_callsign(user_id: int, callsign: str):
+    """Устанавливает игровой позывной пилота (показывается в карточке)."""
+    conn = await get_db()
+    await conn.execute("UPDATE users SET callsign = ? WHERE user_id = ?",
+                       (callsign or None, user_id))
+    await conn.commit()
+
+
 async def grant_award(user_id: int, award_id: int, granted_by: int = None,
                       comment: str = None):
     conn = await get_db()
@@ -3340,6 +3402,149 @@ async def remove_fish_offer(offer_id: int) -> bool:
     cursor = await conn.execute("DELETE FROM market_fish WHERE id = ?", (offer_id,))
     await conn.commit()
     return cursor.rowcount > 0
+
+
+# ---------- Пулы рыбалки по водоёмам (water_fish) ----------
+
+# Дефолтные веса рыб по водоёмам (имена → день, ночь). Админ может править
+# веса/картинку/цену через редактор рыбалки; тогда строка помечается admin_tuned
+# и на старте не перезаписывается.
+WATER_FISH_DEFAULTS = {
+    "lake": [
+        ("Сиг", 65, 63),
+        ("Муксун", 25, 23),
+        ("Чир", 10, 9),
+        ("Налим", 0, 5),
+    ],
+    "reservoir": [
+        ("Мерцающий сом", 62, 62),
+        ("Искрящийся угорь", 33, 33),
+        ("Светящаяся форель", 5, 5),
+    ],
+}
+WATER_LABELS = {"lake": "Озеро в парке", "reservoir": "Подземное водохранилище"}
+
+
+async def ensure_water_fish():
+    """Идемпотентно засевает water_fish из дефолтов. Правившие админом строки
+    (admin_tuned=1) не перезаписываются."""
+    conn = await get_db()
+    changed = False
+    for water, entries in WATER_FISH_DEFAULTS.items():
+        for name, day_w, night_w in entries:
+            item = await get_item_by_name(name)
+            if not item:
+                continue
+            cursor = await conn.execute(
+                "SELECT id, admin_tuned, day_weight, night_weight FROM water_fish "
+                "WHERE water = ? AND item_id = ?",
+                (water, item['id'])
+            )
+            row = await cursor.fetchone()
+            if row is None:
+                await conn.execute(
+                    "INSERT INTO water_fish (water, item_id, day_weight, night_weight) "
+                    "VALUES (?, ?, ?, ?)",
+                    (water, item['id'], day_w, night_w)
+                )
+                changed = True
+            elif not row['admin_tuned'] and (row['day_weight'] != day_w or row['night_weight'] != night_w):
+                await conn.execute(
+                    "UPDATE water_fish SET day_weight = ?, night_weight = ? WHERE id = ?",
+                    (day_w, night_w, row['id'])
+                )
+                changed = True
+    if changed:
+        await conn.commit()
+    return changed
+
+
+async def get_water_fish_rows(water: str):
+    """Все рыбы водоёма для админ-редактора (с данными предмета)."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT wf.id, wf.water, wf.item_id, wf.day_weight, wf.night_weight,
+               wf.photo_file_id, wf.admin_tuned,
+               i.name, i.sell_price, i.rarity, i.price
+        FROM water_fish wf
+        JOIN items i ON i.id = wf.item_id
+        WHERE wf.water = ?
+        ORDER BY wf.id
+    """, (water,))
+    return await cursor.fetchall()
+
+
+async def get_water_fish_row(wf_id: int):
+    """Одна рыба водоёма с данными предмета (для карточки админа)."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT wf.id, wf.water, wf.item_id, wf.day_weight, wf.night_weight,
+               wf.photo_file_id, wf.admin_tuned,
+               i.name, i.sell_price, i.rarity, i.price
+        FROM water_fish wf
+        JOIN items i ON i.id = wf.item_id
+        WHERE wf.id = ?
+    """, (wf_id,))
+    return await cursor.fetchone()
+
+
+async def get_water_fish_pool(water: str):
+    """Пулы: список рыб водоёма с весами (день/ночь), фото и ценой продажи."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT wf.id, wf.item_id, wf.day_weight, wf.night_weight, wf.photo_file_id,
+               i.name, i.sell_price, i.rarity
+        FROM water_fish wf
+        JOIN items i ON i.id = wf.item_id
+        WHERE wf.water = ? AND (wf.day_weight > 0 OR wf.night_weight > 0)
+        ORDER BY wf.id
+    """, (water,))
+    return await cursor.fetchall()
+
+
+async def get_water_fish_photo_by_name(water: str, name: str):
+    """Telegram photo_file_id рыбы в водоёме (или None)."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT wf.photo_file_id FROM water_fish wf
+        JOIN items i ON i.id = wf.item_id
+        WHERE wf.water = ? AND i.name = ? AND wf.photo_file_id IS NOT NULL
+        LIMIT 1
+    """, (water, name))
+    row = await cursor.fetchone()
+    return row['photo_file_id'] if row else None
+
+
+async def update_water_fish_field(wf_id: int, field: str, value) -> bool:
+    """Правка рыбы в водоёме (day_weight/night_weight/photo_file_id). Помечает admin_tuned."""
+    conn = await get_db()
+    if field in ("day_weight", "night_weight"):
+        await conn.execute(
+            f"UPDATE water_fish SET {field} = ?, admin_tuned = 1 WHERE id = ?",
+            (int(value), wf_id)
+        )
+    elif field == "photo_file_id":
+        await conn.execute(
+            "UPDATE water_fish SET photo_file_id = ?, admin_tuned = 1 WHERE id = ?",
+            (value or None, wf_id)
+        )
+    else:
+        return False
+    await conn.commit()
+    return True
+
+
+async def set_water_fish_sell_price(wf_id: int, sell_price: int) -> bool:
+    """Цена продажи рыбы (обновляет items.sell_price). Помечает admin_tuned."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT item_id FROM water_fish WHERE id = ?", (wf_id,))
+    row = await cursor.fetchone()
+    if not row:
+        return False
+    await conn.execute("UPDATE items SET sell_price = ? WHERE id = ?", (int(sell_price), row['item_id']))
+    await conn.execute("UPDATE water_fish SET admin_tuned = 1 WHERE id = ?", (wf_id,))
+    await conn.commit()
+    return True
 
 
 # ──────────────── Рынок: слоты продажи + лицензия ────────────────
@@ -3850,6 +4055,13 @@ async def ensure_kvp_award():
             "UPDATE awards SET description = ? WHERE id = ? AND description != ?",
             (KVP_BADGE_DESCRIPTION, row['id'], KVP_BADGE_DESCRIPTION)
         )
+        # Дефолтные бонусы нашивки (2% атаки, 3% уклонения) — только пока не настроены
+        # (колонки имеют DEFAULT 0, поэтому «не настроен» = 0/0).
+        await conn.execute(
+            "UPDATE awards SET bonus_attack = ?, bonus_dodge = ? "
+            "WHERE id = ? AND bonus_attack = 0 AND bonus_dodge = 0",
+            (2, 3, row['id'])
+        )
         await conn.commit()
 
 
@@ -4021,9 +4233,11 @@ async def start_dungeon_run(user_id: int, dungeon_id: int):
             (run['id'],)
         )
 
+    bonus = await get_award_bonus(user_id)
+
     await conn.execute(
         "INSERT INTO player_dungeon_run (user_id, dungeon_id, floor, room_number, hp, hp_max, is_active) VALUES (?,?,?,?,?,?,?)",
-        (user_id, dungeon_id, 1, 0, 100, 100, 1)
+        (user_id, dungeon_id, 1, 0, 100 + bonus['hp'], 100 + bonus['hp'], 1)
     )
     await conn.commit()
 
@@ -4156,19 +4370,26 @@ async def get_player_armor(user_id: int) -> int:
     return row['s'] if row else 0
 
 
-# Базовое уклонение пилота (%) и бонус за нашивку «Значок В.У.С.П.».
+# Базовое уклонение пилота (%) — остальное добавляют награды.
 PLAYER_BASE_DODGE = 3
-KVP_BADGE_DODGE_BONUS = 3
 
 
 async def get_player_dodge(user_id: int, dodge_mult: float = 1.0) -> int:
-    """Уклонение пилота в %: база 3% + 3% за нашивку «Значок В.У.С.П.», × модификатор состояний."""
+    """Уклонение пилота в %: база 3% + суммарный бонус наград, × модификатор состояний."""
     dodge = PLAYER_BASE_DODGE
-    if await user_has_award_name(user_id, KVP_BADGE_NAME):
-        dodge += KVP_BADGE_DODGE_BONUS
+    dodge += (await get_award_bonus(user_id))['dodge']
     if dodge_mult != 1.0:
         dodge = int(round(dodge * dodge_mult))
     return max(0, dodge)
+
+
+async def get_player_armor_with_bonus(user_id: int) -> int:
+    """Защита брони с учётом % бонуса защиты от наград."""
+    armor = await get_player_armor(user_id)
+    if armor <= 0:
+        return 0
+    bonus = await get_award_bonus(user_id)
+    return int(round(armor * (1 + bonus['defense'] / 100.0)))
 
 
 # Слоты снаряжения в users.equipment.
@@ -4646,6 +4867,46 @@ async def ensure_dungeon_reservoir_items():
             added = True
         await conn.execute("UPDATE items SET is_available = 0 WHERE name = ?", (fname,))
 
+    # Жареная рыба водохранилища (рецепты «Пожарить …» требуют соль + кусочек водорослей).
+    # (имя, описание, цена, продажа, рарность, heal)
+    reservoir_fried = (
+        ("Жареный сом", "Жареный сом со специями и водорослями. +65 HP в бою подземелья. Срок годности 4 суток.",
+         520, 260, 2, 65),
+        ("Жареный угорь", "Хрустящий жареный угорь с водорослями. +90 HP в бою подземелья. Срок годности 4 суток.",
+         850, 425, 3, 90),
+        ("Жареный форель", "Светящаяся форель, пожаренная до золотой корочки. +140 HP в бою подземелья. Срок годности 4 суток.",
+         2000, 1000, 4, 140),
+    )
+    for (iname, idesc, iprice, isell, irarity, iheal) in reservoir_fried:
+        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (iname,))
+        if (await cursor.fetchone())['c'] == 0:
+            await add_item(
+                name=iname, description=idesc, price=iprice, sell_price=isell, rarity=irarity,
+                category="consumable", stock=-1, added_by=0, ap_cost=0, damage=0, heal=iheal,
+            )
+            added = True
+        await conn.execute("UPDATE items SET is_available = 0 WHERE name = ?", (iname,))
+        await conn.execute("UPDATE items SET heal = ? WHERE name = ? AND heal != ?", (iheal, iname, iheal))
+
+    # Испорченная рыба водохранилища (после порчи).
+    reservoir_spoiled = (
+        ("Испорченный сом", "Протухший сом. Слегка восстанавливает HP, но навлекает несварение.",
+         90, 45, 2, 5),
+        ("Испорченный угорь", "Протухший угорь. Слегка восстанавливает HP, но навлекает несварение.",
+         150, 75, 3, 5),
+        ("Испорченный форель", "Спавший свет. Слегка восстанавливает HP, но навлекает несварение.",
+         360, 180, 4, 5),
+    )
+    for (iname, idesc, iprice, isell, irarity, iheal) in reservoir_spoiled:
+        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (iname,))
+        if (await cursor.fetchone())['c'] == 0:
+            await add_item(
+                name=iname, description=idesc, price=iprice, sell_price=isell, rarity=irarity,
+                category="consumable", stock=-1, added_by=0, ap_cost=0, damage=0, heal=iheal,
+            )
+            added = True
+        await conn.execute("UPDATE items SET is_available = 0 WHERE name = ?", (iname,))
+
     # Напитки-лечение обморожения. (имя, описание, цена, продажа, рарность, heal, drink_effect).
     cure_frostbite_drinks = (
         ("Огненная вода (водка)", "Крепкая, жгучая, «настоящая» — греет до костей. "
@@ -4880,6 +5141,15 @@ RECIPES_DEF = [
     {"name": "Пожарить налима", "desc": "Жареный налим со специями: +55 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный налим", "qty": 1, "exp": "kitchen", "lvl": 1,
      "ingredients": [("Налим", 1), ("Соль", 1)], "ap": 8, "time": 25, "rarity": 1},
+    {"name": "Пожарить сома", "desc": "Жареный сом со специями и водорослями: +65 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареный сом", "qty": 1, "exp": "kitchen", "lvl": 1,
+     "ingredients": [("Мерцающий сом", 1), ("Соль", 1), ("Кусочек водорослей", 1)], "ap": 9, "time": 30, "rarity": 1},
+    {"name": "Пожарить угря", "desc": "Хрустящий жареный угорь с водорослями: +90 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареный угорь", "qty": 1, "exp": "kitchen", "lvl": 2,
+     "ingredients": [("Искрящийся угорь", 1), ("Соль", 1), ("Кусочек водорослей", 1)], "ap": 12, "time": 40, "rarity": 2},
+    {"name": "Пожарить форель", "desc": "Светящаяся форель, пожаренная до золотой корочки: +140 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареный форель", "qty": 1, "exp": "kitchen", "lvl": 3,
+     "ingredients": [("Светящаяся форель", 1), ("Соль", 1), ("Кусочек водорослей", 1)], "ap": 16, "time": 50, "rarity": 4},
     {"name": "Комбинированная наживка", "desc": "Собирается на верстаке. +30% к шансу улова.",
      "result": "Комбинированная наживка", "qty": 1, "exp": "workbench", "lvl": 1,
      "ingredients": [("Лапка паука", 1), ("Черви", 1)], "ap": 5, "time": 20, "rarity": 1},

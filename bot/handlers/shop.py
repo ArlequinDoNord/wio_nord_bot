@@ -1,6 +1,7 @@
 """Магазин: каталог по категориям, покупка за Нордмарки и AP."""
 
 import os
+import json
 import time
 
 from aiogram import Router, F
@@ -15,6 +16,7 @@ from database.db import (
     activate_library_card, get_library_cards,
     add_treasury, get_sale_tax_percent, log_activity, update_item,
     get_player_housing, get_housing_slots, set_housing_slot, set_player_housing,
+    set_inventory_plant_data,
     get_item_by_name, HOUSING_TYPES, HOUSING_ORDER,
     get_special_dept_code, get_special_fails, register_special_fail,
     is_special_blocked, special_dept_block_left_minutes, clear_special_blocked,
@@ -809,6 +811,7 @@ async def buy_housing_confirm(callback: CallbackQuery):
 
     # Вся текущая мебель возвращается в инвентарь (кроме встроенной)
     slots = await get_housing_slots(uid)
+    plant_saved = False
     for i, s in slots.items():
         et, lvl = s.get("expansion_type"), s.get("expansion_level", 1)
         await set_housing_slot(uid, i, None)
@@ -819,6 +822,17 @@ async def buy_housing_confirm(callback: CallbackQuery):
             fi = await get_item_by_name(fname)
             if fi:
                 await add_inventory_item(uid, fi["id"], 1)
+                # Кадка с растением: сохраняем plant_data в инвентарь (прогресс замораживается),
+                # чтобы в новом доме рост продолжился, а не начался заново.
+                if et == "plant_pot":
+                    try:
+                        pdata = json.loads(s.get("plant_data") or "{}")
+                    except Exception:
+                        pdata = {}
+                    if pdata.get("seed"):
+                        pdata["stowed_at"] = time.time()
+                        await set_inventory_plant_data(uid, fi["id"], pdata)
+                        plant_saved = True
 
     # Переезд
     await set_player_housing(uid, target)
@@ -839,6 +853,8 @@ async def buy_housing_confirm(callback: CallbackQuery):
                        f"Купил «{item['name']}» за {total} НМ (переезд)")
 
     await callback.answer(
-        f"🎉 Переезд в «{HOUSING_TYPES[target]['name']}» завершён!", show_alert=True
+        f"🎉 Переезд в «{HOUSING_TYPES[target]['name']}» завершён!"
+        + ("\n\n🌱 Кадка с растением сохранена в инвентаре — прогресс заморожен." if plant_saved else ""),
+        show_alert=True
     )
     await housing_menu(callback)

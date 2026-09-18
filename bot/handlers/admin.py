@@ -30,6 +30,8 @@ from database.db import (
     get_dungeon_enemies, get_enemy, update_enemy_fields,
     create_award, get_all_awards, get_award, delete_award, grant_award,
     get_user_awards, revoke_award,
+    get_water_fish_rows, get_water_fish_row, update_water_fish_field,
+    set_water_fish_sell_price, WATER_LABELS, set_callsign,
     log_activity, get_user_activity, clear_user_photo,
 )
 from keyboards.keyboards import cancel_keyboard
@@ -122,6 +124,19 @@ class AdminAwards(StatesGroup):
     target = State()
     award_pick = State()
     comment = State()
+    edit_value = State()
+
+
+class AdminFishing(StatesGroup):
+    """Редактор пулов рыбалки по водоёмам (веса, фото, цена продажи)."""
+    water = State()
+    wf_id = State()
+    value = State()
+
+
+class AdminCallsign(StatesGroup):
+    target = State()
+    value = State()
 
 
 class AdminStates(StatesGroup):
@@ -349,6 +364,16 @@ async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
                 [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:salaries")],
             ])
         )
+    elif next_step == "callsign":
+        await state.update_data(callsign_target_id=target['user_id'])
+        await state.set_state(AdminCallsign.value)
+        cur = target.get('callsign') or '—'
+        await callback.message.answer(
+            f"📡 Установка позывного\nИгрок: {target['first_name'] if 'first_name' in target.keys() else ''} "
+            f"(@{target['username'] if 'username' in target.keys() else ''})\n"
+            f"Текущий позывной: {cur}\n\nВведи новый позывной (или «-» чтобы убрать):",
+            reply_markup=cancel_keyboard()
+        )
     elif next_step == "delphoto":
         from database.db import get_user_photo
         photo = await get_user_photo(target['user_id'])
@@ -479,6 +504,62 @@ async def admin_player_log_start(callback: CallbackQuery):
         "📒 Выбери игрока, чей лог взаимодействий показать:",
         reply_markup=await pilot_picker_markup("player_log")
     )
+
+
+@router.callback_query(F.data == "admin:callsign")
+async def admin_callsign_start(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_users"):
+        await callback.message.answer("❌ Нет прав для установки позывного.")
+        return
+    await state.set_state(AdminCallsign.target)
+    await callback.message.answer(
+        "📡 Кому установить позывной? Выбери пилота:",
+        reply_markup=await pilot_picker_markup("callsign")
+    )
+
+
+@router.message(AdminCallsign.target)
+async def admin_callsign_target_msg(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_users"):
+        await message.answer("❌ Нет прав для установки позывного.")
+        await state.clear()
+        return
+    target = await find_user(message.text)
+    if not target:
+        await message.answer("❌ Игрок не найден. Попробуй ещё раз:")
+        return
+    await state.update_data(callsign_target_id=target['user_id'])
+    await state.set_state(AdminCallsign.value)
+    cur = target.get('callsign') or '—'
+    await message.answer(
+        f"📡 Игрок: {target['first_name'] if 'first_name' in target.keys() else ''} "
+        f"(@{target['username'] if 'username' in target.keys() else ''})\n"
+        f"Текущий позывной: {cur}\n\nВведи новый позывной (или «-» чтобы убрать):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminCallsign.value)
+async def admin_callsign_value_msg(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_users"):
+        await message.answer("❌ Нет прав для установки позывного.")
+        await state.clear()
+        return
+    data = await state.get_data()
+    target_id = data.get('callsign_target_id')
+    if not target_id:
+        await state.clear()
+        await message.answer("❌ Сессия устарела, начни заново.")
+        return
+    text = message.text.strip()
+    value = None if text in ("", "-") else text[:64]
+    await set_callsign(target_id, value)
+    await log_action(message.from_user.id, 'set_callsign', target_id, f"callsign={value or None}")
+    await state.clear()
+    u = await get_user(target_id)
+    name = u['first_name'] if u and 'first_name' in u.keys() else target_id
+    await message.answer(f"✅ Позывной «{value or '—'}» установлен для {name}.")
 
 
 @router.callback_query(F.data.startswith("confirm_del_photo:"))
@@ -1956,6 +2037,7 @@ async def admin_awards(callback: CallbackQuery):
     rows = []
     if await has_permission(callback.from_user.id, "can_manage_awards"):
         rows.append([InlineKeyboardButton(text="➕ Создать награду", callback_data="aw:create")])
+        rows.append([InlineKeyboardButton(text="✏️ Редактировать награду", callback_data="aw:edit")])
         rows.append([InlineKeyboardButton(text="❌ Удалить награду", callback_data="aw:delete")])
     if await has_permission(callback.from_user.id, "can_grant_awards") or \
        await has_permission(callback.from_user.id, "can_manage_awards"):
@@ -2061,6 +2143,175 @@ async def award_delete_cb(callback: CallbackQuery):
     await delete_award(award_id)
     await log_action(callback.from_user.id, 'delete_award', None, f"award_id={award_id}")
     await callback.message.answer(f"🗑 Награда «{a['name']}» удалена." if a else "Удалено.")
+
+
+AWARD_EDIT_FIELDS = {
+    "description": "📝 Описание",
+    "image": "🖼 Картинка",
+    "bonus_attack": "⚔️ Атака, %",
+    "bonus_defense": "🛡️ Защита, %",
+    "bonus_dodge": "💨 Уклонение, %",
+    "bonus_fishing": "🎣 Рыбалка, %",
+    "bonus_hp": "❤️ HP сверх 100",
+}
+
+AWARD_EDIT_PROMPTS = {
+    "description": "Введи новое описание награды (или «-» чтобы очистить):",
+    "image": "Пришли фото награды (или «-» чтобы убрать картинку):",
+    "bonus_attack": "Введи бонус атаки в % (целое число, например 5 или 0):",
+    "bonus_defense": "Введи бонус защиты в % (целое число):",
+    "bonus_dodge": "Введи бонус уклонения в % (целое число):",
+    "bonus_fishing": "Введи бонус шанса рыбалки в % (целое число):",
+    "bonus_hp": "Введи бонус HP сверх базовых 100 (целое число):",
+}
+
+
+def _award_edit_card(award) -> str:
+    if not award:
+        return "❌ Награда не найдена."
+    emoji = award['emoji'] or '🏅'
+    lines = [
+        f"{emoji} {award['name']} (id {award['id']})\n",
+        f"📝 {award['description'] or '—'}",
+        f"🖼 Картинка: {'есть' if award['image'] else 'нет'}",
+        "",
+        "Бонусы (в %):",
+        f"⚔️ Атака: {award['bonus_attack'] or 0}",
+        f"🛡️ Защита: {award['bonus_defense'] or 0}",
+        f"💨 Уклонение: {award['bonus_dodge'] or 0}",
+        f"🎣 Рыбалка: {award['bonus_fishing'] or 0}",
+        f"❤️ HP: {award['bonus_hp'] or 0}",
+    ]
+    return "\n".join(lines)
+
+
+async def _award_edit_menu(message, award):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, InputMediaPhoto
+    aid = award['id']
+    rows = [
+        [InlineKeyboardButton(text="🔁 Обновить", callback_data=f"aw_edit:{aid}")],
+    ]
+    for field, label in AWARD_EDIT_FIELDS.items():
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"aw_ei:{aid}:{field}")])
+    rows.append([InlineKeyboardButton(text="🔙 К списку", callback_data="aw:edit")])
+    rows.append([InlineKeyboardButton(text="🔙 В меню", callback_data="admin:awards")])
+    markup = InlineKeyboardMarkup(inline_keyboard=rows)
+    if award['image']:
+        try:
+            if getattr(message, 'message', None):
+                await message.message.edit_media(
+                    InputMediaPhoto(media=award['image'], caption=_award_edit_card(award)),
+                    reply_markup=markup
+                )
+            else:
+                await message.edit_media(
+                    InputMediaPhoto(media=award['image'], caption=_award_edit_card(award)),
+                    reply_markup=markup
+                )
+            return
+        except Exception:
+            pass
+    if getattr(message, 'message', None):
+        await message.message.edit_text(_award_edit_card(award), reply_markup=markup)
+    else:
+        await message.edit_text(_award_edit_card(award), reply_markup=markup)
+
+
+@router.callback_query(F.data == "aw:edit")
+async def award_edit_list(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_awards"):
+        await callback.message.answer("❌ Нет прав.")
+        return
+    awards = await get_all_awards()
+    if not awards:
+        await callback.message.answer("Награды не созданы.")
+        return
+    rows = []
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    for a in awards:
+        emoji = a['emoji'] or '🏅'
+        rows.append([InlineKeyboardButton(text=f"{emoji} {a['name']}", callback_data=f"aw_edit:{a['id']}")])
+    rows.append([InlineKeyboardButton(text="🔙 В меню", callback_data="admin:awards")])
+    await callback.message.edit_text("Выбери награду для редактирования:",
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("aw_edit:"))
+async def award_edit_open(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_awards"):
+        await callback.message.answer("❌ Нет прав.")
+        return
+    award_id = int(callback.data.split(":")[1])
+    award = await get_award(award_id)
+    await _award_edit_menu(callback.message, award)
+
+
+@router.callback_query(F.data.startswith("aw_ei:"))
+async def award_edit_field_pick(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_awards"):
+        await callback.message.answer("❌ Нет прав.")
+        return
+    _, _, award_id, field = callback.data.split(":", 3)
+    if field not in AWARD_EDIT_FIELDS:
+        return
+    await state.update_data(edit_award_id=int(award_id), edit_field=field)
+    await state.set_state(AdminAwards.edit_value)
+    await callback.message.answer(AWARD_EDIT_PROMPTS[field], reply_markup=cancel_keyboard())
+
+
+@router.message(AdminAwards.edit_value)
+async def award_edit_value(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_awards"):
+        await message.answer("❌ Нет прав.")
+        await state.clear()
+        return
+    data = await state.get_data()
+    award_id = data.get('edit_award_id')
+    field = data.get('edit_field')
+    if not award_id or field not in AWARD_EDIT_FIELDS:
+        await state.clear()
+        await message.answer("❌ Сессия устарела, начни заново.")
+        return
+    text = (message.text or "").strip()
+    value = None
+    if field == "image":
+        if message.photo:
+            value = message.photo[-1].file_id
+        elif text in ("-", ""):
+            value = None
+        else:
+            await message.answer("❌ Пришли именно фото, либо «-» чтобы убрать картинку:")
+            return
+    elif field == "description":
+        if text and text != "-":
+            value = text[:300]
+        else:
+            value = None
+    else:
+        if text in ("-", ""):
+            value = None
+        else:
+            try:
+                parsed = int(text)
+            except ValueError:
+                await message.answer("❌ Введи целое число (например 5) или «-» для нуля:")
+                return
+            value = max(-100, min(1000, parsed))
+    await update_award(award_id, **{field: value})
+    await log_action(message.from_user.id, 'edit_award', None,
+                     f"award_id={award_id} field={field} value={value}")
+    await state.clear()
+    award = await get_award(award_id)
+    await message.answer(
+        f"✅ {AWARD_EDIT_FIELDS[field]} награды обновлён.\n\n{_award_edit_card(award)}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="🔁 Продолжить редактировать",
+                                 callback_data=f"aw_edit:{award_id}")
+        ]])
+    )
 
 
 @router.callback_query(F.data == "aw:grant")
@@ -3163,6 +3414,181 @@ async def dungeon_enemy_value(message: Message, state: FSMContext):
 
     await message.answer(f"✅ «{enemy['name']}»: {ENEMY_FIELD_LABELS[field]} = {label}.")
     await _enemy_card_send(message, enemy_id)
+
+
+# ============ АДМИН: РЕДАКТОР РЫБАЛКИ (пулы по водоёмам) ============
+
+FISHING_FIELD_LABELS = {
+    "day_weight": "☀️ Вес дня",
+    "night_weight": "🌙 Вес ночи",
+    "photo": "🖼 Фото рыбы",
+    "sell_price": "💰 Цена продажи (НМ)",
+}
+
+FISHING_INPUT_PROMPTS = {
+    "day_weight": "Введи относительный вес рыбы днём (целое число ≥ 0; 0 = не водится днём):",
+    "night_weight": "Введи относительный вес рыбы ночью (целое число ≥ 0; 0 = не водится ночью):",
+    "photo": "Отправь фото рыбы (Telegram-фото). Или отправь «-», чтобы убрать фото:",
+    "sell_price": "Введи цену продажи рыбы скупщику, Нордмарок (целое число ≥ 0):",
+}
+
+
+async def _admin_fishing_card(source, wf_id: int):
+    """Карточка рыбы в водоёме с кнопками правки."""
+    fish = await get_water_fish_row(wf_id)
+    if not fish:
+        await source.answer("❌ Рыба не найдена.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    photo_state = "есть" if fish.get('photo_file_id') else "нет"
+    text = (
+        f"🐟 {fish['name']}\n"
+        f"──────────────\n"
+        f"☀️ Вес дня: {fish['day_weight']}\n"
+        f"🌙 Вес ночи: {fish['night_weight']}\n"
+        f"🖼 Фото: {photo_state}\n"
+        f"💰 Продажа: {fish['sell_price']} НМ\n\n"
+        f"⚠️ После правки стартовая синхронизация больше не перезапишет "
+        f"настройки этой рыбы в водоёме.\nЧто изменить?"
+    )
+    rows = [
+        [InlineKeyboardButton(text="☀️ Вес дня", callback_data="fishing_field:day_weight")],
+        [InlineKeyboardButton(text="🌙 Вес ночи", callback_data="fishing_field:night_weight")],
+        [InlineKeyboardButton(text="🖼 Фото рыбы", callback_data="fishing_field:photo")],
+        [InlineKeyboardButton(text="💰 Цена продажи", callback_data="fishing_field:sell_price")],
+        [InlineKeyboardButton(text="🔙 К списку рыб", callback_data=f"fishing:water:{fish['water']}")],
+    ]
+    markup = InlineKeyboardMarkup(inline_keyboard=rows)
+    if hasattr(source, 'message'):
+        await source.message.edit_text(text, reply_markup=markup)
+    else:
+        await source.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(F.data == "admin:fishing")
+async def admin_fishing_menu(callback: CallbackQuery, state: FSMContext):
+    """Меню редактора рыбалки: выбор водоёма."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = [
+        [InlineKeyboardButton(text="🌊 Озеро в парке", callback_data="fishing:water:lake")],
+        [InlineKeyboardButton(text="🌊 Подземное водохранилище", callback_data="fishing:water:reservoir")],
+        [InlineKeyboardButton(text="🔙 В админ-панель", callback_data="admin:menu")],
+    ]
+    await callback.message.edit_text(
+        "🐟 РЕДАКТОР РЫБАЛКИ\n\nУ каждого водоёма свой список рыбы: "
+        "веса по времени суток, фото и цена продажи. Выбери водоём:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+@router.callback_query(F.data.startswith("fishing:water:"))
+async def admin_fishing_water(callback: CallbackQuery, state: FSMContext):
+    """Список рыбы выбранного водоёма."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    water = callback.data.split(":")[2]
+    if water not in WATER_LABELS:
+        return
+    await state.clear()
+    await state.update_data(water=water)
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    fishes = await get_water_fish_rows(water)
+    lines = [f"🐟 {WATER_LABELS[water]}\n"]
+    rows = []
+    if fishes:
+        for f in fishes:
+            lines.append(f"• {f['name']} — день {f['day_weight']}, "
+                         f"ночь {f['night_weight']}, продажа {f['sell_price']} НМ")
+            rows.append([InlineKeyboardButton(text=f["name"], callback_data=f"fishing:fish:{f['id']}")])
+    else:
+        lines.append("Рыб в этом водоёме пока нет.")
+    lines.append("\nНажми на рыбу, чтобы настроить.")
+    rows.append([InlineKeyboardButton(text="🔙 К водоёмам", callback_data="admin:fishing")])
+    await callback.message.edit_text("\n".join(lines),
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("fishing:fish:"))
+async def admin_fishing_fish(callback: CallbackQuery, state: FSMContext):
+    """Карточка рыбы с кнопками правки."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        wf_id = int(callback.data.split(":")[2])
+    except (ValueError, IndexError):
+        return
+    await state.update_data(wf_id=wf_id)
+    await _admin_fishing_card(callback, wf_id)
+
+
+@router.callback_query(F.data.startswith("fishing_field:"))
+async def admin_fishing_field_pick(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    field = callback.data.split(":")[1]
+    if field not in FISHING_FIELD_LABELS:
+        return
+    data = await state.get_data()
+    if not data.get('wf_id'):
+        await callback.message.answer("❌ Рыба не выбрана. Открой карточку рыбы заново.")
+        return
+    await state.update_data(field=field)
+    await state.set_state(AdminFishing.value)
+    await callback.message.answer(FISHING_INPUT_PROMPTS[field], reply_markup=cancel_keyboard())
+
+
+@router.message(AdminFishing.value)
+async def admin_fishing_value(message: Message, state: FSMContext):
+    data = await state.get_data()
+    wf_id = data.get('wf_id')
+    field = data.get('field')
+    fish = await get_water_fish_row(wf_id) if wf_id else None
+    if not fish:
+        await state.clear()
+        await message.answer("❌ Рыба не найдена. Начни заново: админ → рыбалка → водоём.")
+        return
+    if field not in FISHING_FIELD_LABELS:
+        await state.clear()
+        await message.answer("❌ Поле не распознано. Начни заново.")
+        return
+
+    if field in ("day_weight", "night_weight", "sell_price"):
+        text = (message.text or "").strip()
+        parsed = int(text) if text.isdigit() else None
+        if parsed is None or parsed < 0:
+            await message.answer(f"❌ Ожидаю целое число ≥ 0.\n{FISHING_INPUT_PROMPTS[field]}",
+                                 reply_markup=cancel_keyboard())
+            return
+        if field == "sell_price":
+            await set_water_fish_sell_price(wf_id, parsed)
+        else:
+            await update_water_fish_field(wf_id, field, parsed)
+        label = f"{parsed} НМ" if field == "sell_price" else str(parsed)
+    else:  # photo
+        if (message.text or "").strip() == "-":
+            parsed = None
+        elif message.photo:
+            parsed = message.photo[-1].file_id
+        else:
+            await message.answer("❌ Отправь именно фото (или «-» для очистки).",
+                                 reply_markup=cancel_keyboard())
+            return
+        await update_water_fish_field(wf_id, "photo_file_id", parsed)
+        label = "убрано" if parsed is None else "обновлено"
+
+    await log_action(message.from_user.id, 'edit_fishing', None,
+                     f"wf_id={wf_id} {field}={parsed}")
+    await state.clear()
+    await state.update_data(water=fish['water'], wf_id=wf_id)
+    await message.answer(f"✅ «{fish['name']}»: {FISHING_FIELD_LABELS[field]} = {label}.")
+    await _admin_fishing_card(message, wf_id)
 
 
 @router.callback_query(F.data == "loc:create")

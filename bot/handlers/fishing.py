@@ -19,6 +19,7 @@ from database.db import (
     get_item_by_name, get_inventory_item, remove_inventory_item,
     add_fish_catch, add_inventory_item, get_user, update_user,
     remove_ap, log_activity, get_active_run,
+    get_water_fish_pool, get_water_fish_photo_by_name, get_award_bonus,
 )
 from utils.helpers import resolve_image, time_of_day_key, plural_nordmark, item_local_photo, fish_weight_tier, fish_sell_price
 from config import FISH_AP_COST, FISH_WEIGHTS
@@ -153,10 +154,11 @@ async def _fish_ok(callback) -> bool:
     return True
 
 
-async def _paint(callback, *, text: str = None, media_path: str = None, kb=None):
+async def _paint(callback, *, text: str = None, media_path: str = None, photo_id: str = None, kb=None):
     """Единая отрисовка окна рыбалки в одном сообщении на игрока.
 
-    media_path — локальный файл фото (озеро/рыба); иначе обычный текст.
+    media_path — локальный файл фото (озеро/рыба); photo_id — Telegram file_id
+    (например, фото рыбы из админ-редактора). Настройка только одного из них.
     Если сообщение не удаётся отредактировать (другой тип медиа / удалено),
     создаём новое и запоминаем его, старое — удаляем.
     """
@@ -168,11 +170,11 @@ async def _paint(callback, *, text: str = None, media_path: str = None, kb=None)
 
     if target_id is not None:
         try:
-            if media_path:
+            if media_path or photo_id:
                 from aiogram.types import InputMediaPhoto
                 await bot.edit_message_media(
                     chat_id, target_id,
-                    media=InputMediaPhoto(media=FSInputFile(media_path), caption=text),
+                    media=InputMediaPhoto(media=photo_id or FSInputFile(media_path), caption=text),
                     reply_markup=kb,
                 )
             else:
@@ -187,8 +189,8 @@ async def _paint(callback, *, text: str = None, media_path: str = None, kb=None)
             await bot.delete_message(chat_id, target_id)
         except Exception:
             pass
-    if media_path:
-        sent = await bot.send_photo(chat_id, FSInputFile(media_path), caption=text, reply_markup=kb)
+    if media_path or photo_id:
+        sent = await bot.send_photo(chat_id, photo_id or FSInputFile(media_path), caption=text, reply_markup=kb)
     else:
         sent = await bot.send_message(chat_id, text, reply_markup=kb)
     FISH_MSG[user_id] = (chat_id, sent.message_id)
@@ -254,19 +256,31 @@ async def _bait_line(user_id: int, chosen: str) -> str:
     return line
 
 
-def _catch_chance(rod, bait_name: str) -> int:
-    """Шанс улова в процентах при данной удочке и наживке."""
+def _catch_chance(rod, bait_name: str, fishing_bonus: int = 0) -> int:
+    """Шанс улова в процентах: база + ранг удочки + наживка + бонус наград."""
     if not rod:
         return 0
     rank = rod['rarity'] or 1
     bonus = ROD_BONUS_PER_RANK * rank
     bait = BAIT_BONUS.get(bait_name, 0)
-    return min(CHANCE_CAP, FISHING_BASE_CHANCE + bonus + bait)
+    return min(CHANCE_CAP, FISHING_BASE_CHANCE + bonus + bait + fishing_bonus)
 
 
-def _pick_fish() -> str:
-    """Случайная рыба по весам; ночью в пуле дополнительно Налим."""
-    pool = FISH_POOL_NIGHT if time_of_day_key() == "night" else FISH_POOL_DAY
+async def _pick_fish() -> str:
+    """Случайная рыба озера по весам из БД (water_fish); ночью — ночной пул.
+
+    Если таблица пуста/не засеяна — откат на константы FISH_POOL_*.
+    """
+    tod = time_of_day_key()
+    pool_rows = await get_water_fish_pool("lake")
+    pool = []
+    if pool_rows:
+        for r in pool_rows:
+            w = r['night_weight'] if tod == "night" else r['day_weight']
+            if w > 0:
+                pool.append((r['name'], w))
+    if not pool:
+        pool = FISH_POOL_NIGHT if tod == "night" else FISH_POOL_DAY
     total = sum(w for _, w in pool)
     r = random.random() * total
     acc = 0
@@ -369,7 +383,7 @@ async def fishing_lake_menu(callback: CallbackQuery):
         rank = rod['rarity'] or 1
         bait_label = await _bait_label(callback.from_user.id, chosen)
         bait_name, _ = await _resolve_bait(callback.from_user.id, chosen)
-        chance = _catch_chance(rod, bait_name)
+        chance = _catch_chance(rod, bait_name, (await get_award_bonus(callback.from_user.id))['fishing'])
         rod_line = f"🎣 Удочка: {rod['name']} (ранг {rank}, +{rank * ROD_BONUS_PER_RANK}%)"
         bait_line = f"🪱 Наживка: {bait_label}"
         chance_line = f"⚡ Шанс улова: {chance}%"
@@ -510,7 +524,7 @@ async def fish_cast(callback: CallbackQuery):
     try:
         delay = random.randint(7, 15)
         bait_part = f" с наживкой «{bait_name}»" if bait_name else " без наживки"
-        chance = _catch_chance(rod, bait_name)
+        chance = _catch_chance(rod, bait_name, (await get_award_bonus(user_id))['fishing'])
         # Заброс всегда показываем на картинке озера (базовый ракурс),
         # чтобы результат заметно менял картинку.
         cast_text = (
@@ -539,7 +553,7 @@ async def fish_cast(callback: CallbackQuery):
             # С наживкой — рыбалка как раньше.
             caught = random.random() * 100 < chance
             if caught:
-                fish_name = _pick_fish()
+                fish_name = await _pick_fish()
                 fish_item = await get_item_by_name(fish_name)
                 if fish_item:
                     weight_idx = _roll_fish_weight()
@@ -554,6 +568,10 @@ async def fish_cast(callback: CallbackQuery):
                         f"🎒 Улов отправлен в инвентарь.\n"
                         f"Вес влияет на цену: продажа за {sell} {plural_nordmark(sell)}."
                     )
+                    wf_photo = await get_water_fish_photo_by_name("lake", fish_name)
+                    if wf_photo:
+                        await _paint(callback, text=text + ap_block, photo_id=wf_photo, kb=_result_markup(FISH_TOKEN.get(user_id, "")))
+                        return
                     local_photo = item_local_photo(fish_name)
                     if local_photo:
                         await _paint(callback, text=text + ap_block, media_path=local_photo, kb=_result_markup(FISH_TOKEN.get(user_id, "")))

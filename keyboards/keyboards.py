@@ -51,11 +51,13 @@ def admin_panel_keyboard(permissions: dict):
     if permissions.get('can_manage_locations'):
         buttons.append([InlineKeyboardButton(text="📍 Локации", callback_data="admin:locations")])
         buttons.append([InlineKeyboardButton(text="🏰 Подземелья", callback_data="admin:dungeons")])
+        buttons.append([InlineKeyboardButton(text="🐟 Рыбалка", callback_data="admin:fishing")])
     if permissions.get('can_view_logs'):
         buttons.append([InlineKeyboardButton(text="🧾 Логи действий", callback_data="admin:logs")])
         buttons.append([InlineKeyboardButton(text="📒 Лог игрока", callback_data="admin:player_log")])
     if permissions.get('can_manage_users'):
         buttons.append([InlineKeyboardButton(text="🗑 Удалить фото пилота", callback_data="admin:del_photo")])
+        buttons.append([InlineKeyboardButton(text="📡 Установить позывной", callback_data="admin:callsign")])
     if permissions.get('can_manage_storage'):
         buttons.append([InlineKeyboardButton(text="📦 Хранилище", callback_data="admin:storage")])
     buttons.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])

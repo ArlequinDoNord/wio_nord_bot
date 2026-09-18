@@ -17,9 +17,10 @@ from database.db import (
     get_db, get_dungeon, get_kvp_dungeon, start_dungeon_run, get_active_run,
     advance_room, end_run, update_run_hp, add_run_nordmarks, add_nordmarks,
     transfer_run_items_to_inventory, get_user, remove_ap, get_player_weapon_damage,
-    get_player_armor, get_player_dodge, get_item_by_name, add_inventory_item, get_kvp_progress,
+    get_player_armor, get_player_dodge, get_award_bonus, get_player_armor_with_bonus,
+    get_item_by_name, add_inventory_item, get_kvp_progress,
     increment_kvp_completions, mark_kvp_badge, mark_kvp_stick, grant_award,
-    user_has_award_name, log_activity, KVP_BADGE_NAME, KVP_MAX_COMPLETIONS,
+    log_activity, KVP_BADGE_NAME, KVP_MAX_COMPLETIONS,
 )
 from utils.combat import (
     calculate_attack, calculate_enemy_damage, roll_dodge, _hp_bar,
@@ -481,9 +482,8 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     state_info = await get_state_info(user_id)
     mult = combat_multipliers(state_info['names'])
     am = mult.get('attack_mult', 1.0)
-    # Значок В.У.С.П. — постоянный +2% урона в подземельях и на курсе.
-    if await user_has_award_name(user_id, KVP_BADGE_NAME):
-        am *= 1.02
+    award_bonus = await get_award_bonus(user_id)
+    am *= 1.0 + award_bonus['attack'] / 100.0
     damage_to_enemy = max(1, int(damage_to_enemy * am))
 
     # Уклонение врага: может полностью избежать удара
@@ -515,7 +515,7 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     player_dodge = await get_player_dodge(user_id, mult.get('dodge_mult', 1.0))
     player_dodged = roll_dodge(player_dodge)
     enemy_dmg = calculate_enemy_damage(enemy['attack'])
-    armor = await get_player_armor(user_id)
+    armor = await get_player_armor_with_bonus(user_id)
     blocked_line = ""
     if player_dodged:
         reduced = 0
