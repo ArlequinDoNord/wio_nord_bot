@@ -35,6 +35,7 @@ from database.db import (
     set_water_fish_sell_price, add_water_fish, remove_water_fish,
     get_water_fish_candidates, WATER_LABELS, set_callsign,
     log_activity, get_user_activity, clear_user_photo,
+    get_recent_activity, get_activity_like,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import (
@@ -150,6 +151,11 @@ class AdminStates(StatesGroup):
     minutes = State()
 
 
+class AdminPlayerLog(StatesGroup):
+    """Ручной ввод @username/ID для просмотра лога игрока."""
+    target = State()
+
+
 class AdminSalary(StatesGroup):
     target = State()
     amount = State()
@@ -194,16 +200,22 @@ async def perm_flags(user_id: int) -> dict:
 
 
 async def find_user(text: str) -> dict:
-    """Найти пользователя по @username или числовому telegram_id."""
+    """Найти пользователя по @username, числовому telegram_id или имени (first_name)."""
     text = text.strip().lstrip("@")
     users = await get_all_users()
     if text.isdigit():
         for u in users:
             if str(u['user_id']) == text:
                 return u
-    for u in users:
-        if u['username'] and u['username'].lower() == text.lower():
-            return u
+    low = text.lower()
+    exact = [u for u in users if u['username'] and u['username'].lower() == low]
+    if exact:
+        return exact[0]
+    names = [u for u in users if u['first_name'] and u['first_name'].lower() == low]
+    if len(names) == 1:
+        return names[0]
+    if len(names) > 1:
+        return None  # неоднозначно — пусть уточнят
     return None
 
 
@@ -400,26 +412,46 @@ async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
             await callback.message.answer("📷 У этого игрока нет установленного фото.")
             await state.clear()
     elif next_step == "player_log":
-        await state.clear()
-        entries = await get_user_activity(target['user_id'], 80)
-        if not entries:
-            await callback.message.answer(
-                f"📒 Лог игрока\nИгрок: {target['first_name'] if 'first_name' in target.keys() else ''} "
-                f"(@{target['username'] if 'username' in target.keys() else ''})\n\n"
-                f"Событий нет."
-            )
-            return
-        lines = []
-        for e in entries:
-            dt = e['created_at'][:16] if e['created_at'] else ""
-            details = e['details'] or ""
-            lines.append(f"{dt} {details}")
-        text = (
-            f"📒 ЛОГ ИГРОКА\nИгрок: {target['first_name'] if 'first_name' in target.keys() else ''} "
-            f"(@{target['username'] if 'username' in target.keys() else ''})\n"
-            f"Последних событий: {len(entries)}\n\n" + "\n".join(lines)
+        await show_player_log(callback.message, target, state)
+
+
+async def show_player_log(msg, target: dict, state: FSMContext):
+    """Показать лог взаимодействий игрока. msg — Message или CallbackQuery.message."""
+    await state.clear()
+    entries = await get_user_activity(target['user_id'], 80)
+    name = target.get('first_name') or ''
+    username = target.get('username') or ''
+    if not entries:
+        await msg.answer(
+            f"📒 Лог игрока\nИгрок: {name} "
+            f"(@{username if username else ''})\n\n"
+            f"Событий нет."
         )
-        await callback.message.answer(text[:4000])
+        return
+    lines = []
+    for e in entries:
+        dt = e['created_at'][:16] if e['created_at'] else ""
+        details = e['details'] or ""
+        lines.append(f"{dt} {details}")
+    text = (
+        f"📒 ЛОГ ИГРОКА\nИгрок: {name} "
+        f"(@{username if username else ''})\n"
+        f"Последних событий: {len(entries)}\n\n" + "\n".join(lines)
+    )
+    await msg.answer(text[:4000])
+
+
+@router.message(AdminPlayerLog.target)
+async def admin_player_log_manual_msg(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_view_logs"):
+        await message.answer("❌ Нет прав для просмотра логов.")
+        await state.clear()
+        return
+    target = await find_user(message.text)
+    if not target:
+        await message.answer("❌ Игрок не найден по этому имени/тегу/id. Попробуй ещё раз:")
+        return
+    await show_player_log(message, target, state)
 
 
 def category_choice_markup():
@@ -505,13 +537,15 @@ async def admin_del_photo_start(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "admin:player_log")
-async def admin_player_log_start(callback: CallbackQuery):
+async def admin_player_log_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     if not await has_permission(callback.from_user.id, "can_view_logs"):
         await callback.message.answer("❌ Нет прав для просмотра логов.")
         return
+    await state.set_state(AdminPlayerLog.target)
     await callback.message.answer(
-        "📒 Выбери игрока, чей лог взаимодействий показать:",
+        "📒 Выбери игрока, чей лог взаимодействий показать:\n\n"
+        "Или введи @username, имя или ID игрока прямо в чат:",
         reply_markup=await pilot_picker_markup("player_log")
     )
 
@@ -2786,6 +2820,98 @@ async def admin_logs(callback: CallbackQuery):
             + (f" ({r['details']})" if r['details'] else "")
         )
     await callback.message.answer("🧾 ПОСЛЕДНИЕ ДЕЙСТВИЯ АДМИНОВ:\n\n" + "\n\n".join(lines))
+
+
+# ============ ОБЩИЙ ПОТОК АКТИВНОСТИ ============
+
+ACTIVITY_FILTERS = {
+    "all": ("Все", None),
+    "shop": ("🛒 Покупки", "shop_purchase"),
+    "sale": ("💰 Продажи", "shop_sale"),
+    "fishing": ("🎣 Рыбалка", "fishing"),
+    "dungeon": ("⛏ Данж", "dungeon%"),
+    "kvp": ("🎖 КВП", "kvp%"),
+    "trade": ("🔁 Обмен", "trade%"),
+    "bank": ("🏦 Банк", "bank%"),
+    "other": ("📦 Прочее", "other"),
+}
+
+ACTIVITY_OTHER_PATTERN = None
+ACTIVITY_EXCLUDED = ("shop_purchase", "shop_sale", "fishing", "dungeon",
+                     "kvp", "trade", "bank", "housing", "report", "equip",
+                     "unequip", "item_use", "treasury_donate")
+
+
+def _activity_markup(current: str = "all"):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = []
+    for key, (label, _) in ACTIVITY_FILTERS.items():
+        mark = "•" if key == current else ""
+        rows.append([InlineKeyboardButton(text=f"{mark}{label}", callback_data=f"act:{key}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _activity_lines(rows) -> str:
+    out = []
+    for e in rows:
+        dt = e['created_at'][:16] if e['created_at'] else ""
+        name = e['first_name'] or ""
+        tag = f" @{e['username']}" if e['username'] else ""
+        label = ""
+        for key, (l, pat) in ACTIVITY_FILTERS.items():
+            if key == "all" or key == "other":
+                continue
+            if pat and (e['action'] == pat or (pat.endswith('%') and e['action'].startswith(pat[:-1]))):
+                label = l
+                break
+        out.append(f"[{dt}] {name}{tag} — {e['action']} {label}\n   {e['details'] or ''}")
+    return "\n".join(out)
+
+
+@router.callback_query(F.data.startswith("act:"))
+async def admin_activity(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_view_logs"):
+        await callback.message.answer("❌ Нет прав для просмотра логов.")
+        return
+    key = callback.data.split(":", 1)[1]
+    if key not in ACTIVITY_FILTERS:
+        key = "all"
+    label, pat = ACTIVITY_FILTERS[key]
+    rows = []
+    if key == "all":
+        rows = await get_recent_activity(30)
+    elif key == "other":
+        rows = await _activity_other()
+    elif pat and pat.endswith('%'):
+        rows = await get_activity_like(pat, 30)
+    elif pat:
+        rows = await get_activity_by_action(pat, 30)
+    if not rows:
+        await callback.message.answer(
+            f"📊 АКТИВНОСТЬ ИГРОКОВ — {label}\n\n(пока пусто)",
+            reply_markup=_activity_markup(key),
+        )
+        return
+    text = f"📊 АКТИВНОСТЬ ИГРОКОВ — {label}\n\n" + _activity_lines(rows)
+    await callback.message.answer(text[:4000], reply_markup=_activity_markup(key))
+
+
+async def _activity_other():
+    from database.db import get_db
+    db = await get_db()
+    ph = ",".join("?" for _ in ACTIVITY_EXCLUDED)
+    cursor = await db.execute(
+        f"SELECT a.id, a.user_id, a.action, a.details, a.created_at, "
+        f"u.username, u.first_name "
+        f"FROM activity_log a LEFT JOIN users u ON u.user_id = a.user_id "
+        f"WHERE a.action NOT IN ({ph}) "
+        f"AND a.action NOT LIKE 'dungeon%' AND a.action NOT LIKE 'kvp%' "
+        f"AND a.action NOT LIKE 'trade%' AND a.action NOT LIKE 'bank%' "
+        f"ORDER BY a.id DESC LIMIT 30",
+        ACTIVITY_EXCLUDED
+    )
+    return await cursor.fetchall()
 
 
 # ============ ОТМЕНА ============

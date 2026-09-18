@@ -75,6 +75,14 @@ class DungeonFSM(StatesGroup):
 router = Router()
 
 
+async def _log_stale(callback, context: str):
+    """Записать факт нажатия устаревшей кнопки в лог активности (для разбора проблем)."""
+    try:
+        await log_activity(callback.from_user.id, "stale_button", context)
+    except Exception:
+        pass
+
+
 # Кровотечение: урон каждый ход, спадает через BLEED_TICKS_MAX ходов.
 BLEED_TICKS_MAX = 3
 # Обморожение: лечение ×FROSTBITE_HEAL_MULT, само проходит через FROSTBITE_TURNS
@@ -591,6 +599,7 @@ async def dungeon_continue(callback: CallbackQuery, state: FSMContext):
 
     parts = callback.data.split(":")
     if len(parts) < 3 or int(parts[2]) != await dungeon_current_step(state):
+        await _log_stale(callback, "данж: устаревшая кнопка продолжения")
         await callback.message.answer("⚠️ Это устаревшая кнопка. Открой подземелье заново и продолжай с последнего сообщения.")
         return
 
@@ -703,6 +712,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
     data = await state.get_data()
     if encoded_step != await dungeon_current_step(state):
+        await _log_stale(callback, "данж: устаревшая кнопка атаки")
         await callback.message.answer("⚠️ Это устаревшая кнопка. Используй кнопки из последнего сообщения боя.")
         return
     current_enemy_id = data.get('current_enemy_id')
@@ -934,11 +944,12 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     if len(parts) < 4:
         return
-    slot = parts[2]
+    enemy_id = int(parts[2])
     encoded_step = int(parts[3])
 
     data = await state.get_data()
     if encoded_step != await dungeon_current_step(state):
+        await _log_stale(callback, "данж: устаревшая кнопка слота")
         await callback.message.answer("⚠️ Это устаревшая кнопка. Используй кнопки из последнего сообщения боя.")
         return
 
@@ -1089,6 +1100,7 @@ async def dungeon_escape(callback: CallbackQuery, state: FSMContext):
 
     data = await state.get_data()
     if encoded_step != await dungeon_current_step(state):
+        await _log_stale(callback, "данж: устаревшая кнопка побега")
         await callback.message.answer("⚠️ Это устаревшая кнопка. Используй кнопки из последнего сообщения боя.")
         return
     current_enemy_id = data.get('current_enemy_id')
@@ -1191,6 +1203,7 @@ async def resv_enter(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     parts = callback.data.split(":")
     if parts[2] != str(await dungeon_current_step(state)):
+        await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
         await callback.message.answer("⚠️ Это устаревшая кнопка.")
         return
     run = await get_active_run(user_id)
@@ -1214,6 +1227,7 @@ async def resv_menu(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     parts = callback.data.split(":")
     if parts[2] != str(await dungeon_current_step(state)):
+        await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
         await callback.message.answer("⚠️ Это устаревшая кнопка.")
         return
     await state.set_state(DungeonFSM.in_reservoir)
@@ -1227,6 +1241,7 @@ async def resv_bait_menu(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     parts = callback.data.split(":")
     if parts[2] != str(await dungeon_current_step(state)):
+        await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
         await callback.message.answer("⚠️ Это устаревшая кнопка.")
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
@@ -1275,6 +1290,7 @@ async def resv_bait_set(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     step, value = parts[3], parts[4]
     if step != str(await dungeon_current_step(state)):
+        await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
         await callback.message.answer("⚠️ Это устаревшая кнопка.")
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
@@ -1292,6 +1308,7 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     parts = callback.data.split(":")
     if parts[2] != str(await dungeon_current_step(state)):
+        await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
         await callback.message.answer("⚠️ Это устаревшая кнопка.")
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
@@ -1463,6 +1480,7 @@ async def resv_deeper(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     parts = callback.data.split(":")
     if parts[2] != str(await dungeon_current_step(state)):
+        await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
         await callback.message.answer("⚠️ Это устаревшая кнопка.")
         return
     if user_id in FISHING_CASTING:
@@ -1496,6 +1514,7 @@ async def resv_eq(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     parts = callback.data.split(":")
     if parts[2] != str(await dungeon_current_step(state)):
+        await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
         await callback.message.answer("⚠️ Это устаревшая кнопка.")
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
@@ -1534,6 +1553,7 @@ async def resv_eqslot(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     slot = parts[2]
     if parts[3] != str(await dungeon_current_step(state)):
+        await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
         await callback.message.answer("⚠️ Это устаревшая кнопка.")
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
@@ -1579,6 +1599,7 @@ async def resv_eqset(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     slot, item_id = parts[2], int(parts[3])
     if parts[4] != str(await dungeon_current_step(state)):
+        await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
         await callback.message.answer("⚠️ Это устаревшая кнопка.")
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
@@ -1602,6 +1623,7 @@ async def resv_eqclear(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     slot = parts[2]
     if parts[3] != str(await dungeon_current_step(state)):
+        await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
         await callback.message.answer("⚠️ Это устаревшая кнопка.")
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:

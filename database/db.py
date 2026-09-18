@@ -5747,11 +5747,53 @@ async def get_recent_activity(limit: int = 30):
     """Последние действия всех игроков (общий поток)."""
     conn = await get_db()
     cursor = await conn.execute(
-        "SELECT id, user_id, action, details, created_at FROM activity_log "
-        "ORDER BY id DESC LIMIT ?",
+        "SELECT a.id, a.user_id, a.action, a.details, a.created_at, "
+        "u.username, u.first_name "
+        "FROM activity_log a "
+        "LEFT JOIN users u ON u.user_id = a.user_id "
+        "ORDER BY a.id DESC LIMIT ?",
         (limit,)
     )
     return await cursor.fetchall()
+
+
+async def get_activity_by_action(action: str, limit: int = 30):
+    """Последние действия игроков по конкретному типу (фильтр общего потока)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT a.id, a.user_id, a.action, a.details, a.created_at, "
+        "u.username, u.first_name "
+        "FROM activity_log a "
+        "LEFT JOIN users u ON u.user_id = a.user_id "
+        "WHERE a.action = ? ORDER BY a.id DESC LIMIT ?",
+        (action, limit)
+    )
+    return await cursor.fetchall()
+
+
+async def get_activity_like(pattern: str, limit: int = 30):
+    """Последние действия по маске действия (например 'dungeon%')."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT a.id, a.user_id, a.action, a.details, a.created_at, "
+        "u.username, u.first_name "
+        "FROM activity_log a "
+        "LEFT JOIN users u ON u.user_id = a.user_id "
+        "WHERE a.action LIKE ? ORDER BY a.id DESC LIMIT ?",
+        (pattern, limit)
+    )
+    return await cursor.fetchall()
+
+
+async def prune_activity_log(days: int = 30):
+    """Удалить из activity_log записи старше заданного числа дней (защита от роста таблицы)."""
+    conn = await get_db()
+    deleted = await conn.execute(
+        "DELETE FROM activity_log WHERE created_at < datetime('now', ?)",
+        (f"-{days} days",)
+    )
+    await conn.commit()
+    return deleted.rowcount
 
 
 async def clear_user_photo(user_id: int):

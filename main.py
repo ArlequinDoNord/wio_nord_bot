@@ -14,6 +14,7 @@ from database.db import (
     ensure_dungeon_reservoir_items, ensure_market_license_item, pay_salaries, payout_reports,
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award,
     ensure_water_fish, migrate_legacy_junk,
+    log_activity, prune_activity_log,
 )
 from utils.notify import notify_treasury_shortage
 from utils.helpers import is_main_menu_text
@@ -174,6 +175,12 @@ async def scheduled_jobs(bot: Bot):
                 logger.info(f"Оплата отчётов: выплачено игрокам {len(payouts)}")
         except Exception as e:
             logger.error(f"Ошибка выплаты по отчётам: {e}", exc_info=True)
+        try:
+            pruned = await prune_activity_log(days=30)
+            if pruned:
+                logger.info(f"Очистка activity_log: удалено записей {pruned}")
+        except Exception as e:
+            logger.error(f"Ошибка очистки activity_log: {e}", exc_info=True)
         await asyncio.sleep(24 * 60 * 60)
 
 
@@ -234,6 +241,32 @@ async def main():
 
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
+
+    @dp.errors()
+    async def global_error_handler(event):
+        """Глобальный перехват исключений хендлеров: пишем в activity_log (для
+        поиска проблем по имени/тегу игрока) и в bot.log."""
+        ex = event.exception
+        uid = None
+        try:
+            ev = event.update.event if event.update else None
+            src = getattr(ev, "from_user", None)
+            uid = getattr(src, "id", None)
+        except Exception:
+            pass
+        try:
+            if uid:
+                err_desc = f"{type(ex).__name__}: {str(ex)[:400]}"
+                await log_activity(uid, "handle_error", err_desc)
+        except Exception:
+            pass
+        logger.error(
+            f"Ошибка хендлера (user {uid}): {type(ex).__name__}: {ex}",
+            exc_info=(type(ex), ex, ex.__traceback__),
+        )
+        return True
+
+    logger.info("Глобальный обработчик ошибок зарегистрирован")
 
     await bot.set_my_commands([
         BotCommand(command="start", description="Вход в систему"),

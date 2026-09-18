@@ -146,6 +146,10 @@ async def _fish_ok(callback) -> bool:
     # cast:TOKEN | bait:TOKEN | lake:TOKEN | bait:set:TOKEN:VAL
     token = rest.split(":")[2] if rest.startswith("bait:set:") else rest.split(":")[1]
     if FISH_TOKEN.get(callback.from_user.id) != token:
+        try:
+            await log_activity(callback.from_user.id, "stale_button", "рыбалка: устаревшее окно")
+        except Exception:
+            pass
         await callback.answer(
             "⏳ Это окно рыбалки устарело — открой озеро заново (Парк → Озеро).",
             show_alert=True,

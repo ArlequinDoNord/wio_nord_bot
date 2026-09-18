@@ -348,6 +348,10 @@ async def kvp_continue(callback: CallbackQuery, state: FSMContext):
 
     parts = callback.data.split(":")
     if len(parts) < 3 or int(parts[2]) != await dungeon_current_step(state):
+        try:
+            await log_activity(user_id, "stale_button", "КВП: устаревшая кнопка продолжения")
+        except Exception:
+            pass
         await callback.message.answer(
             "⚠️ Это устаревшая кнопка. Открой курс заново и продолжай с последнего сообщения."
         )
@@ -380,6 +384,10 @@ async def kvp_attempt(callback: CallbackQuery, state: FSMContext):
     encoded_step = int(parts[3]) if len(parts) > 3 else 0
 
     if encoded_step != await dungeon_current_step(state):
+        try:
+            await log_activity(user_id, "stale_button", "КВП: устаревшая кнопка препятствия")
+        except Exception:
+            pass
         await callback.message.answer(
             "⚠️ Это устаревшая кнопка. Открой курс заново и продолжай с последнего сообщения."
         )
@@ -454,6 +462,10 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     enemy_id = int(parts[2])
     encoded_step = int(parts[3])
     if encoded_step != await dungeon_current_step(state):
+        try:
+            await log_activity(user_id, "stale_button", "КВП: устаревшая кнопка боя")
+        except Exception:
+            pass
         await callback.message.answer(
             "⚠️ Это устаревшая кнопка. Используй кнопки из последнего сообщения боя."
         )

@@ -55,6 +55,7 @@ def admin_panel_keyboard(permissions: dict):
     if permissions.get('can_view_logs'):
         buttons.append([InlineKeyboardButton(text="🧾 Логи действий", callback_data="admin:logs")])
         buttons.append([InlineKeyboardButton(text="📒 Лог игрока", callback_data="admin:player_log")])
+        buttons.append([InlineKeyboardButton(text="📊 Активность игроков", callback_data="act:all")])
     if permissions.get('can_manage_users'):
         buttons.append([InlineKeyboardButton(text="🗑 Удалить фото пилота", callback_data="admin:del_photo")])
         buttons.append([InlineKeyboardButton(text="📡 Установить позывной", callback_data="admin:callsign")])
