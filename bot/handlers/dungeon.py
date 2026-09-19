@@ -526,8 +526,8 @@ async def show_reservoir(where, user_id: int, state: FSMContext):
         "🌊 ПОДЗЕМНОЕ ВОДОХРАНИЛИЩЕ\n\n"
         "Тёмная вода мерцает холодным светом. Тишина такая, что слышно собственные шаги. "
         "Иногда по воде пробегает рябь — там кто-то есть, и рыба тут непугливая.\n\n"
-        "🐟 Водится: Мерцающий сом (обычный), Искрящийся угорь (редкий)… "
-        "и что-то светящееся в глубине, чего не поймать нигде больше.\n"
+        "🐟 В глубине водится редкий улов, которого больше нигде не найти. "
+        "Что именно попадётся на крючок — заранее не скажешь.\n"
     )
     user = await get_user(user_id) or {}
     chosen = (user.get('fishing_bait') or "").strip()
@@ -944,7 +944,7 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     if len(parts) < 4:
         return
-    enemy_id = int(parts[2])
+    slot = parts[2]
     encoded_step = int(parts[3])
 
     data = await state.get_data()
@@ -1317,46 +1317,48 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
     if user_id in FISHING_CASTING:
         await callback.answer("🎣 Ты уже ждёшь улов — дождись результата!", show_alert=True)
         return
-    run = await get_active_run(user_id)
-    if not run:
-        await callback.message.answer("❌ Подземелье не найдено.")
-        await state.clear()
-        return
-
-    user = await get_user(user_id)
-    if not user:
-        return
-
-    rod = await _rod_for(user_id)
-    if not rod:
-        await callback.message.answer(
-            "❌ У тебя нет удочки. Купи «Удочка из орешника» в магазине (категория «Рыбалка»)."
-        )
-        return
-
-    if user['ap'] < RESERVOIR_AP_COST:
-        await callback.message.answer(
-            f"❌ Не хватает ОД: нужно {RESERVOIR_AP_COST}, у тебя {user['ap']}.\n"
-            f"⚡ ОД восстанавливаются раз в сутки."
-        )
-        return
-    ok = await remove_ap(user_id, RESERVOIR_AP_COST)
-    if not ok:
-        await callback.message.answer("❌ Не удалось списать ОД.")
-        return
-
-    chosen = (user.get('fishing_bait') or "").strip()
-    bait_name, bait_id = await _resolve_bait(user_id, chosen)
-    if bait_id is not None:
-        await remove_inventory_item(user_id, bait_id, 1)
-
-    # Перебиваем старую кнопку заброса (защита от двойного списания ОД).
-    await dungeon_new_step(state)
-
-    # Пока идёт ожидание улова — держим лок: выйти, продолжить путь и
-    # повторный заброс блокируются (middleware FishingActiveLock + гарды ниже).
+    # Лок ставим сразу, до первого await: иначе двойной тап проходит
+    # проверку дважды и игрок забрасывает удочку многократно подряд.
     FISHING_CASTING.add(user_id)
     try:
+        run = await get_active_run(user_id)
+        if not run:
+            await callback.message.answer("❌ Подземелье не найдено.")
+            await state.clear()
+            return
+
+        user = await get_user(user_id)
+        if not user:
+            return
+
+        rod = await _rod_for(user_id)
+        if not rod:
+            await callback.message.answer(
+                "❌ У тебя нет удочки. Купи «Удочка из орешника» в магазине (категория «Рыбалка»)."
+            )
+            return
+
+        if user['ap'] < RESERVOIR_AP_COST:
+            await callback.message.answer(
+                f"❌ Не хватает ОД: нужно {RESERVOIR_AP_COST}, у тебя {user['ap']}.\n"
+                f"⚡ ОД восстанавливаются раз в сутки."
+            )
+            return
+        ok = await remove_ap(user_id, RESERVOIR_AP_COST)
+        if not ok:
+            await callback.message.answer("❌ Не удалось списать ОД.")
+            return
+
+        chosen = (user.get('fishing_bait') or "").strip()
+        bait_name, bait_id = await _resolve_bait(user_id, chosen)
+        if bait_id is not None:
+            await remove_inventory_item(user_id, bait_id, 1)
+
+        # Перебиваем старую кнопку заброса (защита от двойного списания ОД).
+        await dungeon_new_step(state)
+
+        # Пока идёт ожидание улова — держим лок: выйти, продолжить путь и
+        # повторный заброс блокируются (middleware FishingActiveLock + гарды ниже).
         bait_part = f" с наживкой «{bait_name}»" if bait_name else " без наживки"
         try:
             await callback.message.edit_text(

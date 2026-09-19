@@ -490,42 +490,44 @@ async def fish_cast(callback: CallbackQuery):
         await callback.answer("Ты уже закинул удочку — дождись результата!", show_alert=True)
         return
 
-    _mark_fishing_active(user_id)
-
-    # В подземелье рыбачить нельзя (старые кнопки озера тоже блокируем)
-    if await get_active_run(user_id):
-        await callback.answer("⛔ Ты в подземелье — рыбачить нельзя!", show_alert=True)
-        return
-
-    user = await get_user(user_id)
-    if not user:
-        await callback.answer("Сначала нажми /start", show_alert=True)
-        return
-
-    rod = await _rod_for(user_id)
-    if not rod:
-        await _paint(
-            callback,
-            text="❌ У тебя нет удочки. Купи «Удочка из орешника» в магазине (категория «Рыбалка»).",
-            kb=_lake_markup(FISH_TOKEN.get(user_id, "")),
-        )
-        return
-
-    if not await remove_ap(user_id, FISH_AP_COST):
-        await _paint(
-            callback,
-            text=f"❌ Не хватает ОД: нужно {FISH_AP_COST}, доступно меньше. Восстановление — в новые сутки.",
-            kb=_lake_markup(FISH_TOKEN.get(user_id, "")),
-        )
-        return
-
-    chosen = (user.get('fishing_bait') or "").strip()
-    bait_name, bait_id = await _resolve_bait(user_id, chosen)
-    if bait_id is not None:
-        await remove_inventory_item(user_id, bait_id, 1)
-
+    # Лок ставим сразу, до первого await: иначе двойной тап проходит
+    # проверку дважды и игрок забрасывает удочку многократно подряд.
     FISHING_CASTING.add(user_id)
     try:
+        _mark_fishing_active(user_id)
+
+        # В подземелье рыбачить нельзя (старые кнопки озера тоже блокируем)
+        if await get_active_run(user_id):
+            await callback.answer("⛔ Ты в подземелье — рыбачить нельзя!", show_alert=True)
+            return
+
+        user = await get_user(user_id)
+        if not user:
+            await callback.answer("Сначала нажми /start", show_alert=True)
+            return
+
+        rod = await _rod_for(user_id)
+        if not rod:
+            await _paint(
+                callback,
+                text="❌ У тебя нет удочки. Купи «Удочка из орешника» в магазине (категория «Рыбалка»).",
+                kb=_lake_markup(FISH_TOKEN.get(user_id, "")),
+            )
+            return
+
+        if not await remove_ap(user_id, FISH_AP_COST):
+            await _paint(
+                callback,
+                text=f"❌ Не хватает ОД: нужно {FISH_AP_COST}, доступно меньше. Восстановление — в новые сутки.",
+                kb=_lake_markup(FISH_TOKEN.get(user_id, "")),
+            )
+            return
+
+        chosen = (user.get('fishing_bait') or "").strip()
+        bait_name, bait_id = await _resolve_bait(user_id, chosen)
+        if bait_id is not None:
+            await remove_inventory_item(user_id, bait_id, 1)
+
         delay = random.randint(7, 15)
         bait_part = f" с наживкой «{bait_name}»" if bait_name else " без наживки"
         chance = _catch_chance(rod, bait_name, (await get_award_bonus(user_id))['fishing'])
