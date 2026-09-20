@@ -1,7 +1,8 @@
 import json
 import time
 import aiosqlite
-from config import DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MINUTES
+from config import (DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MINUTES,
+                    DUNGEON_RUN_STALE_SEC)
 
 db: aiosqlite.Connection | None = None
 
@@ -583,6 +584,7 @@ async def init_db():
     await _ensure_column(conn, "reports", "paid", "INTEGER DEFAULT 0")
     await conn.execute("UPDATE reports SET paid = 1 WHERE status = 'approved'")
     await _ensure_column(conn, "player_dungeon_run", "loot_nm", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "player_dungeon_run", "started_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     # «Аптечка» — это +AP (энергетик); лечит HP в данже «Малая настойка здоровья»
     await conn.execute("UPDATE items SET name = 'Энергетик', description = 'Восстанавливает силы: даёт +AP при использовании.' WHERE name = 'Аптечка'")
     await _ensure_column(conn, "users", "ap_restored_day", "TEXT DEFAULT NULL")
@@ -4496,10 +4498,30 @@ async def start_dungeon_run(user_id: int, dungeon_id: int):
     bonus = await get_award_bonus(user_id)
 
     await conn.execute(
-        "INSERT INTO player_dungeon_run (user_id, dungeon_id, floor, room_number, hp, hp_max, is_active) VALUES (?,?,?,?,?,?,?)",
-        (user_id, dungeon_id, 1, 0, 100 + bonus['hp'], 100 + bonus['hp'], 1)
+        "INSERT INTO player_dungeon_run (user_id, dungeon_id, floor, room_number, hp, hp_max, is_active, started_at) VALUES (?,?,?,?,?,?,?,?)",
+        (user_id, dungeon_id, 1, 0, 100 + bonus['hp'], 100 + bonus['hp'], 1, int(time.time()))
     )
     await conn.commit()
+
+
+def _parse_sqlite_ts(value) -> float | None:
+    """SQLite CURRENT_TIMESTAMP = 'YYYY-MM-DD HH:MM:SS' в UTC."""
+    from datetime import datetime, timezone
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").replace(
+                tzinfo=timezone.utc
+            ).timestamp()
+        except Exception:
+            try:
+                return datetime.fromisoformat(value).replace(
+                    tzinfo=timezone.utc
+                ).timestamp()
+            except Exception:
+                return None
+    return None
 
 
 async def get_active_run(user_id: int):
@@ -4508,7 +4530,33 @@ async def get_active_run(user_id: int):
         "SELECT * FROM player_dungeon_run WHERE user_id = ? AND is_active = 1",
         (user_id,)
     )
-    return await cursor.fetchone()
+    run = await cursor.fetchone()
+    if run is None:
+        return None
+    # Принудительный сброс протухших забегов: если пилот застрял (или просто
+    # вышел из подземелья в город и забыл про забег) — через час забег сам
+    # завершается и больше не блокирует рыбалку и другие зоны.
+    started_ts = _parse_sqlite_ts(run.get('started_at'))
+    if started_ts is not None and time.time() - started_ts > DUNGEON_RUN_STALE_SEC:
+        await finalize_run_for(user_id, run['id'], "dungeon_timeout",
+                               "Забег сброшен: вышло время пребывания в подземелье",
+                               loot_nm=run.get('loot_nm') or 0)
+        return None
+    return run
+
+
+async def finalize_run_for(user_id: int, run_id: int, reason: str, note: str,
+                           loot_nm: int = 0):
+    """Завершает забег: переносит собранный лут и НМ в инвентарь и делает забег неактивным."""
+    items = await transfer_run_items_to_inventory(user_id, run_id)
+    if loot_nm > 0:
+        await add_nordmarks(user_id, loot_nm, reason, "Вынесено из подземелья")
+    await end_run(run_id, 0)
+    try:
+        await log_activity(user_id, reason, note)
+    except Exception:
+        pass
+    return items, loot_nm
 
 
 async def update_run_hp(run_id: int, hp: int):

@@ -229,8 +229,9 @@ async def shop_category(callback: CallbackQuery):
     else:
         items = await visible_items(callback.from_user.id, await get_available_items(category=category))
     if not items:
-        await callback.message.edit_text(
-            "В этой категории пока нет доступных товаров.", reply_markup=None)
+        await edit_or_replace(
+            callback.message,
+            "В этой категории пока нет доступных товаров.", None)
         return
     await show_items_page(callback, category, items, 0)
 
@@ -282,9 +283,10 @@ def items_page_markup(items, category, page: int):
 
 
 async def show_items_page(callback: CallbackQuery, category: str, items, page: int):
-    await callback.message.edit_text(
+    await edit_or_replace(
+        callback.message,
         f"🛒 {ITEM_CATEGORIES.get(category, category)}:",
-        reply_markup=items_page_markup(items, category, page)
+        items_page_markup(items, category, page)
     )
 
 

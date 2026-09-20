@@ -108,6 +108,17 @@ def _housing_photo(htype: str):
     return path if os.path.isfile(path) else None
 
 
+def _plant_stage_photo(data: dict, ht: str, stage: int):
+    """Картинка кадки/растения по стадии: «Семя» — общая стоковая кадка,
+    стадии 1..4 — индивидуальные файлы (если загружены), иначе — фото комнаты."""
+    if stage == 0:
+        return EMPTY_KADKA_PHOTO if os.path.isfile(EMPTY_KADKA_PHOTO) else _housing_photo(ht)
+    seed_name = data.get("seed")
+    seed_photos = PLANT_PHOTOS.get(seed_name) or {} if seed_name else {}
+    p = seed_photos.get(stage)
+    return p if p and os.path.isfile(p) else _housing_photo(ht)
+
+
 def _slot_icon(et):
     return {"kitchen": "🍳", "workbench": "🔧", "plant_pot": "🌱"}.get(et, "📦")
 
@@ -413,12 +424,7 @@ async def _room_plant(cb, uid, idx, slot, ht):
 
     # Картинка стадии растения: «Семя» — общая стоковая кадка, дальше —
     # индивидуальная под вид семечка (если её файл загружен), иначе — фото комнаты.
-    if stage == 0:
-        plant_photo = EMPTY_KADKA_PHOTO if os.path.isfile(EMPTY_KADKA_PHOTO) else _housing_photo(ht)
-    else:
-        seed_photos = PLANT_PHOTOS.get(seed_name) or {}
-        p = seed_photos.get(stage)
-        plant_photo = p if p and os.path.isfile(p) else _housing_photo(ht)
+    plant_photo = _plant_stage_photo(data, ht, stage)
     await _paint(cb, "\n".join(lines), plant_photo, kb)
 
 
@@ -773,7 +779,7 @@ async def housing_uninstall(cb: CallbackQuery):
                 f"Растение «{plant_name}» (стадия: {stage_name}) будет удалено "
                 f"безвозвратно — семечко и прогресс не вернутся.\n"
                 f"Кадка снова станет обычной пустой.{cost_line}",
-                _housing_photo(ht),
+                _plant_stage_photo(data, ht, info["stage"]),
                 kb
             )
             return

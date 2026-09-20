@@ -118,9 +118,9 @@ def _fountain_photo_file():
     return park_photo()
 
 
-def fountain_markup(can_use: bool):
+def fountain_markup(can_use: bool, full: bool = False):
     rows = []
-    if can_use:
+    if can_use and not full:
         rows.append([InlineKeyboardButton(
             text=f"💧 Восстановить {FOUNTAIN_AP_BONUS} ОД",
             callback_data="park:fountain:drink")])
@@ -143,11 +143,18 @@ async def park_fountain(callback: CallbackQuery):
         "Струи чистой воды радуют глаз, а прохладная свежесть бодрит.\n"
         "Раз в сутки у фонтана можно восстановить 15 ОД.\n"
     )
+    full = bool(user) and user.get('ap', 0) >= user.get('ap_max', 0) and user.get('ap_max', 0) > 0
     if not can:
         caption += "\n⏳ Фонтан уже использован сегодня. Приходи завтра."
+    elif full:
+        caption += (
+            f"\n⚡ ОД сейчас: {user.get('ap', 0)}/{user.get('ap_max', 0)}\n"
+            "\n⚠️ У тебя полный запас ОД — отдых у фонтана ничего не даст. "
+            "Не трать суточное использование впустую!"
+        )
     else:
-        caption += f"\n⚡ ОД сейчас: {user.get('ap', 0)}"
-    await _show_fountain(callback.message, caption, fountain_markup(can))
+        caption += f"\n⚡ ОД сейчас: {user.get('ap', 0)}/{user.get('ap_max', 0)}"
+    await _show_fountain(callback.message, caption, fountain_markup(can, full))
 
 
 @router.callback_query(F.data == "park:fountain:drink")
@@ -158,6 +165,12 @@ async def park_fountain_drink(callback: CallbackQuery):
         return
     if not await can_use_fountain(uid):
         await callback.answer("❌ Фонтан уже использован сегодня.", show_alert=True)
+        return
+
+    user = await get_user(uid) or {}
+    if user.get('ap_max', 0) > 0 and user.get('ap', 0) >= user.get('ap_max', 0):
+        await callback.answer("❌ У тебя полный запас ОД — отдых ничего не даст.",
+                              show_alert=True)
         return
 
     await callback.answer("💧 Отдыхаешь у фонтана…")

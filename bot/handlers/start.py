@@ -3,7 +3,9 @@ import os
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart, Command
-from database.db import add_user, get_user, ensure_base_status, user_has_status_tag, get_all_locations
+from aiogram.fsm.context import FSMContext
+from database.db import (add_user, get_user, ensure_base_status, user_has_status_tag,
+                         get_all_locations, get_active_run, finalize_run_for)
 from keyboards.keyboards import main_menu_keyboard, city_keyboard
 from utils.permissions import is_admin
 from utils.helpers import resolve_image
@@ -79,10 +81,13 @@ async def cmd_help(message: Message):
 
 
 @router.message(F.text == "Город")
-async def show_city(message: Message):
+async def show_city(message: Message, state: FSMContext):
+    left_note = await _abandon_active_run_if_left(message.from_user.id, state)
     city_view = resolve_image("city/arkholm")
     is_here_pilot = await user_has_status_tag(message.from_user.id, "pilot")
     locations = await get_all_locations()
+    if left_note:
+        await message.answer(left_note)
     await message.answer_photo(
         photo=FSInputFile(city_view),
         caption="🏰 Город Аркхольм:",
@@ -90,12 +95,39 @@ async def show_city(message: Message):
     )
 
 
+async def _abandon_active_run_if_left(user_id: int, state: FSMContext) -> str | None:
+    """Если пилот зашёл в город из подземелья — забег завершается:
+    лут переносится в инвентарь, FSM подземелья сбрасывается.
+    Возвращает текст о вынесенном луте (или None, если забега не было)."""
+    run = await get_active_run(user_id)
+    if run is None:
+        return None
+    items, loot_nm = await finalize_run_for(user_id, run['id'], "dungeon_left_to_city",
+                                            "Покинул подземелье, уйдя в город",
+                                            loot_nm=run.get('loot_nm') or 0)
+    try:
+        await state.clear()
+    except Exception:
+        pass
+    parts = []
+    if loot_nm:
+        parts.append(f"💰 {loot_nm} Нордмарок")
+    for name, qty in items or []:
+        parts.append(f"🎁 {name} x{qty}")
+    if parts:
+        return "⚙️ Ты вышел из подземелья — забег завершён. Вынесено:\n" + "\n".join(parts)
+    return "⚙️ Ты вышел из подземелья — забег завершён."
+
+
 @router.callback_query(F.data == "city:menu")
-async def city_menu_cb(callback: CallbackQuery):
+async def city_menu_cb(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    left_note = await _abandon_active_run_if_left(callback.from_user.id, state)
     city_view = resolve_image("city/arkholm")
     is_here_pilot = await user_has_status_tag(callback.from_user.id, "pilot")
     locations = await get_all_locations()
+    if left_note:
+        await callback.message.answer(left_note)
     if callback.message.photo:
         from aiogram.types import InputMediaPhoto
         await callback.message.edit_media(
