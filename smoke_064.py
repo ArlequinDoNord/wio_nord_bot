@@ -54,6 +54,9 @@ class FakeMessageWithFrom(FakeMessage):
         self.from_user = SimpleNamespace(id=user_id)
         self.text = ""
 
+    def __getattr__(self, name):
+        raise AttributeError(name)
+
 
 class FakeCallback:
     def __init__(self, user_id, data="", message=None):
@@ -242,6 +245,15 @@ async def run():
     txt = sent_text(cb.message)
     check("wall_view: заголовок", "СТЕНА ИЗРЕЧЕНИЙ" in txt)
     check("wall_view: есть посты", "💬" in txt)
+
+    # ── 10а. Вход с главного меню (Message) открывает ту же стену ──
+    msg_w = FakeMessageWithFrom(uid)
+    msg_w.text = "🧱 Стена изречений"
+    st_m = FakeState()
+    await wh.wall_open_text(msg_w, st_m)
+    txt_m = sent_text(msg_w)
+    check("main menu: стена открывается сразу", "СТЕНА ИЗРЕЧЕНИЙ" in txt_m)
+    check("main menu: есть кнопки стены", msg_w.sent[0][2].get('reply_markup') is not None)
 
     # ── 11. wall:write → FSM; публикация ──
     user_before = (await get_user(uid_admin))

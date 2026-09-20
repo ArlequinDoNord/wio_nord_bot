@@ -52,16 +52,21 @@ def _wall_footer(user_id: int, count_today: int, user: dict) -> str:
     return f"⛔ Сегодня стена заполнена: лимит {WALL_REVIEW_TOTAL} изречений исчерпан. Новые — с завтра."
 
 
-async def _show_wall(callback: CallbackQuery, state: FSMContext, page: int = 0):
-    """Показать страницу стены (текст + клавиатура)."""
+async def _show_wall(sender, state: FSMContext, page: int = 0):
+    """Показать страницу стены (текст + клавиатура).
+
+    sender: Message или CallbackQuery (у обоих есть .from_user.id;
+    текст шлём через .message.answer, а у Message — .answer).
+    """
     try:
         await state.clear()
     except Exception:
         pass
+    user_id = sender.from_user.id
     total = await count_wall_posts()
     rows = await get_wall_posts(page, WALL_PAGE_SIZE)
-    admin = await is_admin(callback.from_user.id)
-    manage = await has_permission(callback.from_user.id, "can_manage_users")
+    admin = await is_admin(user_id)
+    manage = await has_permission(user_id, "can_manage_users")
     ids = [r['id'] for r in rows]
 
     if not total:
@@ -78,18 +83,21 @@ async def _show_wall(callback: CallbackQuery, state: FSMContext, page: int = 0):
                 f"\n   — {author}{price_tag}"
             )
         # показать лимиты автора запроса
-        user = await get_user(callback.from_user.id)
-        cnt = await count_wall_posts_today(callback.from_user.id)
-        lines.append(f"\n{_wall_footer(callback.from_user.id, cnt, user)}")
+        user = await get_user(user_id)
+        cnt = await count_wall_posts_today(user_id)
+        lines.append(f"\n{_wall_footer(user_id, cnt, user)}")
         text = "\n".join(lines)
 
-    try:
-        await callback.message.answer(text, reply_markup=wall_keyboard(
+    if not hasattr(sender, "message"):  # Message (у Callback есть .message)
+        await sender.answer(text, reply_markup=wall_keyboard(
             page=page, total_posts=total, post_ids=ids,
             is_admin=admin, can_manage=manage,
         ))
-    except Exception:
-        await callback.answer()
+    else:  # CallbackQuery
+        await sender.message.answer(text, reply_markup=wall_keyboard(
+            page=page, total_posts=total, post_ids=ids,
+            is_admin=admin, can_manage=manage,
+        ))
 
 
 def _author_label(r: dict) -> str:
@@ -107,9 +115,7 @@ def _author_label(r: dict) -> str:
 @router.message(F.text == "🧱 Стена изречений")
 async def wall_open_text(message: Message, state: FSMContext):
     await state.clear()
-    await message.answer("🧱 Открой стену изречений, зайдя в город.", reply_markup=None)
-    from keyboards.keyboards import main_menu_kb
-    await message.answer("Выберите действие:", reply_markup=await main_menu_kb(message.from_user.id))
+    await _show_wall(message, state, page=0)
 
 
 @router.callback_query(F.data == "wall:view")
