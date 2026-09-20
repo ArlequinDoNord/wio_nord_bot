@@ -9,6 +9,7 @@ from aiogram.fsm.state import StatesGroup, State
 
 from database.db import (
     get_all_dungeons, get_dungeon, get_dungeon_rooms_map, get_floor_enemies,
+    get_dungeon_enemies,
     start_dungeon_run, get_active_run, update_run_hp, advance_room, advance_floor,
     end_run, add_run_item, add_run_nordmarks,
     get_run_items, clear_run_items, get_user, add_nordmarks, remove_nordmarks, remove_ap, get_db,
@@ -284,9 +285,251 @@ def dungeon_start_keyboard():
 def contract_missing_keyboard():
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏰 К списку подземелий", callback_data="city:dungeon")],
+        [InlineKeyboardButton(text="🏰 К списку контрактов", callback_data="contracts:list")],
         [InlineKeyboardButton(text="🏠 В меню города", callback_data="city:menu")],
     ])
+
+
+@router.callback_query(F.data == "contracts:list")
+async def contracts_list(callback: CallbackQuery, state: FSMContext):
+    """«📜 Контракты от Штаба ВС» — список доступных подземелий (каждое = контракт)."""
+    await callback.answer()
+    user_id = callback.from_user.id
+    active = await get_active_run(user_id)
+
+    if active:
+        await resume_dungeon(callback.message, active, user_id, state)
+        return
+
+    dungeons = await get_all_dungeons(training=False)
+    if not dungeons:
+        await callback.message.answer("❌ Контрактов пока нет.")
+        return
+
+    contracts = await get_user_contract_count(user_id)
+
+    text = (
+        "📜 КОНТРАКТЫ ОТ ШТАБА ВС\n\n"
+        "Штаб вывешивает контракты на зачистку подземелий. "
+        "Выбери контракт, чтобы посмотреть условия.\n\n"
+    )
+
+    buttons = []
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    for i, d in enumerate(dungeons, 1):
+        rooms = await get_dungeon_rooms_map(d['id'])
+        floors_n = len(rooms) or int(d.get('floors_count') or 1)
+        text += (
+            f"{i}. ⚔️ {d['name']}\n"
+            f"    Этажей: {floors_n}, комнат/этаж: {rooms[0] if rooms else d.get('rooms_per_floor') or '—'}\n"
+        )
+        buttons.append([InlineKeyboardButton(
+            text=f"📜 {d['name']} — условия контракта",
+            callback_data=f"contract:pick:{d['id']}"
+        )])
+
+    text += (
+        f"\n🎫 Контрактов на зачистку: {contracts}\n"
+        f"(покупаются в магазине, доступно Ветеранам).\n"
+        f"Вход по контракту списывает его и 30 ⚡ ОД."
+    )
+    buttons.append([InlineKeyboardButton(text="🏠 В меню города", callback_data="city:menu")])
+
+    markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+    photo = dungeon_entrance_photo(dungeons[0])
+    if photo:
+        try:
+            await callback.message.answer_photo(photo=photo, caption=text, reply_markup=markup)
+        except Exception:
+            await callback.message.answer(text, reply_markup=markup)
+    else:
+        await callback.message.answer(text, reply_markup=markup)
+
+
+async def _contract_difficulty(dng) -> int:
+    """Уровень сложности 1–5 по суммарным статам врагов данжа."""
+    enemies = await get_dungeon_enemies(dng['id'])
+    pool = sum((e['hp'] or 0) for e in enemies) + 10 * sum((e['attack'] or 0) for e in enemies)
+    if pool < 300:
+        return 1
+    if pool < 600:
+        return 2
+    if pool < 1000:
+        return 3
+    if pool < 1600:
+        return 4
+    return 5
+
+
+async def _contract_reward_nm(dng) -> int:
+    """Суммарная награда (НМ) за зачистку: реварды всех врагов данжа."""
+    enemies = await get_dungeon_enemies(dng['id'])
+    return sum((e['reward_nm'] or 0) for e in enemies)
+
+
+@router.callback_query(F.data.startswith("contract:pick:"))
+async def contract_pick(callback: CallbackQuery, state: FSMContext):
+    """Карточка выбранного контракта: условия, награда, стоимость входа."""
+    await callback.answer()
+    try:
+        dungeon_id = int(callback.data.split(":", 2)[2])
+    except (IndexError, ValueError):
+        return
+    dungeon = await get_dungeon(dungeon_id)
+    if not dungeon:
+        await callback.message.answer("❌ Контракт не найден.")
+        return
+
+    user_id = callback.from_user.id
+    contracts = await get_user_contract_count(user_id)
+    user = await get_user(user_id)
+
+    rooms = await get_dungeon_rooms_map(dungeon_id)
+    floors_n = len(rooms) or int(dungeon.get('floors_count') or 1)
+    difficulty = await _contract_difficulty(dungeon)
+    reward_nm = await _contract_reward_nm(dungeon)
+
+    stars = "★" * difficulty + "☆" * (5 - difficulty)
+    text = (
+        f"📜 КОНТРАКТ ОТ ШТАБА ВС\n\n"
+        f"⚔️ {dungeon['name']}\n"
+        f"{dungeon['description'] or ''}\n\n"
+        f"🏚 Этажей: {floors_n} (комнат/этаж: {rooms[0] if rooms else dungeon.get('rooms_per_floor') or '—'})\n"
+        f"☠ Сложность: {stars}\n"
+        f"💰 Награда за зачистку: до {reward_nm} НМ с врагов\n\n"
+        f"🎫 Стоимость входа:\n"
+        f"   • 1 «Контракт на зачистку» (у тебя: {contracts})\n"
+        f"   • 30 ⚡ ОД (у тебя: {user['ap'] if user else 0})\n\n"
+        f"Ресурсы списываются сразу при входе, даже если ты выйдешь из подземелья."
+    )
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎫 Войти (1 контракт)", callback_data=f"contract:enter:{dungeon_id}")],
+        [InlineKeyboardButton(text="↩️ К списку контрактов", callback_data="contracts:list")],
+        [InlineKeyboardButton(text="🏠 В меню города", callback_data="city:menu")],
+    ])
+    photo = dungeon_entrance_photo(dungeon)
+    if photo:
+        try:
+            await callback.message.answer_photo(photo=photo, caption=text, reply_markup=markup)
+        except Exception:
+            await callback.message.answer(text, reply_markup=markup)
+    else:
+        await callback.message.answer(text, reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("contract:enter:"))
+async def contract_enter(callback: CallbackQuery, state: FSMContext):
+    """Подтверждение входа по выбранному контракту."""
+    await callback.answer()
+    try:
+        dungeon_id = int(callback.data.split(":", 2)[2])
+    except (IndexError, ValueError):
+        return
+    dungeon = await get_dungeon(dungeon_id)
+    if not dungeon:
+        return
+
+    user_id = callback.from_user.id
+    contracts = await get_user_contract_count(user_id)
+    if contracts <= 0:
+        await callback.message.answer(
+            "❌ У тебя нет «Контракта на зачистку».\n\n"
+            "Купи его в магазине (Особое) — доступно Ветеранам. Контракт даёт право на один вход.",
+            reply_markup=contract_missing_keyboard()
+        )
+        return
+
+    user = await get_user(user_id)
+    if user['ap'] < 30:
+        await callback.message.answer(
+            f"❌ Недостаточно очков действий для входа.\n"
+            f"Нужно 30 AP за попытку, у тебя {user['ap']} AP.\n\n"
+            f"⚡ Очки действий восстанавливаются раз в сутки.",
+        )
+        return
+
+    await state.update_data(dungeon_id=dungeon['id'])
+    await state.set_state(DungeonFSM.confirm_enter)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.answer(
+        f"⚠️ ПО КОНТРАКТУ «{dungeon['name']}» БУДУТ СПИСАНЫ:\n\n"
+        f"🎫 1 «Контракт на зачистку» (у тебя: {contracts})\n"
+        f"⚡ 30 очков действий (у тебя: {user['ap']})\n\n"
+        f"Эти ресурсы потратятся сразу, даже если ты выйдешь из подземелья. Продолжить?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, войти", callback_data=f"contract:enter:confirm:{dungeon_id}")],
+            [InlineKeyboardButton(text="↩️ Отмена", callback_data=f"contract:pick:{dungeon_id}")],
+        ])
+    )
+
+
+@router.callback_query(F.data.startswith("contract:enter:confirm:"))
+async def contract_enter_confirm(callback: CallbackQuery, state: FSMContext):
+    """Списание контракта + ОД и вход в выбранное подземелье."""
+    await callback.answer()
+    try:
+        dungeon_id = int(callback.data.split(":", 3)[3])
+    except (IndexError, ValueError):
+        return
+    user_id = callback.from_user.id
+    dungeon = await get_dungeon(dungeon_id)
+    if not dungeon:
+        await state.clear()
+        return
+
+    contracts = await get_user_contract_count(user_id)
+    if contracts <= 0:
+        await state.clear()
+        await callback.message.answer(
+            "❌ У тебя нет «Контракта на зачистку».",
+            reply_markup=contract_missing_keyboard()
+        )
+        return
+
+    user = await get_user(user_id)
+    if user['ap'] < 30:
+        await state.clear()
+        await callback.message.answer(
+            f"❌ Недостаточно очков действий. Нужно 30 AP, у тебя {user['ap']} AP."
+        )
+        return
+
+    contract = await get_item_by_name("Контракт на зачистку")
+    ok = await remove_inventory_item(user_id, contract['id'], 1)
+    if not ok:
+        await state.clear()
+        await callback.message.answer("❌ Не удалось списать контракт.")
+        return
+
+    ok = await remove_ap(user_id, 30)
+    if not ok:
+        await state.clear()
+        await callback.message.answer("❌ Не удалось списать очки действий.")
+        return
+
+    await start_dungeon_run(user_id, dungeon['id'])
+    run = await get_active_run(user_id)
+    await state.update_data(dungeon_heal_uses=0)
+    await log_activity(user_id, "dungeon_enter", f"Контракт «{dungeon['name']}»")
+
+    rooms0 = await rooms_total_now(run)
+    await callback.message.answer(
+        f"🎫 Контракт использован! ⚡ −30 AP за вход\n"
+        f"🏰 {dungeon['name']}\n"
+        f"Этаж 1 | Комната 0/{rooms0}\n"
+        f"❤️ {_hp_bar(run['hp'], run['hp_max'])}\n\n"
+        f"Ты входишь в подземелье...",
+    )
+    await state.set_state(DungeonFSM.in_dungeon)
+    await show_room(callback.message, run, user_id, state)
+
+
+# Совместимость: старые кнопки «Подземелье» переадресуются на список контрактов.
+@router.callback_query(F.data == "city:dungeon")
+async def dungeon_entry_legacy(callback: CallbackQuery, state: FSMContext):
+    await contracts_list(callback, state)
 
 
 async def answer_enemy_photo(where, enemy, text, reply_markup=None):
@@ -339,140 +582,6 @@ async def roll_enemy_drops(run_id: int, enemy) -> list:
                 await add_run_item(run_id, item['id'], qty)
                 dropped.append((item['name'], qty))
     return dropped
-
-
-@router.callback_query(F.data == "city:dungeon")
-async def dungeon_entry(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    user_id = callback.from_user.id
-    active = await get_active_run(user_id)
-
-    if active:
-        await resume_dungeon(callback.message, active, user_id, state)
-        return
-
-    dungeons = await get_all_dungeons(training=False)
-    if not dungeons:
-        await callback.message.answer("❌ Подземелий пока нет.")
-        return
-
-    text = "🏰 ПОДЗЕМЕЛЬЯ\n\n"
-    for d in dungeons:
-        text += f"⚔️ {d['name']}\n{d['description']}\nЭтажей: {d['floors_count']}\n\n"
-
-    contracts = await get_user_contract_count(user_id)
-    text += f"🎫 Контрактов на зачистку: {contracts}\n(покупаются в магазине, доступно Ветеранам)"
-
-    markup = dungeon_start_keyboard()
-    photo = dungeon_entrance_photo(dungeons[0])
-    if photo:
-        try:
-            await callback.message.answer_photo(photo=photo, caption=text, reply_markup=markup)
-        except Exception:
-            await callback.message.answer(text, reply_markup=markup)
-    else:
-        await callback.message.answer(text, reply_markup=markup)
-
-
-@router.callback_query(F.data == "dungeon:enter")
-async def dungeon_enter(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    user_id = callback.from_user.id
-    dungeons = await get_all_dungeons(training=False)
-    if not dungeons:
-        return
-
-    contracts = await get_user_contract_count(user_id)
-    if contracts <= 0:
-        await callback.message.answer(
-            "❌ У тебя нет «Контракта на зачистку».\n\n"
-            "Купи его в магазине (Особое) — доступно Ветеранам. Контракт даёт право на один вход.",
-            reply_markup=contract_missing_keyboard()
-        )
-        return
-
-    user = await get_user(user_id)
-    if user['ap'] < 30:
-        await callback.message.answer(
-            f"❌ Недостаточно очков действий для входа.\n"
-            f"Нужно 30 AP за попытку, у тебя {user['ap']} AP.\n\n"
-            f"⚡ Очки действий восстанавливаются раз в сутки.",
-        )
-        return
-
-    dungeon = dungeons[0]
-    await state.update_data(dungeon_id=dungeon['id'])
-    await state.set_state(DungeonFSM.confirm_enter)
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    await callback.message.answer(
-        f"⚠️ ЗА ПОПЫТКУ ВХОДА БУДУТ СПИСАНЫ:\n\n"
-        f"🎫 1 «Контракт на зачистку» (у тебя: {contracts})\n"
-        f"⚡ 30 очков действий (у тебя: {user['ap']})\n\n"
-        f"Эти ресурсы потратятся сразу, даже если ты выйдешь из подземелья. Продолжить?",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Да, войти", callback_data="dungeon:enter:confirm")],
-            [InlineKeyboardButton(text="↩️ Отмена", callback_data="city:dungeon")],
-        ])
-    )
-
-
-@router.callback_query(F.data == "dungeon:enter:confirm")
-async def dungeon_enter_confirm(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    user_id = callback.from_user.id
-    data = await state.get_data()
-    dungeon_id = data.get('dungeon_id')
-    dungeon = await get_dungeon(dungeon_id) if dungeon_id else None
-    if not dungeon:
-        dungeon = (await get_all_dungeons(training=False) or [None])[0]
-        if not dungeon:
-            return
-
-    contracts = await get_user_contract_count(user_id)
-    if contracts <= 0:
-        await state.clear()
-        await callback.message.answer(
-            "❌ У тебя нет «Контракта на зачистку».",
-            reply_markup=contract_missing_keyboard()
-        )
-        return
-
-    user = await get_user(user_id)
-    if user['ap'] < 30:
-        await state.clear()
-        await callback.message.answer(
-            f"❌ Недостаточно очков действий. Нужно 30 AP, у тебя {user['ap']} AP."
-        )
-        return
-
-    contract = await get_item_by_name("Контракт на зачистку")
-    ok = await remove_inventory_item(user_id, contract['id'], 1)
-    if not ok:
-        await state.clear()
-        await callback.message.answer("❌ Не удалось списать контракт.")
-        return
-
-    ok = await remove_ap(user_id, 30)
-    if not ok:
-        await state.clear()
-        await callback.message.answer("❌ Не удалось списать очки действий.")
-        return
-
-    await start_dungeon_run(user_id, dungeon['id'])
-    run = await get_active_run(user_id)
-    await state.update_data(dungeon_heal_uses=0)
-    await log_activity(user_id, "dungeon_enter", f"Вошел в «{dungeon['name']}»")
-
-    rooms0 = await rooms_total_now(run)
-    await callback.message.answer(
-        f"🎫 Контракт использован! ⚡ −30 AP за вход\n"
-        f"🏰 {dungeon['name']}\n"
-        f"Этаж 1 | Комната 0/{rooms0}\n"
-        f"❤️ {_hp_bar(run['hp'], run['hp_max'])}\n\n"
-        f"Ты входишь в подземелье...",
-    )
-    await state.set_state(DungeonFSM.in_dungeon)
-    await show_room(callback.message, run, user_id, state)
 
 
 async def post_captain_menu(where, run, state: FSMContext):
