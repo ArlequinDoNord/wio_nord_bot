@@ -7,6 +7,7 @@ def main_menu_keyboard(is_admin: bool = False, is_pilot: bool = True):
         [KeyboardButton(text="Инвентарь"), KeyboardButton(text="Магазин")],
         [KeyboardButton(text="Город")],
         [KeyboardButton(text="📰 Новости Нордхайма")],
+        [KeyboardButton(text="🧱 Стена изречений")],
     ]
     if is_pilot:
         keyboard.append([KeyboardButton(text="📝 Сдать отчёт")])
@@ -178,6 +179,7 @@ def city_keyboard(is_pilot: bool = True, locations: list = None):
             text=f"📍 {loc['name']}",
             callback_data=f"location:preview:{loc['key']}"
         )])
+    buttons.append([InlineKeyboardButton(text="🧱 Стена изречений", callback_data="wall:view")])
     if is_pilot:
         buttons.append([InlineKeyboardButton(text="📜 Контракты от Штаба ВС", callback_data="contracts:list")])
         buttons.append([InlineKeyboardButton(text="🏠 Жильё", callback_data="housing:menu")])
@@ -208,6 +210,37 @@ def pagination_keyboard(items: list, page: int, per_page: int, callback_prefix: 
     if nav:
         buttons.append(nav)
 
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def wall_keyboard(page: int = 0, total_posts: int = 0, post_ids: list = None,
+                  is_admin: bool = False, can_manage: bool = False):
+    """Клавиатура «Стены изречений»: пагинация, «Оставить изречение», вход в город.
+
+    Для админов под каждым постом — кнопка удаления (с возвратом автору).
+    """
+    from config import WALL_PAGE_SIZE
+    total_pages = max(1, (total_posts + WALL_PAGE_SIZE - 1) // WALL_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+
+    buttons = []
+    for pid in (post_ids or []):
+        if is_admin or can_manage:
+            buttons.append([InlineKeyboardButton(
+                text=f"🗑 Удалить #{pid}",
+                callback_data=f"wall:delete:{pid}"
+            )])
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(text="◀️", callback_data=f"wall:page:{page-1}"))
+        nav.append(InlineKeyboardButton(text=f"{page+1}/{total_pages}", callback_data="noop"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton(text="▶️", callback_data=f"wall:page:{page+1}"))
+        if nav:
+            buttons.append(nav)
+    buttons.append([InlineKeyboardButton(text="✍️ Оставить изречение", callback_data="wall:write")])
+    buttons.append([InlineKeyboardButton(text="🏠 В меню города", callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

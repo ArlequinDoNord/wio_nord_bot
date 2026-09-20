@@ -556,6 +556,17 @@ async def init_db():
             admin_tuned INTEGER DEFAULT 0,
             UNIQUE(water, item_id)
         );
+
+        CREATE TABLE IF NOT EXISTS wall_posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_day TEXT NOT NULL DEFAULT '',
+            tier INTEGER DEFAULT 0,
+            cost INTEGER DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        );
     """)
     await conn.commit()
 
@@ -2329,6 +2340,131 @@ async def count_reports_today(user_id: int) -> int:
     )
     row = await cursor.fetchone()
     return row['cnt'] if row else 0
+
+
+def _wall_today_key() -> str:
+    """Ключ текущих суток по МСК (YYYY-MM-DD) для лимита «N изречений в сутки»."""
+    from utils.helpers import MOSCOW_TZ
+    from datetime import datetime
+    return datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d")
+
+
+async def count_wall_posts_today(user_id: int) -> int:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT COUNT(*) AS cnt FROM wall_posts WHERE user_id = ? AND created_day = ?",
+        (user_id, _wall_today_key())
+    )
+    row = await cursor.fetchone()
+    return row['cnt'] if row else 0
+
+
+def wall_post_tier(cost: int) -> int:
+    """Номер ценовой ступени по стоимости изречения (0 — бесплатное)."""
+    if cost <= 0:
+        return 0
+    if cost <= 30:
+        return 1
+    if cost <= 90:
+        return 2
+    return 3
+
+
+async def add_wall_post(user_id: int, text: str) -> dict | None:
+    """Добавить изречение на стену. Возвращает dict с post_id/cost/tier
+    или None, если дневной лимит исчерпан."""
+    from config import WALL_TEXT_MAX_LEN, WALL_FREE_PER_DAY, WALL_PAID_STEPS, WALL_REVIEW_TOTAL
+    text = text.strip()
+    if not text or len(text) > WALL_TEXT_MAX_LEN:
+        return None
+    count = await count_wall_posts_today(user_id)
+    if count >= WALL_REVIEW_TOTAL:
+        return None
+    cost = 0
+    if count >= WALL_FREE_PER_DAY:
+        paid_index = count - WALL_FREE_PER_DAY
+        for quota, price in WALL_PAID_STEPS:
+            if paid_index < quota:
+                cost = price
+                break
+            paid_index -= quota
+    had_nm = True
+    if cost > 0:
+        user = await get_user(user_id)
+        had_nm = bool(user and user['nordmarks'] >= cost)
+        if had_nm:
+            await remove_nordmarks(user_id, cost, "wall", "Изречение на стене")
+    if not had_nm:
+        return {"post_id": None, "cost": cost, "tier": wall_post_tier(cost), "need_nm": True}
+    conn = await get_db()
+    cursor = await conn.execute(
+        "INSERT INTO wall_posts (user_id, text, created_day, tier, cost) VALUES (?, ?, ?, ?, ?)",
+        (user_id, text, _wall_today_key(), wall_post_tier(cost), cost)
+    )
+    await conn.commit()
+    return {"post_id": cursor.lastrowid, "cost": cost, "tier": wall_post_tier(cost), "need_nm": False}
+
+
+async def get_wall_posts(page: int = 0, page_size: int = 5) -> list:
+    """Страница изречений (свежие сверху): id, text, author (user), cost, tier, created_at."""
+    from config import WALL_PAGE_SIZE
+    conn = await get_db()
+    limit = page_size if page_size else WALL_PAGE_SIZE
+    offset = page * limit
+    cursor = await conn.execute(
+        "SELECT w.*, u.username, u.callsign, u.first_name, u.last_name "
+        "FROM wall_posts w LEFT JOIN users u ON u.user_id = w.user_id "
+        "ORDER BY w.id DESC LIMIT ? OFFSET ?",
+        (limit, offset)
+    )
+    rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def get_wall_post(post_id: int) -> dict | None:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT w.*, u.username, u.callsign, u.first_name, u.last_name "
+        "FROM wall_posts w LEFT JOIN users u ON u.user_id = w.user_id "
+        "WHERE w.id = ?",
+        (post_id,)
+    )
+    row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def count_wall_posts() -> int:
+    conn = await get_db()
+    cursor = await conn.execute("SELECT COUNT(*) AS cnt FROM wall_posts")
+    row = await cursor.fetchone()
+    return row['cnt'] if row else 0
+
+
+async def delete_wall_post(post_id: int) -> dict | None:
+    """Удалить изречение. Возвращает dict {author_id, refund} — возврат ⅓
+    цены автору платного изречения (бесплатные — без возврата)."""
+    post = await get_wall_post(post_id)
+    if not post:
+        return None
+    await _delete_wall_rows(post_id)
+    refund = post['cost'] // 3 if post['cost'] > 0 else 0
+    if refund > 0:
+        await add_nordmarks(post['user_id'], refund, "wall_refund", "Возврат за удалённое изречение (⅓)")
+    return {"author_id": post['user_id'], "refund": refund, "cost": post['cost']}
+
+
+async def _delete_wall_rows(post_id: int):
+    conn = await get_db()
+    await conn.execute("DELETE FROM wall_posts WHERE id = ?", (post_id,))
+    await conn.commit()
+
+
+async def wall_author_name(user) -> str:
+    """Имя автора изречения: позывной, @username, иначе реальное имя."""
+    if not user:
+        return "Неизвестный"
+    from bot.handlers.profile import _pilot_name
+    return _pilot_name(user)
 
 
 async def add_report(user_id: int, screenshot_file_id: str, troops_reported: int, total_troops: int = 0, region: str = ""):
