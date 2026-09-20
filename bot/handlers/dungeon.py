@@ -277,7 +277,7 @@ def _reservoir_result_markup(step: int = 0):
 def dungeon_start_keyboard():
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎫 Войти (1 контракт)", callback_data="dungeon:enter")],
+        [InlineKeyboardButton(text="🏰 К списку контрактов", callback_data="contracts:list")],
         [InlineKeyboardButton(text="🏠 В меню города", callback_data="city:menu")],
     ])
 
@@ -419,7 +419,7 @@ async def contract_pick(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer(text, reply_markup=markup)
 
 
-@router.callback_query(F.data.startswith("contract:enter:"))
+@router.callback_query(F.data.regexp(r"^contract:enter:\d+$"))
 async def contract_enter(callback: CallbackQuery, state: FSMContext):
     """Подтверждение входа по выбранному контракту."""
     await callback.answer()

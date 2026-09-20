@@ -39,6 +39,10 @@ from config import ITEM_CATEGORIES, SPECIAL_DEPT_ATTEMPTS_LIMIT
 
 router = Router()
 
+# Защита от двойного нажатия кнопки «Купить»: пока обработка покупки идёт,
+# повторные клики игнорируются (как лок крафта в жильё).
+_PURCHASING: set = set()
+
 CATEGORIES = [
     "weapon", "consumable", "equipment", "building", "resource",
     "special", "special_dept", "souvenirs", "library_card", "fishing",
@@ -548,7 +552,7 @@ class _MsgSender:
             await self.message.answer(text)
 
 
-async def _buy_item(callback: CallbackQuery, item_id: int, qty: int, special_verified: bool = False):
+async def _buy_item_impl(callback: CallbackQuery, item_id: int, qty: int, special_verified: bool = False):
     user_id = callback.from_user.id
     item = await get_item(item_id)
 
@@ -646,8 +650,24 @@ async def _buy_item(callback: CallbackQuery, item_id: int, qty: int, special_ver
         if isinstance(callback, _MsgSender):
             await callback.message.answer(bought_line)
             return
+        # Всплывающее окно о покупке — чтобы было видно, что кнопка сработала,
+        # и никто не жал повторно «из-за тихой перерисовки карточки».
+        await callback.answer(bought_line, show_alert=True)
         card_item = refreshed if item['stock'] != -1 else item
         await _show_item_card(callback.message, card_item, user_id, bought_line=bought_line)
+
+
+async def _buy_item(callback: CallbackQuery, item_id: int, qty: int, special_verified: bool = False):
+    """Покупка с защитой от двойного нажатия «Купить» (двойная покупка кадки/верстака)."""
+    user_id = callback.from_user.id
+    if user_id in _PURCHASING:
+        await callback.answer("⏳ Покупка уже обрабатывается…", show_alert=True)
+        return
+    _PURCHASING.add(user_id)
+    try:
+        await _buy_item_impl(callback, item_id, qty, special_verified)
+    finally:
+        _PURCHASING.discard(user_id)
 
 
 @router.callback_query(F.data.startswith("fishoffer:"))

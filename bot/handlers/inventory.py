@@ -159,6 +159,10 @@ def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equip
                 InlineKeyboardButton(text="💵 Продать 1", callback_data=f"inv_sell:{item_id}"),
                 InlineKeyboardButton(text=f"💵 Продать всё ({qty})", callback_data=f"inv_sellall:{item_id}"),
             ])
+            if qty > 3:
+                buttons[-1].append(
+                    InlineKeyboardButton(text="💵 Оставить 1", callback_data=f"inv_sell_keep1:{item_id}")
+                )
         else:
             buttons.append([InlineKeyboardButton(text="💵 Продать", callback_data=f"inv_sell:{item_id}")])
     if market_ok:
@@ -704,6 +708,19 @@ async def inv_sellall(callback: CallbackQuery):
     await _sell_confirm(callback, item_id, inv['quantity'])
 
 
+@router.callback_query(F.data.startswith("inv_sell_keep1:"))
+async def inv_sell_keep1(callback: CallbackQuery):
+    item_id = int(callback.data.split(":")[1])
+    inv = await get_inventory_item(callback.from_user.id, item_id)
+    if not inv:
+        await callback.answer("❌ Такого предмета нет в инвентаре.", show_alert=True)
+        return
+    if inv['quantity'] <= 1:
+        await callback.answer("❌ Нечего продавать — останется одна штука.", show_alert=True)
+        return
+    await _sell_confirm(callback, item_id, inv['quantity'] - 1)
+
+
 async def _sell_confirm(callback: CallbackQuery, item_id: int, qty: int):
     """Подтверждение продажи: сколько и за сколько, перед списанием."""
     user_id = callback.from_user.id
@@ -974,7 +991,7 @@ async def fish_catch_use(callback: CallbackQuery):
         await _show_fish_catch(callback.message, user_id, item_id, weight)
         return
 
-    taken = await take_fish_catch(user_id, catch['id'])
+    taken = await take_fish_catch(user_id, catch['item_id'], catch['weight'])
     if not taken:
         await callback.message.answer("❌ Не удалось взять улов.")
         return
