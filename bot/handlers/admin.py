@@ -6,7 +6,7 @@
 import json
 
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -30,7 +30,7 @@ from database.db import (
     get_dungeon_enemies, get_enemy, update_enemy_fields,
     get_enemy_drops, set_enemy_drops, add_enemy_drop, remove_enemy_drop,
     create_award, get_all_awards, get_award, delete_award, grant_award,
-    get_user_awards, revoke_award,
+    update_award, get_user_awards, revoke_award,
     get_water_fish_rows, get_water_fish_row, update_water_fish_field,
     set_water_fish_sell_price, add_water_fish, remove_water_fish,
     get_water_fish_candidates, WATER_LABELS, set_callsign,
@@ -2381,7 +2381,7 @@ async def award_edit_field_pick(callback: CallbackQuery, state: FSMContext):
     if not await has_permission(callback.from_user.id, "can_manage_awards"):
         await callback.message.answer("❌ Нет прав.")
         return
-    _, _, award_id, field = callback.data.split(":", 3)
+    _, award_id, field = callback.data.split(":", 2)
     if field not in AWARD_EDIT_FIELDS:
         return
     await state.update_data(edit_award_id=int(award_id), edit_field=field)
