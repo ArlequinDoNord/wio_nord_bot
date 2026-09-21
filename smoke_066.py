@@ -116,7 +116,8 @@ async def run():
         ensure_dungeon_shop_items,
         add_user, get_item_by_name, get_inventory_item, add_inventory_item,
         set_equipment_slot, get_equipment, item_fits_slot,
-        start_dungeon_run, get_all_dungeons, get_dungeon_enemies,
+        start_dungeon_run, get_active_run, update_run_hp,
+        get_all_dungeons, get_dungeon_enemies,
     )
     from config import DUNGEON_SMOKE_MAX
     from bot.handlers import dungeon as DH
@@ -199,8 +200,9 @@ async def run():
           "dungeon:use_slot:smoke:7" in combat_cbs)
     smoke_btn = [b for row in combat_kb.inline_keyboard for b in row
                  if b.callback_data == "dungeon:use_slot:smoke:7"]
-    check("кнопка подписана «💨 Дымовая шашка»",
-          smoke_btn and smoke_btn[0].text == "💨 Дымовая шашка")
+    check("кнопка подписана «💨 Дымовая шашка» и содержит количество",
+          smoke_btn and smoke_btn[0].text.startswith("💨 Дымовая шашка")
+          and any(ch.isdigit() for ch in smoke_btn[0].text))
 
     boss_kb = DH.dungeon_boss_keyboard(boss['id'], plain_slots, step=7)
     boss_cbs = markup_callbacks(boss_kb)
@@ -273,6 +275,33 @@ async def run():
     check("от босса: шашка не списывается", inv_after3 == inv_before3)
     check("от босса: сообщение «От босса не убежать»",
           "От босса не убежать" in sent_text(cb3.message))
+
+    # ── 9. Счётчик на кнопках зелий: обновляется после применения ──
+    if potion:
+        await add_inventory_item(uid, potion['id'], 2)
+        await set_equipment_slot(uid, 'potion1', potion['id'])
+        await start_dungeon_run(uid, dng['id'])
+        run9 = await get_active_run(uid)
+        await update_run_hp(run9['id'], 5)
+        run9_low = await get_active_run(uid)
+        st9 = FakeState(data={
+            "current_enemy_id": foe['id'],
+            "dungeon_step": 1,
+            "dungeon_heal_uses": 0,
+        })
+        cb9 = FakeCallback(uid, data="dungeon:use_slot:potion1:1")
+        await DH.dungeon_use_slot(cb9, st9)
+        run9_after = await get_active_run(uid)
+        final_markup = None
+        for kind, a, kw in cb9.message.sent:
+            if kind == "answer" and kw.get('reply_markup'):
+                final_markup = kw['reply_markup']
+        labels9 = [b.text for row in (final_markup.inline_keyboard if final_markup else [])
+                   for b in row if b.callback_data.startswith("dungeon:use_slot:potion1")]
+        check("истощение: зелье применилось (HP вырос)",
+              run9_low['hp'] < run9_after['hp'])
+        check("кнопка зелья показывает остаток x1 после применения",
+              any("x1" in lbl and "Малая настойка" in lbl for lbl in labels9))
 
     await close_db()
     print(f"\nSmoke 066: {passed} passed, {failed} failed")

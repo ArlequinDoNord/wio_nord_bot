@@ -184,15 +184,17 @@ def dungeon_main_keyboard(step: int = 0):
 
 
 def _slot_button_label(row):
+    qty = int(row.get('quantity') or 0)
+    suffix = f" x{qty}" if qty > 0 else ""
     if row['name'] == SMOKE_ITEM_NAME:
-        return "💨 Дымовая шашка"
+        return f"💨 Дымовая шашка{suffix}"
     if row['cure_poison']:
-        return "⚗️ Антидот"
+        return f"⚗️ Антидот{suffix}"
     if row.get('cure_frostbite'):
-        return "🧊 " + row['name']
+        return f"🧊 {row['name']}{suffix}"
     if row['heal'] > 0:
-        return f"💊 {row['name']}"
-    return f"🧪 {row['name']}"
+        return f"💊 {row['name']}{suffix}"
+    return f"🧪 {row['name']}{suffix}"
 
 
 def dungeon_combat_keyboard(enemy_id: int, slot_items: list = None, step: int = 0):
