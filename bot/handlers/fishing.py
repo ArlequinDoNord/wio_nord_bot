@@ -466,7 +466,7 @@ async def fish_bait_menu(callback: CallbackQuery):
         f"⚠️ Без наживки рыба не клюёт: со дна только мусор "
         f"(водоросли {JUNK_SEAWEED_CHANCE}%, сапог {JUNK_BOOT_CHANCE}%)."
     )
-    await _paint(callback, text=text,
+    await _paint(callback, text=text, media_path=_lake_path(),
                  kb=_bait_markup(callback.from_user.id, chosen, worms_qty, spider_qty, combined_qty,
                                  token=FISH_TOKEN.get(callback.from_user.id, "")))
 
@@ -511,6 +511,7 @@ async def fish_cast(callback: CallbackQuery):
             await _paint(
                 callback,
                 text="❌ У тебя нет удочки. Купи «Удочка из орешника» в магазине (категория «Рыбалка»).",
+                media_path=_lake_path(),
                 kb=_lake_markup(FISH_TOKEN.get(user_id, "")),
             )
             return
@@ -519,6 +520,7 @@ async def fish_cast(callback: CallbackQuery):
             await _paint(
                 callback,
                 text=f"❌ Не хватает ОД: нужно {FISH_AP_COST}, доступно меньше. Восстановление — в новые сутки.",
+                media_path=_lake_path(),
                 kb=_lake_markup(FISH_TOKEN.get(user_id, "")),
             )
             return
@@ -625,6 +627,7 @@ async def fish_cast(callback: CallbackQuery):
                 )
         # Счётчик ОД перед следующим забросом
         text += ap_block
-        await _paint(callback, text=text, kb=_result_markup(FISH_TOKEN.get(user_id, "")))
+        await _paint(callback, text=text, media_path=_lake_path(),
+                     kb=_result_markup(FISH_TOKEN.get(user_id, "")))
     finally:
         FISHING_CASTING.discard(user_id)
