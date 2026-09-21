@@ -64,6 +64,9 @@ class AdminAddItem(StatesGroup):
     stock = State()
     stats = State()
     equip_slot = State()
+    weapon_effect = State()
+    weapon_effect_chance = State()
+    weapon_effect_dmg = State()
     producer = State()
     producer_user = State()
     market = State()
@@ -487,6 +490,33 @@ def drink_choice_markup(edit_mode: bool = False):
         ("🥤 Безалкогольный, без эффекта", "none"),
     ]
     rows = [[InlineKeyboardButton(text=text, callback_data=f"{p}{key}")] for text, key in choice]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+# Особые эффекты оружия (DoT на врага в бою подземелья, v0.14.3).
+WEAPON_EFFECT_LABELS = {
+    "poison": "☠️ Отравление",
+    "bleed": "🩸 Кровотечение",
+    "frostbite": "🧊 Обморожение",
+}
+WEAPON_EFFECT_HINT = {
+    "poison": "враг теряет урон от яда каждый ход",
+    "bleed": "враг истекает кровью каждый ход",
+    "frostbite": "мороз сковывает врага, урон каждый ход",
+}
+
+
+def weapon_effect_choice_markup(prefix: str = "weff:"):
+    """Меню выбора особого эффекта оружия.
+
+    prefix 'weff:' — в мастере добавления товара (идёт на ввод шанса),
+    'editset:weff:' — при правке существующего товара (сразу применяет).
+    """
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = []
+    for key, label in WEAPON_EFFECT_LABELS.items():
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"{prefix}{key}")])
+    rows.append([InlineKeyboardButton(text="🚫 Без эффекта", callback_data=f"{prefix}none")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -990,7 +1020,13 @@ async def add_item_stats(message: Message, state: FSMContext):
     value = int(message.text)
     if data.get('category') == 'weapon':
         await state.update_data(damage=value)
-        await _go_add_item_producer(message, state)
+        await state.set_state(AdminAddItem.weapon_effect)
+        await message.answer(
+            "Шаг 8/9 — Особый эффект оружия при попадании?\n"
+            "Эффект вешается на врага в бою подземелья и бьёт его каждый ход.",
+            reply_markup=weapon_effect_choice_markup()
+        )
+        return
     else:
         await state.update_data(armor=value)
         if value > 0:
@@ -1020,6 +1056,53 @@ async def add_item_equip_slot(callback: CallbackQuery, state: FSMContext):
 @router.message(AdminAddItem.stats)
 async def add_item_stats_bad(message: Message):
     await message.answer("❌ Введи число (0 — если не требуется). Или /cancel.")
+
+
+@router.callback_query(F.data.startswith("weff:"))
+async def add_item_weapon_effect_cb(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    eff = callback.data.split(":", 1)[1]
+    if eff == "none":
+        await state.update_data(weapon_effect=None, weapon_effect_chance=0, weapon_effect_dmg=0)
+        await _go_add_item_producer(callback.message, state)
+        return
+    await state.update_data(weapon_effect=eff)
+    await state.set_state(AdminAddItem.weapon_effect_chance)
+    await callback.message.answer(
+        f"Шаг 8/9 — Шанс, что «{WEAPON_EFFECT_LABELS[eff]}» сработает "
+        f"при попадании, % (0–100):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminAddItem.weapon_effect_chance)
+async def add_item_weapon_effect_chance(message: Message, state: FSMContext):
+    try:
+        v = int(message.text.strip())
+    except ValueError:
+        await message.answer("❌ Введи целое число (0–100):", reply_markup=cancel_keyboard())
+        return
+    if not 0 <= v <= 100:
+        await message.answer("❌ Шанс от 0 до 100:", reply_markup=cancel_keyboard())
+        return
+    await state.update_data(weapon_effect_chance=v)
+    await state.set_state(AdminAddItem.weapon_effect_dmg)
+    await message.answer("Шаг 8/9 — Урон эффекта за каждый ход (целое число):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminAddItem.weapon_effect_dmg)
+async def add_item_weapon_effect_dmg(message: Message, state: FSMContext):
+    try:
+        v = int(message.text.strip())
+    except ValueError:
+        await message.answer("❌ Введи целое число:", reply_markup=cancel_keyboard())
+        return
+    if v < 0:
+        await message.answer("❌ Урон не может быть отрицательным:", reply_markup=cancel_keyboard())
+        return
+    await state.update_data(weapon_effect_dmg=v)
+    await _go_add_item_producer(message, state)
 
 
 async def _go_add_item_producer(message: Message, state: FSMContext):
@@ -1114,6 +1197,9 @@ async def add_item_photo(message: Message, state: FSMContext):
         equip_slot=data.get('equip_slot'),
         market_ok=data.get('market_ok', 0),
         plant_name=data.get('plant_name'),
+        weapon_effect=data.get('weapon_effect'),
+        weapon_effect_chance=data.get('weapon_effect_chance', 0),
+        weapon_effect_dmg=data.get('weapon_effect_dmg', 0),
     )
     await log_action(admin_id, 'add_item', data.get('produced_by'),
                      f"item={data['name']} id={item_id}")
@@ -1146,6 +1232,11 @@ async def add_item_photo(message: Message, state: FSMContext):
     if data.get('category') == 'seeds':
         pn = data.get('plant_name')
         stats_line += f"\n🌳 Растение в кадке: «{pn}»" if pn else "\n🌳 Растение называется как семечко"
+    if data.get('weapon_effect'):
+        weff = data['weapon_effect']
+        stats_line += (f"\n☠️ Эффект: {WEAPON_EFFECT_LABELS.get(weff, weff)}"
+                       f" | шанс {data.get('weapon_effect_chance', 0)}%"
+                       f" | −{data.get('weapon_effect_dmg', 0)} HP/ход")
     await message.answer(
         f"✅ Товар добавлен!\n\n"
         f"«{data['name']}»\n"
@@ -1239,6 +1330,9 @@ async def edit_item_pick(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text="Категория", callback_data="field:category")],
             [InlineKeyboardButton(text="Описание", callback_data="field:description")],
             [InlineKeyboardButton(text="⚔️ Урон (оружие)", callback_data="field:damage")],
+            [InlineKeyboardButton(text="☠️ Эффект оружия", callback_data="field:weapon_effect")],
+            [InlineKeyboardButton(text="☠️ Шанс эффекта (%)", callback_data="field:weapon_effect_chance")],
+            [InlineKeyboardButton(text="☠️ Урон эффекта/ход", callback_data="field:weapon_effect_dmg")],
             [InlineKeyboardButton(text="❤️ Лечение", callback_data="field:heal")],
             [InlineKeyboardButton(text="🛡️ Броня", callback_data="field:armor")],
             [InlineKeyboardButton(text="⚡ AP за использование", callback_data="field:ap_cost")],
@@ -1296,6 +1390,34 @@ async def edit_item_field_photo(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(
         "🖼 Отправь фото товара (или «-», чтобы убрать картинку).",
         reply_markup=cancel_keyboard())
+
+
+@router.callback_query(F.data == "field:weapon_effect")
+async def edit_item_field_weapon_effect(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await callback.message.edit_text(
+        "☠️ Выбери особый эффект оружия при попадании:\n"
+        "При «Без эффекта» шанс и урон эффекта обнуляются.",
+        reply_markup=weapon_effect_choice_markup(prefix="editset:weff:")
+    )
+
+
+@router.callback_query(F.data.startswith("editset:weff:"))
+async def edit_item_set_weapon_effect(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    data = await state.get_data()
+    item_id = data['item_id']
+    eff = callback.data.split(":", 2)[2]
+    if eff in WEAPON_EFFECT_LABELS:
+        await update_item(item_id, weapon_effect=eff)
+        label = WEAPON_EFFECT_LABELS[eff]
+    else:
+        await update_item(item_id, weapon_effect=None, weapon_effect_chance=0, weapon_effect_dmg=0)
+        label = "🚫 Без эффекта"
+    await log_action(callback.from_user.id, 'edit_item', None,
+                     f"item_id={item_id} weapon_effect={eff}")
+    await state.clear()
+    await callback.message.answer(f"✅ Эффект оружия обновлён: {label}")
 
 
 @router.message(AdminEditItem.photo)
@@ -1413,10 +1535,22 @@ async def edit_item_value(message: Message, state: FSMContext):
         except ValueError:
             await message.answer("❌ Введи целое число:")
             return
-    elif field in ("stock", "damage", "heal", "armor", "ap_cost", "is_available"):
+    elif field in ("stock", "damage", "heal", "armor", "ap_cost", "is_available",
+                   "weapon_effect_chance", "weapon_effect_dmg"):
         value = -1 if (text == "-" and field == "stock") else int(text)
+        if field in ("weapon_effect_chance", "weapon_effect_dmg") and text == "-":
+            value = 0
     else:
         value = None if text == "-" else text
+
+    if field == "weapon_effect_chance":
+        if not 0 <= value <= 100:
+            await message.answer("❌ Шанс эффекта от 0 до 100:", reply_markup=cancel_keyboard())
+            return
+    if field == "weapon_effect_dmg":
+        if value < 0:
+            await message.answer("❌ Урон эффекта не может быть отрицательным:", reply_markup=cancel_keyboard())
+            return
 
     await update_item(item_id, **{field: value})
     await log_action(message.from_user.id, 'edit_item', None, f"item_id={item_id} {field}={value}")
@@ -4067,6 +4201,8 @@ DROP_ITEM_STAT_LABELS = {
     "heal": "❤️ Лечение",
     "armor": "🛡️ Броня",
     "ap_cost": "⚡ AP за использование",
+    "weapon_effect_chance": "☠️ Шанс эффекта (%)",
+    "weapon_effect_dmg": "☠️ Урон эффекта/ход",
 }
 
 
@@ -4087,6 +4223,12 @@ async def enemy_drop_item_stats_menu(callback: CallbackQuery, state: FSMContext)
         return
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     rows = []
+    weff = item.get('weapon_effect')
+    weff_label = WEAPON_EFFECT_LABELS.get(weff, "🚫 Без эффекта")
+    rows.append([InlineKeyboardButton(
+        text=f"☠️ Эффект оружия: {weff_label}",
+        callback_data=f"eddrop_weff:{enemy_id}:{idx}",
+    )])
     for field, label in DROP_ITEM_STAT_LABELS.items():
         cur = item.get(field) or 0
         rows.append([InlineKeyboardButton(
@@ -4095,6 +4237,7 @@ async def enemy_drop_item_stats_menu(callback: CallbackQuery, state: FSMContext)
         )])
     rows.append([InlineKeyboardButton(text="🔙 К дропу", callback_data=f"eddrop:{enemy_id}:{idx}")])
     states = " | ".join(f"{label}: {item.get(f) or 0}" for f, label in DROP_ITEM_STAT_LABELS.items())
+    states += f" | Эффект: {weff_label}"
     await callback.message.edit_text(
         f"⚙️ Характеристики предмета «{item['name']}».\n"
         f"Текущие значения: {states}\n\n"
@@ -4122,11 +4265,13 @@ async def enemy_drop_item_stat_pick(callback: CallbackQuery, state: FSMContext):
     cur = item.get(field) or 0
     await state.update_data(enemy_id=enemy_id, drop_index=idx, drop_item_field=field)
     await state.set_state(AdminDungeon.drop_item_value)
-    await callback.message.answer(
-        f"{DROP_ITEM_STAT_LABELS[field]} предмета «{item['name']}».\n"
-        f"Сейчас: {cur}.\n\n"
-        f"Введи новое значение (целое число ≥ 0; «-» = 0):",
-        reply_markup=cancel_keyboard())
+    prompt = (f"{DROP_ITEM_STAT_LABELS[field]} предмета «{item['name']}».\n"
+              f"Сейчас: {cur}.\n\n")
+    if field == "weapon_effect_chance":
+        prompt += "Введи шанс срабатывания при попадании, % (0–100; «-» = 0):"
+    else:
+        prompt += "Введи новое значение (целое число ≥ 0; «-» = 0):"
+    await callback.message.answer(prompt, reply_markup=cancel_keyboard())
 
 
 @router.message(AdminDungeon.drop_item_value)
@@ -4151,12 +4296,73 @@ async def enemy_drop_item_stat_value(message: Message, state: FSMContext):
             f" («{item['name']}»):",
             reply_markup=cancel_keyboard())
         return
+    if field == "weapon_effect_chance" and not 0 <= parsed <= 100:
+        await message.answer(f"❌ Шанс от 0 до 100 («{item['name']}»):",
+                             reply_markup=cancel_keyboard())
+        return
     await update_item(item['id'], **{field: parsed})
     await log_action(message.from_user.id, 'edit_item', None,
                      f"item_id={item['id']} {field}={parsed} (drop of enemy_id={enemy_id})")
     await state.clear()
     await message.answer(f"✅ Предмет «{item['name']}»: {DROP_ITEM_STAT_LABELS[field]} = {parsed}.")
     await _drops_manager_send(message, enemy_id)
+
+
+@router.callback_query(F.data.startswith("eddrop_weff:"))
+async def enemy_drop_item_weff_menu(callback: CallbackQuery, state: FSMContext):
+    """Меню выбора особого эффекта оружия для предмета дропа."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        _, enemy_id_s, idx_s = callback.data.split(":")
+        enemy_id, idx = int(enemy_id_s), int(idx_s)
+    except ValueError:
+        return
+    drops, _, item = await _drop_item_for(enemy_id, idx)
+    if not drops or not item:
+        await callback.message.answer("❌ Предмет дропа не найден. Удали дроп и добавь заново.")
+        return
+    await callback.message.edit_text(
+        f"☠️ Эффект оружия предмета «{item['name']}»:\n"
+        f"При «Без эффекта» шанс и урон эффекта обнуляются.",
+        reply_markup=weapon_effect_choice_markup(prefix=f"eddrop_weff_set:{enemy_id}:{idx}:")
+    )
+
+
+@router.callback_query(F.data.startswith("eddrop_weff_set:"))
+async def enemy_drop_item_weff_set(callback: CallbackQuery, state: FSMContext):
+    """Выбран тип эффекта оружия для предмета дропа — применяем сразу."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        _, enemy_id_s, idx_s, eff = callback.data.split(":")
+        enemy_id, idx = int(enemy_id_s), int(idx_s)
+    except ValueError:
+        return
+    if eff not in WEAPON_EFFECT_LABELS and eff != "none":
+        return
+    drops, _, item = await _drop_item_for(enemy_id, idx)
+    if not drops or not item:
+        await callback.message.answer("❌ Предмет дропа не найден. Удали дроп и добавь заново.")
+        return
+    if eff == "none":
+        await update_item(item['id'], weapon_effect=None, weapon_effect_chance=0, weapon_effect_dmg=0)
+        label = "🚫 Без эффекта"
+    else:
+        await update_item(item['id'], weapon_effect=eff)
+        label = WEAPON_EFFECT_LABELS[eff]
+    await log_action(callback.from_user.id, 'edit_item', None,
+                     f"item_id={item['id']} weapon_effect={eff} (drop of enemy_id={enemy_id})")
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await callback.message.edit_text(
+        f"✅ Эффект оружия «{item['name']}»: {label}.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⚙️ Характеристики", callback_data=f"eddrop_stats:{enemy_id}:{idx}")],
+            [InlineKeyboardButton(text="🔙 К дропу", callback_data=f"eddrop:{enemy_id}:{idx}")],
+        ])
+    )
 
 
 @router.message(AdminDungeon.drop_chance)

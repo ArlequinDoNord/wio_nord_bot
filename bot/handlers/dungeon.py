@@ -14,6 +14,7 @@ from database.db import (
     end_run, add_run_item, add_run_nordmarks,
     get_run_items, clear_run_items, get_user, add_nordmarks, remove_nordmarks, remove_ap, get_db,
     get_player_weapon_damage, get_user_potions, get_item_by_name, remove_inventory_item,
+    get_equipped_weapon,
     get_user_contract_count, get_player_dodge, add_inventory_item,
     get_inventory_item, clear_equipment_slot,
     transfer_run_items_to_inventory, get_equipment_slot_items, log_activity,
@@ -92,6 +93,26 @@ BLEED_TICKS_MAX = 3
 FROSTBITE_TURNS = 4
 FROSTBITE_HEAL_MULT = 0.5
 FROSTBITE_CURE_HINT = "Снять: «Огненная вода (водка)» или «Горячий ягодный морс»."
+
+# Особые эффекты оружия (DoT на врага, v0.14.3): накладываются при попадании
+# с шансом weapon_effect_chance, бьют врага weapon_effect_dmg каждый ход игрока
+# и сами спадают через WEAPON_DOT_TICKS ходов.
+WEAPON_DOT_TICKS = 3
+WEAPON_EFFECT_LABELS = {
+    "poison": "отравление",
+    "bleed": "кровотечение",
+    "frostbite": "обморожение",
+}
+WEAPON_EFFECT_EMOJI = {
+    "poison": "☠️",
+    "bleed": "🩸",
+    "frostbite": "🧊",
+}
+WEAPON_EFFECT_ATTACK_LINE = {
+    "poison": "Ты отравил врага — яд въедается в рану",
+    "bleed": "Ты глубоко ранил врага — он истекает кровью",
+    "frostbite": "Ты оковал врага холодом — мороз сковывает его тело",
+}
 
 # Рыба подземного водохранилища (после победы над Крысиным капитаном): веса.
 RESERVOIR_AP_COST = FISH_AP_COST
@@ -776,7 +797,8 @@ async def show_room(message, run, user_id, state: FSMContext):
         non_boss = [e for e in enemies if not e['is_boss']]
         enemy = random.choice(non_boss) if non_boss else random.choice(enemies)
 
-        await state.update_data(current_enemy_id=enemy['id'], current_enemy_hp=enemy['hp'])
+        await state.update_data(current_enemy_id=enemy['id'], current_enemy_hp=enemy['hp'],
+                                enemy_effect=None, enemy_effect_dmg=0, enemy_effect_ticks=0)
 
         text = (
             f"🏰 {dungeon['name']}\n"
@@ -815,6 +837,73 @@ async def show_room(message, run, user_id, state: FSMContext):
             f"Нажми «Продолжить путь» чтобы идти дальше."
         )
         await message.answer(text, reply_markup=dungeon_main_keyboard(step))
+
+
+async def _enemy_defeated(callback, state, bot, run, enemy, player_hp):
+    """Победа над врагом (обычный или босс): награды, лут, переходы.
+
+    Используется и при убийстве ударом, и когда враг пал от эффекта оружия
+    (тики DoT в начале хода игрока). Вызывается с гарантией, что HP врага == 0.
+    """
+    user_id = callback.from_user.id
+    if enemy['is_boss']:
+        reward = enemy['reward_nm'] or 0
+        if reward > 0:
+            await add_run_nordmarks(run['id'], reward)
+
+        if run['floor'] == 1:
+            # Промежуточный босс «Крысиный капитан»: награда копится в луте,
+            # после победы — выбор: водохранилище или этаж 2.
+            await state.update_data(captain_defeated=1)
+            await log_activity(user_id, "dungeon_boss",
+                               f"Победил промежуточного босса «{enemy['name']}» на 1 этаже")
+            run = await get_active_run(user_id)
+            await post_captain_menu(callback.message, run, state)
+        else:
+            # Финальный босс «Король крыс» (этаж 2): полная зачистка.
+            run = await get_active_run(user_id)
+            loot_nm = run['loot_nm'] or 0
+            if loot_nm > 0:
+                await add_nordmarks(user_id, loot_nm, "dungeon_win", "Вынесено из подземелья")
+
+            transferred = await transfer_run_items_to_inventory(user_id, run['id'])
+
+            text = (
+                f"🏆 БОСС ПОБЕЖДЁН!\n"
+                f"💀 {enemy['name']} повержен!\n\n"
+                f"🎉 Поздравляем! Ты прошёл подземелье до конца!\n\n"
+                f"📦 Ты выносишь из подземелья:\n"
+            )
+            if loot_nm > 0:
+                text += f"💰 {loot_nm} Нордмарок\n"
+            for name, qty in transferred:
+                text += f"🎁 {name} x{qty}\n"
+            if loot_nm <= 0 and not transferred:
+                text += "… пусто."
+
+            await end_run(run['id'], 0)
+            await state.clear()
+            await log_activity(user_id, "dungeon_win",
+                               f"Прошёл «{enemy['name']}»/подземелье на {run['floor']} этаже")
+            await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
+            pilot = await get_user(user_id)
+            await notify(bot, f"🏆 Пилот {await player_display(pilot)} прошёл подземелье и победил босса «{enemy['name']}»!", user_id)
+    else:
+        hp_text = _hp_bar(player_hp, run['hp_max'])
+        text = (
+            f"🏆 {enemy['name']} повержен!\n"
+        )
+
+        dropped = await roll_enemy_drops(run['id'], enemy)
+        if dropped:
+            text += "\n🎁 Лут:\n" + "\n".join(f"• {name} x{qty}" for name, qty in dropped) + "\n\n"
+        else:
+            text += "\n"
+
+        text += f"❤️ {hp_text}\n"
+        text += f"Нажми «Продолжить путь» чтобы идти дальше."
+        next_step = await dungeon_new_step(state)
+        await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_main_keyboard(next_step))
 
 
 @router.callback_query(F.data.startswith("dungeon:attack:"))
@@ -892,6 +981,26 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         else:
             await state.update_data(frostbite_ticks=fticks)
 
+    # ── Тики эффекта оружия игрока на враге (в начале хода игрока) ──
+    if data.get('enemy_effect'):
+        edmg = int(data.get('enemy_effect_dmg', 0) or 0)
+        eticks = int(data.get('enemy_effect_ticks', 0) or 0)
+        if edmg > 0:
+            current_enemy_hp = max(0, current_enemy_hp - edmg)
+        remained = eticks - 1
+        if remained <= 0:
+            await state.update_data(enemy_effect=None, enemy_effect_dmg=0, enemy_effect_ticks=0)
+        else:
+            await state.update_data(enemy_effect_ticks=remained)
+        await state.update_data(current_enemy_hp=current_enemy_hp)
+        if current_enemy_hp <= 0:
+            label = WEAPON_EFFECT_LABELS.get(data['enemy_effect'], data['enemy_effect'])
+            await callback.message.answer(
+                f"💀 {enemy['name']} пал от {label} твоего оружия (−{edmg} HP)!"
+            )
+            await _enemy_defeated(callback, state, bot, run, enemy, player_hp)
+            return
+
     weapon_damage = await get_player_weapon_damage(user_id)
     damage_to_enemy = calculate_attack(0, weapon_damage)
     from utils.states import get_state_info, combat_multipliers
@@ -911,65 +1020,9 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     current_enemy_hp = max(0, current_enemy_hp - damage_to_enemy)
     await state.update_data(current_enemy_hp=current_enemy_hp)
 
+    enemy_eff_just = False
     if current_enemy_hp <= 0:
-        if enemy['is_boss']:
-            reward = enemy['reward_nm'] or 0
-            if reward > 0:
-                await add_run_nordmarks(run['id'], reward)
-
-            if run['floor'] == 1:
-                # Промежуточный босс «Крысиный капитан»: награда копится в луте,
-                # после победы — выбор: водохранилище или этаж 2.
-                await state.update_data(captain_defeated=1)
-                await log_activity(user_id, "dungeon_boss",
-                                   f"Победил промежуточного босса «{enemy['name']}» на 1 этаже")
-                run = await get_active_run(user_id)
-                await post_captain_menu(callback.message, run, state)
-            else:
-                # Финальный босс «Король крыс» (этаж 2): полная зачистка.
-                run = await get_active_run(user_id)
-                loot_nm = run['loot_nm'] or 0
-                if loot_nm > 0:
-                    await add_nordmarks(user_id, loot_nm, "dungeon_win", "Вынесено из подземелья")
-
-                transferred = await transfer_run_items_to_inventory(user_id, run['id'])
-
-                text = (
-                    f"🏆 БОСС ПОБЕЖДЁН!\n"
-                    f"💀 {enemy['name']} повержен!\n\n"
-                    f"🎉 Поздравляем! Ты прошёл подземелье до конца!\n\n"
-                    f"📦 Ты выносишь из подземелья:\n"
-                )
-                if loot_nm > 0:
-                    text += f"💰 {loot_nm} Нордмарок\n"
-                for name, qty in transferred:
-                    text += f"🎁 {name} x{qty}\n"
-                if loot_nm <= 0 and not transferred:
-                    text += "… пусто."
-
-                await end_run(run['id'], 0)
-                await state.clear()
-                await log_activity(user_id, "dungeon_win",
-                                   f"Прошёл «{enemy['name']}»/подземелье на {run['floor']} этаже")
-                await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
-                pilot = await get_user(user_id)
-                await notify(bot, f"🏆 Пилот {await player_display(pilot)} прошёл подземелье и победил босса «{enemy['name']}»!", user_id)
-        else:
-            hp_text = _hp_bar(player_hp, run['hp_max'])
-            text = (
-                f"🏆 {enemy['name']} повержен!\n"
-            )
-
-            dropped = await roll_enemy_drops(run['id'], enemy)
-            if dropped:
-                text += "\n🎁 Лут:\n" + "\n".join(f"• {name} x{qty}" for name, qty in dropped) + "\n\n"
-            else:
-                text += "\n"
-
-            text += f"❤️ {hp_text}\n"
-            text += f"Нажми «Продолжить путь» чтобы идти дальше."
-            next_step = await dungeon_new_step(state)
-            await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_main_keyboard(next_step))
+        await _enemy_defeated(callback, state, bot, run, enemy, player_hp)
         return
 
     from utils.combat import get_enemy_bar
@@ -983,6 +1036,20 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         f"{attack_line}"
         f"{enemy_bar}\n\n"
     )
+
+    # Особый эффект оружия: при попадании есть шанс наложить DoT на врага.
+    weapon = await get_equipped_weapon(user_id)
+    weff = weapon.get('weapon_effect') if weapon else None
+    if weff and not enemy_dodged:
+        wch = int(weapon.get('weapon_effect_chance') or 0)
+        wdmg = int(weapon.get('weapon_effect_dmg') or 0)
+        if wch and wdmg and random.randint(1, 100) <= wch:
+            await state.update_data(enemy_effect=weff, enemy_effect_dmg=wdmg,
+                                    enemy_effect_ticks=WEAPON_DOT_TICKS)
+            text += (f"\n{WEAPON_EFFECT_EMOJI[weff]} {WEAPON_EFFECT_ATTACK_LINE[weff]}! "
+                     f"{WEAPON_EFFECT_LABELS[weff]}: −{wdmg} HP врагу каждый ход "
+                     f"({WEAPON_DOT_TICKS} хода).")
+            enemy_eff_just = True
 
     # Уклонение пилота: шанс избежать контратаки (база + нашивка, × состояния)
     player_dodge = await get_player_dodge(user_id, mult.get('dodge_mult', 1.0))
@@ -1042,6 +1109,14 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         text += f"\n🩸 Кровотечение: −{data_after['active_bleed']} HP каждый ход{rem}."
     if data_after.get('active_frostbite') and not frost_just_applied:
         text += f"\n🧊 Обморожение: лечение −50%. {FROSTBITE_CURE_HINT}"
+    # Текущий эффект оружия на враге (пока сам не спал).
+    if data_after.get('enemy_effect') and not enemy_eff_just:
+        eeff = data_after['enemy_effect']
+        edmg = int(data_after.get('enemy_effect_dmg', 0) or 0)
+        eticks = int(data_after.get('enemy_effect_ticks', 0) or 0)
+        rem = f" (осталось {eticks} х.)" if eticks else ""
+        text += (f"\n{WEAPON_EFFECT_EMOJI[eeff]} Враг под "
+                 f"{WEAPON_EFFECT_LABELS.get(eeff, eeff)}: −{edmg} HP каждый ход{rem}.")
 
     if player_hp <= 0:
         nm_penalty = max(5, enemy['reward_nm'] * 2)
@@ -1348,7 +1423,8 @@ async def show_boss(message, run, user_id, state: FSMContext):
     sdata = await state.get_data()
     step = await dungeon_new_step(state)
 
-    await state.update_data(current_enemy_id=boss['id'], current_enemy_hp=boss['hp'])
+    await state.update_data(current_enemy_id=boss['id'], current_enemy_hp=boss['hp'],
+                                enemy_effect=None, enemy_effect_dmg=0, enemy_effect_ticks=0)
 
     boss_status = status_lines(sdata)
     boss_heal_uses = int(sdata.get('dungeon_heal_uses', 0) or 0)

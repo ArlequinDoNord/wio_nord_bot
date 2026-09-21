@@ -712,6 +712,13 @@ async def init_db():
     await conn.execute(
         "UPDATE items SET plant_name = 'Яблоня' "
         "WHERE category = 'seeds' AND name = 'Яблочное семечко' AND plant_name IS NULL")
+    # v0.14.3: особые эффекты оружия (DoT на врага в бою подземелья).
+    # weapon_effect: 'poison' | 'bleed' | 'frostbite' | NULL (нет эффекта);
+    # weapon_effect_chance: шанс срабатывания при попадании, %;
+    # weapon_effect_dmg: урон за ход длительности эффекта.
+    await _ensure_column(conn, "items", "weapon_effect", "TEXT")
+    await _ensure_column(conn, "items", "weapon_effect_chance", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "items", "weapon_effect_dmg", "INTEGER DEFAULT 0")
     # v0.13.3: рыба (предметы категории fishing) выставляется на рынок по
     # умолчанию. Разовое обновление для уже существующих предметов.
     cur = await conn.execute(
@@ -1026,7 +1033,10 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
                    production_time_hours: int = 0, produced_by: int = None,
                    damage: int = 0, heal: int = 0, armor: int = 0,
                    drink_effect: str = None, equip_slot: str = None,
-                   market_ok: int = None, plant_name: str = None):
+                   market_ok: int = None, plant_name: str = None,
+                   weapon_effect: str = None,
+                   weapon_effect_chance: int = 0,
+                   weapon_effect_dmg: int = 0):
     conn = await get_db()
     # v0.13.3: рыба (категория fishing) по умолчанию выставляется на рынок;
     # у остальных предметов — только скупщик, пока админ не включит флаг.
@@ -1034,10 +1044,12 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
         market_ok = 1 if category == "fishing" else 0
     cursor = await conn.execute(
         """INSERT INTO items (name, description, photo_file_id, price, sell_price,
-           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name,
+           weapon_effect, weapon_effect_chance, weapon_effect_dmg)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (name, description, photo_file_id, price, sell_price, rarity, category,
-         stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name)
+         stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name,
+         weapon_effect or None, weapon_effect_chance, weapon_effect_dmg)
     )
     await conn.commit()
     return cursor.lastrowid
@@ -4797,6 +4809,20 @@ async def get_player_weapon_damage(user_id: int) -> int:
     )
     row = await cursor.fetchone()
     return row['damage'] if row else 0
+
+
+async def get_equipped_weapon(user_id: int):
+    """Полная запись активного оружия игрока (слот 'weapon') или None."""
+    eq = await get_equipment(user_id)
+    weapon_id = eq.get('weapon')
+    if not weapon_id:
+        return None
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM items WHERE id = ? AND category = 'weapon'",
+        (weapon_id,)
+    )
+    return await cursor.fetchone()
 
 
 async def get_player_armor(user_id: int) -> int:
