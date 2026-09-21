@@ -181,6 +181,8 @@ _ARMOR_SLOT_EMOJI = {"head": "🪖", "body": "🦺", "hands": "🧤", "legs": "�
 def _slot_emoji(slot: str) -> str:
     if slot == 'weapon':
         return '⚔️'
+    if slot == 'smoke':
+        return '💨'
     if slot in _ARMOR_SLOT_EMOJI:
         return _ARMOR_SLOT_EMOJI[slot]
     return '⚗️'
@@ -233,6 +235,7 @@ async def _equipment_view(user_id: int):
     lines += ["", "▫️ 🧪 РАСХОДНИКИ"]
     for s in ('potion1', 'potion2'):
         lines.append("• " + slot_line(s))
+    lines.append("• " + slot_line('smoke'))
     if 'potion3' in EQUIPMENT_LOCKED_SLOTS:
         lines.append("• 🔒 Слот 3: заблокирован")
 
@@ -247,6 +250,8 @@ async def _equipment_view(user_id: int):
     for s in ('potion1', 'potion2'):
         rows.append([InlineKeyboardButton(text=slot_button(s),
                                           callback_data=f"eqslot:{s}")])
+    rows.append([InlineKeyboardButton(text=slot_button('smoke'),
+                                      callback_data="eqslot:smoke")])
     rows.append([InlineKeyboardButton(text="🔒 Слот 3 — заблокирован",
                                       callback_data="eqlock:potion3")])
     rows.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="inventory:list")])
@@ -457,8 +462,15 @@ async def _render_item_card(message, user_id: int, item_id: int, note: str = "")
         dots.append(f"💚 Лечение: {item['heal']}")
     if dots:
         text += " • ".join(dots) + "\n\n"
-    if item['heal']:
+    if item['heal'] and item['name'] != 'Дымовая шашка':
         text += "💊 Применяется в бою подземелья: поставь в слот 1/2 (кнопки ниже) и жми в бою.\n\n"
+    if item['name'] == 'Дымовая шашка':
+        smoke_slotted = eq.get('smoke') == item_id
+        text += ("💨 Дымовая шашка ставится в отдельный слот «Дымовая шашка» "
+                 "(Инвентарь → Снаряжение). В бою подземелья: шанс убежать 95%. "
+                 f"С собой за забег можно взять не больше 2 шт.\n")
+        if smoke_slotted:
+            text += "✅ Сейчас стоит в слоте дымовой шашки.\n\n"
     if item['description']:
         text += f"📝 {item['description']}\n\n"
 
@@ -486,8 +498,12 @@ async def _render_item_card(message, user_id: int, item_id: int, note: str = "")
     if is_equipped:
         text += f"\n\n🔹 Экипировано: {_slot_emoji(equip_slot)} {EQUIPMENT_SLOT_LABELS.get(equip_slot, equip_slot)}"
 
-    # Активные слоты зелий (potion1/potion2) — в каких стоит этот предмет
+    # Активные слоты зелий (potion1/potion2) — в каких стоит этот предмет.
+    # Дымовая шашка в зелья не ставится — у неё собственный слот.
+    is_smoke = item['name'] == 'Дымовая шашка'
     potion_slots = [n for n, slot in ((1, 'potion1'), (2, 'potion2')) if eq.get(slot) == item_id]
+    if is_smoke:
+        potion_slots = []
     if potion_slots:
         text += f"\n\n⚗️ В активном слоте: {', '.join(str(n) for n in potion_slots)}"
 
@@ -526,7 +542,7 @@ async def _render_item_card(message, user_id: int, item_id: int, note: str = "")
         occupied = {}
     markup = inv_item_markup(item_id, item['category'], can_use=can_use,
                              is_equipped=is_equipped, equip_slot=equip_slot,
-                             potion_slots=potion_slots,
+                             potion_slots=(None if is_smoke else potion_slots),
                              sellable=(item['sell_price'] or 0) > 0 and sellable_qty > 0,
                              qty=sellable_qty,
                              occupied=occupied,

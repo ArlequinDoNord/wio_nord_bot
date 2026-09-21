@@ -1,5 +1,7 @@
 import random
 
+from config import ESCAPE_BASE_CHANCE, ESCAPE_HP_BONUS, DUNGEON_SMOKE_ESCAPE
+
 
 def roll_dice(sides: int = 20) -> int:
     """Бросок кубика (d20 по умолчанию)."""
@@ -25,15 +27,22 @@ def roll_dodge(dodge_percent: int) -> bool:
     return random.randint(1, 100) <= dodge_percent
 
 
-def escape_chance(player_hp_percent: float, dice_roll: int = None) -> bool:
+def escape_chance(player_hp_percent: float, dice_roll: int = None, smoke_used: bool = False) -> bool:
     """
-    Шанс убежать = 50% + (1 - hp_percent) * 30%.
-    Если hp < 50% — легче убежать.
+    Шанс убежать (d20, шаг 5%):
+    - с дымовой шашкой — DUNGEON_SMOKE_ESCAPE% (95% → успех на броске 1–19);
+    - без неё — ESCAPE_BASE_CHANCE% + (1 − hp) × ESCAPE_HP_BONUS: от 25% при
+      полном HP до 45% на грани смерти.
+    Проценты переводятся в порог d20 (шаг 5%): 25% → успех на броске 1–5.
     """
     if dice_roll is None:
         dice_roll = roll_dice(20)
-    base_chance = 50 + int((1.0 - player_hp_percent) * 30)
-    return dice_roll <= base_chance
+    if smoke_used:
+        success = max(1, min(20, DUNGEON_SMOKE_ESCAPE * 20 // 100))
+        return dice_roll <= success
+    base_percent = ESCAPE_BASE_CHANCE + int((1.0 - player_hp_percent) * ESCAPE_HP_BONUS)
+    success = max(1, min(20, base_percent * 20 // 100))
+    return dice_roll <= success
 
 
 def calculate_escape_damage() -> int:

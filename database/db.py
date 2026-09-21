@@ -4838,6 +4838,8 @@ async def get_player_armor_with_bonus(user_id: int) -> int:
 
 # Слоты снаряжения в users.equipment.
 ARMOR_SLOTS = ("head", "body", "hands", "legs")
+# Дымовая шашка — расходник побега (отдельный слот, до DUNGEON_SMOKE_MAX за забег).
+SMOKE_ITEM_NAME = "Дымовая шашка"
 EQUIPMENT_SLOT_LABELS = {
     "weapon": "Основное оружие",
     "weapon_aux": "Вспомогательное оружие",
@@ -4848,6 +4850,7 @@ EQUIPMENT_SLOT_LABELS = {
     "potion1": "Активный слот 1",
     "potion2": "Активный слот 2",
     "potion3": "Активный слот 3",
+    "smoke": "Дымовая шашка",
 }
 # Слоты, которые сейчас заблокированы (откроются позже).
 EQUIPMENT_LOCKED_SLOTS = {"weapon_aux", "potion3"}
@@ -4867,7 +4870,9 @@ def item_fits_slot(item, slot: str) -> bool:
             eq_slot = item.get('equip_slot') or 'body'
         return eq_slot == slot
     if slot in ('potion1', 'potion2'):
-        return category == 'consumable'
+        return category == 'consumable' and item.get('name') != SMOKE_ITEM_NAME
+    if slot == 'smoke':
+        return category == 'consumable' and item['name'] == SMOKE_ITEM_NAME
     return False
 
 
@@ -4943,10 +4948,16 @@ async def get_user_potions(user_id: int):
     return await cursor.fetchall()
 
 
-async def get_equipment_slot_items(user_id: int):
-    """Предметы, выставленные в активные слоты зелий (potion1/potion2), с наличием в инвентаре."""
+async def get_equipment_slot_items(user_id: int, include_smoke: bool = False):
+    """Предметы в активных слотах зелий (potion1/potion2), с наличием в инвентаре.
+
+    include_smoke=True также добавляет слот дымовой шашки (для боевых клавиатур
+    обычных врагов; его нет в бою с боссом: от босса не убежать).
+    """
     eq = await get_equipment(user_id)
     slots = [('potion1', eq.get('potion1')), ('potion2', eq.get('potion2'))]
+    if include_smoke:
+        slots.append(('smoke', eq.get('smoke')))
     result = []
     for slot, item_id in slots:
         if not item_id:
@@ -4988,6 +4999,17 @@ async def ensure_dungeon_shop_items():
             stock=20, added_by=0, ap_cost=0, damage=0, heal=0,
         )
         await update_item(antidote_id, cure_poison=1)
+        added = True
+
+    cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (SMOKE_ITEM_NAME,))
+    if (await cursor.fetchone())['c'] == 0:
+        await add_item(
+            name=SMOKE_ITEM_NAME,
+            description="Дымовая шашка для побега в подземелье: с ней шанс убежать 95%. "
+                        "Ставится в отдельный слот снаряжения; с собой за забег можно взять не больше 2 шт.",
+            price=80, sell_price=40, rarity=2, category="consumable",
+            stock=-1, added_by=0, ap_cost=0, damage=0, heal=0,
+        )
         added = True
 
     cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", ("Хвост крысы",))
