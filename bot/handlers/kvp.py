@@ -460,7 +460,7 @@ async def kvp_attempt(callback: CallbackQuery, state: FSMContext):
         )
         return
 
-    ok = await remove_ap(user_id, OD_ATTEMPT_COST)
+    ok = await remove_ap(user_id, OD_ATTEMPT_COST, reason="К.В.П.: попытка препятствия")
     if not ok:
         await callback.message.answer("❌ Не удалось списать очки действий.")
         return

@@ -499,7 +499,7 @@ async def housing_craft(cb: CallbackQuery):
             return
 
     # Снимаем ОД и ингредиенты
-    if not await remove_ap(uid, r["ap_cost"]):
+    if not await remove_ap(uid, r["ap_cost"], reason="крафт"):
         await cb.answer("❌ Не хватает ОД!", show_alert=True)
         return
 

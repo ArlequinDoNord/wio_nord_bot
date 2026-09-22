@@ -543,7 +543,7 @@ async def fish_cast(callback: CallbackQuery):
             )
             return
 
-        if not await remove_ap(user_id, FISH_AP_COST):
+        if not await remove_ap(user_id, FISH_AP_COST, reason="заброс удочки"):
             await _paint(
                 callback,
                 text=f"❌ Не хватает ОД: нужно {FISH_AP_COST}, доступно меньше. Восстановление — в новые сутки.",

@@ -186,7 +186,7 @@ async def park_fountain_drink(callback: CallbackQuery):
 
         await asyncio.sleep(FOUNTAIN_WAIT_SEC)
 
-        await add_ap(uid, FOUNTAIN_AP_BONUS)
+        await add_ap(uid, FOUNTAIN_AP_BONUS, reason="фонтан")
         await mark_fountain_used(uid)
         await log_activity(uid, "fountain_drink", f"+{FOUNTAIN_AP_BONUS} ОД")
 

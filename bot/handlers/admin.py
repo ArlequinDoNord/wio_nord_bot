@@ -2012,10 +2012,10 @@ async def finance_amount(message: Message, state: FSMContext):
         unit = plural_nordmark(amount)
     else:
         if action == "add":
-            await add_ap(target_id, amount)
+            await add_ap(target_id, amount, reason=f"начисление админом #{admin}")
             verb = "начислено"
         else:
-            ok = await remove_ap(target_id, amount)
+            ok = await remove_ap(target_id, amount, reason=f"списание админом #{admin}")
             if not ok:
                 await message.answer("❌ У игрока недостаточно AP.")
                 return

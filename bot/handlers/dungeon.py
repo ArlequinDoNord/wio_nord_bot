@@ -538,7 +538,7 @@ async def contract_enter_confirm(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ Не удалось списать контракт.")
         return
 
-    ok = await remove_ap(user_id, 30)
+    ok = await remove_ap(user_id, 30, reason="вход в подземелье")
     if not ok:
         await state.clear()
         await callback.message.answer("❌ Не удалось списать очки действий.")
@@ -1135,6 +1135,25 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
             await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items, next_step))
 
 
+async def battle_state_block_message(user_id: int):
+    """Сообщение, если состояния игрока запрещают расходники в бою.
+
+    Возвращает текст блокировки («несварение»/«очень пьян») или None — всё
+    в порядке. В бою применение предметов из слотов (антидот, зелья, напитки,
+    дымовые шашки) подчиняется тем же правилам, что и вне боя.
+    """
+    from utils.states import get_state_info, consumables_blocked
+    info = await get_state_info(user_id)
+    blocked = consumables_blocked(info.get('names') or [])
+    if not blocked:
+        return None
+    if "очень пьян" in blocked:
+        return ("🥴 Ты слишком пьян, чтобы что-то применять. "
+                "Зелья и расходники станут доступны, когда «очень пьян» пройдёт (6 часов).")
+    return ("🤢 Несварение: пищеварение на паузе. "
+            "Расходники нельзя применять ещё сутки.")
+
+
 @router.callback_query(F.data.startswith("dungeon:use_slot:"))
 async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -1155,6 +1174,12 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
     if not run:
         await callback.message.answer("❌ Подземелье не найдено.")
         await state.clear()
+        return
+
+    # Состояния «несварение»/«очень пьян» блокируют расходники и в бою.
+    blk = await battle_state_block_message(user_id)
+    if blk:
+        await callback.message.answer(blk)
         return
 
     item = None
@@ -1199,6 +1224,7 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         if not ok:
             await callback.message.answer("❌ Не удалось списать шашку.")
             return
+        await log_activity(user_id, "item_use", "В бою: дымовая шашка (попытка побега)")
         inv_after_sm = await get_inventory_item(user_id, item['id'])
         if not inv_after_sm or (inv_after_sm['quantity'] or 0) <= 0:
             await clear_equipment_slot(user_id, slot)
@@ -1230,6 +1256,7 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         await clear_equipment_slot(user_id, slot)
 
     slot_items = await _combat_slot_items(user_id, is_boss=is_boss)
+    await log_activity(user_id, "item_use", f"В бою: «{item['name']}»")
 
     if item['cure_poison']:
         await state.update_data(active_poison=None)
@@ -1597,7 +1624,7 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                 f"⚡ ОД восстанавливаются раз в сутки."
             )
             return
-        ok = await remove_ap(user_id, RESERVOIR_AP_COST)
+        ok = await remove_ap(user_id, RESERVOIR_AP_COST, reason="рыбалка в водохранилище")
         if not ok:
             await callback.message.answer("❌ Не удалось списать ОД.")
             return

@@ -410,6 +410,18 @@ async def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_activity_user ON activity_log(user_id, id);
 
+        CREATE TABLE IF NOT EXISTS ap_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            delta INTEGER NOT NULL,
+            ap_before INTEGER NOT NULL,
+            ap_after INTEGER NOT NULL,
+            reason TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_ap_user ON ap_log(user_id, id);
+
         CREATE TABLE IF NOT EXISTS locations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             key TEXT NOT NULL UNIQUE,
@@ -658,6 +670,9 @@ async def init_db():
     # Счётчик водорослей (для «несварения»: >6 в сутки → запрет расходников на 24 ч)
     await _ensure_column(conn, "users", "seaweed_used_today", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "seaweed_used_day", "TEXT DEFAULT NULL")
+    # День последнего суточного восстановления ОД: рестарты бота посреди дня
+    # не начисляют +100 ОД повторно, восстановление срабатывает раз в сутки.
+    await _ensure_column(conn, "users", "ap_recovery_day", "TEXT DEFAULT NULL")
     # Счётчик бутылок пива (для состояний «пьян»/«очень пьян»)
     await _ensure_column(conn, "users", "beer_used_today", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "beer_used_day", "TEXT DEFAULT NULL")
@@ -995,56 +1010,99 @@ async def transfer_nordmarks(from_user: int, to_user: int, amount: int, descript
     await conn.commit()
 
 
-async def add_ap(user_id: int, amount: int):
-    """Добавить ОД. При состоянии «истощён» потолок — AP_EXHAUSTED_MAX_AP (90)."""
+async def add_ap(user_id: int, amount: int, reason: str = None):
+    """Добавить ОД. При состоянии «истощён» потолок — AP_EXHAUSTED_MAX_AP (90).
+
+    reason — причина изменения (пишется в ap_log для аудита экономики).
+    """
     from config import AP_EXHAUSTED_MAX_AP
+    if amount <= 0:
+        return
     conn = await get_db()
     cursor = await conn.execute(
-        "SELECT ap_max FROM users WHERE user_id = ?", (user_id,)
+        "SELECT ap, ap_max FROM users WHERE user_id = ?", (user_id,)
     )
     row = await cursor.fetchone()
     if not row:
         return
     effects = await _refresh_user_states(user_id)
     cap = AP_EXHAUSTED_MAX_AP if 'истощён' in effects else row['ap_max']
+    added = min(amount, cap - row['ap'])
+    if added <= 0:
+        return
+    await log_ap_change(user_id, added, reason)
     await conn.execute(
-        "UPDATE users SET ap = MIN(?, ap + ?) WHERE user_id = ?",
-        (cap, amount, user_id)
+        "UPDATE users SET ap = ap + ? WHERE user_id = ?",
+        (added, user_id)
     )
     await conn.commit()
 
 
-async def remove_ap(user_id: int, amount: int) -> bool:
+async def remove_ap(user_id: int, amount: int, reason: str = None) -> bool:
     conn = await get_db()
     cursor = await conn.execute("SELECT ap FROM users WHERE user_id = ?", (user_id,))
     row = await cursor.fetchone()
     if not row or row['ap'] < amount:
         return False
+    await log_ap_change(user_id, -amount, reason)
     await conn.execute("UPDATE users SET ap = ap - ? WHERE user_id = ?", (amount, user_id))
     await conn.commit()
     return True
 
 
 async def daily_ap_recovery():
-    """Суточное восстановление ОД.
+    """Суточное восстановление ОД — раз в сутки.
 
-    В состоянии «истощён»: +75 ОД, потолок 90. Счётчик восстановления через
-    расходники (ap_restored_today) обнуляется только при смене суток.
-    Счётчик водорослей (seaweed_used_today) тоже обнуляется.
+    Начисляет AP_DAILY_RECOVERY (100 ОД) до потолка ap_max; для состояния
+    «истощён» — AP_EXHAUSTED_DAILY_RECOVERY (75 ОД) до AP_EXHAUSTED_MAX_AP (90).
+    Срабатывает только если день не совпадает с users.ap_recovery_day: рестарты
+    бота посреди дня не раздают ОД повторно. Счётчики (ap_restored_today,
+    seaweed_used_today, fountain_used_today) обнуляются при смене суток.
+    Каждое начисление пишется в ap_log.
     """
     from config import (AP_DAILY_RECOVERY, AP_EXHAUSTED_DAILY_RECOVERY, AP_EXHAUSTED_MAX_AP)
+    today = datetime.utcnow().strftime("%Y-%m-%d")
     conn = await get_db()
+
+    cursor = await conn.execute(
+        "SELECT user_id, ap, ap_max, state, ap_recovery_day FROM users"
+    )
+    rows = await cursor.fetchall()
+    for row in rows:
+        exhausted = 'истощён' in (row['state'] or '')
+        cap = AP_EXHAUSTED_MAX_AP if exhausted else row['ap_max']
+        rec = AP_EXHAUSTED_DAILY_RECOVERY if exhausted else AP_DAILY_RECOVERY
+        prev_day = row['ap_recovery_day']
+        if prev_day == today:
+            continue
+        before = row['ap']
+        new_ap = min(cap, before + rec)
+        if new_ap == before:
+            await conn.execute(
+                "UPDATE users SET ap_recovery_day = ? WHERE user_id = ?",
+                (today, row['user_id'])
+            )
+            continue
+        reason = "суточное восстановление ОД"
+        if exhausted:
+            reason = "суточное восстановление ОД (истощён)"
+        await log_ap_change(row['user_id'], new_ap - before, reason)
+        await conn.execute(
+            "UPDATE users SET ap = ?, ap_recovery_day = ? WHERE user_id = ?",
+            (new_ap, today, row['user_id'])
+        )
+    await conn.commit()
+
+    # Обнуление суточных счётчиков при смене суток (то же поведение, что и раньше).
     await conn.execute("""
         UPDATE users SET
-            ap = MIN(CASE WHEN INSTR(state, 'истощён') > 0 THEN ? ELSE ap_max END,
-                     ap + CASE WHEN INSTR(state, 'истощён') > 0 THEN ? ELSE ? END),
             ap_restored_today = CASE WHEN ap_restored_day = date('now') THEN ap_restored_today ELSE 0 END,
             ap_restored_day = CASE WHEN ap_restored_day = date('now') THEN ap_restored_day ELSE date('now') END,
             seaweed_used_today = CASE WHEN seaweed_used_day = date('now') THEN seaweed_used_today ELSE 0 END,
             seaweed_used_day = CASE WHEN seaweed_used_day = date('now') THEN seaweed_used_day ELSE date('now') END,
             fountain_used_today = CASE WHEN fountain_used_day = date('now') THEN fountain_used_today ELSE 0 END,
             fountain_used_day = CASE WHEN fountain_used_day = date('now') THEN fountain_used_day ELSE date('now') END
-    """, (AP_EXHAUSTED_MAX_AP, AP_EXHAUSTED_DAILY_RECOVERY, AP_DAILY_RECOVERY))
+    """)
     await conn.commit()
 
 
@@ -1398,7 +1456,7 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
 
             amount = min(item['ap_cost'], remaining)
             await remove_inventory_item(user_id, item_id, 1)
-            await add_ap(user_id, amount)
+            await add_ap(user_id, amount, reason=f"расходник «{item['name']}»")
             restored_today += amount
             conn = await get_db()
             if is_seaweed:
@@ -6156,6 +6214,32 @@ async def mark_fountain_used(user_id: int):
 
 
 # ============ ЛОГ АКТИВНОСТИ ИГРОКОВ ============
+
+async def log_ap_change(user_id: int, delta: int, reason: str = None):
+    """Записать изменение ОД в ap_log (delta со знаком).
+
+    Вызывать ДО применения изменения: ap_before = текущее значение ОД,
+    ap_after = ap_before + delta. Так трейл каждый раз честный. Для аудита
+    экономики: видно, откуда пришли и куда ушли очки действий. Некритичная
+    операция — сбой записи лога не ломает игру.
+    """
+    conn = await get_db()
+    try:
+        cursor = await conn.execute("SELECT ap FROM users WHERE user_id = ?", (user_id,))
+        row = await cursor.fetchone()
+        if not row:
+            return
+        before = row['ap']
+        after = max(0, before + delta)
+        await conn.execute(
+            "INSERT INTO ap_log (user_id, delta, ap_before, ap_after, reason) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (user_id, delta, before, after, reason)
+        )
+        await conn.commit()
+    except Exception:
+        pass
+
 
 async def log_activity(user_id: int, action: str, details: str = None):
     """Записать событие из жизни игрока (для просмотра админом)."""
