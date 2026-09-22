@@ -47,10 +47,18 @@ async def location_preview(callback: CallbackQuery):
     # Приоритет: file_id по текущему времени суток → asset-ключ (resolve_image) → единый file_id
     tod = time_of_day_key()
     keys = loc.keys()
-    for slot in (f"photo_{tod}", "photo_dawn", "photo_day", "photo_sunset", "photo_night"):
-        if slot in keys and loc[slot]:
-            photo = loc[slot]
-            break
+    # К.В.П.: админ задаёт фото данжа через менеджер подземелий — они же показываются
+    # и в превью города, и на меню курса, и внутри курса (одна и та же картинка).
+    if key == "kvp":
+        from bot.handlers.kvp import kvp_dungeon_photo
+        kvp_photo = await kvp_dungeon_photo()
+        if kvp_photo:
+            photo = kvp_photo
+    if not photo:
+        for slot in (f"photo_{tod}", "photo_dawn", "photo_day", "photo_sunset", "photo_night"):
+            if slot in keys and loc[slot]:
+                photo = loc[slot]
+                break
     if not photo and 'preview_photo' in keys and loc['preview_photo']:
         candidate = resolve_image(loc['preview_photo'])
         if os.path.isfile(candidate):

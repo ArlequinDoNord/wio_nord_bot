@@ -6,10 +6,11 @@
 «Значок В.У.С.П.» (+2% урона в подземельях и в К.В.П. и +3% уклонения, постоянно).
 """
 
+import os
 import random
 
 from aiogram import Router, F, Bot
-from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
@@ -28,7 +29,9 @@ from utils.combat import (
 )
 from utils.states import get_state_info, combat_multipliers
 from utils.notify import notify, player_display
-from bot.handlers.dungeon import dungeon_current_step, dungeon_new_step, answer_enemy_photo
+from bot.handlers.dungeon import (
+    dungeon_current_step, dungeon_new_step, dungeon_entrance_photo,
+)
 
 router = Router()
 
@@ -141,6 +144,31 @@ async def get_course_enemy(name: str = EFREITOR_NAME, boss: bool = False):
     return await cursor.fetchone()
 
 
+async def answer_course_photo(where, text, reply_markup=None):
+    """Отправляет сообщение курса с входной картинкой данжа К.В.П. (photo_*).
+
+    Админ задаёт картинки через менеджер подземелий; они же показываются
+    на меню входа и внутри курса. Без картинки — обычный текст.
+    """
+    photo = await kvp_dungeon_photo()
+    if photo:
+        try:
+            if os.path.isfile(photo):
+                return await where.answer_photo(photo=FSInputFile(photo), caption=text,
+                                                reply_markup=reply_markup)
+            return await where.answer_photo(photo=photo, caption=text,
+                                            reply_markup=reply_markup)
+        except Exception:
+            pass
+    return await where.answer(text, reply_markup=reply_markup)
+
+
+async def kvp_dungeon_photo():
+    """Входная картинка данжа К.В.П. (file_id или локальный путь) или None."""
+    dng = await get_kvp_dungeon()
+    return dungeon_entrance_photo(dng) if dng else None
+
+
 async def kvp_badge_award_id():
     conn = await get_db()
     cursor = await conn.execute("SELECT id FROM awards WHERE name = ?", (KVP_BADGE_NAME,))
@@ -187,7 +215,8 @@ async def kvp_menu_cb(callback: CallbackQuery):
     if in_run:
         markup = kvp_resume_keyboard()
     elif progress['completions'] >= KVP_MAX_COMPLETIONS:
-        await callback.message.answer(
+        await answer_course_photo(
+            callback.message,
             text + "\n\n✅ Ты уже полностью прошёл курс. Возвращайся к своим прямым обязанностям.",
             reply_markup=None
         )
@@ -195,7 +224,7 @@ async def kvp_menu_cb(callback: CallbackQuery):
     else:
         markup = kvp_menu_keyboard()
 
-    await callback.message.answer(text, reply_markup=markup)
+    await answer_course_photo(callback.message, text, markup)
 
 
 @router.callback_query(F.data == "kvp:start")
@@ -289,8 +318,7 @@ async def show_enemy_room(message, run, user_id, state: FSMContext):
         f"👾 {enemy['name']} (HP: {enemy['hp']}, АТК: {enemy['attack']}, УКЛ: {enemy['dodge'] if 'dodge' in enemy.keys() else 0}%)\n\n"
         f"Что делаешь?"
     )
-    await answer_enemy_photo(message, enemy, text,
-                             reply_markup=kvp_combat_keyboard(enemy['id'], step))
+    await answer_course_photo(message, text, reply_markup=kvp_combat_keyboard(enemy['id'], step))
 
 
 async def show_obstacle_room(message, run, user_id, state: FSMContext, room_type: str):
@@ -307,7 +335,7 @@ async def show_obstacle_room(message, run, user_id, state: FSMContext, room_type
         f"Цена попытки: {OD_ATTEMPT_COST} ОД. Шанс срыва: {int(fail*100)}%.\n"
         f"При срыве попытаешься ещё раз (снова за ОД)."
     )
-    await message.answer(text, reply_markup=kvp_obstacle_keyboard(room_type, step))
+    await answer_course_photo(message, text, reply_markup=kvp_obstacle_keyboard(room_type, step))
 
 
 async def show_boss_room(message, run, user_id, state: FSMContext, current_hp=None):
@@ -330,8 +358,7 @@ async def show_boss_room(message, run, user_id, state: FSMContext, current_hp=No
         f"👾 {boss['name']} (HP: {boss['hp']}, АТК: {boss['attack']}, УКЛ: {boss['dodge'] if 'dodge' in boss.keys() else 0}%)\n\n"
         f"⚠️ Убежать с полигона нельзя — сдай экзамен!"
     )
-    await answer_enemy_photo(message, boss, text,
-                             reply_markup=kvp_combat_keyboard(boss['id'], step))
+    await answer_course_photo(message, text, reply_markup=kvp_combat_keyboard(boss['id'], step))
 
 
 # ----- Продолжить путь -----
@@ -519,8 +546,8 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
             text += "\n💰 +2 Нордмарки (заберёшь при выходе)"
         text += f"\n\n❤️ {_hp_bar(player_hp, run['hp_max'])}\nНажми «Продолжить путь»."
         new_step = await dungeon_new_step(state)
-        await answer_enemy_photo(callback.message, enemy, text,
-                                 reply_markup=kvp_continue_keyboard(new_step))
+        await answer_course_photo(callback.message, text,
+                                  reply_markup=kvp_continue_keyboard(new_step))
         return
 
     # Враг контратакует (с шансом пилот уклоняется)
@@ -563,12 +590,12 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
             f"\n\n💀 Ты погиб на полигоне. Курс — непройден, лут потерян.\n"
             f"Попробуешь ещё раз?"
         )
-        await answer_enemy_photo(callback.message, enemy, text, reply_markup=kvp_menu_keyboard())
+        await answer_course_photo(callback.message, text, reply_markup=kvp_menu_keyboard())
         return
 
     new_step = await dungeon_new_step(state)
-    await answer_enemy_photo(callback.message, enemy, text,
-                             reply_markup=kvp_combat_keyboard(enemy['id'], new_step))
+    await answer_course_photo(callback.message, text,
+                              reply_markup=kvp_combat_keyboard(enemy['id'], new_step))
 
 
 async def kvp_win(callback: CallbackQuery, run, user_id, state: FSMContext, bot: Bot, boss):
@@ -631,7 +658,7 @@ async def kvp_win(callback: CallbackQuery, run, user_id, state: FSMContext, bot:
         text += badge_line + "\n"
     text += f"\n📊 Прогресс курса: {progress['completions']}/{KVP_MAX_COMPLETIONS}"
 
-    await callback.message.answer(text, reply_markup=kvp_menu_keyboard())
+    await answer_course_photo(callback.message, text, reply_markup=kvp_menu_keyboard())
 
     pilot = await get_user(user_id)
     await notify(bot,

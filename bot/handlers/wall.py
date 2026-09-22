@@ -80,7 +80,7 @@ async def _show_wall(sender, state: FSMContext, page: int = 0):
                 price_tag = f" · {r['cost']} НМ"
             lines.append(
                 f"\n💬 {r['text']} "
-                f"\n   — {author}{price_tag}"
+                f"\n   — {author}{price_tag} · №{r['id']} · {_post_date_short(r['created_at'])}"
             )
         # показать лимиты автора запроса
         user = await get_user(user_id)
@@ -89,15 +89,19 @@ async def _show_wall(sender, state: FSMContext, page: int = 0):
         text = "\n".join(lines)
 
     if not hasattr(sender, "message"):  # Message (у Callback есть .message)
-        await sender.answer(text, reply_markup=wall_keyboard(
+        sent = await sender.answer(text, reply_markup=wall_keyboard(
             page=page, total_posts=total, post_ids=ids,
             is_admin=admin, can_manage=manage,
         ))
     else:  # CallbackQuery
-        await sender.message.answer(text, reply_markup=wall_keyboard(
+        sent = await sender.message.answer(text, reply_markup=wall_keyboard(
             page=page, total_posts=total, post_ids=ids,
             is_admin=admin, can_manage=manage,
         ))
+    try:
+        await state.update_data(wall_active_msg=getattr(sent, "message_id", None))
+    except Exception:
+        pass
 
 
 def _author_label(r: dict) -> str:
@@ -110,6 +114,27 @@ def _author_label(r: dict) -> str:
     first = (r.get('first_name') or '').strip()
     last = (r.get('last_name') or '').strip()
     return (f"{first} {last}").strip() or "Неизвестный"
+
+
+def _post_date_short(created_at) -> str:
+    """'2026-09-22 07:36:12' → '22.09 07:36' (UTC) — короткая подпись изречения."""
+    if not created_at:
+        return "—"
+    try:
+        dt = str(created_at).replace("T", " ").replace("Z", "").strip()
+        date_part, _, time_part = dt.partition(" ")
+        d = date_part.split("-")
+        if len(d) >= 3:
+            dd = d[2]
+            mm = d[1]
+        else:
+            return str(created_at)
+        if time_part:
+            hhmm = ":".join(time_part.split(":")[:2])
+            return f"{dd}.{mm} {hhmm}"
+        return f"{dd}.{mm}"
+    except Exception:
+        return str(created_at)
 
 
 @router.message(F.text == "🧱 Стена изречений")
@@ -127,6 +152,13 @@ async def wall_view(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.regexp(r"^wall:page:\d+$"))
 async def wall_page(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    data = await state.get_data()
+    active = data.get('wall_active_msg')
+    if active is None or getattr(callback.message, "message_id", None) != active:
+        await callback.message.answer(
+            "⚠️ Это устаревшее сообщение стены. Открой стену заново, чтобы продолжить листать."
+        )
+        return
     page = int(callback.data.split(":")[2])
     await _show_wall(callback, state, page=page)
 
