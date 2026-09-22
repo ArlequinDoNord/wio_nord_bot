@@ -35,10 +35,10 @@ from utils.helpers import (
 )
 from bot.handlers.fishing import (
     WORMS_NAME, SPIDER_LEG_NAME, COMBINED_BAIT_NAME,
-    JUNK_SEAWEED_CHANCE, JUNK_BOOT_CHANCE,
     BAIT_BONUS, ROD_BONUS_PER_RANK,
     _rod_for, _resolve_bait, _bait_label, _bait_line,
     _catch_chance, _roll_fish_weight, _pick_junk,
+    junk_hint, junk_photo,
     FISHING_CASTING,
 )
 from utils.notify import notify, player_display
@@ -689,7 +689,7 @@ async def show_reservoir(where, user_id: int, state: FSMContext):
             text += f"⚡ Шанс улова: {chance}%\n"
         else:
             text += (f"⚡ Без наживки рыба НЕ клюёт: со дна только мусор "
-                     f"(водоросли {JUNK_SEAWEED_CHANCE}%, сапог {JUNK_BOOT_CHANCE}%).\n")
+                     f"{await junk_hint('reservoir')}.\n")
     else:
         text += "\n🎣 Удочка: нет — купи «Удочка из орешника» (магазин → Рыбалка)\n"
 
@@ -1529,7 +1529,7 @@ async def resv_bait_menu(callback: CallbackQuery, state: FSMContext):
         "Наживка расходуется при каждом забросе.\n"
         "«Авто»: сначала черви, затем лапка, затем комбинированная.\n\n"
         f"⚠️ Без наживки рыба не клюёт: со дна только мусор "
-        f"(водоросли {JUNK_SEAWEED_CHANCE}%, сапог {JUNK_BOOT_CHANCE}%)."
+        f"{await junk_hint('reservoir')}."
     )
     await edit_or_replace(callback.message, text, _reservoir_bait_markup(
         chosen, worms_qty, spider_qty, combined_qty, step=int(parts[2])))
@@ -1689,7 +1689,7 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                 )
         else:
             # Без наживки рыба не клюёт — из глубины достаётся только мусор.
-            junk_name = _pick_junk()
+            junk_name = await _pick_junk("reservoir")
             if junk_name:
                 junk_item = await get_item_by_name(junk_name)
                 if junk_item:
@@ -1707,6 +1707,11 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                         f"Из тёмной воды появляется: «{junk_name}»!\n\n"
                         f"🎒 Улов записан в «Улов».{sell_line}"
                     ) + ap_block
+                    jphoto = await junk_photo("reservoir", junk_name)
+                    if jphoto:
+                        await _resv_answer(callback.message, result, _reservoir_result_markup(next_step),
+                                           photo_id=jphoto)
+                        return
                     local_photo = item_local_photo(junk_name)
                     if local_photo:
                         await _resv_answer(callback.message, result, _reservoir_result_markup(next_step),

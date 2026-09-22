@@ -20,6 +20,7 @@ from database.db import (
     add_fish_catch, get_user, update_user,
     remove_ap, log_activity, get_active_run,
     get_water_fish_pool, get_water_fish_kind, get_water_fish_photo_by_name, get_award_bonus,
+    get_water_junk_map, JUNK_DEFAULT_CHANCES,
 )
 from utils.helpers import resolve_image, time_of_day_key, plural_nordmark, item_local_photo, fish_weight_tier, fish_sell_price
 from config import FISH_AP_COST, FISH_WEIGHTS
@@ -92,18 +93,45 @@ FISH_POOL_DAY = [("Сиг", 65), ("Муксун", 25), ("Чир", 10)]
 FISH_POOL_NIGHT = [("Сиг", 63), ("Муксун", 23), ("Чир", 9), ("Налим", 5)]
 
 # Без наживки рыба не клюёт: с дна достаются только мусорные находки.
-JUNK_SEAWEED_CHANCE = 15   # кусочек водорослей (крафт энергетиков)
-JUNK_BOOT_CHANCE = 2       # старый сапог (продажа за 15 НМ)
+# Шансы хранятся в БД (water_junk) и правятся админом в редакторе рыбалки;
+# константы ниже — стартовые дефолты для пустой таблицы (см. JUNK_DEFAULT_CHANCES).
+JUNK_SEAWEED_CHANCE = JUNK_DEFAULT_CHANCES.get(SEAWEED_NAME, 15)
+JUNK_BOOT_CHANCE = JUNK_DEFAULT_CHANCES.get(BOOT_NAME, 2)
 
 
-def _pick_junk():
-    """Случайная находка со дна без наживки: None — ничего."""
+async def junk_chances(water: str) -> dict:
+    """name → шанс % для находок водоёма (из БД, с фолбэком на дефолты)."""
+    m = await get_water_junk_map(water)
+    if not m:
+        return {SEAWEED_NAME: JUNK_SEAWEED_CHANCE, BOOT_NAME: JUNK_BOOT_CHANCE}
+    return {name: (row.get("chance") or 0) for name, row in m.items()}
+
+
+async def junk_hint(water: str) -> str:
+    """Строка-подсказка «(водоросли X%, сапог Y%)» с текущими шансами водоёма."""
+    c = await junk_chances(water)
+    return (f"(водоросли {c.get(SEAWEED_NAME, 0)}%, "
+            f"сапог {c.get(BOOT_NAME, 0)}%)")
+
+
+async def _pick_junk(water: str):
+    """Случайная находка со дна без наживки: None — ничего.
+    Шансы берутся из water_junk по водоёму (админ-редактор рыбалки)."""
+    c = await junk_chances(water)
+    seaweed = max(0, c.get(SEAWEED_NAME, 0))
+    boot = max(0, c.get(BOOT_NAME, 0))
     r = random.random() * 100
-    if r < JUNK_BOOT_CHANCE:
+    if boot and r < boot:
         return BOOT_NAME
-    if r < JUNK_BOOT_CHANCE + JUNK_SEAWEED_CHANCE:
+    if seaweed and r < boot + seaweed:
         return SEAWEED_NAME
     return None
+
+
+async def junk_photo(water: str, name: str):
+    """Telegram photo_file_id находки в водоёме (или None)."""
+    m = await get_water_junk_map(water)
+    return (m.get(name) or {}).get("photo_file_id")
 
 
 def _lake_path() -> str:
@@ -394,8 +422,7 @@ async def fishing_lake_menu(callback: CallbackQuery):
         if not bait_name:
             chance_line = (
                 f"⚡ Без наживки рыба НЕ клюёт.\n"
-                f"Со дна можно выловить только мусор: водоросли {JUNK_SEAWEED_CHANCE}%, "
-                f"старый сапог {JUNK_BOOT_CHANCE}%."
+                f"Со дна можно выловить только мусор: {await junk_hint('lake')}."
             )
     else:
         rod_line = "🎣 Удочка: нет — купи «Удочка из орешника» (магазин → Рыбалка)"
@@ -464,7 +491,7 @@ async def fish_bait_menu(callback: CallbackQuery):
         "Наживка расходуется при каждом забросе.\n"
         "«Авто»: сначала черви, затем лапка, затем комбинированная.\n\n"
         f"⚠️ Без наживки рыба не клюёт: со дна только мусор "
-        f"(водоросли {JUNK_SEAWEED_CHANCE}%, сапог {JUNK_BOOT_CHANCE}%)."
+        f"{await junk_hint('lake')}."
     )
     await _paint(callback, text=text, media_path=_lake_path(),
                  kb=_bait_markup(callback.from_user.id, chosen, worms_qty, spider_qty, combined_qty,
@@ -595,7 +622,7 @@ async def fish_cast(callback: CallbackQuery):
                 )
         else:
             # Без наживки рыба не клюёт — из дна достаётся только мусор.
-            junk_name = _pick_junk()
+            junk_name = await _pick_junk("lake")
             if junk_name:
                 junk_item = await get_item_by_name(junk_name)
                 if junk_item:
@@ -613,6 +640,10 @@ async def fish_cast(callback: CallbackQuery):
                         f"Из воды появляется: «{junk_name}»!\n\n"
                         f"🎒 Улов записан в «Улов».{sell_line}"
                     )
+                    jphoto = await junk_photo("lake", junk_name)
+                    if jphoto:
+                        await _paint(callback, text=text + ap_block, photo_id=jphoto, kb=_result_markup(FISH_TOKEN.get(user_id, "")))
+                        return
                     local_photo = item_local_photo(junk_name)
                     if local_photo:
                         await _paint(callback, text=text + ap_block, media_path=local_photo, kb=_result_markup(FISH_TOKEN.get(user_id, "")))

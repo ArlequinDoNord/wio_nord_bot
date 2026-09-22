@@ -563,6 +563,16 @@ async def init_db():
             UNIQUE(water, item_id)
         );
 
+        CREATE TABLE IF NOT EXISTS water_junk (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            water TEXT NOT NULL,
+            name TEXT NOT NULL,
+            chance INTEGER DEFAULT 15,
+            photo_file_id TEXT,
+            admin_tuned INTEGER DEFAULT 0,
+            UNIQUE(water, name)
+        );
+
         CREATE TABLE IF NOT EXISTS wall_posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -3799,6 +3809,13 @@ WATER_FISH_DEFAULTS = {
 }
 WATER_LABELS = {"lake": "Озеро в парке", "reservoir": "Подземное водохранилище"}
 
+# Находки со дна без наживки (мусор): имя → базовый шанс выпадения %.
+# Шансы и картинки правятся админом в редакторе рыбалки (таблица water_junk),
+# стартовая синхронизация не перезаписывает правки (admin_tuned).
+JUNK_ITEM_NAMES = ("Кусочек водорослей", "Старый сапог")
+JUNK_DEFAULT_CHANCES = {"Кусочек водорослей": 15, "Старый сапог": 2}
+JUNK_EMOJI = {"Кусочек водорослей": "🥬", "Старый сапог": "👢"}
+
 
 async def ensure_water_fish():
     """Идемпотентно засевает water_fish из дефолтов. Правившие админом строки
@@ -3831,9 +3848,68 @@ async def ensure_water_fish():
                     (day_w, night_w, row['id'])
                 )
                 changed = True
+    # Находки со дна (без наживки): шанс и картинка на водоём.
+    # Существующие строки не трогаем — только добираем отсутствующие,
+    # поэтому правки админа (admin_tuned) переживают перезапуски.
+    for _water in WATER_LABELS:
+        for _jname in JUNK_ITEM_NAMES:
+            _jc = await conn.execute(
+                "SELECT id FROM water_junk WHERE water = ? AND name = ?",
+                (_water, _jname)
+            )
+            if not (await _jc.fetchone()):
+                await conn.execute(
+                    "INSERT INTO water_junk (water, name, chance) VALUES (?, ?, ?)",
+                    (_water, _jname, JUNK_DEFAULT_CHANCES.get(_jname, 0))
+                )
+                changed = True
     if changed:
         await conn.commit()
     return changed
+
+
+async def get_water_junk_rows(water: str):
+    """Находки со дна водоёма для админ-карточки."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id, water, name, chance, photo_file_id, admin_tuned "
+        "FROM water_junk WHERE water = ? ORDER BY id",
+        (water,)
+    )
+    return await cursor.fetchall()
+
+
+async def get_water_junk_map(water: str) -> dict:
+    """name → {'chance': %, 'photo_file_id': ...|None}. Пустые водоёмы
+    отдают дефолтные шансы из JUNK_DEFAULT_CHANCES (слоёный фолбэк)."""
+    rows = await get_water_junk_rows(water)
+    if not rows:
+        return {n: {"chance": JUNK_DEFAULT_CHANCES.get(n, 0), "photo_file_id": None}
+                for n in JUNK_ITEM_NAMES}
+    return {r['name']: {"chance": r['chance'] or 0,
+                        "photo_file_id": r['photo_file_id']} for r in rows}
+
+
+async def update_water_junk(water: str, name: str, field: str, value) -> bool:
+    """Правка находки водоёма (chance / photo_file_id). Помечает admin_tuned,
+    чтобы стартовая синхронизация не вернула дефолтные значения."""
+    conn = await get_db()
+    if field not in ("chance", "photo_file_id"):
+        return False
+    if field == "chance":
+        await conn.execute(
+            "UPDATE water_junk SET chance = ?, admin_tuned = 1 "
+            "WHERE water = ? AND name = ?",
+            (max(0, int(value)), water, name)
+        )
+    else:
+        await conn.execute(
+            "UPDATE water_junk SET photo_file_id = ?, admin_tuned = 1 "
+            "WHERE water = ? AND name = ?",
+            (value or None, water, name)
+        )
+    await conn.commit()
+    return True
 
 
 async def get_water_fish_rows(water: str):

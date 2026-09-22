@@ -35,6 +35,7 @@ from database.db import (
     get_water_fish_rows, get_water_fish_row, update_water_fish_field,
     set_water_fish_sell_price, add_water_fish, remove_water_fish,
     get_water_fish_candidates, WATER_LABELS, set_callsign, set_wing,
+    get_water_junk_rows, update_water_junk, JUNK_EMOJI,
     log_activity, get_user_activity, clear_user_photo,
     get_recent_activity, get_activity_like,
 )
@@ -4538,6 +4539,78 @@ async def _admin_fishing_card(source, wf_id: int, prefix: str = ""):
         await source.answer(text, reply_markup=markup)
 
 
+@router.callback_query(F.data.startswith("fishing:junk:"))
+async def admin_fishing_junk(callback: CallbackQuery, state: FSMContext):
+    """Находки со дна (мусор без наживки): шанс выпадения и картинка на водоём."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    water = callback.data.split(":", 2)[2]
+    if water not in WATER_LABELS:
+        return
+    await state.clear()
+    await state.update_data(water=water)
+    await _admin_fishing_junk_card(callback, water)
+
+
+async def _admin_fishing_junk_card(source, water: str, prefix: str = ""):
+    """Карточка находок со дна: шансы и фото водорослей/сапога на этот водоём."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = await get_water_junk_rows(water)
+    lines = [
+        f"{prefix}🗑 НАХОДКИ СО ДНА",
+        f"🐟 {WATER_LABELS[water]}\n",
+        "Без наживки рыба НЕ клюёт: со дна поднимается только мусор.",
+        "Шанс и картинка настраиваются на этот водоём:\n",
+    ]
+    buttons = []
+    for r in rows:
+        name = r['name']
+        chance = r['chance'] or 0
+        photo_state = "есть" if r.get('photo_file_id') else "нет"
+        emo = JUNK_EMOJI.get(name, "🗑")
+        lines.append(f"{emo} {name} — шанс {chance}%, фото: {photo_state}")
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"{emo} 🎲 Шанс выпадения",
+                callback_data=f"fishing_j:chance:{water}:{name}"),
+            InlineKeyboardButton(
+                text=f"{emo} 🖼 Фото",
+                callback_data=f"fishing_j:photo:{water}:{name}"),
+        ])
+    if not rows:
+        lines.append("Записей пока нет.")
+    buttons.append([InlineKeyboardButton(text="🔙 К списку рыб",
+                                         callback_data=f"fishing:water:{water}")])
+    markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+    if hasattr(source, 'message') and source.message is not None:
+        await source.message.edit_text("\n".join(lines), reply_markup=markup)
+    else:
+        await source.answer("\n".join(lines), reply_markup=markup)
+
+
+@router.callback_query(F.data.startswith("fishing_j:"))
+async def admin_fishing_junk_field_pick(callback: CallbackQuery, state: FSMContext):
+    """Выбор поля находки: шанс % или фото."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    parts = callback.data.split(":", 3)
+    if len(parts) != 4:
+        return
+    jfield, water, jname = parts[1], parts[2], parts[3]
+    if jfield not in ("chance", "photo") or water not in WATER_LABELS:
+        return
+    await state.update_data(water=water, jfield=jfield, jname=jname)
+    await state.set_state(AdminFishing.value)
+    if jfield == "chance":
+        prompt = ("🎲 Введи шанс выпадения в % (целое число 0–100; "
+                  "0 = находка не выпадает).\nДефолт: водоросли 15%, сапог 2%.")
+    else:
+        prompt = f"🖼 Отправь фото находки «{jname}» (Telegram-фото). Или «-», чтобы убрать фото:"
+    await callback.message.answer(prompt, reply_markup=cancel_keyboard())
+
+
 @router.callback_query(F.data == "admin:fishing")
 async def admin_fishing_menu(callback: CallbackQuery, state: FSMContext):
     """Меню редактора рыбалки: выбор водоёма."""
@@ -4587,6 +4660,8 @@ async def _admin_fishing_water_list(callback: CallbackQuery, water: str, prefix:
         lines.append("Рыб в этом водоёме пока нет.")
     lines.append("\n🐟 — рыба, 📦 — ресурс (находка).")
     rows.append([InlineKeyboardButton(text="➕ Добавить рыбу", callback_data=f"fishing:addlist:{water}")])
+    rows.append([InlineKeyboardButton(text="🗑 Находки со дна (шанс и фото)",
+                                      callback_data=f"fishing:junk:{water}")])
     rows.append([InlineKeyboardButton(text="🔙 К водоёмам", callback_data="admin:fishing")])
     await callback.message.edit_text("\n".join(lines),
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
@@ -4748,6 +4823,43 @@ async def admin_fishing_field_pick(callback: CallbackQuery, state: FSMContext):
 @router.message(AdminFishing.value)
 async def admin_fishing_value(message: Message, state: FSMContext):
     data = await state.get_data()
+    jfield = data.get('jfield')
+    jname = data.get('jname')
+    jwater = data.get('water')
+
+    # ── Находки со дна (мусор): шанс % или фото ──
+    if jfield:
+        if jfield == "chance":
+            text = (message.text or "").strip()
+            parsed = int(text) if text.isdigit() else None
+            if parsed is None or not (0 <= parsed <= 100):
+                await message.answer("❌ Ожидаю целое число от 0 до 100 (0 = не выпадает).",
+                                     reply_markup=cancel_keyboard())
+                return
+            label = f"{parsed}%" if parsed > 0 else "не выпадает"
+        else:
+            if (message.text or "").strip() == "-":
+                parsed = None
+                label = "убрано"
+            elif message.photo:
+                parsed = message.photo[-1].file_id
+                label = "обновлено"
+            else:
+                await message.answer("❌ Отправь именно фото (или «-» для очистки).",
+                                     reply_markup=cancel_keyboard())
+                return
+        await update_water_junk(jwater, jname, "photo_file_id" if jfield == "photo" else "chance",
+                                parsed)
+        await log_action(message.from_user.id, 'edit_fishing', None,
+                         f"junk {jwater} {jname} {jfield}={parsed}")
+        await state.clear()
+        await state.update_data(water=jwater)
+        await _admin_fishing_junk_card(
+            message, jwater,
+            prefix=f"✅ «{jname}»: {jfield} = {label}.\n\n")
+        return
+
+    # ── Рыба/ресурс в водоёме (веса, фото, цена) ──
     wf_id = data.get('wf_id')
     field = data.get('field')
     fish = await get_water_fish_row(wf_id) if wf_id else None
