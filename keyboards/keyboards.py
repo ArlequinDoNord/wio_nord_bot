@@ -60,6 +60,8 @@ def admin_panel_keyboard(permissions: dict):
     if permissions.get('can_manage_users'):
         buttons.append([InlineKeyboardButton(text="🗑 Удалить фото пилота", callback_data="admin:del_photo")])
         buttons.append([InlineKeyboardButton(text="📡 Установить позывной", callback_data="admin:callsign")])
+    if permissions.get('can_manage_wing'):
+        buttons.append([InlineKeyboardButton(text="🪽 Авиакрылья", callback_data="admin:wing")])
     if permissions.get('can_manage_storage'):
         buttons.append([InlineKeyboardButton(text="📦 Хранилище", callback_data="admin:storage")])
     buttons.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])
@@ -172,7 +174,7 @@ def interaction_keyboard(user_id: int):
     ])
 
 
-def city_keyboard(is_pilot: bool = True, locations: list = None):
+def city_keyboard(is_pilot: bool = True, locations: list = None, can_send_orders: bool = False):
     buttons = []
     for loc in (locations or []):
         buttons.append([InlineKeyboardButton(
@@ -180,6 +182,8 @@ def city_keyboard(is_pilot: bool = True, locations: list = None):
             callback_data=f"location:preview:{loc['key']}"
         )])
     buttons.append([InlineKeyboardButton(text="🧱 Стена изречений", callback_data="wall:view")])
+    if can_send_orders:
+        buttons.append([InlineKeyboardButton(text="🎖️ Штаб ВВС", callback_data="hq:menu")])
     if is_pilot:
         buttons.append([InlineKeyboardButton(text="📜 Контракты от Штаба ВС", callback_data="contracts:list")])
         buttons.append([InlineKeyboardButton(text="🏠 Жильё", callback_data="housing:menu")])

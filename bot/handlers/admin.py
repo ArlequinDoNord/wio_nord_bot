@@ -34,7 +34,7 @@ from database.db import (
     update_award, get_user_awards, revoke_award,
     get_water_fish_rows, get_water_fish_row, update_water_fish_field,
     set_water_fish_sell_price, add_water_fish, remove_water_fish,
-    get_water_fish_candidates, WATER_LABELS, set_callsign,
+    get_water_fish_candidates, WATER_LABELS, set_callsign, set_wing,
     log_activity, get_user_activity, clear_user_photo,
     get_recent_activity, get_activity_like,
 )
@@ -144,6 +144,11 @@ class AdminFishing(StatesGroup):
 
 
 class AdminCallsign(StatesGroup):
+    target = State()
+    value = State()
+
+
+class AdminWing(StatesGroup):
     target = State()
     value = State()
 
@@ -402,6 +407,22 @@ async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
             f"Текущий позывной: {cur}\n\nВведи новый позывной (или «-» чтобы убрать):",
             reply_markup=cancel_keyboard()
         )
+    elif next_step == "wing":
+        from utils.wings import WINGS
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        await state.set_state(AdminWing.value)
+        cur_wing = (target.get('wing') or '') if 'wing' in target.keys() else ''
+        cur_label = WINGS.get(cur_wing, '🚫 нет крыла')
+        rows = [[InlineKeyboardButton(text=label, callback_data=f"wing_set:{key}")]
+                for key, label in WINGS.items()]
+        rows.append([InlineKeyboardButton(text="🚫 Снять крыло", callback_data="wing_set:none")])
+        rows.append([InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:menu")])
+        await callback.message.answer(
+            f"🪽 Установка авиакрыла\nИгрок: {target['first_name'] if 'first_name' in target.keys() else ''} "
+            f"(@{target['username'] if 'username' in target.keys() else ''})\n"
+            f"Текущее крыло: {cur_label}\n\nВыбери авиакрыло:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        )
     elif next_step == "delphoto":
         from database.db import get_user_photo
         photo = await get_user_photo(target['user_id'])
@@ -598,6 +619,19 @@ async def admin_callsign_start(callback: CallbackQuery, state: FSMContext):
     )
 
 
+@router.callback_query(F.data == "admin:wing")
+async def admin_wing_start(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_wing"):
+        await callback.message.answer("❌ Нет прав для управления авиакрыльями.")
+        return
+    await state.set_state(AdminWing.target)
+    await callback.message.answer(
+        "🪽 Кому установить авиакрыло? Выбери пилота:",
+        reply_markup=await pilot_picker_markup("wing")
+    )
+
+
 @router.message(AdminCallsign.target)
 async def admin_callsign_target_msg(message: Message, state: FSMContext):
     if not await has_permission(message.from_user.id, "can_manage_users"):
@@ -639,6 +673,31 @@ async def admin_callsign_value_msg(message: Message, state: FSMContext):
     u = await get_user(target_id)
     name = u['first_name'] if u and 'first_name' in u.keys() else target_id
     await message.answer(f"✅ Позывной «{value or '—'}» установлен для {name}.")
+
+
+@router.callback_query(F.data.startswith("wing_set:"))
+async def admin_wing_set_cb(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_wing"):
+        await callback.message.answer("❌ Нет прав для управления авиакрыльями.")
+        await state.clear()
+        return
+    _, raw = callback.data.split(":", 1)
+    value = None if raw == "none" else raw
+    data = await state.get_data()
+    target_id = data.get('target_id')
+    if not target_id:
+        await state.clear()
+        await callback.message.answer("❌ Сессия устарела, начни заново.")
+        return
+    await set_wing(target_id, value)
+    from utils.wings import WINGS
+    label = "🚫 снято крыло" if value is None else WINGS.get(value, "неизвестное крыло")
+    await log_action(callback.from_user.id, 'set_wing', target_id, f"wing={value or None}")
+    await state.clear()
+    u = await get_user(target_id)
+    name = u['first_name'] if u and 'first_name' in u.keys() else target_id
+    await callback.message.answer(f"✅ {name}: авиакрыло — {label}.")
 
 
 @router.callback_query(F.data.startswith("confirm_del_photo:"))

@@ -26,6 +26,8 @@ ROLES = {
         'can_manage_storage': True,
         'can_post_news': True,
         'can_manage_news': True,
+        'can_manage_wing': True,
+        'can_send_orders': True,
         'level': 100
     },
     'shop_admin': {  # Министр торговли
@@ -50,6 +52,8 @@ ROLES = {
         'can_approve_reports': True,
         'can_view_reports': True,
         'can_grant_troops': True,
+        'can_manage_wing': True,
+        'can_send_orders': True,
         'level': 30
     },
     'mvd_helper': {  # Вице-доминус (Vicedominus) — помощник МВД

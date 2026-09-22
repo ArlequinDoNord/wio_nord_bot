@@ -719,6 +719,8 @@ async def init_db():
     await _ensure_column(conn, "items", "weapon_effect", "TEXT")
     await _ensure_column(conn, "items", "weapon_effect_chance", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "weapon_effect_dmg", "INTEGER DEFAULT 0")
+    # v0.15.0: авиакрыло пилота ('1'/'2'/'3' → метка в utils/wings.py; NULL — нет крыла).
+    await _ensure_column(conn, "users", "wing", "TEXT")
     # v0.13.3: рыба (предметы категории fishing) выставляется на рынок по
     # умолчанию. Разовое обновление для уже существующих предметов.
     cur = await conn.execute(
@@ -3137,6 +3139,29 @@ async def set_callsign(user_id: int, callsign: str):
     await conn.execute("UPDATE users SET callsign = ? WHERE user_id = ?",
                        (callsign or None, user_id))
     await conn.commit()
+
+
+async def set_wing(user_id: int, wing: str = None):
+    """Устанавливает авиакрыло пилота ('1'/'2'/'3'); None — снять крыло."""
+    conn = await get_db()
+    await conn.execute("UPDATE users SET wing = ? WHERE user_id = ?",
+                       (wing if wing else None, user_id))
+    await conn.commit()
+
+
+async def get_wing_members(wing: str = None) -> list:
+    """Telegram-id пилотов конкретного крыла (wing='1'/'2'/'3').
+
+    Если крыло не указано — все пилоты, состоящие в любом авиакрыле.
+    """
+    conn = await get_db()
+    if wing:
+        cursor = await conn.execute("SELECT user_id FROM users WHERE wing = ?", (wing,))
+    else:
+        cursor = await conn.execute(
+            "SELECT user_id FROM users WHERE wing IS NOT NULL AND wing != ''"
+        )
+    return [row['user_id'] for row in await cursor.fetchall()]
 
 
 async def grant_award(user_id: int, award_id: int, granted_by: int = None,

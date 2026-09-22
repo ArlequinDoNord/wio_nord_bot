@@ -62,6 +62,8 @@ async def _profile_caption(user_id: int, owner: bool = True):
     if is_pilot:
         caption += f"⭐ Звание: {rank}\n"
         caption += f"💂 Войска: {user['troops']}\n"
+        from utils.wings import wing_display
+        caption += f"🪽 Авиакрыло: {wing_display(user.get('wing'))}\n"
 
     if is_pilot and user['troops'] < RANKS[-1][1]:
         current_idx = get_rank_index(user['troops'])
