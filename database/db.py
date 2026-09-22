@@ -622,6 +622,9 @@ async def init_db():
     await _ensure_column(conn, "dungeons", "photo_day", "TEXT")
     await _ensure_column(conn, "dungeons", "photo_sunset", "TEXT")
     await _ensure_column(conn, "dungeons", "photo_night", "TEXT")
+    # Картинки комнат-препятствий К.В.П. (вода/верёвка), задаются админом
+    await _ensure_column(conn, "dungeons", "photo_water", "TEXT")
+    await _ensure_column(conn, "dungeons", "photo_rope", "TEXT")
     # excluded=1 — рыбу убрали из водоёма через админа: пул её не показывает,
     # а стартовая синхронизация (ensure_water_fish) не возвращает её обратно.
     await _ensure_column(conn, "water_fish", "excluded", "INTEGER DEFAULT 0")
@@ -2824,7 +2827,9 @@ async def get_transactions_history(user_id: int, limit: int = 10):
 
 async def get_all_users():
     conn = await get_db()
-    cursor = await conn.execute("SELECT user_id, username, first_name, last_name FROM users")
+    cursor = await conn.execute(
+        "SELECT user_id, username, first_name, last_name, wing FROM users"
+    )
     return await cursor.fetchall()
 
 
@@ -3310,10 +3315,12 @@ async def update_location_content(location_id: int, *, name=_LOC_UNSET,
 
 
 LOCATION_PHOTO_KEYS = ("dawn", "day", "sunset", "night")
+# Ключи фото подземелья: вход по времени суток + комнаты-препятствия К.В.П.
+DUNGEON_PHOTO_KEYS = LOCATION_PHOTO_KEYS + ("water", "rope")
 
 
 async def update_dungeon_photos(dungeon_id: int, photos: dict):
-    """Задать file_id картинок входа подземелья по времени суток (ключи LOCATION_PHOTO_KEYS).
+    """Задать file_id картинок подземелья (ключи DUNGEON_PHOTO_KEYS).
 
     Один конкретный слот: update_dungeon_photos(id, {'day': file_id}).
     Сброс слота ('—'): update_dungeon_photos(id, {'day': None}).
@@ -3323,12 +3330,13 @@ async def update_dungeon_photos(dungeon_id: int, photos: dict):
     if not dng:
         return False
     cur = {}
-    for k in LOCATION_PHOTO_KEYS:
+    for k in DUNGEON_PHOTO_KEYS:
         cur[k] = dng[f"photo_{k}"]
-    cur.update({k: v for k, v in photos.items() if k in LOCATION_PHOTO_KEYS})
+    cur.update({k: v for k, v in photos.items() if k in DUNGEON_PHOTO_KEYS})
     await conn.execute(
-        "UPDATE dungeons SET photo_dawn = ?, photo_day = ?, photo_sunset = ?, photo_night = ? WHERE id = ?",
-        (cur["dawn"], cur["day"], cur["sunset"], cur["night"], dungeon_id)
+        "UPDATE dungeons SET photo_dawn = ?, photo_day = ?, photo_sunset = ?, "
+        "photo_night = ?, photo_water = ?, photo_rope = ? WHERE id = ?",
+        (cur["dawn"], cur["day"], cur["sunset"], cur["night"], cur["water"], cur["rope"], dungeon_id)
     )
     await conn.commit()
     return True

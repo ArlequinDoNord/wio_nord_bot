@@ -26,7 +26,7 @@ from database.db import (
     get_salaried_users, get_user_salary, set_user_salary, pay_salaries,
     get_all_locations, get_location, create_location, update_location_access,
     update_location_content, update_location_photos, location_access_label,
-    get_all_dungeons, get_dungeon, update_dungeon_photos,
+    get_all_dungeons, get_dungeon, update_dungeon_photos, DUNGEON_PHOTO_KEYS,
     get_dungeon_enemies, get_enemy, update_enemy_fields,
     get_enemy_drops, set_enemy_drops, add_enemy_drop, remove_enemy_drop,
     get_item_by_name,
@@ -3463,7 +3463,7 @@ async def dungeon_edit(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"🏰 {dng['name']}\nЧто изменить во входе?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🖼 Картинка входа (время суток)", callback_data="dungeon:photos")],
+            [InlineKeyboardButton(text="🖼 Картинки (вход + комнаты)", callback_data="dungeon:photos")],
             [InlineKeyboardButton(text="👾 Враги (HP/АТК/уклонение/яд/дропы)", callback_data="dungeon:enemies")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="admin:dungeons")],
         ])
@@ -3472,7 +3472,7 @@ async def dungeon_edit(callback: CallbackQuery, state: FSMContext):
 
 def _dungeon_photo_slots_text(dng):
     keys = dng.keys()
-    filled = [TOD_LABEL[k] for k in TOD_KEYS
+    filled = [DUNGEON_PHOTO_LABEL[k] for k in DUNGEON_PHOTO_KEYS
               if f"photo_{k}" in keys and dng[f"photo_{k}"]]
     return filled or ["нет"]
 
@@ -3489,19 +3489,20 @@ async def _dungeon_photos_pick_send(source, dungeon_id: int):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     keys = dng.keys()
     rows = []
-    for k in TOD_KEYS:
+    for k in DUNGEON_PHOTO_KEYS:
         mark = "✅" if f"photo_{k}" in keys and dng[f"photo_{k}"] else "—"
         rows.append([InlineKeyboardButton(
-            text=f"{mark} {TOD_LABEL[k]}",
+            text=f"{mark} {DUNGEON_PHOTO_LABEL[k]}",
             callback_data=f"dungeon:photo_set:{k}",
         )])
     rows.append([InlineKeyboardButton(text="🚫 Убрать все", callback_data="dungeon:photos:clear")])
     rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="dungeon:edit:" + str(dungeon_id))])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     text = (
-        f"🖼 Картинка входа «{dng['name']}».\n"
+        f"🖼 Картинки «{dng['name']}».\n"
         f"Задано: {', '.join(_dungeon_photo_slots_text(dng))}\n\n"
-        f"Нажми время суток и отправь фото (или «-» чтобы убрать):"
+        f"Слоты «🌊 Вода» и «🪢 Верёвка» — комнаты-препятствия К.В.П.\n"
+        f"Нажми слот и отправь фото (или «-» чтобы убрать):"
     )
     if isinstance(source, CallbackQuery):
         await source.message.edit_text(text, reply_markup=kb)
@@ -3524,14 +3525,14 @@ async def dungeon_photo_set(callback: CallbackQuery, state: FSMContext):
     if not await has_permission(callback.from_user.id, "can_manage_locations"):
         return
     tod = callback.data.split(":")[2]
-    if tod not in TOD_KEYS:
+    if tod not in DUNGEON_PHOTO_KEYS:
         return
     data = await state.get_data()
     await state.update_data(photo_tod=tod)
     await state.set_state(AdminDungeon.photo_tod)
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     await callback.message.answer(
-        f"🖼 Отправь фото для «{TOD_LABEL[tod]}» (или «-» для очистки этого слота).",
+        f"🖼 Отправь фото для «{DUNGEON_PHOTO_LABEL[tod]}» (или «-» для очистки этого слота).",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="❌ Отмена", callback_data="dungeon:photos")]
         ])
@@ -3544,7 +3545,7 @@ async def dungeon_photos_clear(callback: CallbackQuery, state: FSMContext):
     if not await has_permission(callback.from_user.id, "can_manage_locations"):
         return
     data = await state.get_data()
-    await update_dungeon_photos(data['target_id'], {k: None for k in TOD_KEYS})
+    await update_dungeon_photos(data['target_id'], {k: None for k in DUNGEON_PHOTO_KEYS})
     await _dungeon_photos_pick_send(callback, data['target_id'])
 
 
@@ -3569,7 +3570,7 @@ async def dungeon_step_photo(message: Message, state: FSMContext):
         await message.answer("❌ Отправь именно фото (или «-» для очистки).")
         return
     photo_tod = data.get('photo_tod')
-    if photo_tod and photo_tod in TOD_KEYS:
+    if photo_tod and photo_tod in DUNGEON_PHOTO_KEYS:
         await update_dungeon_photos(dungeon_id, {photo_tod: file_id})
         await log_action(message.from_user.id, 'edit_dungeon', None,
                          f"dungeon_id={dungeon_id} photo_{photo_tod}={'file_id' if file_id else 'cleared'}")
@@ -5141,6 +5142,11 @@ async def loc_set_desc(callback: CallbackQuery, state: FSMContext):
 
 TOD_KEYS = ("dawn", "day", "sunset", "night")
 TOD_LABEL = {"dawn": "🌅 Рассвет", "day": "☀️ День", "sunset": "🌇 Закат", "night": "🌙 Ночь"}
+# Слоты картинок подземелья: вход по времени суток + комнаты-препятствия К.В.П.
+DUNGEON_PHOTO_LABEL = {
+    "dawn": "🌅 Рассвет", "day": "☀️ День", "sunset": "🌇 Закат", "night": "🌙 Ночь",
+    "water": "🌊 Вода", "rope": "🪢 Верёвка",
+}
 
 
 def _loc_photo_slots_text(loc):

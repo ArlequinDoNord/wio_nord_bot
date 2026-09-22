@@ -30,7 +30,7 @@ from utils.combat import (
 from utils.states import get_state_info, combat_multipliers
 from utils.notify import notify, player_display
 from bot.handlers.dungeon import (
-    dungeon_current_step, dungeon_new_step, dungeon_entrance_photo,
+    dungeon_current_step, dungeon_new_step, dungeon_entrance_photo, answer_enemy_photo,
 )
 
 router = Router()
@@ -161,6 +161,14 @@ async def answer_course_photo(where, text, reply_markup=None):
         except Exception:
             pass
     return await where.answer(text, reply_markup=reply_markup)
+
+
+async def answer_enemy_or_course_photo(where, enemy, text, reply_markup=None):
+    """Фото врага курса; без картинки врага — входная картинка курса, затем текст."""
+    image = enemy['image'] if 'image' in enemy.keys() and enemy['image'] else None
+    if image:
+        return await answer_enemy_photo(where, enemy, text, reply_markup=reply_markup)
+    return await answer_course_photo(where, text, reply_markup=reply_markup)
 
 
 async def kvp_dungeon_photo():
@@ -318,7 +326,8 @@ async def show_enemy_room(message, run, user_id, state: FSMContext):
         f"👾 {enemy['name']} (HP: {enemy['hp']}, АТК: {enemy['attack']}, УКЛ: {enemy['dodge'] if 'dodge' in enemy.keys() else 0}%)\n\n"
         f"Что делаешь?"
     )
-    await answer_course_photo(message, text, reply_markup=kvp_combat_keyboard(enemy['id'], step))
+    await answer_enemy_or_course_photo(message, enemy, text,
+                                    reply_markup=kvp_combat_keyboard(enemy['id'], step))
 
 
 async def show_obstacle_room(message, run, user_id, state: FSMContext, room_type: str):
@@ -335,7 +344,25 @@ async def show_obstacle_room(message, run, user_id, state: FSMContext, room_type
         f"Цена попытки: {OD_ATTEMPT_COST} ОД. Шанс срыва: {int(fail*100)}%.\n"
         f"При срыве попытаешься ещё раз (снова за ОД)."
     )
-    await answer_course_photo(message, text, reply_markup=kvp_obstacle_keyboard(room_type, step))
+    await answer_obstacle_photo(message, room_type, text,
+                                reply_markup=kvp_obstacle_keyboard(room_type, step))
+
+
+async def answer_obstacle_photo(where, room_type: str, text, reply_markup=None):
+    """Картинка комнаты-препятствия (photo_water/photo_rope); без неё — вход курса."""
+    dng = await get_kvp_dungeon()
+    photo = None
+    if dng:
+        photo = dng[f"photo_{room_type}"] if f"photo_{room_type}" in dng.keys() else None
+    if photo:
+        try:
+            if os.path.isfile(photo):
+                return await where.answer_photo(photo=FSInputFile(photo), caption=text,
+                                                reply_markup=reply_markup)
+            return await where.answer_photo(photo=photo, caption=text, reply_markup=reply_markup)
+        except Exception:
+            pass
+    return await answer_course_photo(where, text, reply_markup=reply_markup)
 
 
 async def show_boss_room(message, run, user_id, state: FSMContext, current_hp=None):
@@ -358,7 +385,8 @@ async def show_boss_room(message, run, user_id, state: FSMContext, current_hp=No
         f"👾 {boss['name']} (HP: {boss['hp']}, АТК: {boss['attack']}, УКЛ: {boss['dodge'] if 'dodge' in boss.keys() else 0}%)\n\n"
         f"⚠️ Убежать с полигона нельзя — сдай экзамен!"
     )
-    await answer_course_photo(message, text, reply_markup=kvp_combat_keyboard(boss['id'], step))
+    await answer_enemy_or_course_photo(message, boss, text,
+                                    reply_markup=kvp_combat_keyboard(boss['id'], step))
 
 
 # ----- Продолжить путь -----
