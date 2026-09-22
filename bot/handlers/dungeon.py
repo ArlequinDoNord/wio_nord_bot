@@ -1176,12 +1176,6 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         return
 
-    # Состояния «несварение»/«очень пьян» блокируют расходники и в бою.
-    blk = await battle_state_block_message(user_id)
-    if blk:
-        await callback.message.answer(blk)
-        return
-
     item = None
     for s, row in await get_equipment_slot_items(user_id, include_smoke=True):
         if s == slot:
@@ -1189,6 +1183,16 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
             break
     if not item:
         await callback.message.answer("❌ Этот слот пуст.")
+        return
+
+    # Состояния «несварение»/«очень пьян» блокируют расходники (еда/питьё) и в бою,
+    # но дымовая шашка — тактический предмет, а не еда/питьё: её состояния не блокируют.
+    if item['name'] == SMOKE_ITEM_NAME:
+        blk = None
+    else:
+        blk = await battle_state_block_message(user_id)
+    if blk:
+        await callback.message.answer(blk)
         return
 
     smoke_uses = int(data.get('dungeon_smoke_uses', 0) or 0)
