@@ -385,6 +385,12 @@ async def init_db():
             UNIQUE(telegram_id, role)
         );
 
+        CREATE TABLE IF NOT EXISTS wing_commanders (
+            wing TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS admin_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             admin_id INTEGER NOT NULL,
@@ -3167,6 +3173,61 @@ async def get_wing_members(wing: str = None) -> list:
             "SELECT user_id FROM users WHERE wing IS NOT NULL AND wing != ''"
         )
     return [row['user_id'] for row in await cursor.fetchall()]
+
+
+async def get_wing_commander(wing: str):
+    """Telegram-id командира конкретного крыла (wing='1'/'2'/'3') или None."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT user_id FROM wing_commanders WHERE wing = ?", (wing,))
+    row = await cursor.fetchone()
+    return row['user_id'] if row else None
+
+
+async def get_wing_commanders() -> dict:
+    """Словарь {крыло: telegram-id командира} по всем крыльям."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT wing, user_id FROM wing_commanders")
+    return {row['wing']: row['user_id'] for row in await cursor.fetchall()}
+
+
+async def get_wing_commander_by_user(user_id: int):
+    """Ключ крыла ('1'/'2'/'3'), которым командует пилот, или None."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT wing FROM wing_commanders WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    return row['wing'] if row else None
+
+
+async def set_wing_commander(wing: str, user_id: int = None):
+    """Назначить командира крыла; user_id=None — снять (удалить запись)."""
+    conn = await get_db()
+    if user_id is None:
+        await conn.execute("DELETE FROM wing_commanders WHERE wing = ?", (wing,))
+    else:
+        await conn.execute(
+            "INSERT INTO wing_commanders (wing, user_id) VALUES (?, ?) "
+            "ON CONFLICT(wing) DO UPDATE SET user_id = excluded.user_id",
+            (wing, user_id)
+        )
+    await conn.commit()
+
+
+async def add_user_role(user_id: int, role: str, granted_by: int = None):
+    """Выдать роль пилоту (INSERT OR IGNORE) — например, wing_commander."""
+    conn = await get_db()
+    await conn.execute(
+        "INSERT OR IGNORE INTO user_roles (telegram_id, role, granted_by) VALUES (?, ?, ?)",
+        (user_id, role, granted_by)
+    )
+    await conn.commit()
+
+
+async def remove_user_role(user_id: int, role: str):
+    """Снять роль с пилота."""
+    conn = await get_db()
+    await conn.execute("DELETE FROM user_roles WHERE telegram_id = ? AND role = ?",
+                       (user_id, role))
+    await conn.commit()
 
 
 async def grant_award(user_id: int, award_id: int, granted_by: int = None,

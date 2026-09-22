@@ -86,7 +86,8 @@ async def show_city(message: Message, state: FSMContext):
     city_view = resolve_image("city/arkholm")
     is_here_pilot = await user_has_status_tag(message.from_user.id, "pilot")
     locations = await get_all_locations()
-    can_orders = await has_permission(message.from_user.id, "can_send_orders")
+    can_orders = (await has_permission(message.from_user.id, "can_send_orders")
+                  or await has_permission(message.from_user.id, "can_wing_commands"))
     if left_note:
         await message.answer(left_note)
     await message.answer_photo(
@@ -128,7 +129,8 @@ async def city_menu_cb(callback: CallbackQuery, state: FSMContext):
     city_view = resolve_image("city/arkholm")
     is_here_pilot = await user_has_status_tag(callback.from_user.id, "pilot")
     locations = await get_all_locations()
-    can_orders = await has_permission(callback.from_user.id, "can_send_orders")
+    can_orders = (await has_permission(callback.from_user.id, "can_send_orders")
+                  or await has_permission(callback.from_user.id, "can_wing_commands"))
     if left_note:
         await callback.message.answer(left_note)
     if callback.message.photo:

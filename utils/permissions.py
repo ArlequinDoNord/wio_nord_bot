@@ -56,6 +56,10 @@ ROLES = {
         'can_send_orders': True,
         'level': 30
     },
+    'wing_commander': {  # Командир авиакрыла
+        'can_wing_commands': True,
+        'level': 60
+    },
     'mvd_helper': {  # Вице-доминус (Vicedominus) — помощник МВД
         'can_approve_reports': True,
         'can_view_reports': True,
@@ -87,6 +91,7 @@ ROLE_LABELS = {
     'finance_admin': 'Министр финансов',
     'finance_helper': 'Квестор',
     'moderator': 'МВД',
+    'wing_commander': 'Командир авиакрыла',
     'mvd_helper': 'Вице-доминус',
     'librarian': 'Библиотекарь',
     'representative': 'Представитель',
