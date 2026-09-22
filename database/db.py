@@ -5386,6 +5386,37 @@ async def ensure_life_items():
                 await update_item(item_id, is_available=0)
             added = True
 
+    # --- Обувь с верстака (v0.15.7): «Пара сапог» из старой обуви, паутины,
+    # клея и набора игл. Клей и набор игл продаются в лавке, пара сапог —
+    # только через рецепт верстака (is_available=0, как жареная рыба). ---
+    for (name, desc, price, sell, rarity, category) in (
+        ("Клей", "Клей из смолы и рыбьего желатина: скрепляет что угодно — вплоть до подошвы.",
+         40, 20, 2, "consumable"),
+        ("Набор игл", "Швейные иглы разных размеров. Для ремонта и сборки снаряжения.",
+         35, 17, 2, "resource"),
+    ):
+        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (name,))
+        if (await cursor.fetchone())['c'] == 0:
+            await add_item(
+                name=name, description=desc, price=price, sell_price=sell, rarity=rarity,
+                category=category, stock=-1, added_by=0, ap_cost=0, damage=0, heal=0,
+            )
+            added = True
+
+    cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", ("Пара сапог",))
+    if (await cursor.fetchone())['c'] == 0:
+        boots_id = await add_item(
+            name="Пара сапог",
+            description="Прочные сапоги, собранные на верстаке из старых сапог и паутины паука. Броня ног: 2.",
+            price=120, sell_price=40, rarity=2, category="equipment", stock=-1,
+            added_by=0, ap_cost=0, damage=0, heal=0, armor=2, equip_slot="legs",
+        )
+        await update_item(boots_id, is_available=0)
+        added = True
+    # Подстраховка старых БД: слот и броня ног.
+    await conn.execute("UPDATE items SET equip_slot = 'legs' WHERE name = 'Пара сапог' AND equip_slot IS NULL")
+    await conn.execute("UPDATE items SET armor = 2 WHERE name = 'Пара сапог' AND (armor IS NULL OR armor = 0)")
+
     # Типы напитков: привязываем действие на состояние к напиткам по имени
     # (миграция старых БД + сидирование новых). Один напиток — одно действие.
     drink_sync = {
@@ -5746,6 +5777,11 @@ RECIPES_DEF = [
     {"name": "Комбинированная наживка", "desc": "Собирается на верстаке. +30% к шансу улова.",
      "result": "Комбинированная наживка", "qty": 1, "exp": "workbench", "lvl": 1,
      "ingredients": [("Лапка паука", 1), ("Черви", 1)], "ap": 5, "time": 20, "rarity": 1},
+    {"name": "Пара сапог", "desc": "Сборка обуви на верстаке: два старых сапога со дна, "
+     "паутина паука, клей и набор игл. Броня ног: 2.",
+     "result": "Пара сапог", "qty": 1, "exp": "workbench", "lvl": 1,
+     "ingredients": [("Старый сапог", 2), ("Паутина паука", 1), ("Клей", 1), ("Набор игл", 1)],
+     "ap": 6, "time": 45, "rarity": 2},
     {"name": "Малая настойка здоровья", "desc": "Восстанавливает 20 HP в бою подземелья.",
      "result": "Малая настойка здоровья", "qty": 1, "exp": "kitchen", "lvl": 2,
      "ingredients": [("Бутылка чистой воды", 1), ("Осколок кристалла", 1)], "ap": 10, "time": 30, "rarity": 1},
