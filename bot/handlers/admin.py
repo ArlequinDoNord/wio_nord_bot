@@ -2068,17 +2068,35 @@ async def roles_target(message: Message, state: FSMContext):
 async def roles_action(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     action = callback.data.split(":")[1]
+    data = await state.get_data()
     await state.update_data(action=action)
     await state.set_state(AdminRoles.role)
     rows = []
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    for role_name, perms in ROLES.items():
-        label = role_label(role_name)
-        rows.append([InlineKeyboardButton(text=label, callback_data=f"role:{role_name}")])
     if action == "add":
-        rows.pop(0)  # super_admin выдаём только через отдельную команду — защита
+        # Выдача: весь список, кроме super_admin (выдаётся только командой — защита).
+        for role_name in ROLES:
+            if role_name == "super_admin":
+                continue
+            rows.append([InlineKeyboardButton(text=role_label(role_name), callback_data=f"role:{role_name}")])
+        prompt = "Выбери роль для выдачи:"
+    else:
+        # Снятие: только роли, выданные этому игроку (не весь список).
+        user_roles = await get_user_role(data['target_id'])
+        for role_name in ROLES:
+            if role_name in user_roles:
+                rows.append([InlineKeyboardButton(text=role_label(role_name), callback_data=f"role:{role_name}")])
+        if not rows:
+            await state.clear()
+            from keyboards.keyboards import back_to_main
+            await callback.message.edit_text(
+                "У этого игрока нет ролей для снятия.",
+                reply_markup=back_to_main()
+            )
+            return
+        prompt = "Выбери роль для снятия:"
     await callback.message.edit_text(
-        f"Выбери роль для {'выдачи' if action == 'add' else 'снятия'}:",
+        prompt,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
 

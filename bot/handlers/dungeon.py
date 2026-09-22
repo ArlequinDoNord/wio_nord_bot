@@ -1350,9 +1350,17 @@ async def _do_dungeon_escape(where, state, user_id: int, run, enemy,
 
     smoke_used=True — побег через дымовую шашку (предмет уже списан):
     шанс DUNGEON_SMOKE_ESCAPE% против пониженного без шашки.
+    В состоянии «очень пьян» шанс побега сильно снижен (× DUNGEON_ESCAPE_DRUNK_MULT),
+    даже при применении дымовой шашки.
     """
+    from config import DUNGEON_ESCAPE_DRUNK_MULT
+    from utils.states import get_state_info
+    info = await get_state_info(user_id)
+    drunk_escape = "очень пьян" in info['names']
+    percent_mult = DUNGEON_ESCAPE_DRUNK_MULT if drunk_escape else 1.0
+
     hp_percent = run['hp'] / run['hp_max'] if run['hp_max'] > 0 else 1.0
-    escaped = escape_chance(hp_percent, smoke_used=smoke_used)
+    escaped = escape_chance(hp_percent, smoke_used=smoke_used, percent_mult=percent_mult)
 
     if escaped:
         next_step = await dungeon_new_step(state)
@@ -1367,6 +1375,8 @@ async def _do_dungeon_escape(where, state, user_id: int, run, enemy,
                 f"🏃 Ты успешно убежал от {enemy['name']}!\n"
                 f"Нажми «Продолжить путь» чтобы идти дальше."
             )
+        if drunk_escape:
+            text = f"🥴 Ты едва держишься на ногах, но удача не покинула тебя!\n\n" + text
         await where.answer(text, reply_markup=dungeon_main_keyboard(next_step))
         return
 
@@ -1382,6 +1392,8 @@ async def _do_dungeon_escape(where, state, user_id: int, run, enemy,
     )
     if smoke_used:
         text += "\n💨 Дымовая шашка потрачена впустую."
+    if drunk_escape:
+        text = "🥴 Шатаясь, ты совсем теряешь координацию!\n\n" + text
 
     if player_hp <= 0:
         nm_penalty = max(5, enemy['reward_nm'] * 2)

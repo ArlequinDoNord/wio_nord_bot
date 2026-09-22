@@ -220,7 +220,7 @@ async def run():
     })
 
     orig_escape = DH.escape_chance
-    DH.escape_chance = lambda hp, dice_roll=None, smoke_used=False: smoke_used
+    DH.escape_chance = lambda hp, dice_roll=None, smoke_used=False, percent_mult=1.0: smoke_used
     try:
         cb = FakeCallback(uid, data="dungeon:use_slot:smoke:1")
         await DH.dungeon_use_slot(cb, st)

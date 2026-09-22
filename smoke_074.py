@@ -16,6 +16,7 @@ import asyncio
 import os
 import sys
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 if hasattr(sys.stdout, 'reconfigure'):
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
@@ -26,6 +27,70 @@ if os.path.exists(_TEST_DB):
 os.environ["DATABASE_PATH"] = _TEST_DB
 
 sys.path.insert(0, os.path.dirname(__file__))
+
+
+class FakeMessage:
+    def __init__(self, user_id):
+        self.from_user = SimpleNamespace(id=user_id)
+        self.message = None
+        self.sent = []
+
+    async def answer(self, *a, **kw):
+        self.sent.append(("answer", a, kw))
+
+    async def edit_text(self, *a, **kw):
+        self.sent.append(("edit_text", a, kw))
+
+    async def __getattr__(self, name):
+        async def _noop(*a, **kw):
+            return None
+        return _noop
+
+
+class FakeCallback:
+    def __init__(self, user_id, data="", message=None):
+        self.from_user = SimpleNamespace(id=user_id)
+        self.message = message or FakeMessage(user_id)
+        self.data = data
+        self.alerts = []
+
+    async def answer(self, text=None, *a, **kw):
+        self.alerts.append(text)
+
+
+class FakeState:
+    def __init__(self, state=None, data=None):
+        self._state = state
+        self._data = dict(data or {})
+
+    async def get_state(self):
+        return self._state
+
+    async def set_state(self, s):
+        self._state = s
+
+    async def get_data(self):
+        return dict(self._data)
+
+    async def update_data(self, **kw):
+        self._data.update(kw)
+
+    async def clear(self):
+        self._data.clear()
+        self._state = None
+
+
+def sent_text(msg):
+    for kind, a, kw in msg.sent:
+        if kind in ("answer", "edit_text") and a:
+            return a[0]
+    return ""
+
+
+def markup_callbacks(markup):
+    if not markup:
+        return []
+    return [b.callback_data for row in markup.inline_keyboard for b in row]
 
 
 async def run():
@@ -150,6 +215,76 @@ async def run():
 
     blkN = await battle_state_block_message(740999)
     check("несуществующий игрок: нет блока", blkN is None)
+
+    # ── 6. Шанс побега при «очень пьян» (× DUNGEON_ESCAPE_DRUNK_MULT) ──
+    from utils.combat import escape_chance
+    from config import DUNGEON_ESCAPE_DRUNK_MULT
+    check("порог множителя опьянения", DUNGEON_ESCAPE_DRUNK_MULT == 0.5)
+    # без шашки, полный HP: база 25% → d20 порог 5
+    check("побег без шашки: бросок 5 успешен",
+          escape_chance(1.0, dice_roll=5) is True)
+    check("побег без шашки: бросок 6 провален",
+          escape_chance(1.0, dice_roll=6) is False)
+    # с шашкой: 95% → порог 19
+    check("побег с шашкой: бросок 19 успешен",
+          escape_chance(1.0, dice_roll=19, smoke_used=True) is True)
+    # очень пьян + шашка: 95% × 0.5 = 47.5% → порог 9
+    check("очень пьян + шашка: бросок 9 успешен",
+          escape_chance(1.0, dice_roll=9, smoke_used=True,
+                        percent_mult=DUNGEON_ESCAPE_DRUNK_MULT) is True)
+    check("очень пьян + шашка: бросок 10 провален",
+          escape_chance(1.0, dice_roll=10, smoke_used=True,
+                        percent_mult=DUNGEON_ESCAPE_DRUNK_MULT) is False)
+    # очень пьян без шашки: 25% × 0.5 = 12.5% → порог 2
+    check("очень пьян без шашки: бросок 2 успешен",
+          escape_chance(1.0, dice_roll=2, percent_mult=DUNGEON_ESCAPE_DRUNK_MULT) is True)
+    check("очень пьян без шашки: бросок 3 провален",
+          escape_chance(1.0, dice_roll=3, percent_mult=DUNGEON_ESCAPE_DRUNK_MULT) is False)
+
+    # ── 7. «Снять роль»: список только выданных ролей ──
+    from database.db import get_db
+    from bot.handlers.admin import roles_action
+    conn = await get_db()
+    U_ROLE = 740100
+    await add_user(U_ROLE, "u_role", "Роля", "")
+    for r in ("finance_helper", "wing_commander"):
+        await conn.execute(
+            "INSERT INTO user_roles (telegram_id, role, granted_by) VALUES (?, ?, ?)",
+            (U_ROLE, r, 1))
+    await conn.commit()
+
+    cb_rm = FakeCallback(U_ROLE, data="rolop:remove")
+    st_rm = FakeState(data={"target_id": U_ROLE, "target_name": "Роля"})
+    await roles_action(cb_rm, st_rm)
+    check("снять роль: текст «для снятия»", "снятия" in sent_text(cb_rm.message))
+    m_rm = None
+    for kind, a, kw in cb_rm.message.sent:
+        if kind == "edit_text":
+            m_rm = kw.get('reply_markup')
+    cb_rm_cbs = sorted(markup_callbacks(m_rm)) if m_rm else []
+    check("снять роль: только выданные роли",
+          cb_rm_cbs == sorted([f"role:{r}" for r in ("finance_helper", "wing_commander")]))
+
+    cb_add = FakeCallback(U_ROLE, data="rolop:add")
+    st_add = FakeState(data={"target_id": U_ROLE, "target_name": "Роля"})
+    await roles_action(cb_add, st_add)
+    m_add = None
+    for kind, a, kw in cb_add.message.sent:
+        if kind == "edit_text":
+            m_add = kw.get('reply_markup')
+    cb_add_cbs = set(markup_callbacks(m_add)) if m_add else set()
+    from bot.handlers.admin import ROLES
+    check("выдать роль: нет super_admin, есть остальные",
+          "role:super_admin" not in cb_add_cbs
+          and cb_add_cbs == {f"role:{r}" for r in set(ROLES) - {"super_admin"}})
+
+    # без ролей → «нет ролей для снятия»
+    await conn.execute("DELETE FROM user_roles WHERE telegram_id = ?", (U_ROLE,))
+    await conn.commit()
+    cb_empty = FakeCallback(U_ROLE, data="rolop:remove")
+    st_empty = FakeState(data={"target_id": U_ROLE, "target_name": "Роля"})
+    await roles_action(cb_empty, st_empty)
+    check("снять роль: нет выданных → сообщение", "нет ролей" in sent_text(cb_empty.message))
 
     await close_db()
     print(f"\nSmoke 074: {passed} passed, {failed} failed")
