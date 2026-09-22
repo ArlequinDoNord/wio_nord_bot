@@ -243,6 +243,37 @@ async def run():
     check("с текущего сообщения пагинация сработала (нет отказа)",
           "устаревшее сообщение" not in txt_new)
 
+    # ── 6. Удаление: только can_manage_users, а не «любая роль» ──
+    # Представитель (can_create_polls) не должен видеть кнопки удаления и удалять записи.
+    uid_rep = 400020
+    await add_user(uid_rep, "deputat", "Представитель", "")
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO user_roles (telegram_id, role, granted_by) VALUES (?, 'representative', ?)",
+        (uid_rep, uid_rep)
+    )
+    await conn.commit()
+
+    st_rep = FakeState()
+    msg_rep = FakeMessage(uid_rep, message_id=3001)
+    await W._show_wall(msg_rep, st_rep)
+    rep_markup = None
+    for kind, a, kw in msg_rep.sent:
+        if kind == "answer" and kw.get('reply_markup'):
+            rep_markup = kw['reply_markup']
+    rep_buttons = markup_callbacks(rep_markup)
+    check("представитель НЕ видит кнопок удаления записей",
+          not any(c.startswith("wall:delete:") for c in rep_buttons))
+    check("представитель видит кнопку «Оставить изречение»",
+          "wall:write" in rep_buttons)
+
+    first_post = posts[0]
+    cb_rep_del = FakeCallback(uid_rep, data=f"wall:delete:{first_post}",
+                              message=FakeMessage(uid_rep))
+    await W.wall_delete(cb_rep_del, FakeState())
+    check("представителю удаление отклонено",
+          "только админы" in sent_text(cb_rep_del.message))
+
     await close_db()
     print(f"\nSmoke 069: {passed} passed, {failed} failed")
     sys.exit(1 if failed else 0)

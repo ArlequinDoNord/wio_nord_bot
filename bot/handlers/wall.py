@@ -21,7 +21,7 @@ from database.db import (
     log_activity,
 )
 from utils.helpers import plural_nordmark, is_main_menu_text
-from utils.permissions import is_admin, has_permission, log_action
+from utils.permissions import has_permission, log_action
 from keyboards.keyboards import wall_keyboard, cancel_keyboard
 
 router = Router()
@@ -65,7 +65,6 @@ async def _show_wall(sender, state: FSMContext, page: int = 0):
     user_id = sender.from_user.id
     total = await count_wall_posts()
     rows = await get_wall_posts(page, WALL_PAGE_SIZE)
-    admin = await is_admin(user_id)
     manage = await has_permission(user_id, "can_manage_users")
     ids = [r['id'] for r in rows]
 
@@ -91,12 +90,12 @@ async def _show_wall(sender, state: FSMContext, page: int = 0):
     if not hasattr(sender, "message"):  # Message (у Callback есть .message)
         sent = await sender.answer(text, reply_markup=wall_keyboard(
             page=page, total_posts=total, post_ids=ids,
-            is_admin=admin, can_manage=manage,
+            is_admin=manage, can_manage=manage,
         ))
     else:  # CallbackQuery
         sent = await sender.message.answer(text, reply_markup=wall_keyboard(
             page=page, total_posts=total, post_ids=ids,
-            is_admin=admin, can_manage=manage,
+            is_admin=manage, can_manage=manage,
         ))
     try:
         await state.update_data(wall_active_msg=getattr(sent, "message_id", None))
@@ -215,7 +214,7 @@ async def wall_delete(callback: CallbackQuery, state: FSMContext):
     """Админ-удаление: can_manage_users. Платное изречение возвращает ⅓ автору."""
     await callback.answer()
     actor = callback.from_user.id
-    can_manage = await is_admin(actor) or await has_permission(actor, "can_manage_users")
+    can_manage = await has_permission(actor, "can_manage_users")
     if not can_manage:
         await callback.message.answer("❌ Удалять изречения могут только админы (can_manage_users).")
         return
