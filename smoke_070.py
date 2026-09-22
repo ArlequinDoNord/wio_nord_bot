@@ -7,7 +7,7 @@
 3. answer_obstacle_photo: water/rope — свои картинки препятствий; без них —
    входная картинка курса.
 4. Админ-пикер данжа предлагает слоты «Вода» и «Верёвка».
-5. hq:wing — сводка по крыльям; hq:wingset — назначение крыла пилоту;
+5. hq:wing — сводка по крыльям; hq:wing:set — назначение крыла пилоту;
    кнопка «Состав ВВС» видна только при праве can_manage_wing.
 
 Запуск: .venv\\Scripts\\python.exe smoke_070.py
@@ -89,7 +89,7 @@ async def run():
     from bot.handlers.kvp import answer_enemy_or_course_photo, answer_obstacle_photo
     from bot.handlers.admin import _dungeon_photos_pick_send
     from bot.handlers.hq import (
-        hq_wing_cb, hq_roster_pick, hq_roster_set, hq_wingset, hq_menu_markup,
+        hq_wing_cb, hq_roster_pick, hq_pilot_cb, hq_wingset, hq_menu_markup,
     )
 
     await init_db()
@@ -183,14 +183,14 @@ async def run():
     await add_user(pid3, "ten", "Тень", "")
 
     # Назначение крыла (право can_manage_wing у админа есть).
-    cb_set = FakeCallback(admin, data=f"hq:wingset:{pid2}:2", message=FakeMessage(admin))
+    cb_set = FakeCallback(admin, data=f"hq:wing:set:{pid2}:2", message=FakeMessage(admin))
     await hq_wingset(cb_set)
     check("назначение крыла подтверждено", "Крыло пилота" in sent_text(cb_set.message))
     u2 = await get_user(pid2)
     check("крыло пилота сохранено в БД", u2['wing'] == "2")
 
     # Доступ без права — отказ.
-    cb_deny = FakeCallback(pilot, data=f"hq:wingset:{pid3}:1", message=FakeMessage(pilot))
+    cb_deny = FakeCallback(pilot, data=f"hq:wing:set:{pid3}:1", message=FakeMessage(pilot))
     await hq_wingset(cb_deny)
     deny_txt = sent_text(cb_deny.message)
     check("без права can_manage_wing — отказ",
@@ -212,20 +212,22 @@ async def run():
     for kind, a, kw in cb_list.message.sent:
         if kind == "answer" and kw.get('reply_markup'):
             roster_buttons = markup_callbacks(kw['reply_markup'])
-    check("в списке пилотов есть наш пилот", f"hq:roster:set:{pid2}" in roster_buttons)
+    check("в списке пилотов есть наш пилот", f"hq:pilot:{pid2}" in roster_buttons)
+    check("кнопка пилота НЕ пересекается с пагинацией hq:roster",
+          f"hq:pilot:{pid2}" not in [c for c in roster_buttons if c.startswith("hq:roster:")])
     check("в списке есть счётчик страниц", "hq:noop" in roster_buttons)
 
-    # hq:roster_set — экран выбора крыла.
-    cb_rs = FakeCallback(admin, data=f"hq:roster:set:{pid3}", message=FakeMessage(admin))
-    await hq_roster_set(cb_rs)
+    # hq:pilot — экран выбора крыла (после выбора пилота).
+    cb_rs = FakeCallback(admin, data=f"hq:pilot:{pid3}", message=FakeMessage(admin))
+    await hq_pilot_cb(cb_rs)
     rs_buttons = []
     for kind, a, kw in cb_rs.message.sent:
         if kind == "answer" and kw.get('reply_markup'):
             rs_buttons = markup_callbacks(kw['reply_markup'])
     check("экран выбора крыла содержит три крыла",
-          f"hq:wingset:{pid3}:1" in rs_buttons and f"hq:wingset:{pid3}:3" in rs_buttons)
+          f"hq:wing:set:{pid3}:1" in rs_buttons and f"hq:wing:set:{pid3}:3" in rs_buttons)
     check("экран выбора крыла умеет снять крыло",
-          f"hq:wingset:{pid3}:none" in rs_buttons)
+          f"hq:wing:set:{pid3}:none" in rs_buttons)
 
     # Кнопка «Состав ВВС» в меню штаба зависит от права.
     buttons_y = markup_callbacks(hq_menu_markup(True))

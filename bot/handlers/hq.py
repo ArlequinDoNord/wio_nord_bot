@@ -166,7 +166,7 @@ async def hq_roster_pick(callback: CallbackQuery):
         wing = u['wing'] if 'wing' in u.keys() and u['wing'] else None
         rows.append([InlineKeyboardButton(
             text=f"{await player_display(u)} — {wing_display(wing)}",
-            callback_data=f"hq:roster:set:{u['user_id']}",
+            callback_data=f"hq:pilot:{u['user_id']}",
         )])
     nav = []
     if page > 0:
@@ -183,14 +183,14 @@ async def hq_roster_pick(callback: CallbackQuery):
     )
 
 
-@router.callback_query(F.data.startswith("hq:roster:set:"))
-async def hq_roster_set(callback: CallbackQuery):
+@router.callback_query(F.data.startswith("hq:pilot:"))
+async def hq_pilot_cb(callback: CallbackQuery):
     await callback.answer()
     if not await has_permission(callback.from_user.id, "can_manage_wing"):
         await callback.message.answer("❌ Нет доступа к составу ВВС.")
         return
     try:
-        uid = int(callback.data.split(":", 3)[3])
+        uid = int(callback.data.split(":", 2)[2])
     except (ValueError, IndexError):
         return
     u = await get_user(uid)
@@ -199,8 +199,8 @@ async def hq_roster_set(callback: CallbackQuery):
         return
     rows = []
     for key, label in WINGS.items():
-        rows.append([InlineKeyboardButton(text=label, callback_data=f"hq:wingset:{uid}:{key}")])
-    rows.append([InlineKeyboardButton(text="➖ Снять крыло", callback_data=f"hq:wingset:{uid}:none")])
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"hq:wing:set:{uid}:{key}")])
+    rows.append([InlineKeyboardButton(text="➖ Снять крыло", callback_data=f"hq:wing:set:{uid}:none")])
     rows.append([InlineKeyboardButton(text="🔙 К списку", callback_data="hq:roster:0")])
     current_wing = u['wing'] if 'wing' in u.keys() else None
     await callback.message.answer(
@@ -210,15 +210,18 @@ async def hq_roster_set(callback: CallbackQuery):
     )
 
 
-@router.callback_query(F.data.startswith("hq:wingset:"))
+@router.callback_query(F.data.startswith("hq:wing:set:"))
 async def hq_wingset(callback: CallbackQuery):
     await callback.answer()
     if not await has_permission(callback.from_user.id, "can_manage_wing"):
         await callback.message.answer("❌ Нет доступа к составу ВВС.")
         return
-    _, _, uid_s, wing = callback.data.split(":", 3)
+    parts = callback.data.split(":")
+    if len(parts) < 5:
+        return
+    wing = parts[4]
     try:
-        uid = int(uid_s)
+        uid = int(parts[3])
     except ValueError:
         return
     wing = None if wing == "none" else wing
