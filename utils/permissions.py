@@ -28,6 +28,7 @@ ROLES = {
         'can_manage_news': True,
         'can_manage_wing': True,
         'can_send_orders': True,
+        'can_manage_clans': True,
         'level': 100
     },
     'shop_admin': {  # Министр торговли
@@ -81,6 +82,9 @@ ROLES = {
         'can_post_news': True,
         'can_manage_news': True,
         'level': 40
+    },
+    'clan_leader': {  # Глава клана/партии — управляет только своим объединением
+        'level': 60
     }
 }
 
@@ -97,6 +101,7 @@ ROLE_LABELS = {
     'representative': 'Представитель',
     'journalist': 'Журналист ГосСМИ',
     'editor': 'Редактор ГосСМИ',
+    'clan_leader': 'Глава клана/партии',
 }
 
 

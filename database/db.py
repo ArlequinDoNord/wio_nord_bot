@@ -595,6 +595,38 @@ async def init_db():
             cost INTEGER DEFAULT 0,
             FOREIGN KEY (user_id) REFERENCES users(user_id)
         );
+
+        CREATE TABLE IF NOT EXISTS clans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL DEFAULT 'clan',          -- 'clan' | 'party'
+            name TEXT NOT NULL,
+            description TEXT DEFAULT '',
+            photo_file_id TEXT,
+            leader_id INTEGER,
+            created_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS clan_members (
+            clan_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (clan_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS clan_requests (
+            clan_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (clan_id, user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS user_recipes (
+            user_id INTEGER NOT NULL,
+            recipe_id INTEGER NOT NULL,
+            learned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, recipe_id)
+        );
     """)
     await conn.commit()
 
@@ -1510,6 +1542,9 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
 
         await remove_inventory_item(user_id, item_id, 1)
         return True, f"Ты использовал {item['name']}!"
+
+    if item['category'] == 'recipes':
+        return await learn_recipe_from_item(user_id, item_id)
 
     return False, "Этот предмет нельзя использовать так"
 
@@ -6334,3 +6369,312 @@ async def get_user_photo(user_id: int):
     if not row:
         return None
     return row['photo_file_id']
+
+
+# ---------- Кланы и партии ----------
+
+KIND_LABELS = {"clan": "клан", "party": "партия"}
+
+
+async def create_clan(kind: str, name: str, description: str, creator_id: int) -> int:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "INSERT INTO clans (kind, name, description, created_by) VALUES (?, ?, ?, ?)",
+        (kind, name, description, creator_id))
+    await conn.commit()
+    return cursor.lastrowid
+
+
+async def get_clan(clan_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM clans WHERE id = ?", (clan_id,))
+    return await cursor.fetchone()
+
+
+async def get_clans(kind: str = None):
+    conn = await get_db()
+    if kind:
+        cursor = await conn.execute(
+            "SELECT * FROM clans WHERE kind = ? ORDER BY name COLLATE NOCASE", (kind,))
+    else:
+        cursor = await conn.execute("SELECT * FROM clans ORDER BY kind, name COLLATE NOCASE")
+    return await cursor.fetchall()
+
+
+async def update_clan(clan_id: int, name=None, description=None, photo_file_id=None,
+                      leader_id=None):
+    conn = await get_db()
+    sets, vals = [], []
+    if name is not None:
+        sets.append("name = ?")
+        vals.append(name)
+    if description is not None:
+        sets.append("description = ?")
+        vals.append(description)
+    if photo_file_id is not None:
+        sets.append("photo_file_id = ?")
+        vals.append(photo_file_id)
+    if leader_id is not None:
+        sets.append("leader_id = ?")
+        vals.append(leader_id)
+    if sets:
+        vals.append(clan_id)
+        await conn.execute(f"UPDATE clans SET {', '.join(sets)} WHERE id = ?", vals)
+        await conn.commit()
+
+
+async def set_clan_leader(clan_id: int, leader_id: int = None):
+    conn = await get_db()
+    await conn.execute("UPDATE clans SET leader_id = ? WHERE id = ?", (leader_id, clan_id))
+    await conn.commit()
+
+
+async def delete_clan(clan_id: int):
+    conn = await get_db()
+    await conn.execute("DELETE FROM clan_requests WHERE clan_id = ?", (clan_id,))
+    await conn.execute("DELETE FROM clan_members WHERE clan_id = ?", (clan_id,))
+    await conn.execute("DELETE FROM clans WHERE id = ?", (clan_id,))
+    await conn.commit()
+
+
+async def add_clan_member(clan_id: int, user_id: int):
+    conn = await get_db()
+    await conn.execute(
+        "INSERT OR IGNORE INTO clan_members (clan_id, user_id) VALUES (?, ?)",
+        (clan_id, user_id))
+    await conn.execute("DELETE FROM clan_requests WHERE clan_id = ? AND user_id = ?",
+                       (clan_id, user_id))
+    await conn.commit()
+
+
+async def remove_clan_member(clan_id: int, user_id: int):
+    conn = await get_db()
+    await conn.execute(
+        "DELETE FROM clan_members WHERE clan_id = ? AND user_id = ?", (clan_id, user_id))
+    await conn.commit()
+
+
+async def is_clan_member(clan_id: int, user_id: int) -> bool:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT 1 FROM clan_members WHERE clan_id = ? AND user_id = ?", (clan_id, user_id))
+    return await cursor.fetchone() is not None
+
+
+async def get_clan_members(clan_id: int):
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT u.* FROM clan_members cm JOIN users u ON u.user_id = cm.user_id "
+        "WHERE cm.clan_id = ? ORDER BY u.first_name COLLATE NOCASE", (clan_id,))
+    return await cursor.fetchall()
+
+
+async def get_clan_member_ids(clan_id: int) -> list:
+    conn = await get_db()
+    cursor = await conn.execute("SELECT user_id FROM clan_members WHERE clan_id = ?", (clan_id,))
+    rows = await cursor.fetchall()
+    return [r['user_id'] for r in rows]
+
+
+async def get_user_clan(user_id: int, kind: str = 'clan'):
+    """Объединение указанного вида (клан/партия), где состоит пилот, или None."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT c.* FROM clans c JOIN clan_members cm ON cm.clan_id = c.id "
+        "WHERE cm.user_id = ? AND c.kind = ? LIMIT 1", (user_id, kind))
+    return await cursor.fetchone()
+
+
+async def get_user_clans(user_id: int):
+    """Все объединения (клан и/или партия), где состоит пилот."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT c.* FROM clans c JOIN clan_members cm ON cm.clan_id = c.id "
+        "WHERE cm.user_id = ?", (user_id,))
+    return await cursor.fetchall()
+
+
+async def is_clan_leader(user_id: int):
+    """ID объединения, главой которого является пилот, или None."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id FROM clans WHERE leader_id = ? LIMIT 1", (user_id,))
+    row = await cursor.fetchone()
+    return row['id'] if row else None
+
+
+async def add_clan_request(clan_id: int, user_id: int):
+    conn = await get_db()
+    await conn.execute(
+        "INSERT OR IGNORE INTO clan_requests (clan_id, user_id) VALUES (?, ?)",
+        (clan_id, user_id))
+    await conn.commit()
+
+
+async def remove_clan_request(clan_id: int, user_id: int):
+    conn = await get_db()
+    await conn.execute(
+        "DELETE FROM clan_requests WHERE clan_id = ? AND user_id = ?", (clan_id, user_id))
+    await conn.commit()
+
+
+async def has_clan_request(clan_id: int, user_id: int) -> bool:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT 1 FROM clan_requests WHERE clan_id = ? AND user_id = ?", (clan_id, user_id))
+    return await cursor.fetchone() is not None
+
+
+async def get_clan_pending_requests(clan_id: int):
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT u.*, r.created_at FROM clan_requests r JOIN users u ON u.user_id = r.user_id "
+        "WHERE r.clan_id = ? ORDER BY r.created_at", (clan_id,))
+    return await cursor.fetchall()
+
+
+# ---------- Рецепты у пилота ----------
+
+async def learn_recipe(user_id: int, recipe_id: int):
+    conn = await get_db()
+    await conn.execute(
+        "INSERT OR IGNORE INTO user_recipes (user_id, recipe_id) VALUES (?, ?)",
+        (user_id, recipe_id))
+    await conn.commit()
+
+
+async def has_user_recipe(user_id: int, recipe_id: int) -> bool:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT 1 FROM user_recipes WHERE user_id = ? AND recipe_id = ?",
+        (user_id, recipe_id))
+    return await cursor.fetchone() is not None
+
+
+async def get_learned_recipes(user_id: int, expansion: str = None, level: int = None):
+    """Рецепты, открытые у пилота, в контексте расширения и уровня расширения."""
+    conn = await get_db()
+    q = ("SELECT r.* FROM recipes r JOIN user_recipes ur ON ur.recipe_id = r.id "
+         "WHERE ur.user_id = ? AND r.is_available = 1")
+    params = [user_id]
+    if expansion:
+        q += " AND r.required_expansion = ?"
+        params.append(expansion)
+        if level is not None:
+            q += " AND r.required_level <= ?"
+            params.append(level)
+    q += " ORDER BY r.required_level, r.rarity, r.id"
+    cursor = await conn.execute(q, params)
+    return await cursor.fetchall()
+
+
+# ---------- Рецепты как товары магазина ----------
+
+RECIPE_ITEM_PREFIX = "Рецепт: "
+
+RECIPE_ITEM_PRICES = {
+    "Пожарить сига": 60,
+    "Пожарить муксуна": 60,
+    "Пожарить чира": 70,
+    "Пожарить налима": 80,
+    "Пожарить сома": 90,
+    "Пожарить угря": 220,
+    "Пожарить форель": 750,
+    "Комбинированная наживка": 90,
+    "Пара сапог": 320,
+    "Малая настойка здоровья": 150,
+    "Энергетик": 280,
+    "Улучшенная настойка здоровья": 480,
+}
+
+
+async def ensure_recipe_shop_items():
+    """Создаёт в магазине предметы-рецепты категории 'recipes'.
+
+    Предмет «Рецепт: <название>» при использовании из инвентаря открывает
+    соответствующий рецепт для пилота (таблица user_recipes).
+    """
+    conn = await get_db()
+    changed = False
+    for r in RECIPES_DEF:
+        row = await conn.execute(
+            "SELECT id FROM recipes WHERE name = ? AND required_expansion = ? AND required_level = ?",
+            (r['name'], r['exp'], r['lvl']))
+        recipe_row = await row.fetchone()
+        if not recipe_row:
+            continue
+        item_name = RECIPE_ITEM_PREFIX + r['name']
+        item = await get_item_by_name(item_name)
+        price = RECIPE_ITEM_PRICES.get(r['name'], 100)
+        desc = (f"📜 Обучает рецепту: {r['name']}.\n"
+                f"{r['desc']}\n"
+                f"Используй из инвентаря, чтобы выучить рецепт и крафтить в жилье.")
+        if item:
+            await conn.execute(
+                "UPDATE items SET description = ?, price = ?, sell_price = ?, rarity = ?, "
+                "category = 'recipes', is_available = 1 WHERE id = ?",
+                (desc, price, price // 2, r.get('rarity', 1), item['id']))
+            changed = True
+        else:
+            await add_item(item_name, desc, price, price // 2, r.get('rarity', 1),
+                           'recipes', -1, 0)
+            changed = True
+    if changed:
+        await conn.commit()
+    return changed
+
+
+async def learn_recipe_from_item(user_id: int, item_id: int):
+    """Использование предмета-рецепта: открывает рецепт навсегда.
+
+    Возвращает (ok, сообщение). Предмет списывается из инвентаря.
+    """
+    item = await get_item(item_id)
+    if not item or item.get('category') != 'recipes':
+        return False, "Это не рецепт."
+    inv_row = await get_inventory_item(user_id, item_id)
+    if not inv_row or (inv_row.get('quantity') or 0) < 1:
+        return False, "У тебя нет этого рецепта в инвентаре."
+    recipe_name = item['name']
+    if recipe_name.startswith(RECIPE_ITEM_PREFIX):
+        recipe_name = recipe_name[len(RECIPE_ITEM_PREFIX):]
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM recipes WHERE name = ? AND is_available = 1", (recipe_name,))
+    recipe = await cursor.fetchone()
+    if not recipe:
+        return False, "Рецепт не найден."
+    if await has_user_recipe(user_id, recipe['id']):
+        return False, f"Рецепт «{recipe['name']}» уже выучен."
+    await learn_recipe(user_id, recipe['id'])
+    await remove_inventory_item(user_id, item_id, 1)
+    await log_activity(user_id, "recipe_learn", f"Выучил рецепт «{recipe['name']}»")
+    return True, f"📜 Ты выучил рецепт «{recipe['name']}»! Теперь он доступен в крафте."
+
+
+async def ensure_user_recipes_backfill():
+    """Разово открывает все рецепты существующим игрокам.
+
+    До введения магазинных рецептов все они были доступны всем пилотам сразу;
+    после ввода — только покупка/лут/использование. Чтобы не отнимать уже
+    привычный крафт, при первом запуске фичи рецепты открываются всем текущим
+    пользователям. Новые игроки рецепты не получают.
+    """
+    conn = await get_db()
+    cursor = await conn.execute("SELECT COUNT(*) AS c FROM user_recipes")
+    total = await cursor.fetchone()
+    if total and total['c'] > 0:
+        return False
+    rc = await conn.execute("SELECT id FROM recipes")
+    recipe_ids = [r['id'] for r in await rc.fetchall()]
+    if not recipe_ids:
+        return False
+    uc = await conn.execute("SELECT user_id FROM users")
+    user_ids = [u['user_id'] for u in await uc.fetchall()]
+    if not user_ids:
+        return False
+    pairs = [(uid, rid) for uid in user_ids for rid in recipe_ids]
+    await conn.executemany(
+        "INSERT OR IGNORE INTO user_recipes (user_id, recipe_id) VALUES (?, ?)", pairs)
+    await conn.commit()
+    return True

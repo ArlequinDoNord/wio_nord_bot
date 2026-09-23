@@ -114,6 +114,11 @@ async def _profile_caption(user_id: int, owner: bool = True):
         + (f"{state_line}\n" if state_line else "❤️ Состояние: нормально\n")
         + f"🎖️ Статус: {status}\n"
     )
+    from database.db import get_user_clan
+    clan = await get_user_clan(user_id, 'clan')
+    party = await get_user_clan(user_id, 'party')
+    caption += f"🏰 Клан: {clan['name'] if clan else '—'}\n"
+    caption += f"🏛 Партия: {party['name'] if party else '—'}\n"
     about = (user.get('about') or '').strip()
     if about:
         caption += f"📖 О себе: {about}\n"

@@ -13,6 +13,7 @@ from database.db import (
     ensure_player_housing, HOUSING_TYPES, HOUSING_ORDER, PLANT_STAGES, FRUIT_EVERY_DAYS,
     PLANT_NAMES,
     get_recipes, get_recipe, get_ingredient_map, consume_ingredient,
+    get_learned_recipes, has_user_recipe,
     plant_seed, plant_stage_info, harvest_plant,
     get_inventory, get_item, get_item_by_name,
     remove_inventory_item, add_inventory_item, remove_ap, add_ap,
@@ -329,11 +330,11 @@ async def housing_kitchen_recipes(cb: CallbackQuery):
 
 
 async def _kitchen_recipes(cb, uid, idx, slot, ht, lvl):
-    recipes = await get_recipes("kitchen", lvl)
+    recipes = await get_learned_recipes(uid, "kitchen", lvl)
     title = _slot_name(slot)
     lines = [f"🍳 *{title}* (слот {idx+1})\n"]
     if not recipes:
-        lines.append("Нет доступных рецептов.")
+        lines.append("Нет выученных рецептов.\nКупи «📜 Рецепты» в Магазине 🏪.")
     else:
         lines.append("Доступные рецепты:")
         for r in recipes:
@@ -348,10 +349,10 @@ async def _kitchen_recipes(cb, uid, idx, slot, ht, lvl):
 
 
 async def _room_workbench(cb, uid, idx, slot, ht, lvl):
-    recipes = await get_recipes("workbench", lvl)
+    recipes = await get_learned_recipes(uid, "workbench", lvl)
     lines = [f"🔧 *Верстак* (слот {idx+1})\n"]
     if not recipes:
-        lines.append("Нет доступных рецептов.")
+        lines.append("Нет выученных рецептов.\nКупи «📜 Рецепты» в Магазине 🏪.")
     else:
         lines.append("Доступные рецепты:")
         for r in recipes:
@@ -439,6 +440,10 @@ async def housing_recipe(cb: CallbackQuery):
 
     r = await get_recipe(rid)
     if not r:
+        await cb.answer("❌ Рецепт не найден.", show_alert=True)
+        return
+    if not await has_user_recipe(uid, rid):
+        await cb.answer("❌ Ты ещё не изучил этот рецепт.", show_alert=True)
         return
     ingredients = json.loads(r["ingredients"] or "[]")
 
@@ -482,6 +487,10 @@ async def housing_craft(cb: CallbackQuery):
     idx, rid = int(idx_s), int(rid_s)
     r = await get_recipe(rid)
     if not r:
+        await cb.answer("❌ Рецепт не найден.", show_alert=True)
+        return
+    if not await has_user_recipe(uid, rid):
+        await cb.answer("❌ Ты ещё не изучил этот рецепт.", show_alert=True)
         return
 
     # Проверяем слот и тип расширения

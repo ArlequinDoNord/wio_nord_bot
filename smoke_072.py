@@ -93,7 +93,7 @@ async def run():
         get_item_by_name, get_available_items, get_recipes, get_recipe,
         get_ingredient_map, consume_ingredient, add_fish_catch, get_fish_catches,
         add_inventory_item, remove_inventory_item,
-        set_player_housing, set_housing_slot, add_user,
+        set_player_housing, set_housing_slot, add_user, learn_recipe,
     )
     from bot.handlers.housing import housing_recipe
 
@@ -190,6 +190,8 @@ async def run():
     await add_inventory_item(uid, glue['id'], 1)
 
     rid = r['id'] if r else 99999
+    # v0.15.13: рецепты открываются только изучением (user_recipes).
+    await learn_recipe(uid, rid)
     bot_full = FakeSender()
     cb_full = FakeCallback(uid, data=f"housing:recipe:0:{rid}", bot=bot_full)
     await housing_recipe(cb_full)

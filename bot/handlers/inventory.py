@@ -63,7 +63,7 @@ def _fish_groups(catches):
 INV_CATEGORIES = [
     "weapon", "equipment", "consumable", "resource", "seeds",
     "fishing", "housing", "furniture", "special", "souvenirs",
-    "library_card", "building",
+    "library_card", "building", "recipes",
 ]
 FISH_ALL_KEY = "__fish__"
 
@@ -91,7 +91,8 @@ def inv_categories_markup(items, catches):
         emoji = {"weapon": "⚔️", "equipment": "👕", "consumable": "🧪",
                  "resource": "⛏️", "seeds": "🌱", "fishing": "🎣",
                  "housing": "🏠", "furniture": "🪑", "special": "💎",
-                 "souvenirs": "🏺", "library_card": "📚", "building": "🏗️"}.get(cat, "📦")
+                 "souvenirs": "🏺", "library_card": "📚", "building": "🏗️",
+                 "recipes": "📜"}.get(cat, "📦")
         rows.append([InlineKeyboardButton(
             text=f"{emoji} {label} — {counts[cat]}",
             callback_data=f"inventory:cat:{cat}")])
@@ -531,9 +532,10 @@ async def _render_item_card(message, user_id: int, item_id: int, note: str = "")
                 occupied[slot] = occ_item['name'] if occ_item else f"#{occ_id}"
 
     can_use = (
-        item['category'] == "consumable"
-        and item['name'] not in NOT_EDIBLE_ITEMS
-        and (not (item['heal'] or 0) or bool(row_get(item, 'drink_effect')))
+        item['category'] == "recipes"
+        or (item['category'] == "consumable"
+            and item['name'] not in NOT_EDIBLE_ITEMS
+            and (not (item['heal'] or 0) or bool(row_get(item, 'drink_effect'))))
     )
     if in_run:
         can_use = False

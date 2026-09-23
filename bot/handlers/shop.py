@@ -46,7 +46,7 @@ _PURCHASING: set = set()
 CATEGORIES = [
     "weapon", "consumable", "equipment", "building", "resource",
     "special", "special_dept", "souvenirs", "library_card", "fishing",
-    "housing", "furniture", "seeds", "license", "market",
+    "housing", "furniture", "seeds", "license", "recipes", "market",
 ]
 PER_PAGE = 6
 

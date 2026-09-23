@@ -14,6 +14,7 @@ from database.db import (
     ensure_dungeon_reservoir_items, ensure_market_license_item, pay_salaries, payout_reports,
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award,
     ensure_water_fish, migrate_legacy_junk,
+    ensure_recipe_shop_items, ensure_user_recipes_backfill,
     log_activity, prune_activity_log,
 )
 from utils.notify import notify_treasury_shortage
@@ -37,6 +38,7 @@ from bot.handlers.news import router as news_router
 from bot.handlers.kvp import router as kvp_router
 from bot.handlers.wall import router as wall_router
 from bot.handlers.hq import router as hq_router
+from bot.handlers.clans import router as clans_router
 
 load_dotenv()
 
@@ -220,6 +222,12 @@ async def main():
     if recipes_seeded:
         logger.info("Рецепты кухни и верстака добавлены")
 
+    recipe_shop_seeded = await ensure_recipe_shop_items()
+    if recipe_shop_seeded:
+        logger.info("Рецепты добавлены в магазин (категория «Рецепты»)")
+    if await ensure_user_recipes_backfill():
+        logger.info("Существующим игрокам открыты все рецепты (бэкфилл)")
+
     wf_seeded = await ensure_water_fish()
     if wf_seeded:
         logger.info("Пулы рыбалки по водоёмам (water_fish) приведены к дефолтам")
@@ -296,12 +304,13 @@ async def main():
     dp.include_router(kvp_router)
     dp.include_router(wall_router)
     dp.include_router(hq_router)
+    dp.include_router(clans_router)
 
     for r in (start_router, profile_router, bank_router, admin_router, shop_router,
               inventory_router, reports_router, dungeon_router, pilots_router,
               polls_router, library_router, locations_router, park_router,
               fishing_router, housing_router, news_router, kvp_router,
-              wall_router, hq_router):
+              wall_router, hq_router, clans_router):
         r.message.middleware(FishingActiveLock())
         r.message.middleware(MainMenuFSMReset())
         r.callback_query.middleware(FishingActiveLock())

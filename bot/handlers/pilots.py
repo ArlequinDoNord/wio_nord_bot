@@ -21,6 +21,7 @@ def town_hall_markup(voted: int = 0, active: int = 0) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"🗳️ Голосование и опросы {voted}/{active}", callback_data="city:vote")],
         [InlineKeyboardButton(text="🪖 Пилоты города", callback_data="city:pilots:list")],
+        [InlineKeyboardButton(text="⚜️ Партии и кланы", callback_data="city:clans")],
         [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
     ])
 
