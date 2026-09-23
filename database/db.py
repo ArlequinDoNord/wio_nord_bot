@@ -651,9 +651,15 @@ async def init_db():
     await _ensure_column(conn, "reports", "total_troops", "INTEGER DEFAULT 0")
     # credited_troops без DEFAULT: у старых отчётов (до миграции) будет NULL
     await _ensure_column(conn, "reports", "credited_troops", "INTEGER")
-    # paid=1 — отчёт оплачен суточным начислением; старые одобренные уже оплачены
-    await _ensure_column(conn, "reports", "paid", "INTEGER DEFAULT 0")
-    await conn.execute("UPDATE reports SET paid = 1 WHERE status = 'approved'")
+    # paid=1 — отчёт оплачен суточным начислением. При создании колонки старые
+    # одобренные отчёты уже оплачены старой механикой (начисление при одобрении) —
+    # помечаем их оплаченными ОДИН раз, чтобы суточная выплата не задвоила им начисление.
+    # ВАЖНО: выполняется только при создании колонки. Безусловный UPDATE при каждом
+    # старте помечал бы «оплаченными» одобренные, но ещё не выплаченные отчёты
+    # (payout_reports идёт раз в сутки), и они терялись навсегда без начисления.
+    paid_created = await _ensure_column(conn, "reports", "paid", "INTEGER DEFAULT 0")
+    if paid_created:
+        await conn.execute("UPDATE reports SET paid = 1 WHERE status = 'approved'")
     await _ensure_column(conn, "player_dungeon_run", "loot_nm", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "player_dungeon_run", "started_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     # «Аптечка» — это +AP (энергетик); лечит HP в данже «Малая настойка здоровья»
@@ -900,13 +906,18 @@ async def purge_retired_items():
     return True
 
 
-async def _ensure_column(conn, table: str, column: str, coltype: str):
-    """Добавляет колонку в таблицу, если её ещё нет."""
+async def _ensure_column(conn, table: str, column: str, coltype: str) -> bool:
+    """Добавляет колонку в таблицу, если её ещё нет.
+
+    Возвращает True, если колонка была только что создана (миграция), иначе False.
+    """
     cursor = await conn.execute(f"PRAGMA table_info({table})")
     cols = [row['name'] for row in await cursor.fetchall()]
     if column not in cols:
         await conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}")
-    await conn.commit()
+        await conn.commit()
+        return True
+    return False
 
 
 async def add_user(user_id: int, username: str, first_name: str, last_name: str):
