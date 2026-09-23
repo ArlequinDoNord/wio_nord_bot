@@ -4,7 +4,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
-from database.db import (add_user, get_user, ensure_base_status, user_has_status_tag,
+from database.db import (add_user, get_user, ensure_base_status, user_is_tourist,
                          get_all_locations, get_active_run, finalize_run_for)
 from keyboards.keyboards import main_menu_keyboard, city_keyboard
 from utils.permissions import is_admin
@@ -24,7 +24,7 @@ async def cmd_start(message: Message):
     await ensure_base_status(user.id)
 
     admin_flag = await is_admin(user.id)
-    pilot_flag = await user_has_status_tag(user.id, "pilot")
+    pilot_flag = not await user_is_tourist(user.id)
 
     welcome_text = (
         "```\n"
@@ -74,9 +74,9 @@ async def cmd_help(message: Message):
         "Инвентарь — твои предметы, передача и использование\n"
         "Магазин — покупка товаров за Нордмарки и ОД\n"
         "Город — локации: Ратуша, Библиотека, Банк (счета, переводы, казна) и другие\n"
-        "📝 Сдать отчёт — отчёт о войсках (только для Пилота)\n\n"
+        "📝 Сдать отчёт — отчёт о войсках (рекруты и пилоты)\n\n"
         "👑 Админ-панель — управление (для администраторов)\n\n"
-        "Туристам доступен ограниченный функционал. Статус «Пилот» выдаётся администраторами после проверки."
+        "Туристам доступен ограниченный функционал. Статус «Рекрут» выдаётся администраторами после проверки."
     )
 
 
@@ -84,7 +84,7 @@ async def cmd_help(message: Message):
 async def show_city(message: Message, state: FSMContext):
     left_note = await _abandon_active_run_if_left(message.from_user.id, state)
     city_view = resolve_image("city/arkholm")
-    is_here_pilot = await user_has_status_tag(message.from_user.id, "pilot")
+    is_here_pilot = not await user_is_tourist(message.from_user.id)
     locations = await get_all_locations()
     if left_note:
         await message.answer(left_note)
@@ -124,7 +124,7 @@ async def city_menu_cb(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     left_note = await _abandon_active_run_if_left(callback.from_user.id, state)
     city_view = resolve_image("city/arkholm")
-    is_here_pilot = await user_has_status_tag(callback.from_user.id, "pilot")
+    is_here_pilot = not await user_is_tourist(callback.from_user.id)
     locations = await get_all_locations()
     if left_note:
         await callback.message.answer(left_note)

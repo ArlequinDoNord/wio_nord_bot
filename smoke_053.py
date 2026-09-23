@@ -172,7 +172,7 @@ async def run():
     from database.db import add_nordmarks, get_available_items, get_status_by_tag, grant_status
     from bot.handlers import shop as SH
 
-    pilot_st = await get_status_by_tag("pilot")
+    pilot_st = await get_status_by_tag("pilot2")
     if pilot_st:
         await grant_status(uid, pilot_st["id"], 0)
 

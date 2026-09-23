@@ -136,7 +136,7 @@ async def location_enter(callback: CallbackQuery, state: FSMContext):
             )
             return
     elif key == "contracts":
-        if not await user_has_status_tag(callback.from_user.id, "pilot"):
+        if not await user_has_status_tag(callback.from_user.id, "pilot2"):
             await callback.message.answer(
                 f"⛔ Вход на «{loc['name']}» — только для пилотов ВВС.\n\n"
                 f"Контракты на зачистку подземелий выдаются действующим пилотам.",

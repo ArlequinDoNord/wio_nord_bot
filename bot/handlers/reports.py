@@ -5,7 +5,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from config import REPORT_AUTO_APPROVE_TROOPS, REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT
-from database.db import add_report, approve_report, get_user_reports, get_report_tax_percent, count_reports_today, log_activity, user_has_status_tag
+from database.db import add_report, approve_report, get_user_reports, get_report_tax_percent, count_reports_today, log_activity, user_is_tourist
 from utils.helpers import is_main_menu_text
 from keyboards.keyboards import report_keyboard, cancel_keyboard
 
@@ -21,10 +21,10 @@ class ReportSubmit(StatesGroup):
 
 @router.message(F.text == "📝 Сдать отчёт")
 async def report_menu(message: Message):
-    if not await user_has_status_tag(message.from_user.id, "pilot"):
+    if await user_is_tourist(message.from_user.id):
         await message.answer(
-            "❌ Сдавать отчёты могут только пилоты.\n"
-            "Статус «Пилот» выдают после проверки — напиши об этом администраторам."
+            "❌ Сдавать отчёты могут рекруты и пилоты.\n"
+            "Статус «Рекрут» выдают после проверки — напиши об этом администраторам."
         )
         return
     remaining = REPORT_DAILY_LIMIT - await count_reports_today(message.from_user.id)
@@ -42,10 +42,10 @@ async def report_menu(message: Message):
 @router.callback_query(F.data == "report:submit")
 async def report_submit_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    if not await user_has_status_tag(callback.from_user.id, "pilot"):
+    if await user_is_tourist(callback.from_user.id):
         await callback.message.answer(
-            "❌ Сдавать отчёты могут только пилоты.\n"
-            "Статус «Пилот» выдают после проверки — напиши об этом администраторам."
+            "❌ Сдавать отчёты могут рекруты и пилоты.\n"
+            "Статус «Рекрут» выдают после проверки — напиши об этом администраторам."
         )
         await state.clear()
         return

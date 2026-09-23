@@ -178,5 +178,6 @@ def fish_weight_tier(weight: int) -> dict:
 
 def fish_sell_price(base_price: int, weight: int) -> int:
     """Цена продажи рыбы с учётом веса."""
+    from config import FISH_WEIGHTS, FISH_TREASURY_SALE_MULT
     tier = fish_weight_tier(weight)
-    return round(base_price * tier['mult'])
+    return round(base_price * tier['mult'] * FISH_TREASURY_SALE_MULT)

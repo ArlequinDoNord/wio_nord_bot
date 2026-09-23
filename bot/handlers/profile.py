@@ -5,7 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.db import (
     get_user, update_user, get_user_statuses, get_selected_status, set_selected_status,
-    user_has_status_tag, get_equipment, get_item, get_equipment_slot_items, get_user_awards,
+    user_has_status_tag, user_is_tourist, get_equipment, get_item, get_equipment_slot_items, get_user_awards,
 )
 from keyboards.keyboards import profile_keyboard, cancel_keyboard, main_menu_kb
 from config import get_rank, get_effective_rank, get_next_rank, get_rank_index, RANKS
@@ -51,7 +51,7 @@ async def _profile_caption(user_id: int, owner: bool = True):
 
     rank = get_effective_rank(user['troops'], user['promoted_rank'] if 'promoted_rank' in user.keys() else None)
     next_rank, next_troops = get_next_rank(user['troops'])
-    is_pilot = await user_has_status_tag(user_id, "pilot")
+    is_pilot = not await user_is_tourist(user_id)
 
     photo = user['photo_file_id']
 
@@ -124,7 +124,7 @@ async def _profile_caption(user_id: int, owner: bool = True):
         caption += f"📖 О себе: {about}\n"
     if owner:
         caption += f"🔔 Оповещения в группе: {'вкл' if notify else 'выкл'}\n"
-        if await user_has_status_tag(user_id, "vip"):
+        if await user_has_status_tag(user_id, "ace"):
             caption += f"👁 Профиль виден другим: {'да' if public else 'нет'}\n"
     caption += (
         "\nЭкипировка:\n" + "\n".join(f"  {l}" for l in eq_lines) + "\n\n"
@@ -144,7 +144,7 @@ async def render_profile(where, user_id: int):
     user = await get_user(user_id)
     notify = bool(user['notify_enabled'] if 'notify_enabled' in user.keys() else 1)
     public = bool(user['profile_public'] if 'profile_public' in user.keys() else 1)
-    can_toggle = await user_has_status_tag(user_id, "vip")
+    can_toggle = await user_has_status_tag(user_id, "ace")
 
     if photo:
         await out.answer_photo(
@@ -317,10 +317,10 @@ async def notify_toggle(callback: CallbackQuery):
 async def public_toggle(callback: CallbackQuery):
     await callback.answer()
     user_id = callback.from_user.id
-    is_vip = await user_has_status_tag(user_id, "vip")
+    is_vip = await user_has_status_tag(user_id, "ace")
     if not is_vip:
         await callback.message.answer(
-            "👁 Переключение видимости профиля доступно только со статуса «VIP»."
+            "👁 Переключение видимости профиля доступно только со статуса «Ас»."
         )
         return
 
@@ -342,7 +342,7 @@ async def pilot_card(callback: CallbackQuery):
         return
 
     rank = get_effective_rank(user['troops'], user['promoted_rank'] if 'promoted_rank' in user.keys() else None)
-    is_pilot = await user_has_status_tag(callback.from_user.id, "pilot")
+    is_pilot = not await user_is_tourist(callback.from_user.id)
     status = await selected_status_label(callback.from_user.id)
     from utils.states import get_state_info, format_state_line
     state_line = format_state_line(await get_state_info(callback.from_user.id))

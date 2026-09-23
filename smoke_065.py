@@ -129,7 +129,7 @@ async def run():
     await add_user(uid2, "tester2", "Тест2", "")
     await add_user(uid3, "tester3", "Тест3", "")
 
-    pilot_st = await get_status_by_tag("pilot")
+    pilot_st = await get_status_by_tag("pilot2")
     if pilot_st:
         for u in (uid, uid2, uid3):
             await grant_status(u, pilot_st["id"], 0)

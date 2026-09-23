@@ -188,7 +188,7 @@ async def run():
     await set_wing(uid1, "1")  # вернуть для дальше
 
     # ── 3. Профиль: строка «Авиакрыло» ──
-    pilot_st = await get_status_by_tag("pilot")
+    pilot_st = await get_status_by_tag("pilot2")
     if pilot_st:
         await grant_status(uid2, pilot_st["id"], 0)
         await grant_status(uid3, pilot_st["id"], 0)

@@ -803,6 +803,30 @@ async def init_db():
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('mig_v0133_fish_market_ok', '1')")
     await conn.commit()
     await ensure_base_statuses()
+    # v0.15.17: единая шкала статусов — «Пилот» → «Пилот 2 класса», «VIP» → «Ас».
+    # Старые теги удаляются, игроки и товары переводятся на новые.
+    for old_tag, new_tag in (("pilot", "pilot2"), ("vip", "ace"), ("WHR", "keeper")):
+        old = await (await conn.execute(
+            "SELECT id FROM statuses WHERE access_tag = ?", (old_tag,))).fetchone()
+        if not old:
+            continue
+        new = await (await conn.execute(
+            "SELECT id FROM statuses WHERE access_tag = ?", (new_tag,))).fetchone()
+        if new:
+            await conn.execute(
+                "UPDATE user_statuses SET status_id = ? WHERE status_id = ?",
+                (new["id"], old["id"]))
+            await conn.execute("DELETE FROM statuses WHERE id = ?", (old["id"],))
+        else:
+            await conn.execute(
+                "UPDATE statuses SET access_tag = ?, name = ?, sort_order = 100 WHERE id = ?",
+                (new_tag, "Хранитель", old["id"]))
+    await conn.execute(
+        "UPDATE items SET required_status = 'pilot2' WHERE required_status = 'pilot'")
+    await conn.execute(
+        "UPDATE items SET required_status = 'master_pilot' WHERE required_status = 'vip'")
+    await conn.execute(
+        "UPDATE buildings SET required_status = 'pilot2' WHERE required_status = 'pilot'")
     await conn.commit()
     await seed_locations(conn)
     # Снятые с игры предметы (T-Меч, T-Броня, учебные машины) — полное удаление.
@@ -3045,16 +3069,21 @@ async def create_status(name: str, access_tag: str = None, description: str = No
 async def ensure_base_statuses():
     """Создаёт базовые статусы иерархии, если их нет.
 
-    Турист (гость) — -10, Рекрут — 1, Пилот (гражданин) — 2,
-    Ветеран — 5, VIP — 10. sort_order выставляются принудительно
-    (синхронизирует старые БД, где Пилот был 0).
+    Особые: Турист (гость, -10), Хранитель (доверенное лицо командования, 100).
+    Карьера пилота: Рекрут (1) → Пилот 2 класса (2) → Пилот 1 класса (3) →
+    Ветеран (5) → Мастер-пилот (6) → Ас (9).
+    sort_order выставляются принудительно (синхронизирует старые БД).
     """
     base = [
         ("Турист", "tourist", "Гость Нордхайма. Права ограничены.", -10),
-        ("Рекрут", "recruit", "Кандидат в пилоты. Живёт в общем кубрике.", 1),
-        ("Пилот", "pilot", "Гражданин Нордхайма. Базовый статус пилота.", 2),
+        ("Рекрут", "recruit", "Кандидат в пилоты. Живёт в общем кубрике. "
+                              "Сдаёт отчёты, покупает, проходит обучение.", 1),
+        ("Пилот 2 класса", "pilot2", "Базовый статус пилота ВВС Нордхайма.", 2),
+        ("Пилот 1 класса", "pilot1", "Пилот, допущенный к задачам повышенной сложности.", 3),
         ("Ветеран", "veteran", "Ветеран боевых действий.", 5),
-        ("VIP", "vip", "Особо важная персона.", 10),
+        ("Мастер-пилот", "master_pilot", "Мастер лётного дела и подземелий.", 6),
+        ("Ас", "ace", "Ас ВВС Нордхайма.", 9),
+        ("Хранитель", "keeper", "Доверенное лицо командования. Полный доступ.", 100),
     ]
     conn = await get_db()
     for name, tag, desc, level in base:
@@ -3065,7 +3094,8 @@ async def ensure_base_statuses():
         await conn.commit()
 
     # Принудительная канонизация уровней базовой иерархии (идиот-безопасно).
-    canonical = {"tourist": -10, "recruit": 1, "pilot": 2, "veteran": 5, "vip": 10}
+    canonical = {"tourist": -10, "recruit": 1, "pilot2": 2, "pilot1": 3,
+                 "veteran": 5, "master_pilot": 6, "ace": 9, "keeper": 100}
     for tag, level in canonical.items():
         await conn.execute(
             "UPDATE statuses SET sort_order = ? WHERE access_tag = ?", (level, tag))
@@ -3214,9 +3244,10 @@ async def user_has_status_tag(user_id: int, tag: str) -> bool:
 
 
 async def user_is_tourist(user_id: int) -> bool:
-    """Турист ли (гость без статуса «Пилот» и выше).
+    """Турист ли (гость, не получивший пилотскую карьеру).
 
-    Учитывает каноническую иерархию: Рекрут — 1, Пилот — 2.
+    Учитывает каноническую иерархию: Турист — -10, Рекрут — 1.
+    Рекрут и выше — не турист.
     """
     conn = await get_db()
     cursor = await conn.execute("""
@@ -3227,7 +3258,7 @@ async def user_is_tourist(user_id: int) -> bool:
     top = (await cursor.fetchone())['top']
     if top is None:
         return False
-    return top < 2
+    return top < 1
 
 
 async def create_award(name: str, description: str = None, emoji: str = "🏅",
@@ -5537,27 +5568,27 @@ async def ensure_life_items():
     # (имя, описание, цена, продажа, рарность, категория, stock, heal, required_status, is_available)
     items = [
         ("Студия", "Квартира-студия: одна комната и свободная планировка. 1 слот расширений.",
-         500, 250, 2, "housing", -1, 0, "pilot", 1),
+         500, 250, 2, "housing", -1, 0, "pilot2", 1),
         ("Квартира", "Просторная двухкомнатная квартира. 2 слота расширений.",
-         1500, 750, 3, "housing", -1, 0, "pilot", 1),
+         1500, 750, 3, "housing", -1, 0, "pilot1", 1),
         ("Улучшенное жильё", "Просторное жильё с несколькими комнатами. Ветеранская планировка: 3 слота расширений.",
          3000, 1500, 4, "housing", -1, 0, "veteran", 1),
-        ("Особняк", "Роскошный особняк для VIP. 6 слотов расширений и свобода в оформлении.",
-         5000, 2500, 5, "housing", -1, 0, "vip", 1),
+        ("Особняк", "Роскошный особняк для Мастер-пилота. 6 слотов расширений и свобода в оформлении.",
+         5000, 2500, 5, "housing", -1, 0, "master_pilot", 1),
         ("Кухня 1 уровня", "Простая кухня: можно жарить рыбу.",
-         100, 50, 1, "furniture", -1, 0, "pilot", 1),
+         100, 50, 1, "furniture", -1, 0, "pilot2", 1),
         ("Кухня 2 уровня", "Кухня с плитой: варка настоек.",
-         300, 150, 2, "furniture", -1, 0, "veteran", 1),
+         300, 150, 2, "furniture", -1, 0, "pilot1", 1),
         ("Кухня 3 уровня", "Кухня с полным набором инструментов: энергетики и редкие настойки.",
-         800, 400, 3, "furniture", -1, 0, "vip", 1),
+         800, 400, 3, "furniture", -1, 0, "master_pilot", 1),
         ("Верстак", "Рабочее место для сборки простых предметов.",
-         150, 75, 1, "furniture", -1, 0, "pilot", 1),
+         150, 75, 1, "furniture", -1, 0, "pilot2", 1),
         ("Кадка для растений", "Кадка для выращивания растений. Пустая — в неё сажаются семена.",
-         200, 100, 1, "furniture", -1, 0, "pilot", 1),
+         200, 100, 1, "furniture", -1, 0, "pilot2", 1),
         ("Яблочное семечко", "Семечко яблони. Посади в кадку в жилье — вырастет яблоня.",
-         30, 15, 1, "seeds", 10, 0, "pilot", 1),
+         30, 15, 1, "seeds", 10, 0, "pilot2", 1),
         ("Бутылка чистой воды", "Чистая вода из артезианской скважины. Основа для настоек и энергетиков.",
-         20, 10, 1, "resource", -1, 0, "pilot", 1),
+         20, 10, 1, "resource", -1, 0, "pilot2", 1),
         ("Соль", "Каменная соль из лавки. Специи для готовки рыбы: ни одно жареное блюдо не обходится без щепотки.",
          5, 2, 1, "consumable", -1, 0, None, 1),
         ("Лапка паука", "Высушенная лапка обычного паука. Ингредиент для комбинированной наживки.",
@@ -5649,10 +5680,10 @@ async def ensure_life_items():
 
     # Синхронизация цен/статусов для уже существующих жилья-предметов (напр. в старых БД v0.5.0-ранний).
     housing_sync = {
-        "Студия": {"price": 500, "sell_price": 250, "required_status": "pilot"},
-        "Квартира": {"price": 1500, "sell_price": 750, "required_status": "pilot"},
+        "Студия": {"price": 500, "sell_price": 250, "required_status": "pilot2"},
+        "Квартира": {"price": 1500, "sell_price": 750, "required_status": "pilot1"},
         "Улучшенное жильё": {"price": 3000, "sell_price": 1500, "required_status": "veteran"},
-        "Особняк": {"price": 5000, "sell_price": 2500, "required_status": "vip"},
+        "Особняк": {"price": 5000, "sell_price": 2500, "required_status": "master_pilot"},
     }
     for name, vals in housing_sync.items():
         await conn.execute(

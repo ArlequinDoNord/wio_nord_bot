@@ -13,6 +13,7 @@ from aiogram.fsm.state import State, StatesGroup
 from database.db import (
     get_available_items, get_item, add_inventory_item, get_inventory_item,
     get_user, remove_nordmarks, add_nordmarks, get_db, user_has_status_tag, get_status_by_tag,
+    user_is_tourist,
     activate_library_card, get_library_cards,
     add_treasury, get_sale_tax_percent, log_activity, update_item,
     get_player_housing, get_housing_slots, set_housing_slot, set_player_housing,
@@ -97,8 +98,8 @@ async def furniture_block_reason(user_id: int, item) -> str:
 
 
 async def is_pilot(user_id: int) -> bool:
-    """Гражданин ли (пилот и выше). Туристам доступен только раздел сувениров."""
-    return await user_has_status_tag(user_id, "pilot")
+    """Гражданин ли (рекрут и выше). Туристам доступен только раздел сувениров."""
+    return not await user_is_tourist(user_id)
 
 
 async def visible_items(user_id: int, items) -> list:

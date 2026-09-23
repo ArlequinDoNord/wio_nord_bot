@@ -24,9 +24,9 @@ async def main_menu_kb(user_id: int):
     «👑 Админ-панель» после навигации (флаг пересчитывается каждый раз).
     """
     from utils.permissions import is_admin
-    from database.db import user_has_status_tag
+    from database.db import user_is_tourist
     admin_flag = await is_admin(user_id)
-    pilot_flag = await user_has_status_tag(user_id, "pilot")
+    pilot_flag = not await user_is_tourist(user_id)
     return main_menu_keyboard(is_admin=admin_flag, is_pilot=pilot_flag)
 
 
