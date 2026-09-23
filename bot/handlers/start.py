@@ -7,7 +7,7 @@ from aiogram.fsm.context import FSMContext
 from database.db import (add_user, get_user, ensure_base_status, user_has_status_tag,
                          get_all_locations, get_active_run, finalize_run_for)
 from keyboards.keyboards import main_menu_keyboard, city_keyboard
-from utils.permissions import is_admin, has_permission
+from utils.permissions import is_admin
 from utils.helpers import resolve_image
 from config import VERSION, VERSION_NOTES
 
@@ -86,15 +86,12 @@ async def show_city(message: Message, state: FSMContext):
     city_view = resolve_image("city/arkholm")
     is_here_pilot = await user_has_status_tag(message.from_user.id, "pilot")
     locations = await get_all_locations()
-    can_orders = (await has_permission(message.from_user.id, "can_send_orders")
-                  or await has_permission(message.from_user.id, "can_wing_commands"))
     if left_note:
         await message.answer(left_note)
     await message.answer_photo(
         photo=FSInputFile(city_view),
         caption="🏰 Город Аркхольм:",
-        reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations,
-                                   can_send_orders=can_orders)
+        reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations)
     )
 
 
@@ -129,21 +126,17 @@ async def city_menu_cb(callback: CallbackQuery, state: FSMContext):
     city_view = resolve_image("city/arkholm")
     is_here_pilot = await user_has_status_tag(callback.from_user.id, "pilot")
     locations = await get_all_locations()
-    can_orders = (await has_permission(callback.from_user.id, "can_send_orders")
-                  or await has_permission(callback.from_user.id, "can_wing_commands"))
     if left_note:
         await callback.message.answer(left_note)
     if callback.message.photo:
         from aiogram.types import InputMediaPhoto
         await callback.message.edit_media(
             media=InputMediaPhoto(media=FSInputFile(city_view), caption="🏰 Город Аркхольм:"),
-            reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations,
-                                       can_send_orders=can_orders)
+            reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations)
         )
     else:
         await callback.message.answer_photo(
             photo=FSInputFile(city_view),
             caption="🏰 Город Аркхольм:",
-            reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations,
-                                       can_send_orders=can_orders)
+            reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations)
         )

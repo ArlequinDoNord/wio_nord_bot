@@ -51,24 +51,31 @@ def hq_target_markup():
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-@router.callback_query(F.data == "hq:menu")
-async def hq_menu_cb(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    await state.clear()
-    can_order = await has_permission(callback.from_user.id, "can_send_orders")
-    has_wing = await get_wing_commander_by_user(callback.from_user.id)
-    can_cmd = bool(has_wing) and await has_permission(callback.from_user.id, "can_wing_commands")
+async def hq_menu_show(msg, user_id: int):
+    """Показать меню штаба (используется из hq:menu и входа в локацию «Штаб ВВС»).
+    msg — Message или CallbackQuery.message."""
+    can_order = await has_permission(user_id, "can_send_orders")
+    has_wing = await get_wing_commander_by_user(user_id)
+    can_cmd = bool(has_wing) and await has_permission(user_id, "can_wing_commands")
     if not (can_order or can_cmd):
-        await callback.message.answer("❌ Нет доступа к штабу ВВС.")
-        return
-    roster_ok = await has_permission(callback.from_user.id, "can_manage_wing")
-    await callback.message.answer(
+        await msg.answer("❌ Нет доступа к штабу ВВС.")
+        return False
+    roster_ok = await has_permission(user_id, "can_manage_wing")
+    await msg.answer(
         "🎖️ ШТАБ ВВС\n\n"
         "Командный центр военно-воздушных сил Нордхайма.\n"
         "Здесь отдаются приказы авиакрыльям и комплектуется состав.",
         reply_markup=hq_menu_markup(roster_ok=roster_ok, can_order=can_order,
                                     commander_ok=can_cmd)
     )
+    return True
+
+
+@router.callback_query(F.data == "hq:menu")
+async def hq_menu_cb(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.clear()
+    await hq_menu_show(callback.message, callback.from_user.id)
 
 
 @router.callback_query(F.data == "hq:send")

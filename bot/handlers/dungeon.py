@@ -325,26 +325,25 @@ def contract_missing_keyboard():
     ])
 
 
-@router.callback_query(F.data == "contracts:list")
-async def contracts_list(callback: CallbackQuery, state: FSMContext):
-    """«📜 Контракты от Штаба ВС» — список доступных подземелий (каждое = контракт)."""
-    await callback.answer()
-    user_id = callback.from_user.id
+async def show_contracts(msg, user_id: int, state: FSMContext | None = None):
+    """«Доска контрактов» — список доступных подземелий (каждое = контракт).
+    Используется из contracts:list и входа в локацию «Доска контрактов».
+    msg — Message или CallbackQuery.message."""
     active = await get_active_run(user_id)
 
     if active:
-        await resume_dungeon(callback.message, active, user_id, state)
+        await resume_dungeon(msg, active, user_id, state)
         return
 
     dungeons = await get_all_dungeons(training=False)
     if not dungeons:
-        await callback.message.answer("❌ Контрактов пока нет.")
+        await msg.answer("❌ Контрактов пока нет.")
         return
 
     contracts = await get_user_contract_count(user_id)
 
     text = (
-        "📜 КОНТРАКТЫ ОТ ШТАБА ВС\n\n"
+        "📜 ДОСКА КОНТРАКТОВ ОТ ШТАБА ВС\n\n"
         "Штаб вывешивает контракты на зачистку подземелий. "
         "Выбери контракт, чтобы посмотреть условия.\n\n"
     )
@@ -374,11 +373,18 @@ async def contracts_list(callback: CallbackQuery, state: FSMContext):
     photo = dungeon_entrance_photo(dungeons[0])
     if photo:
         try:
-            await callback.message.answer_photo(photo=photo, caption=text, reply_markup=markup)
+            await msg.answer_photo(photo=photo, caption=text, reply_markup=markup)
         except Exception:
-            await callback.message.answer(text, reply_markup=markup)
+            await msg.answer(text, reply_markup=markup)
     else:
-        await callback.message.answer(text, reply_markup=markup)
+        await msg.answer(text, reply_markup=markup)
+
+
+@router.callback_query(F.data == "contracts:list")
+async def contracts_list(callback: CallbackQuery, state: FSMContext):
+    """«📜 Доска контрактов» — список доступных подземелий (каждое = контракт)."""
+    await callback.answer()
+    await show_contracts(callback.message, callback.from_user.id, state)
 
 
 async def _contract_difficulty(dng) -> int:

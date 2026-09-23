@@ -10,12 +10,23 @@ import os
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.context import FSMContext
 
-from database.db import get_location_by_key, can_enter_location, location_access_label
+from database.db import (
+    get_location_by_key, can_enter_location, location_access_label,
+    user_has_status_tag,
+)
 from utils.helpers import resolve_image, time_of_day_key
 from utils.permissions import has_permission, is_admin
 
 router = Router()
+
+# Специальные строки доступа для зданий со своим правилом (не статусом).
+LOCATION_ACCESS_LINES = {
+    "gossmi": "🎙 Вход: только сотрудники ГосСМИ (журналист / редактор)",
+    "hq": "🎖 Вход: командование ВВС (приказы авиакрыльям)",
+    "contracts": "📜 Вход: только пилоты (контракты на зачистку)",
+}
 
 
 @router.callback_query(F.data.startswith("location:preview:"))
@@ -27,8 +38,8 @@ async def location_preview(callback: CallbackQuery):
         await callback.message.answer("❌ Локация не найдена.")
         return
 
-    if key == "gossmi":
-        access_line = "🎙 Вход: только сотрудники ГосСМИ (журналист / редактор)"
+    if key in LOCATION_ACCESS_LINES:
+        access_line = LOCATION_ACCESS_LINES[key]
     else:
         access_label = await location_access_label(loc['access_mode'], loc['required_status'])
         access_line = f"Доступ: {access_label}"
@@ -79,7 +90,7 @@ async def location_preview(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("location:enter:"))
-async def location_enter(callback: CallbackQuery):
+async def location_enter(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     key = callback.data.split(":", 2)[2]
     loc = await get_location_by_key(key)
@@ -96,6 +107,8 @@ async def location_enter(callback: CallbackQuery):
         return
 
     # ГосСМИ: войти могут только сотрудники (журналист/редактор) и администрация.
+    # Штаб ВВС: вход только командованию (приказы) и администрации.
+    # Доска контрактов: вход только пилотам.
     # Кнопка «Войти» видна всем, но остальные получают предупреждение.
     if key == "gossmi":
         actor = callback.from_user.id
@@ -104,6 +117,29 @@ async def location_enter(callback: CallbackQuery):
                 f"⛔ Вход в здание «{loc['name']}» — только для сотрудников медиацентра.\n\n"
                 f"Обычным жителям Нордхайма внутрь попасть нельзя. Свежие выпуски "
                 f"новостей читай в главном меню — «📰 Новости Нордхайма».",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")]
+                ])
+            )
+            return
+    elif key == "hq":
+        actor = callback.from_user.id
+        if not (await is_admin(actor)
+                or await has_permission(actor, "can_send_orders")
+                or await has_permission(actor, "can_wing_commands")):
+            await callback.message.answer(
+                f"⛔ Вход в здание «{loc['name']}» — только для командования ВВС.\n\n"
+                f"Здесь отдаются приказы авиакрыльям. Пилотам вход воспрещён.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")]
+                ])
+            )
+            return
+    elif key == "contracts":
+        if not await user_has_status_tag(callback.from_user.id, "pilot"):
+            await callback.message.answer(
+                f"⛔ Вход на «{loc['name']}» — только для пилотов ВВС.\n\n"
+                f"Контракты на зачистку подземелий выдаются действующим пилотам.",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")]
                 ])
@@ -129,3 +165,9 @@ async def location_enter(callback: CallbackQuery):
     elif key == "kvp":
         from bot.handlers.kvp import kvp_menu_cb
         await kvp_menu_cb(callback)
+    elif key == "hq":
+        from bot.handlers.hq import hq_menu_show
+        await hq_menu_show(callback.message, callback.from_user.id)
+    elif key == "contracts":
+        from bot.handlers.dungeon import show_contracts
+        await show_contracts(callback.message, callback.from_user.id, state)

@@ -174,18 +174,23 @@ def interaction_keyboard(user_id: int):
     ])
 
 
-def city_keyboard(is_pilot: bool = True, locations: list = None, can_send_orders: bool = False):
+# Кнопки зданий города: эмодзи по ключу локации (остальные — 📍).
+LOCATION_BUTTON_EMOJI = {
+    "hq": "🎖️",
+    "contracts": "📜",
+}
+
+
+def city_keyboard(is_pilot: bool = True, locations: list = None):
     buttons = []
     for loc in (locations or []):
+        emoji = LOCATION_BUTTON_EMOJI.get(loc.get('key'), "📍")
         buttons.append([InlineKeyboardButton(
-            text=f"📍 {loc['name']}",
+            text=f"{emoji} {loc['name']}",
             callback_data=f"location:preview:{loc['key']}"
         )])
     buttons.append([InlineKeyboardButton(text="🧱 Стена изречений", callback_data="wall:view")])
-    if can_send_orders:
-        buttons.append([InlineKeyboardButton(text="🎖️ Штаб ВВС", callback_data="hq:menu")])
     if is_pilot:
-        buttons.append([InlineKeyboardButton(text="📜 Контракты от Штаба ВС", callback_data="contracts:list")])
         buttons.append([InlineKeyboardButton(text="🏠 Жильё", callback_data="housing:menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

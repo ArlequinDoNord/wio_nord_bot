@@ -141,6 +141,7 @@ async def run():
     from bot.handlers import profile as PF
     from bot.handlers import admin as AM
     from bot.handlers import hq as HQQ
+    from bot.handlers import locations as LOC
 
     await init_db()
 
@@ -256,13 +257,17 @@ async def run():
     await conn.execute("DELETE FROM user_roles WHERE telegram_id = ?", (uid3,))
     await conn.commit()
 
-    # ── 6. Штаб ВВС ──
-    ck = city_keyboard(is_pilot=False, locations=[], can_send_orders=True)
-    check("в городе кнопка «Штаб ВВС» у командования",
-          "hq:menu" in markup_callbacks(ck))
-    ck_no = city_keyboard(is_pilot=False, locations=[], can_send_orders=False)
-    check("без can_send_orders кнопки штаба нет",
-          "hq:menu" not in markup_callbacks(ck_no))
+    # ── 6. Штаб ВВС (локация «Штаб ВВС» в городе, видна всем) ──
+    hq_loc = [{"key": "hq", "name": "Штаб ВВС"}]
+    ck = city_keyboard(is_pilot=False, locations=hq_loc)
+    check("в городе кнопка «Штаб ВВС» (локация, видна всем)",
+          "location:preview:hq" in markup_callbacks(ck))
+    ck_pilot = city_keyboard(is_pilot=True, locations=hq_loc)
+    check("у пилота кнопка штаба тоже есть",
+          "location:preview:hq" in markup_callbacks(ck_pilot))
+    check("жёстких кнопок hq:menu/contracts:list в городе больше нет",
+          "hq:menu" not in markup_callbacks(ck)
+          and "contracts:list" not in markup_callbacks(ck_pilot))
 
     # Вход в штаб без права — отказ.
     st_no = FakeState()
@@ -271,12 +276,18 @@ async def run():
     check("пилот без права не входит в штаб",
           "Нет доступа" in sent_text(cb_no.message))
 
-    # Командование входит в штаб, выбирает «Всем авиакрыльям».
+    # Вход через локацию без права — отказ.
+    cb_no_loc = FakeCallback(uid1, data="location:enter:hq", message=FakeMessage(uid1))
+    await LOC.location_enter(cb_no_loc, FakeState())
+    check("пилот без права не входит в штаб через локацию",
+          "только для командования" in sent_text(cb_no_loc.message))
+
+    # Командование входит в штаб через локацию, выбирает «Всем авиакрыльям».
     send_bot = FakeSender()
     st_hq = FakeState()
-    cb_hq = FakeCallback(_CMD_ID, data="hq:menu", message=FakeMessage(_CMD_ID, bot=send_bot))
-    await HQQ.hq_menu_cb(cb_hq, st_hq)
-    check("командование открыло штаб", "ШТАБ ВВС" in sent_text(cb_hq.message))
+    cb_hq = FakeCallback(_CMD_ID, data="location:enter:hq", message=FakeMessage(_CMD_ID, bot=send_bot))
+    await LOC.location_enter(cb_hq, st_hq)
+    check("командование открыло штаб через локацию", "ШТАБ ВВС" in sent_text(cb_hq.message))
 
     cb_target = FakeCallback(_CMD_ID, data="hq:order:all", message=FakeMessage(_CMD_ID, bot=send_bot))
     st_target = FakeState()

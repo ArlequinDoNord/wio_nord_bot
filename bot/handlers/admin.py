@@ -2009,12 +2009,36 @@ async def finance_pick_user(callback: CallbackQuery, state: FSMContext):
     if not target:
         await callback.message.answer("❌ Игрок не найден.")
         return
+    data = await state.get_data()
     await state.update_data(target_id=target['user_id'], target_name=target['first_name'] if 'first_name' in target.keys() else '')
     await state.set_state(AdminFinance.amount)
     await callback.message.answer(
-        f"Игрок: {target['first_name'] if 'first_name' in target.keys() else ''} (@{target['username'] if 'username' in target.keys() else ''})\nВведи сумму:",
+        _finance_target_line(target, data.get('currency', 'nord'), data.get('action', 'add')),
         reply_markup=cancel_keyboard()
     )
+
+
+def _finance_target_line(target: dict, currency: str, action: str) -> str:
+    """Строка выбора пилота для начисления/списания: имя + текущий баланс валюты."""
+    name = (target.get('first_name') or '')
+    username = (target.get('username') or '')
+    label = f"{name} (@{username})" if username else (name or f"#{target.get('user_id')}")
+    direction = "начислить" if action == "add" else "списать"
+    if currency == "nord":
+        bal = int(target.get('nordmarks') or 0)
+        bal_line = f"💰 Текущий баланс: {bal} {plural_nordmark(bal)}"
+    else:
+        bal = int(target.get('ap') or 0)
+        bal_line = f"⚡ Текущий AP: {bal}"
+    troops = int(target.get('troops') or 0)
+    text = (
+        f"Игрок: {label}\n"
+        f"{bal_line}\n"
+        f"⚔️ Войска: {troops}\n"
+        f"──────────────\n"
+        f"Введи сумму для {direction}:"
+    )
+    return text
 
 
 @router.message(AdminFinance.target)
@@ -2023,10 +2047,13 @@ async def finance_target(message: Message, state: FSMContext):
     if not target:
         await message.answer("❌ Игрок не найден. Попробуй ещё раз (или /cancel):")
         return
+    data = await state.get_data()
     await state.update_data(target_id=target['user_id'], target_name=target['first_name'] if 'first_name' in target.keys() else '')
     await state.set_state(AdminFinance.amount)
-    await message.answer(f"Игрок: {target['first_name'] if 'first_name' in target.keys() else ''} (@{target['username'] if 'username' in target.keys() else ''})\nВведи сумму:",
-                         reply_markup=cancel_keyboard())
+    await message.answer(
+        _finance_target_line(target, data.get('currency', 'nord'), data.get('action', 'add')),
+        reply_markup=cancel_keyboard()
+    )
 
 
 @router.message(AdminFinance.amount)
