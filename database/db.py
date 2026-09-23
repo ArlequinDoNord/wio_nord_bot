@@ -2070,6 +2070,41 @@ async def add_treasury_move(amount: int, user_row):
     await conn.commit()
 
 
+async def get_treasury_debts() -> dict:
+    """Долги по выплатам из казны.
+
+    Возвращает накопленные долги по зарплатам (salary_debt — не хватило
+    средств на момент выплаты) и прогноз на следующую выплату: хватит ли
+    текущего баланса на весь фонд заработных плат.
+    """
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT user_id, username, first_name, salary, salary_period_days, "
+        "last_salary_date, salary_debt FROM users "
+        "WHERE salary_debt IS NOT NULL AND salary_debt > 0 "
+        "ORDER BY salary_debt DESC"
+    )
+    debtors = [dict(r) for r in await cursor.fetchall()]
+    total_debt = sum(int(r['salary_debt'] or 0) for r in debtors)
+
+    cursor = await conn.execute(
+        "SELECT salary, salary_debt FROM users "
+        "WHERE salary IS NOT NULL AND salary > 0"
+    )
+    salaried = await cursor.fetchall()
+    next_pay_need = sum(int(u['salary'] or 0) + int(u['salary_debt'] or 0) for u in salaried)
+
+    balance = await get_treasury_balance()
+    return {
+        "debtors": debtors,
+        "total_debt": total_debt,
+        "salaried_count": len(salaried),
+        "next_pay_need": next_pay_need,
+        "shortfall": max(next_pay_need - balance, 0),
+        "balance": balance,
+    }
+
+
 # ============ НАЛОГ НА ОТЧЁТЫ ============
 
 async def get_report_tax_percent() -> int:

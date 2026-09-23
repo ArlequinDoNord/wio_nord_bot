@@ -24,6 +24,7 @@ from database.db import (
     get_sale_tax_percent, set_sale_tax_percent,
     get_special_dept_code, set_special_dept_code,
     get_salaried_users, get_user_salary, set_user_salary, pay_salaries,
+    get_treasury_debts,
     get_all_locations, get_location, create_location, update_location_access,
     update_location_content, update_location_photos, location_access_label,
     get_all_dungeons, get_dungeon, update_dungeon_photos, DUNGEON_PHOTO_KEYS,
@@ -1662,15 +1663,72 @@ async def admin_treasury(callback: CallbackQuery):
         return
 
     balance = await get_treasury_balance()
+    debts = await get_treasury_debts()
+    warn = ""
+    if debts['total_debt'] > 0 or debts['shortfall'] > 0:
+        if debts['total_debt']:
+            warn += f"\n⚠️ Накопленный долг по зарплатам: {debts['total_debt']} {plural_nordmark(debts['total_debt'])}"
+        if debts['shortfall']:
+            warn += f"\n⚠️ На следующую выплату не хватает: {debts['shortfall']} {plural_nordmark(debts['shortfall'])}"
+        warn += "\nПодробнее — в «Долги по выплатам»."
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     await callback.message.edit_text(
         f"🏛️ КАЗНА НОРДХАЙМА\n\n"
-        f"Баланс: {balance} {plural_nordmark(balance)}\n\n"
+        f"Баланс: {balance} {plural_nordmark(balance)}"
+        f"{warn}\n\n"
         f"Налог с отчётов и пожертвования пополняют казну.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💸 Выдать из казны", callback_data="treasury:give")],
             [InlineKeyboardButton(text="📊 Статистика казны", callback_data="treasury:stats")],
+            [InlineKeyboardButton(text="📋 Долги по выплатам", callback_data="treasury:debts")],
             [InlineKeyboardButton(text="🔙 В финансы", callback_data="admin:finance")],
+        ])
+    )
+
+
+@router.callback_query(F.data == "treasury:debts")
+async def treasury_debts(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_finance"):
+        await callback.message.answer("❌ Нет прав для управления казной.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    debts = await get_treasury_debts()
+    lines = []
+    lines.append("🏛️ ДОЛГИ КАЗНЫ\n")
+    lines.append(f"Баланс: {debts['balance']} {plural_nordmark(debts['balance'])}")
+
+    if debts['total_debt'] > 0:
+        lines.append(f"\n⚠️ Накопленный долг по зарплатам "
+                     f"(казны не хватило на момент выплат):\n"
+                     f"ИТОГО: {debts['total_debt']} {plural_nordmark(debts['total_debt'])}")
+        for d in debts['debtors']:
+            name = d['first_name'] or d['username'] or f"#{d['user_id']}"
+            line = f"  • {name} — долг {d['salary_debt']} {plural_nordmark(d['salary_debt'])}"
+            if d['salary']:
+                line += f" (ставка {d['salary']}/{d['salary_period_days']} дн.)"
+            if d['last_salary_date']:
+                line += f" — посл. выплата {str(d['last_salary_date'])[:10]}"
+            lines.append(line)
+    else:
+        lines.append("\nДолгов по зарплатам нет — все выплаты проходили полностью.")
+
+    if debts['salaried_count']:
+        lines.append(f"\nПрогноз на следующую выплату:\n"
+                     f"Нужно: {debts['next_pay_need']} {plural_nordmark(debts['next_pay_need'])} "
+                     f"({debts['salaried_count']} получателей)")
+        if debts['shortfall'] > 0:
+            lines.append(f"❗ Не хватит: {debts['shortfall']} "
+                         f"{plural_nordmark(debts['shortfall'])} — часть уйдёт в долг")
+        else:
+            lines.append("✅ Средств достаточно.")
+    else:
+        lines.append("\nЗарплаты никому не назначены.")
+
+    await callback.message.edit_text(
+        "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 В казну", callback_data="admin:treasury")],
         ])
     )
 
@@ -3290,6 +3348,13 @@ async def admin_salaries(callback: CallbackQuery):
             lines.append(line)
     else:
         lines.append("Получателей пока нет.")
+    debts = await get_treasury_debts()
+    if debts['total_debt']:
+        lines.append(f"\n⚠️ Накопленный долг: {debts['total_debt']} "
+                     f"{plural_nordmark(debts['total_debt'])}")
+    if debts['shortfall']:
+        lines.append(f"💡 На следующую выплату не хватает: {debts['shortfall']} "
+                     f"{plural_nordmark(debts['shortfall'])}")
     lines.append("\nВыплата — один раз в неделю, в воскресенье.")
     await callback.message.edit_text(
         "\n".join(lines),

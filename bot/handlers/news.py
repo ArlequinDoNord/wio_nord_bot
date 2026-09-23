@@ -213,20 +213,44 @@ async def news_view(callback: CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
 
     if n['photo_file_id']:
+        # Telegram: подпись к фотографии — максимум 1024 символа. Если выпуск
+        # длиннее — фото идёт с короткой подписью, а полный текст отдельным
+        # сообщением (иначе photo с длинным caption не откроется вовсе).
+        long_text = len(text) > 900
+        caption = None if long_text else text
         from aiogram.types import InputMediaPhoto
-        try:
-            if callback.message.photo:
+        photo_sent = False
+        if callback.message.photo:
+            try:
                 await callback.message.edit_media(
-                    media=InputMediaPhoto(media=n['photo_file_id'], caption=text),
-                    reply_markup=kb
+                    media=InputMediaPhoto(media=n['photo_file_id'], caption=caption),
+                    reply_markup=None if long_text else kb
                 )
-            else:
+                photo_sent = True
+            except Exception:
+                photo_sent = False
+        if not photo_sent:
+            try:
                 await callback.message.delete()
-                await callback.message.answer_photo(photo=n['photo_file_id'], caption=text, reply_markup=kb)
-        except Exception:
-            await callback.message.answer_photo(photo=n['photo_file_id'], caption=text, reply_markup=kb)
+            except Exception:
+                pass
+            try:
+                await callback.message.answer_photo(
+                    photo=n['photo_file_id'],
+                    caption=caption if caption else f"📰 {n['title']}",
+                    reply_markup=None if long_text else kb
+                )
+            except Exception:
+                await callback.message.answer_photo(photo=n['photo_file_id'])
+        if long_text:
+            await callback.message.answer(text, reply_markup=kb)
     else:
-        await edit_or_replace(callback.message, text, kb)
+        # edit_text/caption ограничены 4096 символами — очень большие выпуски
+        # не редактируем, а отправляем отдельным сообщением.
+        if len(text) > 3900:
+            await callback.message.answer(text, reply_markup=kb)
+        else:
+            await edit_or_replace(callback.message, text, kb)
 
 
 @router.callback_query(F.data == "news:tab")
@@ -304,6 +328,9 @@ async def news_write_body(message: Message, state: FSMContext):
         return
     if not body:
         await message.answer("❌ Текст не может быть пустым. Напиши его:")
+        return
+    if len(body) > 3000:
+        await message.answer("❌ Текст новости не может быть длиннее 3000 символов. Сократи:")
         return
     await state.update_data(body=body)
     await state.set_state(NewsWrite.photo)
@@ -424,6 +451,9 @@ async def news_edit_body(message: Message, state: FSMContext):
         await message.answer("Редактирование отменено.")
         return
     if new_body and new_body != "-":
+        if len(new_body) > 3000:
+            await message.answer("❌ Текст новости не может быть длиннее 3000 символов. Сократи:")
+            return
         await update_news(news_id, body=new_body)
     await state.clear()
     n = await get_news(news_id)
