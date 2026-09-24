@@ -98,20 +98,26 @@ FROSTBITE_CURE_HINT = "Снять: «Огненная вода (водка)» и
 # с шансом weapon_effect_chance, бьют врага weapon_effect_dmg каждый ход игрока
 # и сами спадают через WEAPON_DOT_TICKS ходов.
 WEAPON_DOT_TICKS = 3
+# «Оглушение» (v0.15.18): при срабатывании шанса враг дезориентирован — на
+# WEAPON_STUN_TICKS ходов его точность падает: chance промаха = weapon_effect_dmg %.
+WEAPON_STUN_TICKS = 2
 WEAPON_EFFECT_LABELS = {
     "poison": "отравление",
     "bleed": "кровотечение",
     "frostbite": "обморожение",
+    "stun": "оглушение",
 }
 WEAPON_EFFECT_EMOJI = {
     "poison": "☠️",
     "bleed": "🩸",
     "frostbite": "🧊",
+    "stun": "💫",
 }
 WEAPON_EFFECT_ATTACK_LINE = {
     "poison": "Ты отравил врага — яд въедается в рану",
     "bleed": "Ты глубоко ранил врага — он истекает кровью",
     "frostbite": "Ты оковал врага холодом — мороз сковывает его тело",
+    "stun": "Ты оглушил врага — его следующие удары неточны",
 }
 
 # Рыба подземного водохранилища (после победы над Крысиным капитаном): веса.
@@ -1043,27 +1049,44 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         f"{enemy_bar}\n\n"
     )
 
-    # Особый эффект оружия: при попадании есть шанс наложить DoT на врага.
+    # Особый эффект оружия: при попадании есть шанс наложить DoT/оглушение на врага.
     weapon = await get_equipped_weapon(user_id)
     weff = weapon.get('weapon_effect') if weapon else None
     if weff and not enemy_dodged:
         wch = int(weapon.get('weapon_effect_chance') or 0)
         wdmg = int(weapon.get('weapon_effect_dmg') or 0)
         if wch and wdmg and random.randint(1, 100) <= wch:
-            await state.update_data(enemy_effect=weff, enemy_effect_dmg=wdmg,
-                                    enemy_effect_ticks=WEAPON_DOT_TICKS)
-            text += (f"\n{WEAPON_EFFECT_EMOJI[weff]} {WEAPON_EFFECT_ATTACK_LINE[weff]}! "
-                     f"{WEAPON_EFFECT_LABELS[weff]}: −{wdmg} HP врагу каждый ход "
-                     f"({WEAPON_DOT_TICKS} хода).")
-            enemy_eff_just = True
+            if weff == 'stun':
+                await state.update_data(enemy_stun_ticks=WEAPON_STUN_TICKS,
+                                        enemy_stun_penalty=wdmg)
+                text += (f"\n{WEAPON_EFFECT_EMOJI[weff]} {WEAPON_EFFECT_ATTACK_LINE[weff]}! "
+                         f"Шанс {enemy['name']} промахнуться: +{wdmg}% "
+                         f"({WEAPON_STUN_TICKS} хода).")
+                enemy_eff_just = True
+            else:
+                await state.update_data(enemy_effect=weff, enemy_effect_dmg=wdmg,
+                                        enemy_effect_ticks=WEAPON_DOT_TICKS)
+                text += (f"\n{WEAPON_EFFECT_EMOJI[weff]} {WEAPON_EFFECT_ATTACK_LINE[weff]}! "
+                         f"{WEAPON_EFFECT_LABELS[weff]}: −{wdmg} HP врагу каждый ход "
+                         f"({WEAPON_DOT_TICKS} хода).")
+                enemy_eff_just = True
 
     # Уклонение пилота: шанс избежать контратаки (база + нашивка, × состояния)
     player_dodge = await get_player_dodge(user_id, mult.get('dodge_mult', 1.0))
     player_dodged = roll_dodge(player_dodge)
+    # Оглушение: враг дезориентирован, его точность падает (штраф к попаданию).
+    stun_data = await state.get_data()
+    enemy_stun_ticks = int(stun_data.get('enemy_stun_ticks', 0) or 0)
+    enemy_stun_penalty = int(stun_data.get('enemy_stun_penalty', 0) or 0)
+    stunned_miss = (not player_dodged and enemy_stun_ticks > 0
+                    and enemy_stun_penalty > 0 and roll_dodge(enemy_stun_penalty))
     enemy_dmg = calculate_enemy_damage(enemy['attack'])
     armor = await get_player_armor_with_bonus(user_id)
     blocked_line = ""
-    if player_dodged:
+    if stunned_miss:
+        reduced = 0
+        stun_line = (f"💫 {enemy['name']} оглушён и промахивается! (−0 HP)")
+    elif player_dodged:
         reduced = 0
         dodge_line = f"💨 Ты уклонился от атаки {enemy['name']}! (−0 HP)"
     else:
@@ -1074,7 +1097,17 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     player_hp = max(0, player_hp - reduced)
     await update_run_hp(run['id'], player_hp)
 
-    if player_dodged:
+    # Оглушение длится WEAPON_STUN_TICKS ходов — снимаем тик после атаки врага.
+    if enemy_stun_ticks > 0:
+        enemy_stun_ticks -= 1
+        if enemy_stun_ticks <= 0:
+            await state.update_data(enemy_stun_ticks=0, enemy_stun_penalty=0)
+        else:
+            await state.update_data(enemy_stun_ticks=enemy_stun_ticks)
+
+    if stunned_miss:
+        text += stun_line
+    elif player_dodged:
         text += dodge_line
     else:
         from utils.combat import get_enemy_attack_text
@@ -1123,6 +1156,12 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         rem = f" (осталось {eticks} х.)" if eticks else ""
         text += (f"\n{WEAPON_EFFECT_EMOJI[eeff]} Враг под "
                  f"{WEAPON_EFFECT_LABELS.get(eeff, eeff)}: −{edmg} HP каждый ход{rem}.")
+    # Оглушение врага (отдельно: это не DoT, а штраф к точности).
+    if data_after.get('enemy_stun_ticks') and not enemy_eff_just:
+        stun_ticks_left = int(data_after.get('enemy_stun_ticks', 0) or 0)
+        stun_pen = int(data_after.get('enemy_stun_penalty', 0) or 0)
+        text += (f"\n💫 Враг оглушён: его точность −{stun_pen}% "
+                 f"(осталось {stun_ticks_left} х.).")
 
     if player_hp <= 0:
         nm_penalty = max(5, enemy['reward_nm'] * 2)

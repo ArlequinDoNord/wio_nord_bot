@@ -516,16 +516,19 @@ def drink_choice_markup(edit_mode: bool = False):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-# Особые эффекты оружия (DoT на врага в бою подземелья, v0.14.3).
+# Особые эффекты оружия (в бою подземелья, v0.14.3). v0.15.18: + «stun» —
+# штраф к точности врага на пару ходов (шанс промаха = weapon_effect_dmg %).
 WEAPON_EFFECT_LABELS = {
     "poison": "☠️ Отравление",
     "bleed": "🩸 Кровотечение",
     "frostbite": "🧊 Обморожение",
+    "stun": "💫 Оглушение",
 }
 WEAPON_EFFECT_HINT = {
     "poison": "враг теряет урон от яда каждый ход",
     "bleed": "враг истекает кровью каждый ход",
     "frostbite": "мороз сковывает врага, урон каждый ход",
+    "stun": "враг дезориентирован: его точность падает на пару ходов",
 }
 
 
@@ -846,6 +849,13 @@ async def storage_item(callback: CallbackQuery, state: FSMContext):
     )
     if item.get('description'):
         text += f"📝 {item['description']}\n"
+    if item.get('housing_type') or item.get('housing_slots'):
+        hline = ""
+        if item.get('housing_type'):
+            hline += f"тип «{item['housing_type']}»"
+        if item.get('housing_slots'):
+            hline += (f"{', ' if hline else ''}слотов {item['housing_slots']}")
+        text += f"\n🏠 Жильё: {hline}\n"
 
     rows = []
     if not item['is_available'] or item['stock'] == 0:
@@ -854,6 +864,8 @@ async def storage_item(callback: CallbackQuery, state: FSMContext):
         else:
             text += "\n⚠️ Предмет скрыт. Верни его в магазин, указав количество."
         rows.append([InlineKeyboardButton(text="➕ Вернуть в магазин", callback_data=f"storage:restock:{item_id}")])
+    rows.append([InlineKeyboardButton(text="✏️ Редактировать (покупка: цена/фото/описание)",
+                                      callback_data=f"edit_item:{item_id}")])
     rows.append([InlineKeyboardButton(text="🔙 К списку", callback_data="admin:storage")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await callback.message.edit_text(text, reply_markup=kb)
@@ -1084,7 +1096,8 @@ async def add_item_stats(message: Message, state: FSMContext):
         await state.set_state(AdminAddItem.weapon_effect)
         await message.answer(
             "Шаг 8/9 — Особый эффект оружия при попадании?\n"
-            "Эффект вешается на врага в бою подземелья и бьёт его каждый ход.",
+            "Отравление/кровотечение/обморожение бьют врага каждый ход, "
+            "оглушение — сбивает его точность на пару ходов.",
             reply_markup=weapon_effect_choice_markup()
         )
         return
@@ -1147,9 +1160,17 @@ async def add_item_weapon_effect_chance(message: Message, state: FSMContext):
         await message.answer("❌ Шанс от 0 до 100:", reply_markup=cancel_keyboard())
         return
     await state.update_data(weapon_effect_chance=v)
+    data = await state.get_data()
+    is_stun = data.get('weapon_effect') == 'stun'
     await state.set_state(AdminAddItem.weapon_effect_dmg)
-    await message.answer("Шаг 8/9 — Урон эффекта за каждый ход (целое число):",
-                         reply_markup=cancel_keyboard())
+    if is_stun:
+        await message.answer(
+            "Шаг 8/9 — Штраф к точности врага, % (шанс врага промахнуться "
+            "на 2 хода, 0–100):",
+            reply_markup=cancel_keyboard())
+    else:
+        await message.answer("Шаг 8/9 — Урон эффекта за каждый ход (целое число):",
+                             reply_markup=cancel_keyboard())
 
 
 @router.message(AdminAddItem.weapon_effect_dmg)
@@ -1296,8 +1317,11 @@ async def add_item_photo(message: Message, state: FSMContext):
     if data.get('weapon_effect'):
         weff = data['weapon_effect']
         stats_line += (f"\n☠️ Эффект: {WEAPON_EFFECT_LABELS.get(weff, weff)}"
-                       f" | шанс {data.get('weapon_effect_chance', 0)}%"
-                       f" | −{data.get('weapon_effect_dmg', 0)} HP/ход")
+                       f" | шанс {data.get('weapon_effect_chance', 0)}%")
+        if weff == 'stun':
+            stats_line += f" | штраф точности врага −{data.get('weapon_effect_dmg', 0)}% (2 хода)"
+        else:
+            stats_line += f" | −{data.get('weapon_effect_dmg', 0)} HP/ход"
     await message.answer(
         f"✅ Товар добавлен!\n\n"
         f"«{data['name']}»\n"
@@ -1307,7 +1331,11 @@ async def add_item_photo(message: Message, state: FSMContext):
         f"Категория: {ITEM_CATEGORIES.get(data['category'], data['category'])}\n"
         f"Остаток: {'безлимит' if stock == -1 else stock}"
         f"\n🏪 Рынок: {'можно продавать' if data.get('market_ok') else 'только скупщик'}"
-        f"{stats_line}"
+        f"{stats_line}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить ещё товар", callback_data="shop_admin:add")],
+            [InlineKeyboardButton(text="🔙 К меню управления магазином", callback_data="admin:shop")],
+        ])
     )
 
 
@@ -1403,6 +1431,9 @@ async def edit_item_pick(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text="🌳 Растение в кадке (семечко)", callback_data="field:plant_name")],
             [InlineKeyboardButton(text="🏪 Рынок (вкл/выкл)", callback_data="field:market_ok")],
             [InlineKeyboardButton(text="🚧 Вкл/выкл продажу", callback_data="field:is_available")],
+            [InlineKeyboardButton(text="🔆 Редкость", callback_data="field:rarity")],
+            [InlineKeyboardButton(text="🏠 Тип жилья (дом)", callback_data="field:housing_type")],
+            [InlineKeyboardButton(text="🏠 Слотов жилья", callback_data="field:housing_slots")],
             [InlineKeyboardButton(text="🔙 Назад", callback_data="shop_admin:edit")],
         ])
     )
@@ -1597,8 +1628,12 @@ async def edit_item_value(message: Message, state: FSMContext):
             await message.answer("❌ Введи целое число:")
             return
     elif field in ("stock", "damage", "heal", "armor", "ap_cost", "is_available",
-                   "weapon_effect_chance", "weapon_effect_dmg"):
-        value = -1 if (text == "-" and field == "stock") else int(text)
+                   "weapon_effect_chance", "weapon_effect_dmg", "rarity",
+                   "housing_slots"):
+        if field == "housing_slots" and text == "-":
+            value = None
+        else:
+            value = -1 if (text == "-" and field == "stock") else int(text)
         if field in ("weapon_effect_chance", "weapon_effect_dmg") and text == "-":
             value = 0
     else:
@@ -1612,6 +1647,13 @@ async def edit_item_value(message: Message, state: FSMContext):
         if value < 0:
             await message.answer("❌ Урон эффекта не может быть отрицательным:", reply_markup=cancel_keyboard())
             return
+    if field == "rarity":
+        if not 1 <= value <= 5:
+            await message.answer("❌ Редкость от 1 до 5:", reply_markup=cancel_keyboard())
+            return
+    if field == "housing_slots" and value is not None and value < 0:
+        await message.answer("❌ Слотов не может быть отрицательным:", reply_markup=cancel_keyboard())
+        return
 
     await update_item(item_id, **{field: value})
     await log_action(message.from_user.id, 'edit_item', None, f"item_id={item_id} {field}={value}")

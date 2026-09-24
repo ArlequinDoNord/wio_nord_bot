@@ -15,6 +15,7 @@ from database.db import (
     get_fish_catches, take_fish_catch, sell_one_fish_catch, get_active_run,
     process_food_expiry, add_fish_offer, add_fish_catch, RAW_FISH_SHELF_SEC,
     place_item_offer,
+    fish_sale_daily_left, add_fish_sale_amount, fish_sold_today,
     get_market_slots_info,
     item_fits_slot, ARMOR_SLOTS, EQUIPMENT_SLOT_LABELS, EQUIPMENT_LOCKED_SLOTS,
 )
@@ -426,6 +427,15 @@ async def inventory_cat_cb(callback: CallbackQuery):
     header = "🎒 ИНВЕНТАРЬ"
     if cat == FISH_ALL_KEY:
         header += "\nУлов:"
+        from config import FISH_TREASURY_DAILY_LIMIT
+        sold = await fish_sold_today(user_id)
+        if fish_sale_daily_left(user_id):
+            header += (
+                f"\n💵 Скупщик: {FISH_TREASURY_DAILY_LIMIT - sold}/"
+                f"{FISH_TREASURY_DAILY_LIMIT} НМ доступно сегодня"
+            )
+        else:
+            header += f"\n🚫 Суточный лимит выкупа рыбы исчерпан ({FISH_TREASURY_DAILY_LIMIT} НМ/день)."
     else:
         from utils.helpers import category_label
         header += f"\n{category_label(cat)}:"
@@ -1049,6 +1059,7 @@ async def _show_fish_catch(message, user_id: int, item_id: int, weight: int):
         use_ok = (item.get('category') == 'consumable'
                   and (item.get('ap_cost') or 0) > 0
                   and item['name'] not in NOT_EDIBLE_ITEMS)
+        daily_left = await fish_sale_daily_left(user_id)
         text = (
             f"{rarity_emoji(item['rarity'])} {item['name']} {rarity_emoji(item['rarity'])}\n"
             f"Категория: {item.get('category')}\n\n"
@@ -1064,8 +1075,11 @@ async def _show_fish_catch(message, user_id: int, item_id: int, weight: int):
         if use_ok:
             rows.append([InlineKeyboardButton(text="💊 Использовать",
                                               callback_data=f"fishuse:{item_id}:{weight}")])
-        rows.append([InlineKeyboardButton(text=f"💵 Скупщику сразу (за {sell_text})",
-                                          callback_data=f"fishsell:{item_id}:{weight}")])
+        if daily_left:
+            rows.append([InlineKeyboardButton(text=f"💵 Скупщику сразу (за {sell_text})",
+                                              callback_data=f"fishsell:{item_id}:{weight}")])
+        else:
+            text += "\n\n🚫 Суточный лимит выкупа рыбы исчерпан. Продажа возобновится завтра."
         rows.append([InlineKeyboardButton(text="🔙 В категорию",
                                           callback_data=f"inventory:cat:{FISH_ALL_KEY}")])
         rows.append([InlineKeyboardButton(text="🔙 К списку категорий",
@@ -1091,12 +1105,16 @@ async def _show_fish_catch(message, user_id: int, item_id: int, weight: int):
             f"{item['description']}\n\n"
             f"💰 Цена (с учётом веса): {sell_text}"
         )
+        daily_left = await fish_sale_daily_left(user_id)
+        if not daily_left:
+            text += "\n\n🚫 Суточный лимит выкупа рыбы исчерпан. Продажа возобновится завтра."
         rows = []
         if market_allowed:
             rows.append([InlineKeyboardButton(text="🏪 На рынок",
                                               callback_data=f"fishmarket:{item_id}:{weight}")])
-        rows.append([InlineKeyboardButton(text=f"💵 Скупщику сразу (за {sell_text})",
-                                          callback_data=f"fishsell:{item_id}:{weight}")])
+        if daily_left:
+            rows.append([InlineKeyboardButton(text=f"💵 Скупщику сразу (за {sell_text})",
+                                              callback_data=f"fishsell:{item_id}:{weight}")])
         rows.append([InlineKeyboardButton(text="🔙 В категорию",
                                           callback_data=f"inventory:cat:{FISH_ALL_KEY}")])
         rows.append([InlineKeyboardButton(text="🔙 К списку категорий",
@@ -1282,12 +1300,21 @@ async def fish_sell(callback: CallbackQuery):
     item = await get_item(item_id)
     if not item:
         return
+    if not await fish_sale_daily_left(user_id):
+        await callback.message.answer(
+            "🚫 Суточный лимит выкупа рыбы казной исчерпан. "
+            "Продажа возобновится в новом дне.\n\n"
+            "Рыбу можно продать на 🏪 рыбном рынке другим пилотам или "
+            "использовать в рецептах."
+        )
+        return
     ok = await sell_one_fish_catch(user_id, item_id, weight)
     if not ok:
         await callback.message.answer("❌ Такого улова уже нет.")
         return
     sell = fish_sell_price(item['sell_price'], weight)
     await add_nordmarks(user_id, sell, "shop_sale", f"Продажа: {item['name']}")
+    await add_fish_sale_amount(user_id, sell)
     await log_activity(user_id, "shop_sale", f"Продал «{item['name']}» за {sell} НМ")
     await callback.message.answer(
         f"💵 Ты продал {item['name']} за {sell} {plural_nordmark(sell)}!"

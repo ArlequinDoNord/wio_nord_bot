@@ -422,6 +422,18 @@ async def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_ap_user ON ap_log(user_id, id);
 
+        CREATE TABLE IF NOT EXISTS nii_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            photo_file_id TEXT,
+            status TEXT DEFAULT 'open',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_nii_user ON nii_reports(user_id, id);
+        CREATE INDEX IF NOT EXISTS idx_nii_created ON nii_reports(created_at);
+
         CREATE TABLE IF NOT EXISTS locations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             key TEXT NOT NULL UNIQUE,
@@ -735,6 +747,9 @@ async def init_db():
     # Фонтан в парке: 1 восстановление ОД в сутки
     await _ensure_column(conn, "users", "fountain_used_day", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "users", "fountain_used_today", "INTEGER DEFAULT 0")
+    # Выкуп рыбы казной: суточный лимит НМ на игрока (FISH_TREASURY_DAILY_LIMIT)
+    await _ensure_column(conn, "users", "fish_sold_day", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "users", "fish_sold_today", "INTEGER DEFAULT 0")
     # Встроенные расширения жилья (например, кухня в студии): embedded=1 — не возвращается
     # в инвентарь при переезде и не может быть снята вручную.
     await _ensure_column(conn, "housing_slots", "embedded", "INTEGER DEFAULT 0")
@@ -784,10 +799,11 @@ async def init_db():
     await conn.execute(
         "UPDATE items SET plant_name = 'Яблоня' "
         "WHERE category = 'seeds' AND name = 'Яблочное семечко' AND plant_name IS NULL")
-    # v0.14.3: особые эффекты оружия (DoT на врага в бою подземелья).
-    # weapon_effect: 'poison' | 'bleed' | 'frostbite' | NULL (нет эффекта);
+    # v0.14.3: особые эффекты оружия (на врага в бою подземелья).
+    # weapon_effect: 'poison' | 'bleed' | 'frostbite' | 'stun' | NULL (нет эффекта);
     # weapon_effect_chance: шанс срабатывания при попадании, %;
-    # weapon_effect_dmg: урон за ход длительности эффекта.
+    # для DoT (poison/bleed/frostbite) weapon_effect_dmg — урон за ход;
+    # для 'stun' weapon_effect_dmg — штраф к точности врага, % (шанс его промаха).
     await _ensure_column(conn, "items", "weapon_effect", "TEXT")
     await _ensure_column(conn, "items", "weapon_effect_chance", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "weapon_effect_dmg", "INTEGER DEFAULT 0")
@@ -827,6 +843,14 @@ async def init_db():
         "UPDATE items SET required_status = 'master_pilot' WHERE required_status = 'vip'")
     await conn.execute(
         "UPDATE buildings SET required_status = 'pilot2' WHERE required_status = 'pilot'")
+    # v0.15.18: жильё с параметрами в самом предмете — тип (housing_type) и число
+    # слотов расширений (housing_slots; NULL = число слота по умолчанию типа).
+    # В player_housing хранится отображаемое название дома (housing_label, например
+    # «Особняк №1») и индивидуальный лимит слотов (housing_slots).
+    await _ensure_column(conn, "items", "housing_type", "TEXT")
+    await _ensure_column(conn, "items", "housing_slots", "INTEGER")
+    await _ensure_column(conn, "player_housing", "housing_label", "TEXT")
+    await _ensure_column(conn, "player_housing", "housing_slots", "INTEGER")
     await conn.commit()
     await seed_locations(conn)
     # Снятые с игры предметы (T-Меч, T-Броня, учебные машины) — полное удаление.
@@ -856,6 +880,8 @@ async def seed_locations(conn):
          "all", None, ["пьян"], "city/hq"),
         ("contracts", "Доска контрактов", "Доска штаба сухопутных войск: контракты на зачистку подземелий. Вход по пилотскому удостоверению.",
          "all", None, ["пьян"], "city/contracts"),
+        ("nii", "НИИ Северной Кибернетики и кремниевых систем", "НИИ Северной Кибернетики и кремниевых систем: здесь пилоты оставляют жалобы и запросы на доработку бота.",
+         "all", None, ["пьян"], "city/nii"),
     ]
     for key, name, desc, mode, req_status, blocking, preview in base:
         await conn.execute(
@@ -1172,7 +1198,9 @@ async def daily_ap_recovery():
             seaweed_used_today = CASE WHEN seaweed_used_day = date('now') THEN seaweed_used_today ELSE 0 END,
             seaweed_used_day = CASE WHEN seaweed_used_day = date('now') THEN seaweed_used_day ELSE date('now') END,
             fountain_used_today = CASE WHEN fountain_used_day = date('now') THEN fountain_used_today ELSE 0 END,
-            fountain_used_day = CASE WHEN fountain_used_day = date('now') THEN fountain_used_day ELSE date('now') END
+            fountain_used_day = CASE WHEN fountain_used_day = date('now') THEN fountain_used_day ELSE date('now') END,
+            fish_sold_today = CASE WHEN fish_sold_day = date('now') THEN fish_sold_today ELSE 0 END,
+            fish_sold_day = CASE WHEN fish_sold_day = date('now') THEN fish_sold_day ELSE date('now') END
     """)
     await conn.commit()
 
@@ -1186,7 +1214,9 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
                    market_ok: int = None, plant_name: str = None,
                    weapon_effect: str = None,
                    weapon_effect_chance: int = 0,
-                   weapon_effect_dmg: int = 0):
+                   weapon_effect_dmg: int = 0,
+                   housing_type: str = None,
+                   housing_slots: int = None):
     conn = await get_db()
     # v0.13.3: рыба (категория fishing) по умолчанию выставляется на рынок;
     # у остальных предметов — только скупщик, пока админ не включит флаг.
@@ -1195,11 +1225,12 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
     cursor = await conn.execute(
         """INSERT INTO items (name, description, photo_file_id, price, sell_price,
            rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name,
-           weapon_effect, weapon_effect_chance, weapon_effect_dmg)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           weapon_effect, weapon_effect_chance, weapon_effect_dmg, housing_type, housing_slots)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (name, description, photo_file_id, price, sell_price, rarity, category,
          stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name,
-         weapon_effect or None, weapon_effect_chance, weapon_effect_dmg)
+         weapon_effect or None, weapon_effect_chance, weapon_effect_dmg,
+         housing_type, housing_slots)
     )
     await conn.commit()
     return cursor.lastrowid
@@ -1742,6 +1773,93 @@ async def get_news_count_today(user_id: int) -> int:
     )
     row = await cursor.fetchone()
     return row['cnt'] if row else 0
+
+
+NII_DAILY_LIMIT = 2  # максимум обращений в сутки от одного пилота
+
+
+async def count_nii_reports_today(user_id: int) -> int:
+    """Сколько обращений в НИИ пилот отправил за текущие сутки (МСК)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT COUNT(*) AS cnt FROM nii_reports "
+        "WHERE user_id = ? AND date(created_at, 'localtime') = date('now', 'localtime')",
+        (user_id,)
+    )
+    row = await cursor.fetchone()
+    return row['cnt'] if row else 0
+
+
+async def add_nii_report(user_id: int, text: str, photo_file_id: str = None) -> int:
+    """Сохранить обращение в НИИ. Возвращает id записи."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "INSERT INTO nii_reports (user_id, text, photo_file_id, status, created_at) "
+        "VALUES (?, ?, ?, 'open', ?)",
+        (user_id, text, photo_file_id, datetime.now(MOSCOW_TZ).isoformat())
+    )
+    await conn.commit()
+    return cursor.lastrowid
+
+
+async def get_nii_report(report_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM nii_reports WHERE id = ?", (report_id,))
+    return await cursor.fetchone()
+
+
+async def get_my_nii_reports(user_id: int, limit: int = 10) -> list:
+    """Свои обращения (новые сверху)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM nii_reports WHERE user_id = ? ORDER BY id DESC LIMIT ?",
+        (user_id, limit)
+    )
+    return await cursor.fetchall()
+
+
+async def get_all_nii_reports(status: str = None, limit: int = 50) -> list:
+    """Все обращения (для Хранителей/супер-админа), новые сверху."""
+    conn = await get_db()
+    if status:
+        cursor = await conn.execute(
+            "SELECT * FROM nii_reports WHERE status = ? ORDER BY id DESC LIMIT ?",
+            (status, limit)
+        )
+    else:
+        cursor = await conn.execute(
+            "SELECT * FROM nii_reports ORDER BY id DESC LIMIT ?", (limit,))
+    return await cursor.fetchall()
+
+
+async def set_nii_report_status(report_id: int, status: str) -> bool:
+    """Сменить статус обращения (Хранитель/админ): open/done/closed."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "UPDATE nii_reports SET status = ? WHERE id = ?", (status, report_id))
+    await conn.commit()
+    return cursor.rowcount > 0
+
+
+async def nii_notify_ids() -> list:
+    """Telegram-id всех, кому приходит оповещение о новых обращениях в НИИ:
+    игроки со статусом «Хранитель» (access_tag='keeper') + супер-админы
+    (ADMIN_IDS и роли super_admin). Без дубликатов."""
+    from config import ADMIN_IDS
+    ids = set(ADMIN_IDS)
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT DISTINCT us.user_id FROM user_statuses us
+        JOIN statuses s ON us.status_id = s.id
+        WHERE s.access_tag = 'keeper'
+    """)
+    for row in await cursor.fetchall():
+        ids.add(row['user_id'])
+    cursor = await conn.execute(
+        "SELECT DISTINCT telegram_id FROM user_roles WHERE role = 'super_admin'")
+    for row in await cursor.fetchall():
+        ids.add(row['telegram_id'])
+    return list(ids)
 
 
 async def vote_poll(poll_id: int, user_id: int, option_index: int) -> bool:
@@ -3835,6 +3953,69 @@ async def sell_one_fish_catch(user_id: int, item_id: int, weight: int) -> bool:
     await conn.execute("DELETE FROM fish_catches WHERE id = ?", (row['id'],))
     await conn.commit()
     return True
+
+
+def fish_sold_day_key() -> str:
+    """Текущие сутки (МСК) для лимита выкупа рыбы казной."""
+    from utils.helpers import MOSCOW_TZ
+    return datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d")
+
+
+async def fish_sold_today(user_id: int) -> int:
+    """Сколько НМ игрок уже выручил за рыбу «скупщику» сегодня (МСК)."""
+    conn = await get_db()
+    row = await (await conn.execute(
+        "SELECT fish_sold_today FROM users WHERE user_id = ?", (user_id,)
+    )).fetchone()
+    if not row:
+        return 0
+    return row['fish_sold_today'] or 0
+
+
+async def fish_sale_daily_left(user_id: int) -> bool:
+    """Открыта ли ещё возможность выкупа рыбы казной сегодня.
+
+    Сбрасывает счётчик при смене суток (фолбэк, если daily_ap_recovery
+    не успел или пользователь новый).
+    """
+    from config import FISH_TREASURY_DAILY_LIMIT
+    conn = await get_db()
+    user = await (await conn.execute(
+        "SELECT fish_sold_today, fish_sold_day FROM users WHERE user_id = ?", (user_id,)
+    )).fetchone()
+    if not user:
+        return True
+    day = fish_sold_day_key()
+    if user['fish_sold_day'] != day:
+        await conn.execute(
+            "UPDATE users SET fish_sold_today = 0, fish_sold_day = ? WHERE user_id = ?",
+            (day, user_id)
+        )
+        await conn.commit()
+        return True
+    return (user['fish_sold_today'] or 0) < FISH_TREASURY_DAILY_LIMIT
+
+
+async def add_fish_sale_amount(user_id: int, amount: int):
+    """Учитывает вырученные НМ за рыбу в суточном лимите выкупа."""
+    conn = await get_db()
+    day = fish_sold_day_key()
+    user = await (await conn.execute(
+        "SELECT fish_sold_today, fish_sold_day FROM users WHERE user_id = ?", (user_id,)
+    )).fetchone()
+    if not user:
+        return
+    if user['fish_sold_day'] != day:
+        await conn.execute(
+            "UPDATE users SET fish_sold_today = ?, fish_sold_day = ? WHERE user_id = ?",
+            (amount, day, user_id)
+        )
+    else:
+        await conn.execute(
+            "UPDATE users SET fish_sold_today = fish_sold_today + ? WHERE user_id = ?",
+            (amount, user_id)
+        )
+    await conn.commit()
 
 
 async def migrate_legacy_junk():
@@ -5940,13 +6121,24 @@ async def get_player_housing(user_id: int):
     return await ensure_player_housing(user_id)
 
 
-async def set_player_housing(user_id: int, housing_type: str):
+async def set_player_housing(user_id: int, housing_type: str,
+                             housing_label: str = None, housing_slots: int = None):
     conn = await get_db()
-    await conn.execute(
-        "INSERT OR REPLACE INTO player_housing (user_id, housing_type, purchased_at) "
-        "VALUES (?, ?, datetime('now'))",
-        (user_id, housing_type)
-    )
+    if housing_slots is None:
+        # Если число слотов не задано — берём дефолт типа (и снимаем прежний лимит).
+        await conn.execute(
+            "INSERT OR REPLACE INTO player_housing "
+            "(user_id, housing_type, purchased_at, housing_label, housing_slots) "
+            "VALUES (?, ?, datetime('now'), ?, NULL)",
+            (user_id, housing_type, housing_label)
+        )
+    else:
+        await conn.execute(
+            "INSERT OR REPLACE INTO player_housing "
+            "(user_id, housing_type, purchased_at, housing_label, housing_slots) "
+            "VALUES (?, ?, datetime('now'), ?, ?)",
+            (user_id, housing_type, housing_label, housing_slots)
+        )
     await conn.commit()
 
 

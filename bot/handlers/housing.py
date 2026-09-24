@@ -175,14 +175,16 @@ async def housing_menu(cb: CallbackQuery):
     h = await get_player_housing(uid)
     ht = h["housing_type"]
     info = HOUSING_TYPES[ht]
+    label = h.get("housing_label") or info['name']
+    eff_slots = h.get("housing_slots") or info["slots"]
     slots = await get_housing_slots(uid)
 
-    lines = [f"🏠 *{info['name']}*"]
+    lines = [f"🏠 *{label}*"]
     if info.get("desc"):
         lines.append(info["desc"])
-    lines.append(f"Комнат-слотов: {len(slots)}/{info['slots']}\n")
+    lines.append(f"Комнат-слотов: {len(slots)}/{eff_slots}\n")
     rows = []
-    for i in range(info["slots"]):
+    for i in range(eff_slots):
         s = slots.get(i)
         if s and s.get("expansion_type"):
             label = f"{_slot_icon(s['expansion_type'])} {_slot_name(s)}  ·  слот {i+1}"
@@ -192,15 +194,15 @@ async def housing_menu(cb: CallbackQuery):
 
     # Кнопка «Перееезд» — если в инвентаре есть жильё более высокого типа
     inv = await get_inventory(uid)
-    free = info["slots"] - sum(1 for s in slots.values() if s.get("expansion_type"))
+    free = eff_slots - sum(1 for s in slots.values() if s.get("expansion_type"))
     if free == 0 and any(i["category"] == "furniture" for i in inv):
         lines.append("⚠️ В инвентаре есть мебель, но все слоты заняты.")
     cur_idx = HOUSING_ORDER.index(ht)
     for item in inv:
         if item["category"] != "housing":
             continue
-        target = HOUSING_ITEM_BY_NAME.get(item["name"])
-        if target and HOUSING_ORDER.index(target) > cur_idx:
+        target = item.get("housing_type") or HOUSING_ITEM_BY_NAME.get(item["name"])
+        if target and target in HOUSING_ORDER and HOUSING_ORDER.index(target) > cur_idx:
             rows.append([_inv_row(
                 f"🏠 Переехать в «{item['name']}»",
                 f"housing:move:{item['id']}")])
@@ -271,7 +273,8 @@ async def housing_room(cb: CallbackQuery):
     h = await get_player_housing(uid)
     ht = h["housing_type"]
     info = HOUSING_TYPES[ht]
-    if idx >= info["slots"]:
+    eff_slots = h.get("housing_slots") or info["slots"]
+    if idx >= eff_slots:
         return
     slots = await get_housing_slots(uid)
     slot = slots.get(idx)
@@ -892,8 +895,8 @@ async def housing_move(cb: CallbackQuery):
     if not item or item["category"] != "housing":
         return
 
-    target = HOUSING_ITEM_BY_NAME.get(item["name"])
-    if not target:
+    target = item.get("housing_type") or HOUSING_ITEM_BY_NAME.get(item["name"])
+    if not target or target not in HOUSING_ORDER:
         return
 
     h = await get_player_housing(uid)
@@ -928,7 +931,8 @@ async def housing_move(cb: CallbackQuery):
                         plant_saved = True
 
     await remove_inventory_item(uid, item_id, 1)
-    await set_player_housing(uid, target)
+    await set_player_housing(uid, target, housing_label=item["name"],
+                             housing_slots=item.get("housing_slots"))
 
     # Студия поставляется с встроенной кухней (социальная программа «Забота Нордхайма»)
     if target == "studio":

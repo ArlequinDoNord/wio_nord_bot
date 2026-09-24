@@ -39,6 +39,7 @@ from bot.handlers.kvp import router as kvp_router
 from bot.handlers.wall import router as wall_router
 from bot.handlers.hq import router as hq_router
 from bot.handlers.clans import router as clans_router
+from bot.handlers.nii import router as nii_router
 
 load_dotenv()
 
@@ -305,12 +306,13 @@ async def main():
     dp.include_router(wall_router)
     dp.include_router(hq_router)
     dp.include_router(clans_router)
+    dp.include_router(nii_router)
 
     for r in (start_router, profile_router, bank_router, admin_router, shop_router,
               inventory_router, reports_router, dungeon_router, pilots_router,
               polls_router, library_router, locations_router, park_router,
               fishing_router, housing_router, news_router, kvp_router,
-              wall_router, hq_router, clans_router):
+              wall_router, hq_router, clans_router, nii_router):
         r.message.middleware(FishingActiveLock())
         r.message.middleware(MainMenuFSMReset())
         r.callback_query.middleware(FishingActiveLock())

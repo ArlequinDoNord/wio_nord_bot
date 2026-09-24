@@ -920,7 +920,7 @@ async def _housing_purchase_confirm(callback: CallbackQuery, item):
         [InlineKeyboardButton(text="❌ Отмена", callback_data=f"buy_housing_cancel:{item['id']}")],
     ])
     local_photo = None
-    htype = HOUSING_ITEM_BY_NAME.get(item.get('name'))
+    htype = item.get('housing_type') or HOUSING_ITEM_BY_NAME.get(item.get('name'))
     if htype:
         local_photo = _housing_photo(htype)
     if local_photo and os.path.isfile(local_photo):
@@ -958,8 +958,8 @@ async def buy_housing_confirm(callback: CallbackQuery):
 
     h = await get_player_housing(uid)
     current_idx = HOUSING_ORDER.index(h['housing_type']) if h and h['housing_type'] in HOUSING_ORDER else -1
-    target = HOUSING_ITEM_BY_NAME.get(item['name'])
-    if not target:
+    target = item.get('housing_type') or HOUSING_ITEM_BY_NAME.get(item['name'])
+    if not target or target not in HOUSING_ORDER:
         return
     if HOUSING_ORDER.index(target) <= current_idx:
         await callback.answer("❌ У тебя уже есть такое жильё или лучше.", show_alert=True)
@@ -1003,7 +1003,8 @@ async def buy_housing_confirm(callback: CallbackQuery):
                         plant_saved = True
 
     # Переезд
-    await set_player_housing(uid, target)
+    await set_player_housing(uid, target, housing_label=item['name'],
+                             housing_slots=item.get('housing_slots'))
     if target == "studio":
         await set_housing_slot(uid, 0, "kitchen", 1, embedded=True)
 
