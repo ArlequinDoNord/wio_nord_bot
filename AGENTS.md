@@ -5,7 +5,7 @@ Smoke-тесты: `tools/run_smokes.py` — прогон всех `smoke_NNN.py`
 (27 шт., каждый автономен и специализирован под свою версию/фичу).
 
 ## Деплой
-- py_compile + smoke → бамп `VERSION`/`VERSION_NOTES` в `config.py`, `CHANGELOG.md` → commit → tag `vX.Y.Z` → `git push origin main --tags` (github ArlequinDoNord/wio_nord_bot) → `git push server main:master --tags` (server `arlequin@89.19.210.194:/opt/arlequin.git`, хук сам пересобирает контейнер).
+- py_compile + smoke → бамп `VERSION`/`VERSION_NOTES` в `config.py`, `CHANGELOG.md` → commit → tag `vX.Y.Z` → `git push origin main --tags` (github ArlequinDoNord/wio_nord_bot) → `git push server main:main --tags` (server `arlequin@89.19.210.194:/opt/arlequin.git` — post-receive-хук слушает только `refs/heads/main`, поэтому именно `main:main`, а не `main:master`; хук сам пересобирает контейнер).
 - Прод-БД: `wio_nord_bot-wio_nord_bot-1`:/app/data/nordmark.db (sqlite3 в контейнере нет — использовать `docker exec -i ... python -`).
 
 ## Пользователи
