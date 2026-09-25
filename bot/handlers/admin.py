@@ -1513,6 +1513,7 @@ async def edit_item_pick(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text="☠️ Шанс эффекта (%)", callback_data="field:weapon_effect_chance")],
             [InlineKeyboardButton(text="☠️ Урон эффекта/ход", callback_data="field:weapon_effect_dmg")],
             [InlineKeyboardButton(text="❤️ Лечение", callback_data="field:heal")],
+            [InlineKeyboardButton(text="♻ Регенерация % (от лечения)", callback_data="field:regen")],
             [InlineKeyboardButton(text="🛡️ Броня", callback_data="field:armor")],
             [InlineKeyboardButton(text="⚡ AP за использование", callback_data="field:ap_cost")],
             [InlineKeyboardButton(text="🔒 Требуемый статус", callback_data="field:required_status")],
@@ -1731,6 +1732,7 @@ EDIT_ITEM_FIELD_LABELS = {
     "weapon_effect_chance": "☠️ Шанс эффекта (%)",
     "weapon_effect_dmg": "☠️ Урон эффекта/ход",
     "heal": "❤️ Лечение",
+    "regen": "♻ Регенерация % (от лечения)",
     "armor": "🛡️ Броня",
     "ap_cost": "⚡ AP за использование",
     "plant_name": "🌳 Растение в кадке (семечко)",
@@ -1747,6 +1749,8 @@ def _item_field_current_value(item, field):
         return "безлимит" if val is None or val == -1 else str(val)
     if field == "is_available":
         return "✅ в продаже" if val else "🚫 снят с продажи"
+    if field == "regen":
+        return "выкл (0)" if not val else f"{val}% от лечения (затухает за 3 хода)"
     if field in ("rarity", "housing_slots"):
         return "—" if val is None else str(val)
     if field in ("description", "plant_name", "housing_type"):
@@ -1797,19 +1801,25 @@ async def edit_item_value(message: Message, state: FSMContext):
             return
     elif field in ("stock", "damage", "heal", "armor", "ap_cost", "is_available",
                    "weapon_effect_chance", "weapon_effect_dmg", "rarity",
-                   "housing_slots"):
+                   "housing_slots", "regen"):
         if field == "housing_slots" and text == "-":
             value = None
+        elif text == "-" and field in ("stock", "weapon_effect_chance",
+                                      "weapon_effect_dmg", "regen"):
+            value = -1 if field == "stock" else 0
         else:
-            value = -1 if (text == "-" and field == "stock") else int(text)
-        if field in ("weapon_effect_chance", "weapon_effect_dmg") and text == "-":
-            value = 0
+            value = int(text)
     else:
         value = None if text == "-" else text
 
     if field == "weapon_effect_chance":
         if not 0 <= value <= 100:
             await message.answer("❌ Шанс эффекта от 0 до 100:", reply_markup=cancel_keyboard())
+            return
+    if field == "regen":
+        if not 0 <= value <= 100:
+            await message.answer("❌ Регенерация от 0 до 100 (рекомендуется 40):",
+                                 reply_markup=cancel_keyboard())
             return
     if field == "weapon_effect_dmg":
         if value < 0:

@@ -68,6 +68,29 @@ def heal_limit_note(uses: int) -> str:
     return ""
 
 
+# Регенерация расходников (v0.15.23): items.regen — % от эффективного лечения
+# (с учётом лимита применений и обморожения), разливается по REGEN_TURNS ходам
+# игрока линейно затухая к нулю: первый тик самый большой, последний — маленький.
+REGEN_TURNS = 3
+REGEN_PCT_MAX = 100
+
+
+def regen_amounts(heal: int, pct: int, turns: int = REGEN_TURNS) -> list:
+    """Тики регенерации: всего round(heal * pct%) HP разлито по `turns` ходам.
+
+    Линейное затухание: тики k*turns, k*(turns−1), …, k*1 (сумма = total).
+    Например heal=40, pct=40, turns=3 → [8, 5, 3].
+    Возвращает [] если ничего не разлито.
+    """
+    if heal <= 0 or pct <= 0 or turns <= 0:
+        return []
+    total = round(heal * min(pct, REGEN_PCT_MAX) / 100.0)
+    if total <= 0:
+        return []
+    k = 2.0 * total / (turns * (turns + 1))
+    return [round(k * (turns - i)) for i in range(turns)]
+
+
 class DungeonFSM(StatesGroup):
     in_dungeon = State()
     in_combat = State()
@@ -981,6 +1004,20 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     poison = data.get('active_poison')
     player_hp = run['hp']
 
+    # ── Тик регенерации (расходник) в начале хода игрока: первый тик самый большой ──
+    regen_healed = 0
+    regen_queue = data.get('regen_amounts')
+    if regen_queue:
+        heal_hp = min(run['hp_max'] - player_hp, regen_queue[0])
+        if heal_hp > 0:
+            player_hp += heal_hp
+            regen_healed = heal_hp
+        await update_run_hp(run['id'], player_hp)
+        if len(regen_queue) > 1:
+            await state.update_data(regen_amounts=list(regen_queue)[1:])
+        else:
+            await state.update_data(regen_amounts=None)
+
     # ── Тики статусов в начале хода игрока (яд, кровотечение, обморожение) ──
     async def dot_death(line):
         nm_penalty = max(5, enemy['reward_nm'] * 2)
@@ -1070,8 +1107,9 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         attack_line = f"💨 {enemy['name']} уклонился от удара! (−0 HP врагу)\n"
     else:
         attack_line = f"−{damage_to_enemy} HP врагу\n"
+    regen_line = f"♻ Регенерация: +{regen_healed} HP.\n" if regen_healed else ""
     text = (
-        f"🗡️ Ты атакуешь {enemy['name']}!\n"
+        f"{regen_line}🗡️ Ты атакуешь {enemy['name']}!\n"
         f"{attack_line}"
         f"{enemy_bar}\n\n"
     )
@@ -1175,6 +1213,9 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         text += f"\n🩸 Кровотечение: −{data_after['active_bleed']} HP каждый ход{rem}."
     if data_after.get('active_frostbite') and not frost_just_applied:
         text += f"\n🧊 Обморожение: лечение −50%. {FROSTBITE_CURE_HINT}"
+    if data_after.get('regen_amounts'):
+        rq = list(data_after['regen_amounts'])
+        text += f"\n♻ Регенерация активна: следующий тик +{rq[0]} HP (осталось {len(rq)} х.)."
     # Текущий эффект оружия на враге (пока сам не спал).
     if data_after.get('enemy_effect') and not enemy_eff_just:
         eeff = data_after['enemy_effect']
@@ -1347,6 +1388,7 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         _ok, _msg = await consume_drink(user_id, item['id'])
         hp_note = ""
         frost_note = ""
+        regen_note = ""
         # Напитки с cure_frostbite (Огненная вода, Горячий ягодный морс) снимают обморожение.
         if item.get('cure_frostbite') and data.get('active_frostbite'):
             await state.update_data(active_frostbite=None, frostbite_ticks=0)
@@ -1366,7 +1408,13 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
                 hp_note += f" (эффективность ×{mult:.0%}: {heal} HP вместо {item['heal']})"
             if frozen:
                 hp_note += "\n🧊 Обморожение снизило лечение."
-        text = _msg + frost_note + hp_note + heal_limit_note(int(data.get('dungeon_heal_uses', 0) or 0)) + "\n\nПродолжай бой:"
+            rpct = int(row_get(item, 'regen') or 0)
+            if rpct > 0:
+                amounts = regen_amounts(heal, rpct)
+                await state.update_data(regen_amounts=amounts)
+                regen_note = ("\n♻ Регенерация: следующие ходы +"
+                              + "/".join(map(str, amounts)) + " HP (затухает).")
+        text = _msg + frost_note + hp_note + regen_note + heal_limit_note(int(data.get('dungeon_heal_uses', 0) or 0)) + "\n\nПродолжай бой:"
 
     # Зелья лечения / яблоко / испорченная рыба.
     elif item['heal'] > 0:
@@ -1384,10 +1432,18 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
             eff = f" (эффективность ×{mult:.0%}: {heal} HP вместо {item['heal']})"
         if frozen:
             eff += "\n🧊 Обморожение снизило лечение."
+        regen_note = ""
+        rpct = int(row_get(item, 'regen') or 0)
+        if rpct > 0:
+            amounts = regen_amounts(heal, rpct)
+            await state.update_data(regen_amounts=amounts)
+            regen_note = ("\n♻ Регенерация: следующие ходы +"
+                          + "/".join(map(str, amounts)) + " HP (затухает).")
         text = (
             f"💊 {item['name']} применено: +{heal} HP{eff}!\n"
-            f"❤️ {_hp_bar(new_hp, run['hp_max'])}\n"
-            f"{heal_limit_note(heal_uses)}"
+            f"❤️ {_hp_bar(new_hp, run['hp_max'])}"
+            f"{regen_note}"
+            f"\n{heal_limit_note(heal_uses)}"
             f"\n\nПродолжай бой:"
         )
 

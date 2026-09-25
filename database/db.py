@@ -708,6 +708,9 @@ async def init_db():
     await _ensure_column(conn, "locations", "photo_night", "TEXT")
     # v0.15.22: счётчик входов в локацию (для анализа популярности аспектов)
     await _ensure_column(conn, "locations", "visits", "INTEGER DEFAULT 0")
+    # v0.15.23: регенерация расходника — % от эффективного лечения, разливается
+    # по ходам боя и затухает (см. regen_amounts в bot/handlers/dungeon.py).
+    await _ensure_column(conn, "items", "regen", "INTEGER DEFAULT 0")
     # Подземелья: картинка входа по времени суток (как у локаций)
     await _ensure_column(conn, "dungeons", "photo_dawn", "TEXT")
     await _ensure_column(conn, "dungeons", "photo_day", "TEXT")
@@ -1229,7 +1232,8 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
                    weapon_effect_chance: int = 0,
                    weapon_effect_dmg: int = 0,
                    housing_type: str = None,
-                   housing_slots: int = None):
+                   housing_slots: int = None,
+                   regen: int = 0):
     conn = await get_db()
     # v0.13.3: рыба (категория fishing) по умолчанию выставляется на рынок;
     # у остальных предметов — только скупщик, пока админ не включит флаг.
@@ -1238,12 +1242,12 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
     cursor = await conn.execute(
         """INSERT INTO items (name, description, photo_file_id, price, sell_price,
            rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name,
-           weapon_effect, weapon_effect_chance, weapon_effect_dmg, housing_type, housing_slots)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           weapon_effect, weapon_effect_chance, weapon_effect_dmg, housing_type, housing_slots, regen)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (name, description, photo_file_id, price, sell_price, rarity, category,
          stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name,
          weapon_effect or None, weapon_effect_chance, weapon_effect_dmg,
-         housing_type, housing_slots)
+         housing_type, housing_slots, regen)
     )
     await conn.commit()
     return cursor.lastrowid
