@@ -489,16 +489,31 @@ async def statue_admin_edit_field(callback: CallbackQuery, state: FSMContext):
     _, _, _, statue_s, field = callback.data.split(":", 4)
     await state.update_data(field=field)
     await state.set_state(AdminStatueEdit.value)
+    statue = await get_park_statue(statue_id)
     if field == 'description':
+        cur_desc = (statue.get('description') or '—') if statue else '—'
         await callback.message.edit_text(
-            "📝 Введи новое описание статуи:", reply_markup=cancel_keyboard()
-        )
-    else:
-        await callback.message.edit_text(
-            f"🖼️ Пришли фото статуи для «{TOD_LABEL.get(field, field)}»\n"
-            f"или отправь «—», чтобы оставить без изменений:",
+            f"📝 Описание статуи «{statue['name'] if statue else statue_id}».\n"
+            f"Сейчас: {cur_desc}\n\nВведи новое описание:",
             reply_markup=cancel_keyboard()
         )
+    else:
+        image_key = f"image_{field}" if field in PARK_TOD_KEYS else 'image'
+        cur_photo = bool(statue and statue.get(image_key))
+        cur_photo_file = (statue or {}).get(image_key)
+        cur_name = statue['name'] if statue else statue_id
+        tod_label = TOD_LABEL.get(field, field)
+        text = (f"🖼️ Фото статуи «{cur_name}» для «{tod_label}» "
+                f"(сейчас: {'есть картинка' if cur_photo else 'нет'})\n"
+                f"Пришли фото или отправь «—», чтобы оставить без изменений:")
+        if cur_photo_file:
+            try:
+                await callback.message.answer_photo(
+                    cur_photo_file, caption=text, reply_markup=cancel_keyboard())
+                return
+            except Exception:
+                pass
+        await callback.message.edit_text(text, reply_markup=cancel_keyboard())
 
 
 @router.message(AdminStatueEdit.value, ~F.text.func(is_main_menu_text))

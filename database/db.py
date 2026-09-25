@@ -1376,6 +1376,96 @@ async def delete_item(item_id: int):
     await conn.commit()
 
 
+async def delete_item_completely(item_id: int):
+    """Полное удаление предмета из игры: сама запись items + все ссылки.
+
+    Чистит инвентари, снаряжение игроков, дропы врагов, награды подземелий,
+    источники ресурсов, уловы рыбы, лоты рынка, виды рыбы в водоёмах,
+    очереди производства и активные сделки. Возвращает словарь с числом
+    удалённых записей по каждой таблице (для отчёта в Хранилище).
+    """
+    conn = await get_db()
+    report = {}
+
+    for table, col in (("inventory", "item_id"),
+                       ("player_dungeon_inventory", "item_id"),
+                       ("dungeon_rewards", "item_id"),
+                       ("dungeon_items", "item_id"),
+                       ("resource_sources", "item_id"),
+                       ("fish_catches", "item_id"),
+                       ("market_items", "item_id"),
+                       ("market_fish", "item_id"),
+                       ("water_fish", "item_id"),
+                       ("production_queue", "recipe_item_id")):
+        cur = await conn.execute(f"SELECT COUNT(*) AS c FROM {table} WHERE {col} = ?", (item_id,))
+        row = await cur.fetchone()
+        n = row["c"] if row else 0
+        if n:
+            await conn.execute(f"DELETE FROM {table} WHERE {col} = ?", (item_id,))
+        report[table] = n
+
+    # Сделки и здания: предмет просто «выпадает» из записи.
+    cur = await conn.execute("SELECT COUNT(*) AS c FROM trades WHERE from_item_id = ? OR to_item_id = ?",
+                             (item_id, item_id))
+    row = await cur.fetchone()
+    trades_n = row["c"] if row else 0
+    if trades_n:
+        await conn.execute("UPDATE trades SET from_item_id = NULL WHERE from_item_id = ?", (item_id,))
+        await conn.execute("UPDATE trades SET to_item_id = NULL WHERE to_item_id = ?", (item_id,))
+    report["trades"] = trades_n
+    cur = await conn.execute("SELECT COUNT(*) AS c FROM buildings WHERE production_item_id = ?", (item_id,))
+    row = await cur.fetchone()
+    b_n = row["c"] if row else 0
+    if b_n:
+        await conn.execute("UPDATE buildings SET production_item_id = NULL WHERE production_item_id = ?", (item_id,))
+    report["buildings"] = b_n
+
+    # Снаряжение игроков: любые слоты equipment, ссылающиеся на предмет.
+    eq_n = 0
+    cur = await conn.execute("SELECT user_id, equipment FROM users WHERE equipment IS NOT NULL AND equipment != '{}'")
+    for row in await cur.fetchall():
+        try:
+            eq = json.loads(row["equipment"])
+        except (ValueError, TypeError):
+            continue
+        changed = False
+        for slot in ("weapon", "armor", "weapon_aux", "head", "body", "hands", "legs",
+                     "potion1", "potion2", "potion3"):
+            if eq.get(slot) == item_id:
+                eq.pop(slot, None)
+                changed = True
+        if changed:
+            await conn.execute(
+                "UPDATE users SET equipment = ? WHERE user_id = ?",
+                (json.dumps(eq, ensure_ascii=False), row["user_id"])
+            )
+            eq_n += 1
+    report["equipment"] = eq_n
+
+    # Дропы врагов: JSON-списки с item_id-записью.
+    drops_n = 0
+    cur = await conn.execute("SELECT id, drops FROM dungeon_enemies WHERE drops IS NOT NULL AND drops != '[]'")
+    for row in await cur.fetchall():
+        try:
+            dlist = json.loads(row["drops"])
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(dlist, list):
+            continue
+        new_drops = [d for d in dlist
+                     if not (isinstance(d, dict) and d.get("item_id") is not None
+                             and int(d.get("item_id", 0)) == item_id)]
+        if len(new_drops) != len(dlist):
+            await conn.execute("UPDATE dungeon_enemies SET drops = ?, admin_tuned = 1 WHERE id = ?",
+                               (json.dumps(new_drops, ensure_ascii=False), row["id"]))
+            drops_n += 1
+    report["enemy_drops"] = drops_n
+
+    await conn.execute("DELETE FROM items WHERE id = ?", (item_id,))
+    await conn.commit()
+    return report
+
+
 async def add_inventory_item(user_id: int, item_id: int, quantity: int = 1, expires_at: str = None):
     conn = await get_db()
     cursor = await conn.execute(

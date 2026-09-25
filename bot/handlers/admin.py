@@ -11,7 +11,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
-    add_item, delete_item, update_item, get_available_items, get_all_items,
+    add_item, delete_item, delete_item_completely, update_item, get_available_items, get_all_items,
     get_item, get_all_users, get_pending_reports, approve_report,
     reject_report, add_nordmarks, remove_nordmarks, add_ap, remove_ap,
     create_status, delete_status, get_all_statuses, get_status,
@@ -105,6 +105,11 @@ class AdminTreasury(StatesGroup):
 class AdminStorageRestock(StatesGroup):
     # Возврат предмета из Хранилища в магазин
     amount = State()
+
+
+class AdminStorageDelete(StatesGroup):
+    # Удаление предмета из игры насовсем: подтверждение вводом названия
+    confirm = State()
 
 
 class AdminTax(StatesGroup):
@@ -871,6 +876,8 @@ async def storage_item(callback: CallbackQuery, state: FSMContext):
         rows.append([InlineKeyboardButton(text="➕ Вернуть в магазин", callback_data=f"storage:restock:{item_id}")])
     rows.append([InlineKeyboardButton(text="✏️ Редактировать (покупка: цена/фото/описание)",
                                       callback_data=f"edit_item:{item_id}")])
+    rows.append([InlineKeyboardButton(text="🗑 Удалить из игры насовсем",
+                                      callback_data=f"storage:purge:{item_id}")])
     rows.append([InlineKeyboardButton(text="🔙 К списку", callback_data="admin:storage")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await callback.message.edit_text(text, reply_markup=kb)
@@ -888,8 +895,11 @@ async def storage_restock(callback: CallbackQuery, state: FSMContext):
         return
     await state.update_data(storage_item_id=item_id)
     await state.set_state(AdminStorageRestock.amount)
+    cur_stock = item.get('stock')
+    cur_text = "безлимит" if cur_stock == -1 else str(cur_stock)
     await callback.message.edit_text(
         f"📦 «{item['name']}» — сколько единиц вернуть в магазин?\n"
+        f"Сейчас на складе: {cur_text}.\n\n"
         f"Введи число (например 100) или «-» для безлимита.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:storage")]
@@ -939,6 +949,80 @@ async def storage_restock_amount(message: Message, state: FSMContext):
             [InlineKeyboardButton(text="📦 В Хранилище", callback_data="admin:storage")]
         ])
     )
+
+
+@router.callback_query(F.data.startswith("storage:purge:"))
+async def storage_purge(callback: CallbackQuery, state: FSMContext):
+    """Удаление предмета из игры насовсем: запрос подтверждения вводом названия."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_storage"):
+        return
+    try:
+        item_id = int(callback.data.split(":")[2])
+    except (ValueError, IndexError):
+        return
+    item = await get_item(item_id)
+    if not item:
+        await callback.message.edit_text("❌ Предмет не найден.", reply_markup=storage_markup([]))
+        return
+    await state.update_data(storage_purge_id=item_id)
+    await state.set_state(AdminStorageDelete.confirm)
+    await callback.message.edit_text(
+        f"🗑 Удалить «{item['name']}» из игры насовсем?\n\n"
+        f"⚠️ Предмет пропадёт отовсюду: из Хранилища, магазина, инвентарей "
+        f"игроков, снаряжения, дропов врагов, уловов рыбы и лотов рынка. "
+        f"Восстановить его будет нельзя.\n\n"
+        f"Для подтверждения введи точное название предмета:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:storage")]
+        ])
+    )
+
+
+@router.message(AdminStorageDelete.confirm)
+async def storage_purge_confirm(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_storage"):
+        await state.clear()
+        await message.answer("❌ Нет прав.")
+        return
+    data = await state.get_data()
+    item_id = data.get('storage_purge_id')
+    if not item_id:
+        await state.clear()
+        await message.answer("❌ Сессия устарела. Зайди в Хранилище заново.")
+        return
+    item = await get_item(item_id)
+    if not item:
+        await state.clear()
+        await message.answer("❌ Предмет не найден.")
+        return
+    if (message.text or "").strip() != item['name']:
+        await message.answer(
+            f"❌ Название не совпало. Удаление отменено.\n"
+            f"Ожидалось: «{item['name']}»",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📦 В Хранилище", callback_data="admin:storage")]
+            ])
+        )
+        await state.clear()
+        return
+
+    report = await delete_item_completely(item_id)
+    await log_action(message.from_user.id, 'delete_item', None,
+                     f"item={item['name']} id={item_id} full_delete report={report}")
+    await state.clear()
+    lines = [f"🗑 Предмет «{item['name']}» удалён из игры насовсем."]
+    touched = {k: v for k, v in report.items() if v}
+    if touched:
+        lines.append("Удалено/очищено ссылок:")
+        for table, n in sorted(touched.items(), key=lambda x: -x[1]):
+            lines.append(f"• {table}: {n}")
+    else:
+        lines.append("Ссылок на него не было.")
+    await message.answer("\n".join(lines),
+                         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                             [InlineKeyboardButton(text="📦 В Хранилище", callback_data="admin:storage")]
+                         ]))
 
 
 @router.callback_query(F.data == "shop_admin:add")
@@ -1455,10 +1539,22 @@ async def edit_item_field_status(callback: CallbackQuery, state: FSMContext):
     rows.append([InlineKeyboardButton(text="➖ Без статуса", callback_data="field_req:none")])
     data = await state.get_data()
     item_id = data.get('item_id')
-    if item_id:
+    item = await get_item(item_id) if item_id else None
+    if item:
         rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"edit_item:{item_id}")])
+    cur_tag = item.get('required_status') if item else None
+    cur_label = "— нет"
+    if cur_tag:
+        for s in statuses:
+            if s.get('access_tag') == cur_tag:
+                cur_label = f"{s['name']} ({s.get('access_tag')})"
+                break
+        else:
+            cur_label = cur_tag
     await callback.message.edit_text(
-        "Выбери статус, требуемый для покупки этого товара:",
+        f"🔒 Требуемый статус «{item['name'] if item else 'товар'}».\n"
+        f"Сейчас: {cur_label}.\n\n"
+        f"Выбери статус, требуемый для покупки этого товара:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
 
@@ -1483,18 +1579,35 @@ async def edit_item_field_req(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "field:photo")
 async def edit_item_field_photo(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    data = await state.get_data()
+    item = await get_item(data.get('item_id')) if data.get('item_id') else None
     await state.set_state(AdminEditItem.photo)
-    await callback.message.answer(
-        "🖼 Отправь фото товара (или «-», чтобы убрать картинку).",
-        reply_markup=cancel_keyboard())
+    name = item['name'] if item else 'товар'
+    has_photo = bool(item and item.get('photo_file_id'))
+    text = (f"🖼 Фото товара «{name}» (сейчас: {'есть' if has_photo else 'нет'}).\n"
+            f"Отправь новое фото — или «-», чтобы убрать картинку:")
+    if has_photo:
+        try:
+            await callback.message.answer_photo(
+                item['photo_file_id'], caption=text, reply_markup=cancel_keyboard())
+            return
+        except Exception:
+            pass
+    await callback.message.answer(text, reply_markup=cancel_keyboard())
 
 
 @router.callback_query(F.data == "field:weapon_effect")
 async def edit_item_field_weapon_effect(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    data = await state.get_data()
+    item = await get_item(data.get('item_id')) if data.get('item_id') else None
+    cur = item.get('weapon_effect') if item else None
+    cur_label = WEAPON_EFFECT_LABELS.get(cur, "🚫 Без эффекта") if cur else "🚫 Без эффекта"
+    head = (f"☠️ Эффект оружия у «{item['name'] if item else 'товар'}»:\n"
+            f"Сейчас: {cur_label}.\n\n")
     await callback.message.edit_text(
-        "☠️ Выбери особый эффект оружия при попадании:\n"
-        "При «Без эффекта» шанс и урон эффекта обнуляются.",
+        head + "Выбери особый эффект оружия при попадании:\n"
+        f"При «Без эффекта» шанс и урон эффекта обнуляются.",
         reply_markup=weapon_effect_choice_markup(prefix="editset:weff:")
     )
 
@@ -1606,13 +1719,62 @@ async def edit_item_field_market_toggle(callback: CallbackQuery, state: FSMConte
     await state.clear()
 
 
+EDIT_ITEM_FIELD_LABELS = {
+    "name": "Название",
+    "price": "Цена",
+    "sell_price": "Цена продажи",
+    "stock": "Остаток",
+    "category": "Категория",
+    "description": "Описание",
+    "damage": "⚔️ Урон (оружие)",
+    "weapon_effect_chance": "☠️ Шанс эффекта (%)",
+    "weapon_effect_dmg": "☠️ Урон эффекта/ход",
+    "heal": "❤️ Лечение",
+    "armor": "🛡️ Броня",
+    "ap_cost": "⚡ AP за использование",
+    "plant_name": "🌳 Растение в кадке (семечко)",
+    "is_available": "Продажа (вкл/выкл)",
+    "rarity": "🔆 Редкость",
+    "housing_type": "🏠 Тип жилья (дом)",
+    "housing_slots": "🏠 Слотов жилья",
+}
+
+
+def _item_field_current_value(item, field):
+    val = item.get(field)
+    if field == "stock":
+        return "безлимит" if val is None or val == -1 else str(val)
+    if field == "is_available":
+        return "✅ в продаже" if val else "🚫 снят с продажи"
+    if field in ("rarity", "housing_slots"):
+        return "—" if val is None else str(val)
+    if field in ("description", "plant_name", "housing_type"):
+        return (val or "—")
+    if val is None:
+        return None
+    return str(val)
+
+
 @router.callback_query(F.data.startswith("field:"))
 async def edit_item_field(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     field = callback.data.split(":")[1]
+    data = await state.get_data()
+    item = await get_item(data.get('item_id')) if data.get('item_id') else None
+    if not item:
+        await state.clear()
+        await callback.message.answer("❌ Товар не найден.")
+        return
+    label = EDIT_ITEM_FIELD_LABELS.get(field)
+    current = _item_field_current_value(item, field)
     await state.update_data(field=field)
     await state.set_state(AdminEditItem.value)
-    await callback.message.answer("Введи новое значение (или «-» для очистки/безлимита):",
+    if label and current is not None:
+        head = (f"✏️ {label} товара «{item['name']}».\n"
+                f"Сейчас: {current}.\n\n")
+    else:
+        head = f"✏️ Товар «{item['name']}».\n\n"
+    await callback.message.answer(head + "Введи новое значение (или «-» для очистки/безлимита):",
                                   reply_markup=cancel_keyboard())
 
 
@@ -2735,7 +2897,26 @@ async def award_edit_field_pick(callback: CallbackQuery, state: FSMContext):
         return
     await state.update_data(edit_award_id=int(award_id), edit_field=field)
     await state.set_state(AdminAwards.edit_value)
-    await callback.message.answer(AWARD_EDIT_PROMPTS[field], reply_markup=cancel_keyboard())
+    award = await get_award(int(award_id))
+    prompt = AWARD_EDIT_PROMPTS[field]
+    if award:
+        cur = award.get(field)
+        if field == "description":
+            cur_text = (cur or "—")
+        elif field == "image":
+            cur_text = f"{'есть картинка' if cur else 'нет картинки'}"
+        else:
+            cur_text = ("—" if cur is None else str(cur))
+        prompt = (f"{AWARD_EDIT_FIELDS[field]} награды «{award['name']}».\n"
+                  f"Сейчас: {cur_text}.\n\n{prompt}")
+    if field == "image" and award and award.get('image'):
+        try:
+            await callback.message.answer_photo(
+                award['image'], caption=prompt, reply_markup=cancel_keyboard())
+            return
+        except Exception:
+            pass
+    await callback.message.answer(prompt, reply_markup=cancel_keyboard())
 
 
 @router.message(AdminAwards.edit_value)
@@ -3747,11 +3928,26 @@ async def dungeon_photo_set(callback: CallbackQuery, state: FSMContext):
     await state.update_data(photo_tod=tod)
     await state.set_state(AdminDungeon.photo_tod)
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    dng = await get_dungeon(data.get('target_id')) if data.get('target_id') else None
+    has_photo = bool(dng and dng.get(f"photo_{tod}"))
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="dungeon:photos")]
+    ])
+    if has_photo:
+        try:
+            await callback.message.answer_photo(
+                dng[f"photo_{tod}"],
+                caption=(f"🖼 Сейчас на «{DUNGEON_PHOTO_LABEL[tod]}» есть картинка.\n"
+                         f"Отправь новую фото (или «-» для очистки этого слота):"),
+                reply_markup=kb)
+            return
+        except Exception:
+            pass
     await callback.message.answer(
-        f"🖼 Отправь фото для «{DUNGEON_PHOTO_LABEL[tod]}» (или «-» для очистки этого слота).",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="dungeon:photos")]
-        ])
+        f"🖼 «{DUNGEON_PHOTO_LABEL[tod]}» подземелья «{dng['name'] if dng else ''}» "
+        f"(сейчас: {'есть картинка' if has_photo else 'нет'}).\n"
+        f"Отправь фото (или «-» для очистки этого слота):",
+        reply_markup=kb
     )
 
 
@@ -4004,7 +4200,28 @@ async def dungeon_enemy_field_pick(callback: CallbackQuery, state: FSMContext):
         return
     await state.update_data(enemy_field=field)
     await state.set_state(AdminDungeon.enemy_value)
-    await callback.message.answer(ENEMY_INPUT_PROMPTS[field], reply_markup=cancel_keyboard())
+    enemy = await get_enemy(data.get('enemy_id'))
+    prompt = ENEMY_INPUT_PROMPTS[field]
+    if enemy:
+        cur = enemy.get(field)
+        if field == "image":
+            cur_text = f"{'есть картинка' if cur else 'нет картинки'}"
+        elif field == "description":
+            cur_text = (cur or "—")
+        elif field == "drops":
+            cur_text = (f"{len(cur or [])} записей" if cur else "—")
+        else:
+            cur_text = ("—" if cur is None else str(cur))
+        prompt = (f"{ENEMY_FIELD_LABELS[field]} врага «{enemy['name']}».\n"
+                  f"Сейчас: {cur_text}.\n\n{prompt}")
+    if field == "image" and enemy and enemy.get('image'):
+        try:
+            await callback.message.answer_photo(
+                enemy['image'], caption=prompt, reply_markup=cancel_keyboard())
+            return
+        except Exception:
+            pass
+    await callback.message.answer(prompt, reply_markup=cancel_keyboard())
 
 
 @router.message(AdminDungeon.enemy_value)
@@ -4334,8 +4551,15 @@ async def enemy_drop_set_chance(callback: CallbackQuery, state: FSMContext):
         return
     await state.update_data(enemy_id=enemy_id, drop_index=idx, drop_item_id=None)
     await state.set_state(AdminDungeon.drop_chance)
-    await callback.message.answer("🎲 Введи новый шанс выпадения, % (1–100):",
-                                  reply_markup=cancel_keyboard())
+    enemy = await get_enemy(enemy_id)
+    drops, _, item = await _drop_item_for(enemy_id, idx)
+    ch = drops[idx].get('chance', 0) if drops and 0 <= idx < len(drops) else 0
+    cur_chance = int(ch * 100) if ch <= 1 else int(ch)
+    item_name = f"«{item['name']}»" if item else "дроп"
+    await callback.message.answer(
+        f"🎲 Шанс дропа {item_name} у врага «{enemy['name'] if enemy else ''}».\n"
+        f"Сейчас: {cur_chance}%.\n\nВведи новый шанс выпадения, % (1–100):",
+        reply_markup=cancel_keyboard())
 
 
 @router.callback_query(F.data.startswith("eddrop_set_q:"))
@@ -4350,8 +4574,14 @@ async def enemy_drop_set_qty(callback: CallbackQuery, state: FSMContext):
         return
     await state.update_data(enemy_id=enemy_id, drop_index=idx)
     await state.set_state(AdminDungeon.drop_qty)
-    await callback.message.answer("🔢 Введи новое кол-во (целое число ≥ 1):",
-                                  reply_markup=cancel_keyboard())
+    enemy = await get_enemy(enemy_id)
+    drops, _, item = await _drop_item_for(enemy_id, idx)
+    cur_qty = drops[idx].get('qty', 1) if drops and 0 <= idx < len(drops) else 1
+    item_name = f"«{item['name']}»" if item else "дроп"
+    await callback.message.answer(
+        f"🔢 Кол-во дропа {item_name} у врага «{enemy['name'] if enemy else ''}».\n"
+        f"Сейчас: {cur_qty}.\n\nВведи новое кол-во (целое число ≥ 1):",
+        reply_markup=cancel_keyboard())
 
 
 @router.callback_query(F.data.startswith("eddrop_del:"))
@@ -4818,11 +5048,26 @@ async def admin_fishing_junk_field_pick(callback: CallbackQuery, state: FSMConte
         return
     await state.update_data(water=water, jfield=jfield, jname=jname)
     await state.set_state(AdminFishing.value)
+    rows = await get_water_junk_rows(water)
+    cur_row = next((r for r in rows if r['name'] == jname), None)
+    cur_chance = (cur_row or {}).get('chance')
+    cur_photo = (cur_row or {}).get('photo_file_id')
     if jfield == "chance":
-        prompt = ("🎲 Введи шанс выпадения в % (целое число 0–100; "
-                  "0 = находка не выпадает).\nДефолт: водоросли 15%, сапог 2%.")
+        prompt = (f"🎲 Шанс находки «{jname}» ({WATER_LABELS[water]}).\n"
+                  f"Сейчас: {cur_chance or 0}%.\n\n"
+                  f"Введи новый шанс выпадения в % (целое число 0–100; "
+                  f"0 = находка не выпадает).\nДефолт: водоросли 15%, сапог 2%.")
     else:
-        prompt = f"🖼 Отправь фото находки «{jname}» (Telegram-фото). Или «-», чтобы убрать фото:"
+        prompt = (f"🖼 Фото находки «{jname}» ({WATER_LABELS[water]}); "
+                  f"сейчас: {'есть' if cur_photo else 'нет'}.\n"
+                  f"Отправь фото находки — или «-», чтобы убрать фотографию:")
+        if cur_photo:
+            try:
+                await callback.message.answer_photo(
+                    cur_photo, caption=prompt, reply_markup=cancel_keyboard())
+                return
+            except Exception:
+                pass
     await callback.message.answer(prompt, reply_markup=cancel_keyboard())
 
 
@@ -5032,7 +5277,29 @@ async def admin_fishing_field_pick(callback: CallbackQuery, state: FSMContext):
         return
     await state.update_data(field=field)
     await state.set_state(AdminFishing.value)
-    await callback.message.answer(FISHING_INPUT_PROMPTS[field], reply_markup=cancel_keyboard())
+    fish = await get_water_fish_row(data.get('wf_id')) if data.get('wf_id') else None
+    prompt = FISHING_INPUT_PROMPTS[field]
+    if fish:
+        cur = fish.get({
+            "day_weight": "day_weight",
+            "night_weight": "night_weight",
+            "sell_price": "sell_price",
+            "photo": "photo_file_id",
+        }.get(field, field))
+        if field == "photo":
+            cur_text = f"{'есть картинка' if cur else 'нет картинки'}"
+        else:
+            cur_text = ("—" if cur is None else str(cur))
+        prompt = (f"{FISHING_FIELD_LABELS[field]} рыбы «{fish['name']}».\n"
+                  f"Сейчас: {cur_text}.\n\n{prompt}")
+    if field == "photo" and fish and fish.get('photo_file_id'):
+        try:
+            await callback.message.answer_photo(
+                fish['photo_file_id'], caption=prompt, reply_markup=cancel_keyboard())
+            return
+        except Exception:
+            pass
+    await callback.message.answer(prompt, reply_markup=cancel_keyboard())
 
 
 @router.message(AdminFishing.value)
@@ -5459,8 +5726,11 @@ async def loc_set_desc(callback: CallbackQuery, state: FSMContext):
         return
     await state.set_state(AdminLocation.description)
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    cur_desc = loc.get('description') or '—'
     await callback.message.edit_text(
-        f"📝 Описание «{loc['name']}».\n\nОтправь новый текст (или «-», чтобы очистить):",
+        f"📝 Описание «{loc['name']}».\n"
+        f"Сейчас: {cur_desc}\n\n"
+        f"Отправь новый текст (или «-», чтобы очистить):",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="❌ Отмена", callback_data=f"loc:building:{loc['id']}")]
         ])
@@ -5564,11 +5834,25 @@ async def loc_photo_set(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminLocation.preview)
     await state.update_data(photo_tod=tod)
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    loc = await get_location(loc_id)
+    has_photo = bool(loc and loc.get(f"photo_{tod}"))
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="loc:photos")]
+    ])
+    caption = (f"🖼 {TOD_LABEL[tod]} локации «{loc['name'] if loc else ''}» — сейчас есть картинка.\n"
+               f"Отправь новую фото (или «-» чтобы убрать для этого времени):")
+    if has_photo:
+        try:
+            await callback.message.answer_photo(
+                loc[f"photo_{tod}"], caption=caption, reply_markup=kb)
+            return
+        except Exception:
+            pass
     await callback.message.edit_text(
-        f"🖼 {TOD_LABEL[tod]}.\n\nОтправь фото (или «-» чтобы убрать для этого времени):",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="loc:photos")]
-        ])
+        f"🖼 {TOD_LABEL[tod]} локации «{loc['name'] if loc else ''}» "
+        f"(сейчас: {'есть картинка' if has_photo else 'нет'}).\n"
+        f"Отправь фото (или «-» чтобы убрать для этого времени):",
+        reply_markup=kb
     )
 
 
