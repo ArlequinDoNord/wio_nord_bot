@@ -2,6 +2,7 @@
 __pycache__/
 .venv/
 .idea/
+.pytest_cache/
 database/nordmark.db
 database/nordmark.db-shm
 database/nordmark.db-wal
