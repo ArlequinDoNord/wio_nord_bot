@@ -133,6 +133,11 @@ async def run():
     run = await get_active_run(uid)
     check("run активен (этаж 1, комната 0)",
           run is not None and run['floor'] == 1 and run['room_number'] == 0)
+    # Комната 0 «уже прожита» (пустая, без наград): фиксируем в FSM, чтобы
+    # отмена выхода не перебрасывала комнату и не доначисляла лут.
+    state = FakeState()
+    await state.update_data(dungeon_room_rolled=run['room_number'],
+                            dungeon_room_type="empty", dungeon_room_nm=0)
 
     boot = await get_item_by_name("Старый сапог")
     check("сапог существует для теста лута", boot is not None)
@@ -145,7 +150,6 @@ async def run():
           and ritems[0]['quantity'] == 2)
 
     # ── 4. dungeon:exit → экран подтверждения ──
-    state = FakeState()
     cb = FakeCallback(uid, data="dungeon:exit")
     await dng.dungeon_exit(cb, state)
     ans = [m for m in cb.message.sent if m[0] == "answer"]

@@ -789,10 +789,20 @@ async def dungeon_continue(callback: CallbackQuery, state: FSMContext):
 
 async def show_room(message, run, user_id, state: FSMContext):
     dungeon = await get_dungeon(run['dungeon_id'])
-    room_type = room_type_roll()
     hp_text = _hp_bar(run['hp'], run['hp_max'])
     slot_items = await _combat_slot_items(user_id)
     sdata = await state.get_data()
+    # Комната «проживается» один раз: перерисовка (возврат в забег, отмена
+    # выхода, повторный вход) не должна перебрасывать тип комнаты и повторно
+    # начислять НМ. Иначе игрок фармит ресурс через выход/отмену выхода.
+    if sdata.get('dungeon_room_rolled') == run['room_number']:
+        room_type = sdata.get('dungeon_room_type')
+        rolled = False
+    else:
+        room_type = room_type_roll()
+        rolled = True
+        await state.update_data(dungeon_room_rolled=run['room_number'],
+                                dungeon_room_type=room_type)
     poison = sdata.get('active_poison')
     heal_uses = int(sdata.get('dungeon_heal_uses', 0) or 0)
     step = await dungeon_new_step(state)
@@ -813,10 +823,15 @@ async def show_room(message, run, user_id, state: FSMContext):
     if room_type == "enemy":
         enemies = await get_floor_enemies(run['dungeon_id'], run['floor'])
         non_boss = [e for e in enemies if not e['is_boss']]
-        enemy = random.choice(non_boss) if non_boss else random.choice(enemies)
-
-        await state.update_data(current_enemy_id=enemy['id'], current_enemy_hp=enemy['hp'],
-                                enemy_effect=None, enemy_effect_dmg=0, enemy_effect_ticks=0)
+        if rolled:
+            enemy = random.choice(non_boss) if non_boss else random.choice(enemies)
+            await state.update_data(current_enemy_id=enemy['id'], current_enemy_hp=enemy['hp'],
+                                    enemy_effect=None, enemy_effect_dmg=0, enemy_effect_ticks=0)
+        else:
+            prev_id = sdata.get('current_enemy_id')
+            enemy = next((e for e in enemies if e['id'] == prev_id), None)
+            if enemy is None:
+                enemy = random.choice(non_boss) if non_boss else random.choice(enemies)
 
         text = (
             f"🏰 {dungeon['name']}\n"
@@ -831,8 +846,12 @@ async def show_room(message, run, user_id, state: FSMContext):
         await answer_enemy_photo(message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items, step))
 
     elif room_type == "resource":
-        nm = resource_amount(run['floor'])
-        await add_run_nordmarks(run['id'], nm)
+        if rolled:
+            nm = resource_amount(run['floor'])
+            await add_run_nordmarks(run['id'], nm)
+        else:
+            nm = sdata.get('dungeon_room_nm', resource_amount(run['floor']))
+        await state.update_data(dungeon_room_nm=nm)
 
         text = (
             f"🏰 {dungeon['name']}\n"

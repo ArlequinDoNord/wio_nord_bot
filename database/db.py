@@ -171,6 +171,7 @@ async def init_db():
 
         INSERT OR IGNORE INTO settings (key, value) VALUES ('report_tax_percent', '15');
         INSERT OR IGNORE INTO settings (key, value) VALUES ('sale_tax_percent', '15');
+        INSERT OR IGNORE INTO settings (key, value) VALUES ('report_auto_approve_troops', '100');
 
         CREATE TABLE IF NOT EXISTS library_cards (
             user_id INTEGER NOT NULL,
@@ -2283,6 +2284,38 @@ async def set_report_tax_percent(percent: int):
         "INSERT INTO settings (key, value) VALUES ('report_tax_percent', ?) "
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         (str(percent),)
+    )
+    await conn.commit()
+
+
+# ============ ПОРОГ АВТОПРОВЕРКИ ОТЧЁТОВ ============
+
+REPORT_AUTO_APPROVE_SETTING_KEY = "report_auto_approve_troops"
+
+
+async def get_report_auto_approve_troops() -> int:
+    """Порог автопроверки отчётов: отчёты до этого значения (войск за сутки)
+    принимаются автоматически, больше — уходят на проверку админу/МВД.
+    Дефолт — 100 (как в config.REPORT_AUTO_APPROVE_TROOPS)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT value FROM settings WHERE key = ?", (REPORT_AUTO_APPROVE_SETTING_KEY,)
+    )
+    row = await cursor.fetchone()
+    if not row:
+        return 100
+    try:
+        return int(row['value'])
+    except (TypeError, ValueError):
+        return 100
+
+
+async def set_report_auto_approve_troops(value: int):
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (REPORT_AUTO_APPROVE_SETTING_KEY, str(value))
     )
     await conn.commit()
 

@@ -4,8 +4,8 @@ from aiogram.types import Message, CallbackQuery, ContentType
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from config import REPORT_AUTO_APPROVE_TROOPS, REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT
-from database.db import add_report, approve_report, get_user_reports, get_report_tax_percent, count_reports_today, log_activity, user_is_tourist
+from config import REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT
+from database.db import add_report, approve_report, get_user_reports, get_report_tax_percent, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist
 from utils.helpers import is_main_menu_text
 from keyboards.keyboards import report_keyboard, cancel_keyboard
 
@@ -180,7 +180,8 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
     else:
         reminder = "\n📊 Это последний отчёт за сегодня (лимит 3)."
 
-    if daily_troops <= REPORT_AUTO_APPROVE_TROOPS:
+    auto_approve_limit = await get_report_auto_approve_troops()
+    if daily_troops <= auto_approve_limit:
         actual = await approve_report(report_id, 0, credited)
         if actual <= 0:
             await state.clear()

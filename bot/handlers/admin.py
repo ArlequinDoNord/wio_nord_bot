@@ -21,6 +21,7 @@ from database.db import (
     get_daily_spent, add_daily_spent,
     get_treasury_balance, transfer_from_treasury, get_treasury_stats,
     get_report_tax_percent, set_report_tax_percent,
+    get_report_auto_approve_troops, set_report_auto_approve_troops,
     get_sale_tax_percent, set_sale_tax_percent,
     get_special_dept_code, set_special_dept_code,
     get_salaried_users, get_user_salary, set_user_salary, pay_salaries,
@@ -108,6 +109,10 @@ class AdminStorageRestock(StatesGroup):
 
 class AdminTax(StatesGroup):
     percent = State()
+
+
+class AdminReportAutoApprove(StatesGroup):
+    value = State()
 
 
 class AdminRoles(StatesGroup):
@@ -2914,10 +2919,62 @@ async def admin_reports(callback: CallbackQuery):
     await show_pending_reports(callback.message)
 
 
+@router.callback_query(F.data == "rep:auto_approve_edit")
+async def report_auto_approve_edit_cb(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if 'super_admin' not in await get_user_role(callback.from_user.id):
+        await callback.message.answer("❌ Только супер-админ может менять порог автопроверки.")
+        return
+    current = await get_report_auto_approve_troops()
+    await state.set_state(AdminReportAutoApprove.value)
+    await callback.message.edit_text(
+        f"⚙️ ПОРОГ АВТОПРОВЕРКИ ОТЧЁТОВ\n\n"
+        f"Сейчас: отчёты до <b>{current}</b> войск за сутки принимаются автоматически.\n"
+        f"Отчёты с бо́льшим числом уходят на проверку.\n\n"
+        f"Введи новое значение (целое число от 0 до 1 000 000):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 К отчётам", callback_data="admin:reports")]
+        ])
+    )
+
+
+@router.message(AdminReportAutoApprove.value)
+async def report_auto_approve_edit_value(message: Message, state: FSMContext):
+    try:
+        value = int(message.text.strip())
+    except ValueError:
+        await message.answer("❌ Введи целое число от 0 до 1 000 000:")
+        return
+    if not 0 <= value <= 1000000:
+        await message.answer("❌ Значение должно быть от 0 до 1 000 000:")
+        return
+    await set_report_auto_approve_troops(value)
+    await log_action(message.from_user.id, 'set_report_auto_approve', None, f"value={value}")
+    await state.clear()
+    await message.answer(
+        f"✅ Порог автопроверки установлен: {value} войск за сутки.\n"
+        f"Отчёты до {value} теперь принимаются автоматически."
+    )
+    await show_pending_reports(message)
+
+
 async def show_pending_reports(message):
     reports = await get_pending_reports()
     if not reports:
-        await message.answer("✅ В очереди нет отчётов на проверку.")
+        text = "✅ В очереди нет отчётов на проверку."
+        if 'super_admin' in await get_user_role(message.chat.id):
+            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+            limit = await get_report_auto_approve_troops()
+            text += f"\n\n⚙️ Порог автопроверки: отчёты до {limit} войск за сутки — автоматически."
+            await message.answer(
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="⚙️ Изменить порог",
+                                          callback_data="rep:auto_approve_edit")],
+                ])
+            )
+        else:
+            await message.answer(text)
         return
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -2929,6 +2986,12 @@ async def show_pending_reports(message):
             InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rep_no:{report['id']}"),
         ])
     buttons.append([InlineKeyboardButton(text="Следующий ▶️", callback_data="rep:next")])
+    # Супер-админ: порог автопроверки отчётов (кнопка видна и при пустой очереди).
+    if 'super_admin' in await get_user_role(message.chat.id):
+        limit = await get_report_auto_approve_troops()
+        buttons.append([InlineKeyboardButton(
+            text=f"⚙️ Порог автопроверки: {limit}",
+            callback_data="rep:auto_approve_edit")])
 
     caption = (
         f"📋 ОТЧЁТ #{report['id']}\n\n"
