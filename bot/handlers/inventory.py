@@ -18,6 +18,8 @@ from database.db import (
     fish_sale_daily_left, add_fish_sale_amount, fish_sold_today,
     get_market_slots_info,
     item_fits_slot, ARMOR_SLOTS, EQUIPMENT_SLOT_LABELS, EQUIPMENT_LOCKED_SLOTS,
+    get_award_bonus, get_player_weapon_damage, get_player_armor,
+    get_player_armor_with_bonus, get_player_dodge, get_equipped_weapon,
 )
 from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text,
@@ -198,6 +200,140 @@ def _slot_extra(item, slot: str) -> str:
     return ""
 
 
+async def _combat_stats(user_id: int) -> dict:
+    """Сводка боевых характеристик: атака, защита, уклонение + их источники.
+
+    Учитывает снаряженное оружие и броню, суммарные бонусы наград (%) и
+    активные состояния (множители атаки/уклонения). Пересчитывается при каждом
+    рендере вкладки «Снаряжение», поэтому живёт вместе с одеванием/снятием.
+    """
+    from utils.states import get_state_info, combat_multipliers
+
+    weapon = await get_equipped_weapon(user_id)
+    weapon_damage = int(weapon['damage'] or 0) if weapon else 0
+    award = await get_award_bonus(user_id)
+
+    info = await get_state_info(user_id)
+    mults = combat_multipliers(info['names'])
+    am = mults.get('attack_mult', 1.0)
+    dm = mults.get('dodge_mult', 1.0)
+
+    attack = weapon_damage if weapon_damage else 0
+    attack_bonus = award['attack']
+    defense_bonus = award['defense']
+    dodge_bonus = award['dodge']
+    hp_bonus = award['hp']
+
+    # Итоговая сила атаки: базовый урон + % наград + штраф состояний.
+    total_attack = int(round(attack * (1 + attack_bonus / 100.0) * am)) if attack else 0
+    # Итоговая защита уже учитывает % наград.
+    base_armor = await get_player_armor(user_id)
+    total_armor = await get_player_armor_with_bonus(user_id)
+    # Итоговое уклонение уже включает базу 3% и бонус наград, × множитель состояний.
+    total_dodge = await get_player_dodge(user_id, dm)
+
+    weapon_effect = None
+    if weapon:
+        eff = weapon['weapon_effect'] if 'weapon_effect' in weapon.keys() else None
+        if eff:
+            weapon_effect = {
+                "key": eff,
+                "chance": int(weapon['weapon_effect_chance'] or 0),
+                "dmg": int(weapon['weapon_effect_dmg'] or 0),
+            }
+
+    return {
+        "attack": total_attack,
+        "weapon_damage": attack,
+        "attack_bonus": attack_bonus,
+        "attack_mult": am,
+        "base_armor": base_armor,
+        "armor": total_armor,
+        "defense_bonus": defense_bonus,
+        "dodge": total_dodge,
+        "dodge_bonus": dodge_bonus,
+        "dodge_mult": dm,
+        "hp_bonus": hp_bonus,
+        "weapon_effect": weapon_effect,
+        "states": info['states'],
+    }
+
+
+def _fmt_percent_bonus(value: int) -> str:
+    """'награды +10%' или '' если бонуса нет."""
+    return f"награды +{value}%" if value else ""
+
+
+async def _combat_summary_lines(user_id: int) -> list:
+    """Строки блока «БОЕВЫЕ ХАРАКТЕРИСТИКИ» для вкладки снаряжения."""
+    s = await _combat_stats(user_id)
+    lines = ["⚡ БОЕВЫЕ ХАРАКТЕРИСТИКИ"]
+
+    atk_src = []
+    if s["weapon_damage"]:
+        atk_src.append(f"оружие {s['weapon_damage']}")
+    if s["attack_bonus"]:
+        atk_src.append(f"награды +{s['attack_bonus']}%")
+    if s["attack_mult"] != 1.0:
+        atk_src.append(f"состояние ×{s['attack_mult']:g}")
+    atk_line = f"⚔️ Атака: {s['attack']}"
+    if atk_src:
+        atk_line += f" ({', '.join(atk_src)})"
+    lines.append(atk_line)
+
+    weff = s["weapon_effect"]
+    if weff:
+        labels = {
+            "poison": "☠️ отравление",
+            "bleed": "🩸 кровотечение",
+            "frostbite": "🧊 обморожение",
+            "stun": "💫 оглушение",
+        }
+        label = labels.get(weff["key"], weff["key"])
+        if weff["key"] == "stun":
+            lines.append(f"   ⚔️ Эффект: {label} — −{weff['dmg']}% точности врага (2 хода)")
+        else:
+            lines.append(f"   ⚔️ Эффект: {label} — {weff['chance']}% шанс, −{weff['dmg']} HP/ход")
+
+    def_src = []
+    if s["base_armor"]:
+        def_src.append(f"броня {s['base_armor']}")
+    if s["defense_bonus"]:
+        def_src.append(f"награды +{s['defense_bonus']}%")
+    def_line = f"🛡️ Защита: {s['armor']}"
+    if def_src:
+        def_line += f" ({', '.join(def_src)})"
+    lines.append(def_line)
+
+    dodge_src = []
+    if s["dodge_bonus"]:
+        dodge_src.append(f"награды +{s['dodge_bonus']}%")
+    if s["dodge_mult"] != 1.0:
+        dodge_src.append(f"состояние ×{s['dodge_mult']:g}")
+    dodge_line = f"💨 Уклонение: {s['dodge']}%"
+    if dodge_src:
+        dodge_line += f" ({', '.join(dodge_src)})"
+    if s["hp_bonus"]:
+        dodge_line += f"  ·  ❤️ Бонус HP: +{s['hp_bonus']}"
+    lines.append(dodge_line)
+
+    state_parts = []
+    for st in s["states"]:
+        if not st["conf"].get("hint"):
+            continue
+        mods = []
+        if st["conf"].get("attack_mult"):
+            mods.append(f"атака ×{st['conf']['attack_mult']:g}")
+        if st["conf"].get("dodge_mult"):
+            mods.append(f"уклонение ×{st['conf']['dodge_mult']:g}")
+        tail = f" ({', '.join(mods)})" if mods else ""
+        state_parts.append(f"{st['emoji']} {st['title']}{tail}")
+    if state_parts:
+        lines.append("ℹ️ Состояния: " + ", ".join(state_parts))
+
+    return lines
+
+
 async def _equipment_view(user_id: int):
     """Текст и клавиатура вкладки «Снаряжение»."""
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -227,6 +363,7 @@ async def _equipment_view(user_id: int):
         return f"{emoji} {label}: {it['name']}{_slot_extra(it, slot)}"
 
     lines = ["🛡️ СНАРЯЖЕНИЕ", "", "Нажми на слот — покажу подходящее из инвентаря."]
+    lines += [""] + await _combat_summary_lines(user_id)
     lines += ["", "▫️ ⚔️ ОРУЖИЕ"]
     lines.append("• " + slot_line('weapon'))
     if 'weapon_aux' in EQUIPMENT_LOCKED_SLOTS:
@@ -284,6 +421,9 @@ async def _render_equip_slot(message, user_id: int, slot: str):
         text += "\nПодходит из инвентаря:"
     else:
         text += "\nВ инвентаре нет подходящих предметов."
+
+    summary = (await _combat_summary_lines(user_id))
+    text += "\n\n⚡ " + " · ".join(summary[1:4])
 
     rows = []
     if equipped:

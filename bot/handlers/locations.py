@@ -76,6 +76,11 @@ async def location_preview(callback: CallbackQuery):
             photo = FSInputFile(candidate)
         elif not loc['preview_photo'].startswith("city/"):
             photo = loc['preview_photo']
+    if not photo and key == "contracts":
+        # Единая картинка доски контрактов (тот же файл, что и в меню контрактов).
+        candidate = resolve_image("city/contracts_board")
+        if os.path.isfile(candidate):
+            photo = FSInputFile(candidate)
     if photo:
         try:
             await callback.message.answer_photo(

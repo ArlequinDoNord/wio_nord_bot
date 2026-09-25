@@ -376,7 +376,13 @@ async def show_contracts(msg, user_id: int, state: FSMContext | None = None):
     buttons.append([InlineKeyboardButton(text="🏠 В меню города", callback_data="city:menu")])
 
     markup = InlineKeyboardMarkup(inline_keyboard=buttons)
-    photo = dungeon_entrance_photo(dungeons[0])
+    photo = None
+    # Приоритет: локальная картинка доски контрактов → фото входа данжа.
+    board = resolve_image("city/contracts_board")
+    if os.path.isfile(board):
+        photo = FSInputFile(board)
+    if not photo:
+        photo = dungeon_entrance_photo(dungeons[0])
     if photo:
         try:
             await msg.answer_photo(photo=photo, caption=text, reply_markup=markup)
