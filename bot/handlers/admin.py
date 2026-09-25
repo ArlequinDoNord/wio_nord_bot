@@ -40,6 +40,7 @@ from database.db import (
     get_water_junk_rows, update_water_junk, JUNK_EMOJI,
     log_activity, get_user_activity, clear_user_photo,
     get_recent_activity, get_activity_like,
+    get_location_visit_stats, get_location_visit_totals,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import (
@@ -3500,6 +3501,51 @@ async def _activity_other():
         ACTIVITY_EXCLUDED
     )
     return await cursor.fetchall()
+
+
+# ============ ПОПУЛЯРНОСТЬ ЛОКАЦИЙ ============
+
+LOC_STAT_PERIODS = {"1": "Сегодня", "7": "7 дней", "30": "30 дней", "all": "Всё время"}
+
+
+def _loc_stat_markup(current: str = "7"):
+    rows = []
+    for key, label in LOC_STAT_PERIODS.items():
+        mark = "•" if key == current else ""
+        rows.append([InlineKeyboardButton(text=f"{mark}{label}", callback_data=f"locstat:{key}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("locstat:"))
+async def admin_loc_stats(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_view_logs"):
+        await callback.message.answer("❌ Нет прав для просмотра статистики.")
+        return
+    days = callback.data.split(":", 1)[1]
+    if days not in LOC_STAT_PERIODS:
+        days = "7"
+    days_int = None if days == "all" else int(days)
+
+    totals = await get_location_visit_totals(days_int)
+    rows = await get_location_visit_stats(days_int)
+    label = LOC_STAT_PERIODS[days]
+    total = totals['visits'] if totals else 0
+
+    if not total:
+        text = (f"📈 ПОПУЛЯРНОСТЬ ЛОКАЦИЙ — {label}\n\n"
+                "Данных пока нет. Сбор начинается сразу после включения логирования "
+                "переходов: каждый успешный вход в здание/аспект пишется в БД.")
+    else:
+        lines = []
+        for i, r in enumerate(rows, 1):
+            share = r['visits'] * 100 / total
+            lines.append(f"{i}. {r['name']} — {r['visits']} входов ({share:.0f}%), "
+                         f"игроков {r['players']}")
+        text = (f"📈 ПОПУЛЯРНОСТЬ ЛОКАЦИЙ — {label}\n\n"
+                f"Всего входов: {total}, разных игроков: {totals['players']}\n\n"
+                + "\n".join(lines))
+    await callback.message.answer(text, reply_markup=_loc_stat_markup(days))
 
 
 # ============ ОТМЕНА ============

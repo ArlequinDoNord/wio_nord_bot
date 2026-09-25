@@ -423,6 +423,16 @@ async def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_ap_user ON ap_log(user_id, id);
 
+        CREATE TABLE IF NOT EXISTS location_visits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            location_key TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_locvis_user ON location_visits(user_id, id);
+        CREATE INDEX IF NOT EXISTS idx_locvis_loc ON location_visits(location_key, created_at);
+
         CREATE TABLE IF NOT EXISTS nii_reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -696,6 +706,8 @@ async def init_db():
     await _ensure_column(conn, "locations", "photo_day", "TEXT")
     await _ensure_column(conn, "locations", "photo_sunset", "TEXT")
     await _ensure_column(conn, "locations", "photo_night", "TEXT")
+    # v0.15.22: счётчик входов в локацию (для анализа популярности аспектов)
+    await _ensure_column(conn, "locations", "visits", "INTEGER DEFAULT 0")
     # Подземелья: картинка входа по времени суток (как у локаций)
     await _ensure_column(conn, "dungeons", "photo_dawn", "TEXT")
     await _ensure_column(conn, "dungeons", "photo_day", "TEXT")
@@ -6743,6 +6755,80 @@ async def prune_activity_log(days: int = 30):
     conn = await get_db()
     deleted = await conn.execute(
         "DELETE FROM activity_log WHERE created_at < datetime('now', ?)",
+        (f"-{days} days",)
+    )
+    await conn.commit()
+    return deleted.rowcount
+
+
+# ============ ЛОГИРОВАНИЕ ПЕРЕХОДОВ ПО ЛОКАЦИЯМ ============
+
+async def log_location_visit(user_id: int, location_key: str):
+    """Записать вход игрока в локацию (для анализа популярности аспектов игры).
+
+    Пишет строку в location_visits и увеличивает счётчик visits у локации.
+    Некритичная операция — сбой записи не ломает игру.
+    """
+    conn = await get_db()
+    try:
+        await conn.execute(
+            "INSERT INTO location_visits (user_id, location_key) VALUES (?, ?)",
+            (user_id, location_key)
+        )
+        await conn.execute(
+            "UPDATE locations SET visits = COALESCE(visits, 0) + 1 WHERE key = ?",
+            (location_key,)
+        )
+        await conn.commit()
+    except Exception:
+        pass
+
+
+async def get_location_visit_stats(days: int = None):
+    """Агрегированная популярность локаций: ключ, имя, число входов, число игроков.
+
+    days=None — за всё время, иначе за последние N дней. Сортировка по входам.
+    """
+    conn = await get_db()
+    where = ""
+    params = ()
+    if days:
+        where = "WHERE v.created_at >= datetime('now', ?)"
+        params = (f"-{days} days",)
+    cursor = await conn.execute(
+        "SELECT v.location_key, "
+        "COALESCE(l.name, v.location_key) AS name, "
+        "COUNT(*) AS visits, COUNT(DISTINCT v.user_id) AS players "
+        "FROM location_visits v "
+        "LEFT JOIN locations l ON l.key = v.location_key "
+        f"{where} "
+        "GROUP BY v.location_key ORDER BY visits DESC, v.location_key",
+        params
+    )
+    return await cursor.fetchall()
+
+
+async def get_location_visit_totals(days: int = None):
+    """Итоги по переходам: всего входов и уникальных игроков (days=None — всё время)."""
+    conn = await get_db()
+    where = ""
+    params = ()
+    if days:
+        where = "WHERE created_at >= datetime('now', ?)"
+        params = (f"-{days} days",)
+    cursor = await conn.execute(
+        f"SELECT COUNT(*) AS visits, COUNT(DISTINCT user_id) AS players "
+        f"FROM location_visits {where}",
+        params
+    )
+    return await cursor.fetchone()
+
+
+async def prune_location_visits(days: int = 90):
+    """Удалить записи переходов старше заданного числа дней (защита от роста таблицы)."""
+    conn = await get_db()
+    deleted = await conn.execute(
+        "DELETE FROM location_visits WHERE created_at < datetime('now', ?)",
         (f"-{days} days",)
     )
     await conn.commit()

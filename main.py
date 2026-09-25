@@ -15,7 +15,7 @@ from database.db import (
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award,
     ensure_water_fish, migrate_legacy_junk,
     ensure_recipe_shop_items, ensure_user_recipes_backfill,
-    log_activity, prune_activity_log,
+    log_activity, prune_activity_log, prune_location_visits,
 )
 from utils.notify import notify_treasury_shortage
 from utils.helpers import is_main_menu_text
@@ -186,6 +186,12 @@ async def scheduled_jobs(bot: Bot):
                 logger.info(f"Очистка activity_log: удалено записей {pruned}")
         except Exception as e:
             logger.error(f"Ошибка очистки activity_log: {e}", exc_info=True)
+        try:
+            pruned = await prune_location_visits(days=90)
+            if pruned:
+                logger.info(f"Очистка location_visits: удалено записей {pruned}")
+        except Exception as e:
+            logger.error(f"Ошибка очистки location_visits: {e}", exc_info=True)
         await asyncio.sleep(24 * 60 * 60)
 
 

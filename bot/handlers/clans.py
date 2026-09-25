@@ -20,7 +20,7 @@ from database.db import (
     delete_clan, get_clan_members, get_clan_member_ids, get_clan_pending_requests,
     is_clan_member, add_clan_member, remove_clan_member, get_user_clan,
     is_clan_leader, add_clan_request, remove_clan_request, has_clan_request,
-    add_user_role, remove_user_role,
+    add_user_role, remove_user_role, log_location_visit,
     KIND_LABELS,
 )
 from utils.permissions import has_permission, log_action
@@ -87,6 +87,7 @@ async def clans_list_cb(callback: CallbackQuery):
     if not await can_enter_location(callback.from_user.id, "townhall"):
         await callback.message.answer("🍺 Ты пьян! В Ратушу не пускают. Протрезвей сначала.")
         return
+    await log_location_visit(callback.from_user.id, "townhall")
     await _show_clans_list(callback)
 
 

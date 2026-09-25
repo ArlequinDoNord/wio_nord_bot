@@ -14,7 +14,7 @@ from aiogram.fsm.context import FSMContext
 
 from database.db import (
     get_location_by_key, can_enter_location, location_access_label,
-    user_has_status_tag,
+    user_has_status_tag, log_location_visit,
 )
 from utils.helpers import resolve_image, time_of_day_key
 from utils.permissions import has_permission, is_admin
@@ -150,6 +150,9 @@ async def location_enter(callback: CallbackQuery, state: FSMContext):
                 ])
             )
             return
+
+    # Логируем успешный вход в локацию (для анализа популярности аспектов игры)
+    await log_location_visit(callback.from_user.id, key)
 
     # Передаём управление специфическому функционалу локации
     if key == "townhall":

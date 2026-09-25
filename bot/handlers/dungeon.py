@@ -23,6 +23,7 @@ from database.db import (
     item_fits_slot, EQUIPMENT_SLOT_LABELS, SMOKE_ITEM_NAME,
     update_user, get_fish_catches, add_fish_catch,
     get_water_fish_pool, get_water_fish_photo_by_name, get_water_fish_kind,
+    log_location_visit,
 )
 from utils.combat import (
     calculate_attack, calculate_enemy_damage, roll_dodge,
@@ -582,6 +583,7 @@ async def contract_enter_confirm(callback: CallbackQuery, state: FSMContext):
 # Совместимость: старые кнопки «Подземелье» переадресуются на список контрактов.
 @router.callback_query(F.data == "city:dungeon")
 async def dungeon_entry_legacy(callback: CallbackQuery, state: FSMContext):
+    await log_location_visit(callback.from_user.id, "contracts")
     await contracts_list(callback, state)
 
 

@@ -10,7 +10,7 @@ from aiogram.fsm.state import State, StatesGroup
 from database.db import (
     get_library_cards, can_access_sections, has_library_access,
     get_library_books, get_library_book, add_library_book, delete_library_book,
-    can_enter_location,
+    can_enter_location, log_location_visit,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import has_permission, log_action
@@ -82,6 +82,7 @@ async def library_enter(callback: CallbackQuery):
     if not await can_enter_location(callback.from_user.id, "library"):
         await callback.message.answer("🍺 Ты пьян! В Библиотеку не пускают. Протрезвей сначала.")
         return
+    await log_location_visit(callback.from_user.id, "library")
     photo = library_photo()
     is_manager = await manager_markup(callback.from_user.id)
     if not await has_library_access(callback.from_user.id):

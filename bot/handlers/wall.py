@@ -18,7 +18,7 @@ from config import (
 from database.db import (
     get_user, count_wall_posts_today, wall_post_tier, add_wall_post,
     get_wall_posts, get_wall_post, count_wall_posts, delete_wall_post,
-    log_activity,
+    log_activity, log_location_visit,
 )
 from utils.helpers import plural_nordmark, is_main_menu_text
 from utils.permissions import has_permission, log_action
@@ -145,6 +145,7 @@ async def wall_open_text(message: Message, state: FSMContext):
 @router.callback_query(F.data == "wall:view")
 async def wall_view(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    await log_location_visit(callback.from_user.id, "wall")
     await _show_wall(callback, state, page=0)
 
 

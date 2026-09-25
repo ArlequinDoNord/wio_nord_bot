@@ -18,7 +18,7 @@ from database.db import (
     get_inventory, get_item, get_item_by_name,
     remove_inventory_item, add_inventory_item, remove_ap, add_ap,
     get_inventory_item, get_inventory_plant_data, set_inventory_plant_data,
-    user_has_status_tag, log_activity,
+    user_has_status_tag, log_activity, log_location_visit,
     remove_nordmarks,
     get_housing_expansions_installed, increment_housing_expansions,
     get_housing_tax_rate, pay_housing_tax, is_housing_tax_paid, pay_housing_debt,
@@ -172,6 +172,7 @@ async def housing_menu(cb: CallbackQuery):
     if not await user_has_status_tag(uid, "recruit"):
         await cb.answer("❌ Жильё доступно только рекрутам и пилотам.", show_alert=True)
         return
+    await log_location_visit(uid, "housing")
     h = await get_player_housing(uid)
     ht = h["housing_type"]
     info = HOUSING_TYPES[ht]

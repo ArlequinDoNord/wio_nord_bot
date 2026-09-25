@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, Inli
 
 from database.db import (get_all_users, get_user,
                          can_enter_location, get_active_polls,
-                         get_user_voted_polls_count)
+                         get_user_voted_polls_count, log_location_visit)
 from config import get_effective_rank
 from utils.helpers import resolve_image, MOSCOW_TZ
 
@@ -72,6 +72,7 @@ async def town_hall_menu(callback: CallbackQuery):
     if not await can_enter_location(callback.from_user.id, "townhall"):
         await callback.message.answer("🍺 Ты пьян! В Ратушу не пускают. Протрезвей сначала.")
         return
+    await log_location_visit(callback.from_user.id, "townhall")
     await _show_hall(callback)
 
 
