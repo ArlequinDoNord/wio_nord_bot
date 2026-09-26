@@ -76,34 +76,40 @@ async def town_hall_menu(callback: CallbackQuery):
     await _show_hall(callback)
 
 
+async def _render_hall_context(callback: CallbackQuery, caption: str, markup: InlineKeyboardMarkup):
+    """Переписать сообщение с контекстом Ратуши. Если текущее сообщение — с фото
+    (например, аватар профиля другого пилота), фото заменяется на вид Ратуши,
+    чтобы чужой аватар не «наезжал» на карточку/список следующего пилота."""
+    hall_view = resolve_image("city/rathaus")
+    if callback.message.photo and os.path.isfile(hall_view):
+        from aiogram.types import InputMediaPhoto
+        await callback.message.edit_media(
+            media=InputMediaPhoto(media=FSInputFile(hall_view), caption=caption),
+            reply_markup=markup,
+        )
+    elif callback.message.photo:
+        await callback.message.edit_caption(caption=caption, reply_markup=markup)
+    else:
+        await callback.message.edit_text(caption, reply_markup=markup)
+
+
 @router.callback_query(F.data == "city:pilots:list")
 async def town_hall_pilots_list(callback: CallbackQuery):
     await callback.answer()
     users = await get_all_users()
     if not users:
         text = "🪖 ПИЛОТЫ ГОРОДА\n\nПока никого нет — загляни позже!"
-        if callback.message.photo:
-            await callback.message.edit_caption(
-                caption=text,
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 В Ратушу", callback_data="city:pilots")]
-                ])
-            )
-        else:
-            await callback.message.edit_text(
-                text,
-                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 В Ратушу", callback_data="city:pilots")]
-                ])
-            )
+        await _render_hall_context(
+            callback, text,
+            InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 В Ратушу", callback_data="city:pilots")]
+            ])
+        )
         return
 
     users = sorted(users, key=lambda u: (u['first_name'] or "").lower())
     text = "🪖 ПИЛОТЫ ГОРОДА (по алфавиту):"
-    if callback.message.photo:
-        await callback.message.edit_caption(caption=text, reply_markup=pilots_list_markup(users))
-    else:
-        await callback.message.edit_text(text, reply_markup=pilots_list_markup(users))
+    await _render_hall_context(callback, text, pilots_list_markup(users))
 
 
 @router.callback_query(F.data.startswith("rathaus:"))
@@ -138,10 +144,7 @@ async def town_hall_pilot_card(callback: CallbackQuery):
     buttons.append([InlineKeyboardButton(text="🔙 К пилотам", callback_data="city:pilots:list")])
     markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 
-    if callback.message.photo:
-        await callback.message.edit_caption(caption=text, reply_markup=markup)
-    else:
-        await callback.message.edit_text(text, reply_markup=markup)
+    await _render_hall_context(callback, text, markup)
 
 
 @router.callback_query(F.data.startswith("rathaus_prof:"))
