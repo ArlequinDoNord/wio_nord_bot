@@ -128,7 +128,7 @@ async def nii_write_text(message: Message, state: FSMContext):
 @router.callback_query(F.data == "nii:no_photo")
 async def nii_photo_skip(callback: CallbackQuery, state: FSMContext, bot: Bot):
     await callback.answer()
-    await _nii_finish(callback.message, state, bot, photo_file_id=None)
+    await _nii_finish(callback.from_user.id, callback.message, state, bot, photo_file_id=None)
 
 
 @router.message(NiiWrite.photo)
@@ -138,18 +138,17 @@ async def nii_write_photo(message: Message, state: FSMContext, bot: Bot):
         await message.answer("Обращение отменено.")
         return
     if message.text and message.text.strip() in ("-", "Пропустить"):
-        await _nii_finish(message, state, bot, photo_file_id=None)
+        await _nii_finish(message.from_user.id, message, state, bot, photo_file_id=None)
         return
     if not message.photo:
         await message.answer("❌ Отправь фото, «-», «Пропустить» или кнопку «Без фото»:")
         return
-    await _nii_finish(message, state, bot, photo_file_id=message.photo[-1].file_id)
+    await _nii_finish(message.from_user.id, message, state, bot, photo_file_id=message.photo[-1].file_id)
 
 
-async def _nii_finish(message, state: FSMContext, bot: Bot, photo_file_id):
-    user_id = message.from_user.id
+async def _nii_finish(user_id: int, message, state: FSMContext, bot: Bot, photo_file_id):
     data = await state.get_data()
-    text = data.get('text')
+    text = data.get('text') or ""
 
     # Повторная проверка лимита (на случай долгого ввода).
     used = await count_nii_reports_today(user_id)
@@ -160,6 +159,11 @@ async def _nii_finish(message, state: FSMContext, bot: Bot, photo_file_id):
             f"🚫 Суточный лимит обращений исчерпан ({NII_DAILY_LIMIT} в сутки). "
             f"Новое — завтра."
         )
+        return
+
+    if not text:
+        await state.clear()
+        await message.answer("❌ Текст обращения не найден. Начни заново: «✍️ Оставить жалобу / запрос».")
         return
 
     report_id = await add_nii_report(user_id, text, photo_file_id)
