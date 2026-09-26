@@ -3,6 +3,7 @@ import time
 import aiosqlite
 from config import (DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MINUTES,
                     DUNGEON_RUN_STALE_SEC)
+from config import get_effective_rank
 
 db: aiosqlite.Connection | None = None
 
@@ -835,6 +836,14 @@ async def init_db():
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('mig_v0133_fish_market_ok', '1')")
     await conn.commit()
     await ensure_base_statuses()
+    # v0.15.24: авто-статусы по званиям — разовый бэкфилл по текущим войскам/званиям.
+    mig_statuses = await (await conn.execute(
+        "SELECT value FROM settings WHERE key = 'mig_rank_statuses'")).fetchone()
+    if not mig_statuses:
+        await backfill_rank_statuses()
+        await conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('mig_rank_statuses', '1')")
+        await conn.commit()
     # v0.15.17: единая шкала статусов — «Пилот» → «Пилот 2 класса», «VIP» → «Ас».
     # Старые теги удаляются, игроки и товары переводятся на новые.
     for old_tag, new_tag in (("pilot", "pilot2"), ("vip", "ace"), ("WHR", "keeper")):
@@ -1233,7 +1242,8 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
                    weapon_effect_dmg: int = 0,
                    housing_type: str = None,
                    housing_slots: int = None,
-                   regen: int = 0):
+                   regen: int = 0,
+                   required_status: str = None):
     conn = await get_db()
     # v0.13.3: рыба (категория fishing) по умолчанию выставляется на рынок;
     # у остальных предметов — только скупщик, пока админ не включит флаг.
@@ -1242,12 +1252,12 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
     cursor = await conn.execute(
         """INSERT INTO items (name, description, photo_file_id, price, sell_price,
            rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name,
-           weapon_effect, weapon_effect_chance, weapon_effect_dmg, housing_type, housing_slots, regen)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           weapon_effect, weapon_effect_chance, weapon_effect_dmg, housing_type, housing_slots, regen, required_status)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (name, description, photo_file_id, price, sell_price, rarity, category,
          stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name,
          weapon_effect or None, weapon_effect_chance, weapon_effect_dmg,
-         housing_type, housing_slots, regen)
+         housing_type, housing_slots, regen, required_status)
     )
     await conn.commit()
     return cursor.lastrowid
@@ -3043,9 +3053,12 @@ async def payout_reports() -> list:
             )
         await conn.execute(f"UPDATE reports SET paid = 1 WHERE id IN ({placeholders})", report_ids)
         cur = await conn.execute(
-            "SELECT troops, nordmarks FROM users WHERE user_id = ?", (uid,)
+            "SELECT troops, nordmarks, promoted_rank FROM users WHERE user_id = ?", (uid,)
         )
         u = await cur.fetchone()
+        if u:
+            rank = get_effective_rank(u['troops'], u['promoted_rank'])
+            await grant_status_for_rank(uid, rank)
         results.append({
             'user_id': uid,
             'troops': troops_total,
@@ -3146,22 +3159,22 @@ async def get_region_stats():
 
 
 async def get_users_for_rank_promotion():
-    """Игроки, чьи войска соответствуют званию выше Лейтенанта,
-    но звание ещё не присвоено через админку."""
-    from config import RANKS
-    lieutenant_troops = 1500
+    """Игроки, чьи войска достаточны для звания выше «Старший Лейтенант»,
+    но звание ещё не присвоено через админку (список-подсказка для админа)."""
+    from config import RANKS, AUTO_RANK_NAMES
+    auto_cap = next((req for name, req in RANKS if name == AUTO_RANK_NAMES[-1]), 0)
     result = []
     conn = await get_db()
     cursor = await conn.execute(
         "SELECT user_id, first_name, username, troops, promoted_rank FROM users WHERE troops >= ?",
-        (lieutenant_troops,)
+        (auto_cap,)
     )
     for row in await cursor.fetchall():
         if row['promoted_rank']:
             continue
         next_rank = None
         for rank_name, required in RANKS:
-            if rank_name in ("Рекрут", "Рядовой", "Капрал", "Сержант", "Лейтенант"):
+            if rank_name in AUTO_RANK_NAMES:
                 continue
             if row['troops'] >= required:
                 next_rank = rank_name
@@ -3178,14 +3191,70 @@ async def get_users_for_rank_promotion():
     return result
 
 
+async def grant_status_for_rank(user_id: int, rank_name: str, granted_by: int = 0):
+    """Выдать игроку статус, закреплённый за званием, если его ещё нет.
+
+    Впервые выданный статус становится выбранным (активным), чтобы статус
+    «появился» вместе со званием. Возвращает статус или None.
+    """
+    from config import RANK_STATUS_TAGS
+    tag = RANK_STATUS_TAGS.get(rank_name)
+    if not tag:
+        return None
+    if not await get_user(user_id):
+        return None
+    status = await get_status_by_tag(tag)
+    if not status:
+        return None
+    if await user_has_status_tag(user_id, tag):
+        return None
+    await grant_status(user_id, status['id'], granted_by)
+    await set_selected_status(user_id, status['id'])
+    return status
+
+
+async def ensure_rank_statuses_for_troops(user_id: int):
+    """Выдать статус по текущему званию игрока (по войскам или админ-назначению)."""
+    user = await get_user(user_id)
+    if not user:
+        return None
+    rank = get_effective_rank(
+        user['troops'],
+        user['promoted_rank'] if 'promoted_rank' in user.keys() else None
+    )
+    return await grant_status_for_rank(user_id, rank)
+
+
+async def backfill_rank_statuses():
+    """Разово выдать статусы по текущим званиям всех пилотов (войска и админ-звания).
+
+    Возвращает число статусов, выданных заново. Идемпотентна.
+    """
+    conn = await get_db()
+    cursor = await conn.execute("SELECT user_id, troops, promoted_rank FROM users")
+    rows = await cursor.fetchall()
+    granted = 0
+    for row in rows:
+        rank = get_effective_rank(row['troops'], row['promoted_rank'])
+        if await grant_status_for_rank(row['user_id'], rank):
+            granted += 1
+    return granted
+
+
 async def promote_user_rank(user_id: int, rank_name: str, promoted_by: int):
+    """Присвоить звание решением админа (порог войск не проверяется — свободное решение).
+
+    Закреплённый за званием статус выдаётся автоматически.
+    """
     conn = await get_db()
     await conn.execute(
         "UPDATE users SET promoted_rank = ? WHERE user_id = ?",
         (rank_name, user_id)
     )
     await conn.commit()
+    from utils.permissions import log_action
     await log_action(promoted_by, 'promote_rank', user_id, f"rank={rank_name}")
+    await grant_status_for_rank(user_id, rank_name, promoted_by)
 
 
 async def add_building(name: str, description: str, price: int, category: str,
@@ -3498,6 +3567,33 @@ async def user_has_status_tag(user_id: int, tag: str) -> bool:
     if top is None:
         return False
     return top >= req['sort_order']
+
+
+async def user_status_visibility_top(user_id: int):
+    """Верхняя граница sort_order для видимости предметов магазина.
+
+    Для мотивации и «неожиданности» новинок игрок видит товары своего статуса
+    и одной следующей ступени иерархии (требуется статус не далее следующего),
+    а предметы на две ступени выше и дальше — скрываются.
+
+    Возвращает sort_order этого статуса-«витрины»; None — если у игрока нет
+    статусов (видны только товары без требования).
+    """
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT MAX(s.sort_order) as top FROM user_statuses us
+        JOIN statuses s ON us.status_id = s.id
+        WHERE us.user_id = ?
+    """, (user_id,))
+    top = (await cursor.fetchone())['top']
+    if top is None:
+        return None
+    cursor = await conn.execute(
+        "SELECT MIN(sort_order) AS nxt FROM statuses WHERE sort_order > ?", (top,))
+    nxt = (await cursor.fetchone())['nxt']
+    if nxt is None:
+        return top  # у игрока максимальный статус — видна вся витрина
+    return nxt
 
 
 async def user_is_tourist(user_id: int) -> bool:

@@ -74,6 +74,7 @@ class AdminAddItem(StatesGroup):
     producer = State()
     producer_user = State()
     market = State()
+    status = State()
     photo = State()
 
 
@@ -1034,7 +1035,7 @@ async def shop_admin_add(callback: CallbackQuery, state: FSMContext):
         return
     await state.set_state(AdminAddItem.name)
     await callback.message.answer(
-        "🛒 Добавление товара. Шаг 1/9\n\nВведи название товара (или /cancel):",
+        "🛒 Добавление товара. Шаг 1/12\n\nВведи название товара (или /cancel):",
         reply_markup=cancel_keyboard()
     )
 
@@ -1043,7 +1044,7 @@ async def shop_admin_add(callback: CallbackQuery, state: FSMContext):
 async def add_item_name(message: Message, state: FSMContext):
     await state.update_data(name=message.text.strip())
     await state.set_state(AdminAddItem.desc)
-    await message.answer("Шаг 2/9 — Описание товара (или «-» если нет):",
+    await message.answer("Шаг 2/12 — Описание товара (или «-» если нет):",
                          reply_markup=cancel_keyboard())
 
 
@@ -1052,7 +1053,7 @@ async def add_item_desc(message: Message, state: FSMContext):
     text = message.text.strip()
     await state.update_data(desc=None if text == "-" else text)
     await state.set_state(AdminAddItem.price)
-    await message.answer("Шаг 3/9 — Цена в Нордмарках (целое число):",
+    await message.answer("Шаг 3/12 — Цена в Нордмарках (целое число):",
                          reply_markup=cancel_keyboard())
 
 
@@ -1068,7 +1069,7 @@ async def add_item_price(message: Message, state: FSMContext):
         return
     await state.update_data(price=price)
     await state.set_state(AdminAddItem.sell_price)
-    await message.answer(f"Шаг 4/9 — Цена продажи за {price}? Введи сумму (или «-» = половина):",
+    await message.answer(f"Шаг 4/12 — Цена продажи за {price}? Введи сумму (или «-» = половина):",
                          reply_markup=cancel_keyboard())
 
 
@@ -1086,7 +1087,7 @@ async def add_item_sell_price(message: Message, state: FSMContext):
             return
     await state.update_data(sell_price=sell_price)
     await state.set_state(AdminAddItem.rarity)
-    await message.answer("Шаг 5/9 — Редкость:", reply_markup=rarity_choice_markup())
+    await message.answer("Шаг 5/12 — Редкость:", reply_markup=rarity_choice_markup())
 
 
 @router.callback_query(F.data.startswith("rar:"))
@@ -1095,7 +1096,7 @@ async def add_item_rarity(callback: CallbackQuery, state: FSMContext):
     rarity = int(callback.data.split(":")[1])
     await state.update_data(rarity=rarity)
     await state.set_state(AdminAddItem.category)
-    await callback.message.answer("Шаг 6/9 — Категория:", reply_markup=category_choice_markup())
+    await callback.message.answer("Шаг 6/12 — Категория:", reply_markup=category_choice_markup())
 
 
 @router.callback_query(F.data.startswith("cat:"))
@@ -1127,7 +1128,7 @@ async def add_item_category(callback: CallbackQuery, state: FSMContext):
         )
         return
     await state.set_state(AdminAddItem.stock)
-    await callback.message.answer("Шаг 7/9 — Остаток на складе (или «-» = безлимит):",
+    await callback.message.answer("Шаг 7/12 — Остаток на складе (или «-» = безлимит):",
                                   reply_markup=cancel_keyboard())
 
 
@@ -1137,7 +1138,7 @@ async def add_item_drink_choice(callback: CallbackQuery, state: FSMContext):
     effect = callback.data.split(":", 1)[1]
     await state.update_data(drink_effect=None if effect in ("none", "") else effect)
     await state.set_state(AdminAddItem.stock)
-    await callback.message.answer("Шаг 7/9 — Остаток на складе (или «-» = безлимит):",
+    await callback.message.answer("Шаг 7/12 — Остаток на складе (или «-» = безлимит):",
                                   reply_markup=cancel_keyboard())
 
 
@@ -1146,7 +1147,7 @@ async def add_item_plant_name(message: Message, state: FSMContext):
     text = message.text.strip()
     await state.update_data(plant_name=None if text in ("-", "—") else text)
     await state.set_state(AdminAddItem.stock)
-    await message.answer("Шаг 7/9 — Остаток на складе (или «-» = безлимит):",
+    await message.answer("Шаг 7/12 — Остаток на складе (или «-» = безлимит):",
                          reply_markup=cancel_keyboard())
 
 
@@ -1166,12 +1167,12 @@ async def add_item_stock(message: Message, state: FSMContext):
     cat = data.get('category')
     if cat == 'weapon':
         await state.set_state(AdminAddItem.stats)
-        await message.answer("Шаг 8/9 — Урон оружия (число), 0 если нет:",
+        await message.answer("Шаг 8/12 — Урон оружия (число), 0 если нет:",
                              reply_markup=cancel_keyboard())
         return
     if cat == 'equipment':
         await state.set_state(AdminAddItem.stats)
-        await message.answer("Шаг 8/9 — Защита снаряжения (число), 0 если нет:",
+        await message.answer("Шаг 8/12 — Защита снаряжения (число), 0 если нет:",
                              reply_markup=cancel_keyboard())
         return
     await _go_add_item_producer(message, state)
@@ -1185,7 +1186,7 @@ async def add_item_stats(message: Message, state: FSMContext):
         await state.update_data(damage=value)
         await state.set_state(AdminAddItem.weapon_effect)
         await message.answer(
-            "Шаг 8/9 — Особый эффект оружия при попадании?\n"
+            "Шаг 8/12 — Особый эффект оружия при попадании?\n"
             "Отравление/кровотечение/обморожение бьют врага каждый ход, "
             "оглушение — сбивает его точность на пару ходов.",
             reply_markup=weapon_effect_choice_markup()
@@ -1197,7 +1198,7 @@ async def add_item_stats(message: Message, state: FSMContext):
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             await state.set_state(AdminAddItem.equip_slot)
             await message.answer(
-                "Шаг 8/9 — На какую часть тела надевается?",
+                "Шаг 8/12 — На какую часть тела надевается?",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(text="🪖 Голова", callback_data="eqpart:head")],
                     [InlineKeyboardButton(text="🦺 Тело", callback_data="eqpart:body")],
@@ -1233,7 +1234,7 @@ async def add_item_weapon_effect_cb(callback: CallbackQuery, state: FSMContext):
     await state.update_data(weapon_effect=eff)
     await state.set_state(AdminAddItem.weapon_effect_chance)
     await callback.message.answer(
-        f"Шаг 8/9 — Шанс, что «{WEAPON_EFFECT_LABELS[eff]}» сработает "
+        f"Шаг 8/12 — Шанс, что «{WEAPON_EFFECT_LABELS[eff]}» сработает "
         f"при попадании, % (0–100):",
         reply_markup=cancel_keyboard()
     )
@@ -1255,11 +1256,11 @@ async def add_item_weapon_effect_chance(message: Message, state: FSMContext):
     await state.set_state(AdminAddItem.weapon_effect_dmg)
     if is_stun:
         await message.answer(
-            "Шаг 8/9 — Штраф к точности врага, % (шанс врага промахнуться "
+            "Шаг 8/12 — Штраф к точности врага, % (шанс врага промахнуться "
             "на 2 хода, 0–100):",
             reply_markup=cancel_keyboard())
     else:
-        await message.answer("Шаг 8/9 — Урон эффекта за каждый ход (целое число):",
+        await message.answer("Шаг 8/12 — Урон эффекта за каждый ход (целое число):",
                              reply_markup=cancel_keyboard())
 
 
@@ -1281,7 +1282,7 @@ async def _go_add_item_producer(message: Message, state: FSMContext):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     await state.set_state(AdminAddItem.producer)
     await message.answer(
-        "Шаг 9/9 — Кто продаёт этот товар?",
+        "Шаг 9/12 — Кто продаёт этот товар?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🏛️ Гос. магазин", callback_data="prod:state")],
             [InlineKeyboardButton(text="👤 Игрок-продавец", callback_data="prod:player")],
@@ -1296,7 +1297,7 @@ async def add_item_producer(callback: CallbackQuery, state: FSMContext):
     if choice == "player":
         await state.set_state(AdminAddItem.producer_user)
         await callback.message.answer(
-            "Шаг 8/10 — Введи @username или ID игрока, который продаёт этот товар "
+            "Шаг 9/12 (подшаг) — Введи @username или ID игрока, который продаёт этот товар "
             "(выручка с налогом уйдёт ему):",
             reply_markup=cancel_keyboard()
         )
@@ -1319,7 +1320,7 @@ async def _go_add_item_market(message: Message, state: FSMContext):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     await state.set_state(AdminAddItem.market)
     await message.answer(
-        "Шаг 9/10 — Можно ли продавать этот предмет на РЫНКЕ "
+        "Шаг 10/12 — Можно ли продавать этот предмет на РЫНКЕ "
         "(другие игроки смогут покупать его с витрины)?\n"
         "Если нет — предмет продаётся только скупщику.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -1334,9 +1335,39 @@ async def add_item_market_choice(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     choice = callback.data.split(":")[1]
     await state.update_data(market_ok=1 if choice == "yes" else 0)
+    await _go_add_item_status(callback.message, state)
+
+
+async def _go_add_item_status(message: Message, state: FSMContext):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    statuses = await get_all_statuses()
+    rows = []
+    for s in statuses:
+        rows.append([InlineKeyboardButton(
+            text=f"🔓 {s['name']}", callback_data=f"addreq:{s['id']}")])
+    rows.append([InlineKeyboardButton(text="➖ Без статуса", callback_data="addreq:none")])
+    await state.set_state(AdminAddItem.status)
+    await message.answer(
+        "Шаг 11/12 — С какого статуса предмет доступен к покупке и использованию?\n"
+        "В магазине он станет виден, когда игрок дойдёт до этого статуса "
+        "(и на одну ступень раньше — как «цель»).",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+@router.callback_query(F.data.startswith("addreq:"))
+async def add_item_status_cb(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    val = callback.data.split(":")[1]
+    if val == "none":
+        tag = None
+    else:
+        s = await get_status(int(val))
+        tag = s['access_tag'] if s else None
+    await state.update_data(required_status=tag)
     await state.set_state(AdminAddItem.photo)
     await callback.message.answer(
-        "Шаг 10/10 — Загрузи фото товара (или «-» если без фото):",
+        "Шаг 12/12 — Загрузи фото товара (или «-» если без фото):",
         reply_markup=cancel_keyboard()
     )
 
@@ -1369,9 +1400,10 @@ async def add_item_photo(message: Message, state: FSMContext):
         equip_slot=data.get('equip_slot'),
         market_ok=data.get('market_ok', 0),
         plant_name=data.get('plant_name'),
-        weapon_effect=data.get('weapon_effect'),
+        weapon_effect=item.get('weapon_effect'),
         weapon_effect_chance=data.get('weapon_effect_chance', 0),
         weapon_effect_dmg=data.get('weapon_effect_dmg', 0),
+        required_status=data.get('required_status'),
     )
     await log_action(admin_id, 'add_item', data.get('produced_by'),
                      f"item={data['name']} id={item_id}")
@@ -1516,7 +1548,7 @@ async def edit_item_pick(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text="♻ Регенерация % (от лечения)", callback_data="field:regen")],
             [InlineKeyboardButton(text="🛡️ Броня", callback_data="field:armor")],
             [InlineKeyboardButton(text="⚡ AP за использование", callback_data="field:ap_cost")],
-            [InlineKeyboardButton(text="🔒 Требуемый статус", callback_data="field:required_status")],
+            [InlineKeyboardButton(text="🔒 Статус доступа (покупка/использование)", callback_data="field:required_status")],
             [InlineKeyboardButton(text="🖼 Картинка", callback_data="field:photo")],
             [InlineKeyboardButton(text="🍺 Тип напитка (действие)", callback_data="field:drink")],
             [InlineKeyboardButton(text="🌳 Растение в кадке (семечко)", callback_data="field:plant_name")],
@@ -1554,9 +1586,11 @@ async def edit_item_field_status(callback: CallbackQuery, state: FSMContext):
         else:
             cur_label = cur_tag
     await callback.message.edit_text(
-        f"🔒 Требуемый статус «{item['name'] if item else 'товар'}».\n"
+        f"🔒 Статус доступа «{item['name'] if item else 'товар'}».\n"
         f"Сейчас: {cur_label}.\n\n"
-        f"Выбери статус, требуемый для покупки этого товара:",
+        f"С какого статуса предмет доступен к покупке и использованию?\n"
+        f"В магазине он станет виден, когда игрок дойдёт до этого статуса "
+        f"(и на одну ступень раньше — как «цель»).",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
 
@@ -3348,45 +3382,81 @@ async def admin_ranks(callback: CallbackQuery):
 
     await callback.message.edit_text(
         "⭐ Повышение в звании\n\n"
-        "Игроки, чьи войска соответствуют званию выше Лейтенанта:",
+        "Игроки, чьи войска достаточны для админского звания\n"
+        "(выше «Старшего Лейтенанта»). Звание выбирает админ:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
 
 
 @router.callback_query(F.data.startswith("rank_promote:"))
-async def rank_promote(callback: CallbackQuery, bot: Bot):
+async def rank_promote(callback: CallbackQuery):
+    """Показать админу список админских званий для свободного выбора."""
     await callback.answer()
     if not await has_permission(callback.from_user.id, "can_grant_troops"):
         await callback.message.answer("❌ Нет прав.")
         return
 
     user_id = int(callback.data.split(":")[1])
+    await show_rank_picker(callback, user_id)
+
+
+async def show_rank_picker(callback: CallbackQuery, user_id: int):
+    from config import RANKS, AUTO_RANK_NAMES
     user = await get_user(user_id)
     if not user:
         await callback.message.answer("❌ Игрок не найден.")
         return
 
-    from config import RANKS
     troops = user['troops']
-    next_rank = None
-    for rank_name, required in RANKS:
-        if rank_name in ("Рекрут", "Рядовой", "Капрал", "Сержант", "Лейтенант"):
+    name = user['first_name'] or user['username'] or str(user_id)
+    buttons = []
+    for idx, (rank_name, required) in enumerate(RANKS):
+        if rank_name in AUTO_RANK_NAMES:
             continue
-        if troops >= required:
-            next_rank = rank_name
-        else:
-            break
+        mark = "✅" if troops >= required else "➖"
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"{mark} {rank_name} ({required} войск)",
+                callback_data=f"rank_pick:{user_id}:{idx}"
+            )
+        ])
+    buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:ranks")])
 
-    if not next_rank:
-        await callback.message.answer("❌ У игрока нет достаточного количества войск.")
+    await callback.message.edit_text(
+        f"⭐ Повышение: {name} ({troops} войск)\n\n"
+        "Выбери звание. ✅ — доступно по войскам, ➖ — свободным решением админа:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+
+
+@router.callback_query(F.data.startswith("rank_pick:"))
+async def rank_pick(callback: CallbackQuery, bot: Bot):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_grant_troops"):
+        await callback.message.answer("❌ Нет прав.")
         return
 
-    await promote_user_rank(user_id, next_rank, callback.from_user.id)
+    parts = callback.data.split(":")
+    user_id = int(parts[1])
+    idx = int(parts[2])
+    from config import RANKS, AUTO_RANK_NAMES
+    if idx < 0 or idx >= len(RANKS) or RANKS[idx][0] in AUTO_RANK_NAMES:
+        await callback.message.answer("❌ Неверное звание.")
+        return
+    rank_name, required = RANKS[idx]
+
+    user = await get_user(user_id)
+    if not user:
+        await callback.message.answer("❌ Игрок не найден.")
+        return
+
+    await promote_user_rank(user_id, rank_name, callback.from_user.id)
     name = user['first_name'] or user['username'] or str(user_id)
     await callback.message.answer(
-        f"✅ {name} повышен до звания «{next_rank}» ({troops} войск)."
+        f"✅ {name} повышен до звания «{rank_name}» "
+        f"({user['troops']} войск, порог {required})."
     )
-    await notify(bot, f"⭐ Пилот {await player_display(user)} получил звание «{next_rank}»!", user['user_id'])
+    await notify(bot, f"⭐ Пилот {await player_display(user)} получил звание «{rank_name}»!", user['user_id'])
     await admin_ranks(callback)
 
 

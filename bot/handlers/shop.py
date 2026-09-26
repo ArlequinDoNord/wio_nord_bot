@@ -13,6 +13,7 @@ from aiogram.fsm.state import State, StatesGroup
 from database.db import (
     get_available_items, get_item, add_inventory_item, get_inventory_item,
     get_user, remove_nordmarks, add_nordmarks, get_db, user_has_status_tag, get_status_by_tag,
+    get_all_statuses, user_status_visibility_top,
     user_is_tourist,
     activate_library_card, get_library_cards,
     add_treasury, get_sale_tax_percent, log_activity, update_item,
@@ -103,11 +104,21 @@ async def is_pilot(user_id: int) -> bool:
 
 
 async def visible_items(user_id: int, items) -> list:
-    """Отфильтровать товары: скрыть те, что требуют статус, которого нет у игрока.
+    """Отфильтровать товары магазина для витрины игрока.
 
+    Пилоты видят товары своего статуса и одной следующей ступени иерархии
+    (требуется статус не далее следующего) — так сохраняется мотивация и
+    «сюрприз» появления новинок при получении нового статуса. Товары, которым
+    нужен статус на две ступени выше текущего и дальше, скрываются.
     Туристы (без статуса «Пилот») видят только сувениры.
     """
     pilot = await is_pilot(user_id)
+    if pilot:
+        bound = await user_status_visibility_top(user_id)
+        order = {s['access_tag']: s['sort_order'] for s in await get_all_statuses()}
+    else:
+        bound = None
+        order = {}
     result = []
     for it in items:
         if it['category'] == "souvenirs":
@@ -116,8 +127,10 @@ async def visible_items(user_id: int, items) -> list:
         if not pilot:
             continue
         req = it['required_status']
-        if req and not await user_has_status_tag(user_id, req):
-            continue
+        if req:
+            req_order = order.get(req)
+            if req_order is not None and (bound is None or req_order > bound):
+                continue
         result.append(it)
     return result
 

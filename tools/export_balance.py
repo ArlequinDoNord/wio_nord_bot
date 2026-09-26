@@ -109,7 +109,7 @@ def main():
     emit("")
     md_table(["Звание", "Порог войск"],
              [(r, money(t)) for r, t in config.RANKS])
-    emit(f"\n- До звания **«Лейтенант»** ({config.MAX_SELF_RANK_TROOPS} войск) пилот набирает войска "
+    emit(f"\n- До звания **«Старший Лейтенант»** ({config.MAX_SELF_RANK_TROOPS} войск) пилот набирает войска "
          f"через отчёты; свыше — только выдача админом/МВД (`MAX_SELF_RANK_TROOPS`).")
 
     # ── 3. Отчёты и ОД ──
