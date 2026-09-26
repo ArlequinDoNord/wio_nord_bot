@@ -226,17 +226,27 @@ async def run():
     check("экран «Что сделать?» удалён", "Что сделать?" not in src)
 
     # ── 7. Ратуша: метки туриста ──
-    from database.db import users_with_exact_status
-    tourists = await users_with_exact_status("tourist")
-    check("турыст найден одним запросом", tourists == {41001})
-    check("гражданский не турист", 41002 not in tourists)
+    from database.db import users_with_top_status_tag, user_is_tourist
+    # 41003: «Турист» остался в наследство, но старший статус — Пилот 1 класса
+    await add_user(41003, "pilot003", "Бывший", "Гость")
+    await grant_status(41003, tourist_st['id'])
+    await grant_status(41003, pilot1_st['id'])
+
+    tourists = await users_with_top_status_tag("tourist")
+    check("турист (старший статус) найден", tourists == {41001})
+    check("остаточный «Турист» у гражданина — не турист", 41003 not in tourists)
+    check("user_is_tourist: только настоящий гость",
+          await user_is_tourist(41001) is True
+          and await user_is_tourist(41002) is False
+          and await user_is_tourist(41003) is False)
+    check("игрок без статусов — не турист", await user_is_tourist(41099) is False)
 
     users = await __import__("database.db", fromlist=["get_all_users"]).get_all_users()
     labels = [b.text for b in _buttons(pilots_list_markup(users, tourists))]
-    check("в списке пилотов турист помечен 🎫",
-          any("🎫" in t and "Гость" in t for t in labels))
+    check("в списке пилотов турист помечен 🎫", "🪖 Турист Гость 🎫" in labels)
     check("в списке пилотов гражданский без метки",
-          not any("🎫" in t and "Служивый" in t for t in labels))
+          "🪖 Пилот Служивый" in labels and "🪖 Бывший Гость" in labels
+          and "🪖 Бывший Гость 🎫" not in labels)
 
     # карточка пилота: турист (41001) vs гражданственный (41002)
     cb_t = _Cb(f"rathaus:{41001}", _State({}))
@@ -251,6 +261,12 @@ async def run():
     cit_card = cb_c.message.edited + cb_c.message.sent
     check("карточка гражданина без пометки о туристе",
           not any("гость" in t for t, _ in cit_card))
+
+    cb_l = _Cb(f"rathaus:{41003}", _State({}))   # остаточный «Турист» — не гость
+    cb_l.message.from_user = _Attr(id=41001)
+    await town_hall_pilot_card(cb_l)
+    check("остаточный «Турист» не считается гостем",
+          not any("гость" in t for t, _ in cb_l.message.edited + cb_l.message.sent))
 
     await close_db()
     print(f"\nSmoke 088: {passed} passed, {failed} failed")

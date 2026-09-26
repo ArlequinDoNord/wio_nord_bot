@@ -3979,17 +3979,38 @@ async def user_has_exact_status(user_id: int, tag: str) -> bool:
     return await cursor.fetchone() is not None
 
 
-async def users_with_exact_status(tag: str) -> set:
-    """Все игроки, у которых есть именно этот статус (по access_tag) — одним запросом."""
+async def users_with_top_status_tag(tag: str) -> set:
+    """Игроки, у которых СТАРШИЙ статус (max sort_order) — именно этот тег.
+
+    Нужно для отметки туристов: «Турист» есть почти у всех (выдаётся при
+    регистрации), но гостем считается только тот, у кого он и есть старший.
+    """
     if not tag:
         return set()
     conn = await get_db()
     cursor = await conn.execute("""
-        SELECT DISTINCT us.user_id FROM user_statuses us
+        SELECT us.user_id, s.access_tag FROM user_statuses us
         JOIN statuses s ON us.status_id = s.id
-        WHERE s.access_tag = ?
-    """, (tag,))
-    return {r['user_id'] for r in await cursor.fetchall()}
+        WHERE s.sort_order = (
+            SELECT MAX(s2.sort_order) FROM user_statuses us2
+            JOIN statuses s2 ON us2.status_id = s2.id
+            WHERE us2.user_id = us.user_id
+        )
+    """)
+    return {r['user_id'] for r in await cursor.fetchall() if r['access_tag'] == tag}
+
+
+async def user_is_tourist(user_id: int) -> bool:
+    """Пилот ещё турист: его старший статус — «Турист» (гражданства нет)."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT s.access_tag FROM user_statuses us
+        JOIN statuses s ON us.status_id = s.id
+        WHERE us.user_id = ?
+        ORDER BY s.sort_order DESC, s.id DESC LIMIT 1
+    """, (user_id,))
+    row = await cursor.fetchone()
+    return bool(row) and row['access_tag'] == 'tourist'
 
 
 async def can_enter_location(user_id: int, key: str) -> bool:

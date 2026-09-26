@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, Inli
 
 from database.db import (get_all_users, get_user, can_enter_location, get_active_polls,
                          get_user_voted_polls_count, log_location_visit,
-                         user_has_exact_status, users_with_exact_status)
+                         user_is_tourist, users_with_top_status_tag)
 from config import get_effective_rank
 from utils.helpers import resolve_image, MOSCOW_TZ
 
@@ -111,10 +111,10 @@ async def town_hall_pilots_list(callback: CallbackQuery):
         return
 
     users = sorted(users, key=lambda u: (u['first_name'] or "").lower())
-    tourists = await users_with_exact_status("tourist")
+    tourists = await users_with_top_status_tag("tourist")
     text = "🪖 ПИЛОТЫ ГОРОДА (по алфавиту):"
     if tourists:
-        text += "\n\n🎫 — пока турист: гражданства Нордхайма ещё нет."
+        text += "\n\n🎫 — ещё турист (гость): гражданства Нордхайма пока нет."
     await _render_hall_context(callback, text, pilots_list_markup(users, tourists))
 
 
@@ -137,8 +137,8 @@ async def town_hall_pilot_card(callback: CallbackQuery):
         f"⭐ Звание: {rank}\n"
     )
 
-    # Пилот-турист (гость): гражданства Нордхайма ещё нет.
-    if await user_has_exact_status(user_id, "tourist"):
+    # Пилот-турист (гость): старший статус — «Турист», гражданства пока нет.
+    if await user_is_tourist(user_id):
         text += "🎫 Статус: Турист — гость, гражданства Нордхайма пока нет\n"
 
     # Видимость профиля: если владелец скрыл его (VIP-настройка) — кнопка открытия не показывается.
