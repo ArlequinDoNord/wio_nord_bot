@@ -3979,6 +3979,19 @@ async def user_has_exact_status(user_id: int, tag: str) -> bool:
     return await cursor.fetchone() is not None
 
 
+async def users_with_exact_status(tag: str) -> set:
+    """Все игроки, у которых есть именно этот статус (по access_tag) — одним запросом."""
+    if not tag:
+        return set()
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT DISTINCT us.user_id FROM user_statuses us
+        JOIN statuses s ON us.status_id = s.id
+        WHERE s.access_tag = ?
+    """, (tag,))
+    return {r['user_id'] for r in await cursor.fetchall()}
+
+
 async def can_enter_location(user_id: int, key: str) -> bool:
     """Проверка доступа к локации: статусный режим + блокирующие состояния.
 

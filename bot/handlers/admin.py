@@ -322,36 +322,18 @@ async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
         )
     elif next_step == "status_pick":
         await state.set_state(AdminStatuses.status_pick)
-        have = await get_user_statuses(target['user_id'])
-        have_names = ", ".join(s['name'] for s in have) if have else "нет"
-        statuses = await get_all_statuses()
-        if not statuses:
-            await callback.message.answer("❌ Сначала создай хотя бы один статус.")
-            await state.clear()
-            return
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        rows = []
-        for s in statuses:
-            rows.append([InlineKeyboardButton(text=f"{s['name']}", callback_data=f"st_pick:{s['id']}")])
-        await callback.message.answer(
-            f"Текущие статусы: {have_names}\n\nВыбери статус:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
-        )
+        await _send_status_picker(callback.message, target)
     elif next_step == "status_revoke":
-        await state.set_state(AdminStatuses.status_pick)
         have = await get_user_statuses(target['user_id'])
         if not have:
             await callback.message.answer(f"У {target['first_name'] if 'first_name' in target.keys() else ''} нет статусов для снятия.")
             await state.clear()
             return
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        rows = []
-        for s in have:
-            mark = "✅ " if s['is_selected'] else ""
-            rows.append([InlineKeyboardButton(text=f"{mark}Снять: {s['name']}", callback_data=f"st_rev:{s['id']}")])
+        await state.set_state(AdminStatuses.status_pick)
         await callback.message.answer(
-            f"У {target['first_name'] if 'first_name' in target.keys() else ''}: {', '.join(s['name'] for s in have)}\n\nВыбери статус для снятия:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+            f"🚫 СНЯТИЕ СТАТУСА\n\n👤 {target['first_name'] if 'first_name' in target.keys() else ''}\n\n"
+            f"{_status_current_line(have)}\n\nВыбери статус для снятия (⭐ — текущий):",
+            reply_markup=_status_revoke_markup(have)
         )
     elif next_step == "awgrant":
         awards = await get_all_awards()
@@ -2663,20 +2645,84 @@ async def status_delete_cb(callback: CallbackQuery):
     await callback.message.answer(f"🗑 Статус «{s['name']}» удалён." if s else "Удалено.")
 
 
+def _status_top(have):
+    """Старший статус пилота по иерархии (наибольший sort_order)."""
+    if not have:
+        return None
+    return max(have, key=lambda s: (s['sort_order'] or 0, s['id'] or 0))
+
+
+def _status_current_line(have) -> str:
+    """Строка «текущий статус» — старший в иерархии + остальные имеющиеся."""
+    top = _status_top(have)
+    if not top:
+        return "⭐ Текущий статус: нет (статусы не выданы)"
+    rest = [s['name'] for s in have if s['id'] != top['id']]
+    line = f"⭐ Текущий статус: {top['name']} (уровень {top['sort_order']})"
+    if rest:
+        line += f"\n📋 Ещё есть: {', '.join(rest)}"
+    return line
+
+
+def _status_grant_markup(statuses, have):
+    """Клавиатура выдачи: ⭐ текущий, ✅ уже есть, ➕ выдать. Порядок — по иерархии."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    top = _status_top(have)
+    have_ids = {s['id'] for s in have}
+    rows = []
+    for s in sorted(statuses, key=lambda x: (x['sort_order'] or 0, x['id'] or 0)):
+        if top and s['id'] == top['id']:
+            text = f"⭐ {s['name']} — сейчас"
+        elif s['id'] in have_ids:
+            text = f"✅ {s['name']} — уже есть"
+        else:
+            text = f"➕ {s['name']}"
+        rows.append([InlineKeyboardButton(text=text, callback_data=f"st_pick:{s['id']}")])
+    rows.append([InlineKeyboardButton(text="🚫 Снять статус этому пилоту", callback_data="st:revoke")])
+    rows.append([InlineKeyboardButton(text="🔙 Выбрать другого пилота", callback_data="st:grant")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _status_revoke_markup(have):
+    """Клавиатура снятия: только статусы пилота, ⭐ отмечает текущий."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    top = _status_top(have)
+    rows = []
+    for s in sorted(have, key=lambda x: (x['sort_order'] or 0, x['id'] or 0)):
+        mark = "⭐ " if top and s['id'] == top['id'] else ""
+        rows.append([InlineKeyboardButton(text=f"{mark}Снять: {s['name']}",
+                                          callback_data=f"st_rev:{s['id']}")])
+    rows.append([InlineKeyboardButton(text="🔙 Выбрать другого пилота", callback_data="st:revoke")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _send_status_picker(chat, target):
+    """Экран выдачи статуса: сначала текущий статус пилота, затем выбор статуса."""
+    statuses = await get_all_statuses()
+    if not statuses:
+        await chat.answer("❌ Сначала создай хотя бы один статус.")
+        return False
+    have = await get_user_statuses(target['user_id'])
+    who = (target['first_name'] if 'first_name' in target.keys() else '') or str(target['user_id'])
+    if target['username']:
+        who += f" (@{target['username']})"
+    text = (
+        "🎖 СТАТУС ПИЛОТА\n\n"
+        f"👤 {who}\n"
+        f"🆔 {target['user_id']}\n\n"
+        f"{_status_current_line(have)}\n\n"
+        "Выбери статус для выдачи. Список снизу вверх — от слабого к сильному."
+    )
+    await chat.answer(text, reply_markup=_status_grant_markup(statuses, have))
+    return True
+
+
 @router.callback_query(F.data == "st:grant")
 async def status_grant_target(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.set_state(AdminStatuses.target)
     markup = await pilot_picker_markup("status_pick")
-    await callback.message.answer("Выбери пилота для выдачи/снятия статуса:", reply_markup=markup)
-
-
-@router.callback_query(F.data == "st:revoke")
-async def status_revoke_target(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    await state.set_state(AdminStatuses.target)
-    markup = await pilot_picker_markup("status_revoke")
-    await callback.message.answer("У кого снять статус? Выбери пилота:", reply_markup=markup)
+    await callback.message.answer("Выбери пилота для выдачи статуса:", reply_markup=markup)
 
 
 @router.message(AdminStatuses.target)
@@ -2685,26 +2731,10 @@ async def status_grant_target_msg(message: Message, state: FSMContext):
     if not target:
         await message.answer("❌ Игрок не найден. Попробуй ещё раз:")
         return
-    await state.update_data(target_id=target['user_id'], target_name=target['first_name'] if 'first_name' in target.keys() else '')
+    await state.update_data(target_id=target['user_id'],
+                            target_name=target['first_name'] if 'first_name' in target.keys() else '')
     await state.set_state(AdminStatuses.status_pick)
-
-    have = await get_user_statuses(target['user_id'])
-    have_names = ", ".join(s['name'] for s in have) if have else "нет"
-
-    statuses = await get_all_statuses()
-    if not statuses:
-        await message.answer("❌ Сначала создай хотя бы один статус.")
-        await state.clear()
-        return
-
-    rows = []
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    for s in statuses:
-        rows.append([InlineKeyboardButton(text=f"{s['name']}", callback_data=f"st_pick:{s['id']}")])
-    await message.answer(
-        f"Игрок: {target['first_name'] if 'first_name' in target.keys() else ''}\nТекущие статусы: {have_names}\n\nВыбери статус:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
-    )
+    await _send_status_picker(message, target)
 
 
 @router.callback_query(F.data.startswith("st_rev:"))
@@ -2719,46 +2749,82 @@ async def status_revoke_pick(callback: CallbackQuery, state: FSMContext):
     s = await get_status(status_id)
     await revoke_status(target_id, status_id)
     await log_action(callback.from_user.id, 'revoke_status', target_id, f"status={s['name']}" if s else f"status_id={status_id}")
+    have = await get_user_statuses(target_id)
+    name = data.get('target_name') or str(target_id)
     await state.clear()
-    await callback.message.answer(f"🚫 Статус «{s['name']}» снят с игрока." if s else "Статус снят.")
+    await callback.message.answer(
+        f"🚫 Статус «{s['name'] if s else status_id}» снят: {name}\n\n{_status_current_line(have)}"
+    )
+
+
+@router.callback_query(F.data == "st:revoke")
+async def status_revoke_target(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    data = await state.get_data()
+    target_id = data.get('target_id')
+    if not target_id:
+        await state.set_state(AdminStatuses.target)
+        markup = await pilot_picker_markup("status_revoke")
+        await callback.message.answer("У кого снять статус? Выбери пилота:", reply_markup=markup)
+        return
+    target = await get_user(target_id)
+    if not target:
+        await callback.message.answer("❌ Пилот не найден.")
+        return
+    have = await get_user_statuses(target_id)
+    if not have:
+        who = (target['first_name'] if 'first_name' in target.keys() else '') or str(target_id)
+        await callback.message.answer(f"У {who} нет статусов для снятия.")
+        return
+    who = (target['first_name'] if 'first_name' in target.keys() else '') or str(target_id)
+    await callback.message.answer(
+        f"🚫 СНЯТИЕ СТАТУСА\n\n👤 {who}\n\n{_status_current_line(have)}\n\n"
+        "Выбери статус для снятия (⭐ — текущий):",
+        reply_markup=_status_revoke_markup(have)
+    )
 
 
 @router.callback_query(F.data.startswith("st_pick:"))
 async def status_grant_pick(callback: CallbackQuery, state: FSMContext):
+    """Выдача статуса с одного нажатия: кнопка статуса → статус выдан."""
     await callback.answer()
     status_id = int(callback.data.split(":")[1])
-    await state.update_data(status_id=status_id)
-    await state.set_state(AdminStatuses.grant_action)
+    data = await state.get_data()
+    target_id = data.get('target_id')
+    if not target_id:
+        await callback.message.answer("❌ Сессия устарела, начни заново.")
+        return
+    s = await get_status(status_id)
+    name = data.get('target_name') or str(target_id)
+    ok, msg = await grant_status(target_id, status_id, callback.from_user.id)
+    if ok:
+        await log_action(callback.from_user.id, 'grant_status', target_id,
+                         f"status={s['name'] if s else status_id}")
+    have = await get_user_statuses(target_id)
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    await callback.message.edit_text(
-        "Что сделать?",
+    await callback.message.answer(
+        f"{'✅' if ok else 'ℹ️'} {msg}: {name}\n"
+        f"Статус: «{s['name'] if s else status_id}»\n\n"
+        f"{_status_current_line(have)}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Выдать статус", callback_data="st_op:grant")],
-            [InlineKeyboardButton(text="Снять статус", callback_data="st_op:revoke")],
+            [InlineKeyboardButton(text="🎖 Выдать ещё", callback_data="st:more")],
+            [InlineKeyboardButton(text="🔙 В управление статусами", callback_data="admin:statuses")],
         ])
     )
 
 
-@router.callback_query(F.data.startswith("st_op:"))
-async def status_grant_apply(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data == "st:more")
+async def status_grant_more(callback: CallbackQuery, state: FSMContext):
+    """Вернуться к списку статусов того же пилота (выдать несколько подряд)."""
     await callback.answer()
-    op = callback.data.split(":")[1]
     data = await state.get_data()
-    target_id = data['target_id']
-    status_id = data['status_id']
-    s = await get_status(status_id)
-    admin = callback.from_user.id
-
-    if op == "grant":
-        ok, msg = await grant_status(target_id, status_id, admin)
-        await log_action(admin, 'grant_status', target_id, f"status={s['name']}")
-    else:
-        await revoke_status(target_id, status_id)
-        ok, msg = True, "Статус снят"
-        await log_action(admin, 'revoke_status', target_id, f"status={s['name']}")
-
-    await state.clear()
-    await callback.message.answer(("✅ " if ok else "❌ ") + msg)
+    target_id = data.get('target_id')
+    target = await get_user(target_id) if target_id else None
+    if not target:
+        await callback.message.answer("❌ Сессия устарела, начни заново.")
+        return
+    await state.set_state(AdminStatuses.status_pick)
+    await _send_status_picker(callback.message, target)
 
 
 # ============ НАГРАДЫ ============

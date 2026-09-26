@@ -7,9 +7,9 @@ from datetime import datetime
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
-from database.db import (get_all_users, get_user,
-                         can_enter_location, get_active_polls,
-                         get_user_voted_polls_count, log_location_visit)
+from database.db import (get_all_users, get_user, can_enter_location, get_active_polls,
+                         get_user_voted_polls_count, log_location_visit,
+                         user_has_exact_status, users_with_exact_status)
 from config import get_effective_rank
 from utils.helpers import resolve_image, MOSCOW_TZ
 
@@ -26,10 +26,13 @@ def town_hall_markup(voted: int = 0, active: int = 0) -> InlineKeyboardMarkup:
     ])
 
 
-def pilots_list_markup(users) -> InlineKeyboardMarkup:
+def pilots_list_markup(users, tourists=frozenset()) -> InlineKeyboardMarkup:
     buttons = []
     for u in users:
         name = (u['first_name'] + " " + (u['last_name'] or "")).strip()
+        # 🎫 — пилот пока турист (гость): гражданства Нордхайма ещё нет.
+        if u['user_id'] in tourists:
+            name += " 🎫"
         buttons.append([InlineKeyboardButton(
             text=f"🪖 {name}",
             callback_data=f"rathaus:{u['user_id']}"
@@ -108,8 +111,11 @@ async def town_hall_pilots_list(callback: CallbackQuery):
         return
 
     users = sorted(users, key=lambda u: (u['first_name'] or "").lower())
+    tourists = await users_with_exact_status("tourist")
     text = "🪖 ПИЛОТЫ ГОРОДА (по алфавиту):"
-    await _render_hall_context(callback, text, pilots_list_markup(users))
+    if tourists:
+        text += "\n\n🎫 — пока турист: гражданства Нордхайма ещё нет."
+    await _render_hall_context(callback, text, pilots_list_markup(users, tourists))
 
 
 @router.callback_query(F.data.startswith("rathaus:"))
@@ -130,6 +136,10 @@ async def town_hall_pilot_card(callback: CallbackQuery):
         f"────────────────\n"
         f"⭐ Звание: {rank}\n"
     )
+
+    # Пилот-турист (гость): гражданства Нордхайма ещё нет.
+    if await user_has_exact_status(user_id, "tourist"):
+        text += "🎫 Статус: Турист — гость, гражданства Нордхайма пока нет\n"
 
     # Видимость профиля: если владелец скрыл его (VIP-настройка) — кнопка открытия не показывается.
     public = bool(user['profile_public'] if 'profile_public' in user.keys() else 1)
