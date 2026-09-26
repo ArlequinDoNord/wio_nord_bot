@@ -876,6 +876,9 @@ async def init_db():
     await _ensure_column(conn, "items", "housing_slots", "INTEGER")
     await _ensure_column(conn, "player_housing", "housing_label", "TEXT")
     await _ensure_column(conn, "player_housing", "housing_slots", "INTEGER")
+    # v0.15.28: «только лут» — предмет существует как дроп врагов и не попадает
+    # в витрину магазина (get_available_items/visible_items его скрывают).
+    await _ensure_column(conn, "items", "loot_only", "INTEGER DEFAULT 0")
     await conn.commit()
     await seed_locations(conn)
     # Снятые с игры предметы (T-Меч, T-Броня, учебные машины) — полное удаление.
@@ -1243,7 +1246,8 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
                    housing_type: str = None,
                    housing_slots: int = None,
                    regen: int = 0,
-                   required_status: str = None):
+                   required_status: str = None,
+                   loot_only: int = 0):
     conn = await get_db()
     # v0.13.3: рыба (категория fishing) по умолчанию выставляется на рынок;
     # у остальных предметов — только скупщик, пока админ не включит флаг.
@@ -1252,12 +1256,12 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
     cursor = await conn.execute(
         """INSERT INTO items (name, description, photo_file_id, price, sell_price,
            rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name,
-           weapon_effect, weapon_effect_chance, weapon_effect_dmg, housing_type, housing_slots, regen, required_status)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           weapon_effect, weapon_effect_chance, weapon_effect_dmg, housing_type, housing_slots, regen, required_status, loot_only)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (name, description, photo_file_id, price, sell_price, rarity, category,
          stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name,
          weapon_effect or None, weapon_effect_chance, weapon_effect_dmg,
-         housing_type, housing_slots, regen, required_status)
+         housing_type, housing_slots, regen, required_status, loot_only)
     )
     await conn.commit()
     return cursor.lastrowid
@@ -1271,7 +1275,7 @@ async def get_item(item_id: int):
 
 async def get_available_items(category: str = None, rarity: int = None):
     conn = await get_db()
-    query = "SELECT * FROM items WHERE is_available = 1"
+    query = "SELECT * FROM items WHERE is_available = 1 AND IFNULL(loot_only, 0) = 0"
     params = []
     if category:
         query += " AND category = ?"

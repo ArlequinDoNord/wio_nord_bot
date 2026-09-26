@@ -74,6 +74,7 @@ class AdminAddItem(StatesGroup):
     producer = State()
     producer_user = State()
     market = State()
+    loot = State()
     status = State()
     photo = State()
 
@@ -846,8 +847,11 @@ async def storage_item(callback: CallbackQuery, state: FSMContext):
 
     cat = ITEM_CATEGORIES.get(item['category'], item['category'])
     stock_text = "безлимит" if item['stock'] == -1 else str(item['stock'])
-    status = ("🟢 в продаже" if item['is_available'] and item['stock'] != 0
-              else "🟡 почти распродан" if item['is_available'] else "🔴 скрыт")
+    if item.get('loot_only'):
+        status = "🎯 только лут (в магазине нет)"
+    else:
+        status = ("🟢 в продаже" if item['is_available'] and item['stock'] != 0
+                  else "🟡 почти распродан" if item['is_available'] else "🔴 скрыт")
 
     text = (
         f"📦 *{item['name']}*\n"
@@ -870,7 +874,9 @@ async def storage_item(callback: CallbackQuery, state: FSMContext):
         text += f"\n🏠 Жильё: {hline}\n"
 
     rows = []
-    if not item['is_available'] or item['stock'] == 0:
+    if item.get('loot_only'):
+        text += "\n🎯 Предмет — только лут: в магазине не продаётся, существует лишь как дроп."
+    elif not item['is_available'] or item['stock'] == 0:
         if item['stock'] == 0:
             text += "\n⚠️ Предмет распродан. Верни его в магазин, указав количество."
         else:
@@ -1234,7 +1240,7 @@ async def add_item_weapon_effect_cb(callback: CallbackQuery, state: FSMContext):
     await state.update_data(weapon_effect=eff)
     await state.set_state(AdminAddItem.weapon_effect_chance)
     await callback.message.answer(
-        f"Шаг 8/12 — Шанс, что «{WEAPON_EFFECT_LABELS[eff]}» сработает "
+        f"Шаг 8/13 — Шанс, что «{WEAPON_EFFECT_LABELS[eff]}» сработает "
         f"при попадании, % (0–100):",
         reply_markup=cancel_keyboard()
     )
@@ -1256,11 +1262,11 @@ async def add_item_weapon_effect_chance(message: Message, state: FSMContext):
     await state.set_state(AdminAddItem.weapon_effect_dmg)
     if is_stun:
         await message.answer(
-            "Шаг 8/12 — Штраф к точности врага, % (шанс врага промахнуться "
+            "Шаг 8/13 — Штраф к точности врага, % (шанс врага промахнуться "
             "на 2 хода, 0–100):",
             reply_markup=cancel_keyboard())
     else:
-        await message.answer("Шаг 8/12 — Урон эффекта за каждый ход (целое число):",
+        await message.answer("Шаг 8/13 — Урон эффекта за каждый ход (целое число):",
                              reply_markup=cancel_keyboard())
 
 
@@ -1282,7 +1288,7 @@ async def _go_add_item_producer(message: Message, state: FSMContext):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     await state.set_state(AdminAddItem.producer)
     await message.answer(
-        "Шаг 9/12 — Кто продаёт этот товар?",
+        "Шаг 9/13 — Кто продаёт этот товар?",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🏛️ Гос. магазин", callback_data="prod:state")],
             [InlineKeyboardButton(text="👤 Игрок-продавец", callback_data="prod:player")],
@@ -1297,7 +1303,7 @@ async def add_item_producer(callback: CallbackQuery, state: FSMContext):
     if choice == "player":
         await state.set_state(AdminAddItem.producer_user)
         await callback.message.answer(
-            "Шаг 9/12 (подшаг) — Введи @username или ID игрока, который продаёт этот товар "
+            "Шаг 9/13 (подшаг) — Введи @username или ID игрока, который продаёт этот товар "
             "(выручка с налогом уйдёт ему):",
             reply_markup=cancel_keyboard()
         )
@@ -1320,7 +1326,7 @@ async def _go_add_item_market(message: Message, state: FSMContext):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     await state.set_state(AdminAddItem.market)
     await message.answer(
-        "Шаг 10/12 — Можно ли продавать этот предмет на РЫНКЕ "
+        "Шаг 10/13 — Можно ли продавать этот предмет на РЫНКЕ "
         "(другие игроки смогут покупать его с витрины)?\n"
         "Если нет — предмет продаётся только скупщику.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -1335,6 +1341,28 @@ async def add_item_market_choice(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     choice = callback.data.split(":")[1]
     await state.update_data(market_ok=1 if choice == "yes" else 0)
+    await _go_add_item_loot(callback.message, state)
+
+
+async def _go_add_item_loot(message: Message, state: FSMContext):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await state.set_state(AdminAddItem.loot)
+    await message.answer(
+        "Шаг 11/13 — 🎯 Это предмет ТОЛЬКО для лута врагов?\n"
+        "Такие предметы не появляются в магазине вообще: они существуют "
+        "лишь как дроп подземелий и выпадают игрокам.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎯 Да, только лут", callback_data="lootonly:yes")],
+            [InlineKeyboardButton(text="🏪 Нет, будет в магазине", callback_data="lootonly:no")],
+        ])
+    )
+
+
+@router.callback_query(F.data.startswith("lootonly:"))
+async def add_item_loot_choice(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    choice = callback.data.split(":")[1]
+    await state.update_data(loot_only=1 if choice == "yes" else 0)
     await _go_add_item_status(callback.message, state)
 
 
@@ -1348,7 +1376,7 @@ async def _go_add_item_status(message: Message, state: FSMContext):
     rows.append([InlineKeyboardButton(text="➖ Без статуса", callback_data="addreq:none")])
     await state.set_state(AdminAddItem.status)
     await message.answer(
-        "Шаг 11/12 — С какого статуса предмет доступен к покупке и использованию?\n"
+        "Шаг 12/13 — С какого статуса предмет доступен к покупке и использованию?\n"
         "В магазине он станет виден, когда игрок дойдёт до этого статуса "
         "(и на одну ступень раньше — как «цель»).",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
@@ -1367,7 +1395,7 @@ async def add_item_status_cb(callback: CallbackQuery, state: FSMContext):
     await state.update_data(required_status=tag)
     await state.set_state(AdminAddItem.photo)
     await callback.message.answer(
-        "Шаг 12/12 — Загрузи фото товара (или «-» если без фото):",
+        "Шаг 13/13 — Загрузи фото товара (или «-» если без фото):",
         reply_markup=cancel_keyboard()
     )
 
@@ -1400,10 +1428,11 @@ async def add_item_photo(message: Message, state: FSMContext):
         equip_slot=data.get('equip_slot'),
         market_ok=data.get('market_ok', 0),
         plant_name=data.get('plant_name'),
-        weapon_effect=item.get('weapon_effect'),
+        weapon_effect=data.get('weapon_effect'),
         weapon_effect_chance=data.get('weapon_effect_chance', 0),
         weapon_effect_dmg=data.get('weapon_effect_dmg', 0),
         required_status=data.get('required_status'),
+        loot_only=data.get('loot_only', 0),
     )
     await log_action(admin_id, 'add_item', data.get('produced_by'),
                      f"item={data['name']} id={item_id}")
@@ -1453,6 +1482,8 @@ async def add_item_photo(message: Message, state: FSMContext):
         f"Категория: {ITEM_CATEGORIES.get(data['category'], data['category'])}\n"
         f"Остаток: {'безлимит' if stock == -1 else stock}"
         f"\n🏪 Рынок: {'можно продавать' if data.get('market_ok') else 'только скупщик'}"
+        f"\n🎯 Только лут: {'да (в магазине нет)' if data.get('loot_only') else 'нет'}"
+
         f"{stats_line}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="➕ Добавить ещё товар", callback_data="shop_admin:add")],
@@ -1553,6 +1584,7 @@ async def edit_item_pick(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(text="🍺 Тип напитка (действие)", callback_data="field:drink")],
             [InlineKeyboardButton(text="🌳 Растение в кадке (семечко)", callback_data="field:plant_name")],
             [InlineKeyboardButton(text="🏪 Рынок (вкл/выкл)", callback_data="field:market_ok")],
+            [InlineKeyboardButton(text="🎯 Только лут (вкл/выкл)", callback_data="field:loot_only")],
             [InlineKeyboardButton(text="🚧 Вкл/выкл продажу", callback_data="field:is_available")],
             [InlineKeyboardButton(text="🔆 Редкость", callback_data="field:rarity")],
             [InlineKeyboardButton(text="🏠 Тип жилья (дом)", callback_data="field:housing_type")],
@@ -1755,6 +1787,26 @@ async def edit_item_field_market_toggle(callback: CallbackQuery, state: FSMConte
     await state.clear()
 
 
+@router.callback_query(F.data == "field:loot_only")
+async def edit_item_field_loot_toggle(callback: CallbackQuery, state: FSMContext):
+    """Вкл/выкл флага «только лут» (предмет не продаётся в магазине)."""
+    await callback.answer()
+    data = await state.get_data()
+    item_id = data.get('item_id')
+    item = await get_item(item_id) if item_id else None
+    if not item:
+        await state.clear()
+        await callback.message.answer("❌ Товар не найден.")
+        return
+    new_val = 0 if item.get('loot_only') else 1
+    await update_item(item_id, loot_only=new_val)
+    await log_action(callback.from_user.id, 'edit_item', None,
+                     f"item_id={item_id} loot_only={new_val}")
+    label = "только лут (в магазине нет)" if new_val else "продаётся в магазине"
+    await callback.message.answer(f"✅ «{item['name']}»: 🎯 Только лут → {label}.")
+    await state.clear()
+
+
 EDIT_ITEM_FIELD_LABELS = {
     "name": "Название",
     "price": "Цена",
@@ -1770,6 +1822,7 @@ EDIT_ITEM_FIELD_LABELS = {
     "armor": "🛡️ Броня",
     "ap_cost": "⚡ AP за использование",
     "plant_name": "🌳 Растение в кадке (семечко)",
+    "loot_only": "🎯 Только лут (вкл/выкл)",
     "is_available": "Продажа (вкл/выкл)",
     "rarity": "🔆 Редкость",
     "housing_type": "🏠 Тип жилья (дом)",
@@ -1783,6 +1836,8 @@ def _item_field_current_value(item, field):
         return "безлимит" if val is None or val == -1 else str(val)
     if field == "is_available":
         return "✅ в продаже" if val else "🚫 снят с продажи"
+    if field == "loot_only":
+        return "🎯 только лут" if val else "в магазине"
     if field == "regen":
         return "выкл (0)" if not val else f"{val}% от лечения (затухает за 3 хода)"
     if field in ("rarity", "housing_slots"):

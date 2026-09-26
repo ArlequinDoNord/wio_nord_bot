@@ -121,6 +121,8 @@ async def visible_items(user_id: int, items) -> list:
         order = {}
     result = []
     for it in items:
+        if it.get('loot_only'):
+            continue
         if it['category'] == "souvenirs":
             result.append(it)
             continue
