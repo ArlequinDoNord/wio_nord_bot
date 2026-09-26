@@ -21,7 +21,7 @@ from database.db import (
     get_player_armor, get_player_dodge, get_award_bonus, get_player_armor_with_bonus,
     get_item_by_name, add_inventory_item, get_kvp_progress,
     increment_kvp_completions, mark_kvp_badge, mark_kvp_stick, grant_award,
-    log_activity, KVP_BADGE_NAME, KVP_MAX_COMPLETIONS,
+    log_activity, user_has_status_tag, KVP_BADGE_NAME, KVP_MAX_COMPLETIONS,
 )
 from utils.combat import (
     calculate_attack, calculate_enemy_damage, roll_dodge, _hp_bar,
@@ -203,6 +203,15 @@ async def kvp_menu_cb(callback: CallbackQuery):
     """Вход в локацию «Курс выживания»: описание, правила, прогресс."""
     await callback.answer()
     user_id = callback.from_user.id
+    if not await user_has_status_tag(user_id, "pilot2"):
+        await answer_course_photo(
+            callback.message,
+            "⛔ Курс выживания доступен только пилотам ВВС.\n"
+            "Допуск — со звания «Ефрейтор» (статус «Пилот 2 класса»). "
+            "Набирай войска в отчётах — инструктор ждёт тебя на полигоне.",
+            reply_markup=None,
+        )
+        return
     progress = await get_kvp_progress(user_id)
     dng = await get_kvp_dungeon()
 
@@ -239,6 +248,12 @@ async def kvp_menu_cb(callback: CallbackQuery):
 async def kvp_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     user_id = callback.from_user.id
+    if not await user_has_status_tag(user_id, "pilot2"):
+        await callback.message.answer(
+            "⛔ Курс выживания доступен только пилотам ВВС.\n"
+            "Нужен статус «Пилот 2 класса» (звание «Ефрейтор»)."
+        )
+        return
     progress = await get_kvp_progress(user_id)
     if progress['completions'] >= KVP_MAX_COMPLETIONS:
         await callback.message.answer(
