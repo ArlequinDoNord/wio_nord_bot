@@ -2806,7 +2806,8 @@ async def drop_expired_state(user_id: int, state_col: str, state_effects: str) -
 async def count_reports_today(user_id: int) -> int:
     conn = await get_db()
     cursor = await conn.execute(
-        "SELECT COUNT(*) AS cnt FROM reports WHERE user_id = ? AND date(created_at) = date('now')",
+        "SELECT COUNT(*) AS cnt FROM reports "
+        f"WHERE user_id = ? AND {_report_day('created_at')} = {_TODAY_MSK}",
         (user_id,)
     )
     row = await cursor.fetchone()
@@ -2938,40 +2939,104 @@ async def wall_author_name(user) -> str:
     return _pilot_name(user)
 
 
+def _report_day(date_expr: str) -> str:
+    """Дата отчёта по МСК. created_at хранится в UTC, сутки считаем по Нордхайму (UTC+3)."""
+    return f"date({date_expr}, '+3 hours')"
+
+
+# «Сегодня» по МСК для сравнения с датой отчёта.
+_TODAY_MSK = _report_day("'now'")
+
+
+async def _report_base_total(conn, user_id: int, exclude_id: int = None):
+    """Сколько пилот накопил ДО этого отчётного дня — максимум поля «всего» в прошлых
+    отчётах. None — истории нет (первый отчёт), базу сверить не с чем.
+
+    Отклонённые отчёты в базу не идут: иначе отклонённая завышенная заявка
+    навсегда урезала бы оплату будущих дней.
+    """
+    sql = ("SELECT MAX(total_troops) AS base FROM reports "
+           "WHERE user_id = ? AND status != 'rejected' AND total_troops IS NOT NULL "
+           f"AND {_report_day('created_at')} < {_TODAY_MSK}")
+    params = [user_id]
+    if exclude_id:
+        sql += " AND id != ?"
+        params.append(exclude_id)
+    row = await (await conn.execute(sql, tuple(params))).fetchone()
+    return row['base'] if row else None
+
+
+async def _report_assigned_today(conn, user_id: int, exclude_id: int = None) -> int:
+    """Уже засчитано к оплате за текущие сутки (все не-отклонённые отчёты дня)."""
+    sql = ("SELECT COALESCE(SUM(COALESCE(credited_troops, troops_reported)), 0) AS s FROM reports "
+           "WHERE user_id = ? AND status != 'rejected' "
+           f"AND {_report_day('created_at')} = {_TODAY_MSK}")
+    params = [user_id]
+    if exclude_id:
+        sql += " AND id != ?"
+        params.append(exclude_id)
+    row = await (await conn.execute(sql, tuple(params))).fetchone()
+    return row['s'] if row else 0
+
+
+async def report_payout_context(user_id: int, daily_claim: int, total_claim: int,
+                                exclude_id: int = None) -> dict:
+    """Расчёт суммы к оплате за отчёт по правилу «только те сутки, в которые сдал отчёт».
+
+    Всё, что накоплено за прошлые дни, в оплату не входит: база = «всего» на конец
+    прошлого отчётного дня, прирост = «всего» сейчас − база. К оплате — не больше
+    прироста и не больше заявки за сутки, поэтому заявка «всё накопленное» в обоих
+    полях не проходит: платится только прирост. Несколько отчётов за сутки не
+    суммируются: за день платится максимум из заявок.
+
+    Возвращает: payable, target, base, growth, assigned_today, base_known.
+    """
+    conn = await get_db()
+    base = await _report_base_total(conn, user_id, exclude_id)
+    assigned = await _report_assigned_today(conn, user_id, exclude_id)
+    daily = max(0, daily_claim or 0)
+    if base is None:
+        # Первый отчёт: сверить не с чем — платим по заявке, но помечаем как
+        # непроверяемый (такие отчёты не проходят автоодобрение).
+        target, growth = daily, None
+    else:
+        growth = max(0, (total_claim or 0) - base)
+        target = min(daily, growth)
+    return {
+        "payable": max(0, target - assigned),
+        "target": target,
+        "base": base,
+        "growth": growth,
+        "assigned_today": assigned,
+        "base_known": base is not None,
+    }
+
+
 async def add_report(user_id: int, screenshot_file_id: str, troops_reported: int, total_troops: int = 0, region: str = ""):
     """Добавить отчёт. Возвращает (report_id, credited_troops).
 
-    За сутки оплачивается только дельта между ранее засчитанным значением
-    (последний одобренный отчёт за сегодня) и новым значением.
-    troops_reported хранит заявленное значение, credited_troops — сумму к оплате.
+    troops_reported — заявка «за сутки», total_troops — заявка «всего»,
+    credited_troops — сумма к оплате (см. report_payout_context).
     """
+    ctx = await report_payout_context(user_id, troops_reported, total_troops)
     conn = await get_db()
-    cursor = await conn.execute(
-        "SELECT COALESCE(MAX(troops_reported), 0) AS prev_today FROM reports "
-        "WHERE user_id = ? AND status = 'approved' AND date(created_at) = date('now')",
-        (user_id,)
-    )
-    row = await cursor.fetchone()
-    prev_today = row['prev_today'] if row else 0
-    credited = max(0, troops_reported - prev_today)
-
     cursor = await conn.execute(
         "INSERT INTO reports (user_id, screenshot_file_id, troops_reported, total_troops, region, credited_troops) "
         "VALUES (?, ?, ?, ?, ?, ?)",
-        (user_id, screenshot_file_id, troops_reported, total_troops, region, credited)
+        (user_id, screenshot_file_id, troops_reported, total_troops, region, ctx["payable"])
     )
     await conn.commit()
-    return cursor.lastrowid, credited
+    return cursor.lastrowid, ctx["payable"]
 
 
-async def approve_report(report_id: int, reviewed_by: int, troops: int):
-    """Одобрить отчёт. Возвращает дельту к начислению (войск) или False,
-    если отчёт не найден.
+async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
+    """Одобрить отчёт. Возвращает сумму к начислению (войск) или False, если отчёт не найден.
 
-    Дельту пересчитываем на момент одобрения: база — максимальное заявленное значение
-    среди УЖЕ одобренных за сегодня отчётов (этот ещё не одобрен). Это исключает двойную
-    оплату, когда отчёт ждёт проверки, а пилот параллельно сдал и получил оплату за
-    больший отчёт. Итог за сутки всегда = максимум заявки, а не сумма.
+    Сумма берётся из credited_troops — она зафиксирована при сдаче отчёта по правилу
+    report_payout_context. Повторный пересчёт здесь не нужен и был бы вредным: за
+    сутки платится максимум заявок, а «уже засчитано» меняется по мере одобрения,
+    из-за чего итог зависел бы от порядка нажатий. Переданный troops может только
+    УМЕНЬШИТЬ сумму (частичное одобрение админом), но не увеличить её.
 
     Начисление здесь НЕ производится: допущенные отчёты копятся, а оплата выполняется
     раз в сутки функцией payout_reports() (в начале следующих суток).
@@ -2986,26 +3051,19 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int):
     if not row:
         return False
 
-    user_id = row['user_id']
-    if troops is not None and row['credited_troops'] is not None:
-        cursor = await conn.execute(
-            "SELECT COALESCE(MAX(troops_reported), 0) AS approved_today FROM reports "
-            "WHERE user_id = ? AND status = 'approved' AND id != ? "
-            "AND date(created_at) = date('now')",
-            (user_id, report_id)
-        )
-        base_row = await cursor.fetchone()
-        base = base_row['approved_today'] if base_row else 0
-        troops = max(0, row['troops_reported'] - base)
+    if row['credited_troops'] is not None:
+        amount = row['credited_troops']
+        if troops is not None:
+            amount = min(amount, max(0, troops))
     else:
-        troops = row['credited_troops'] if row['credited_troops'] is not None else row['troops_reported']
+        amount = row['troops_reported']
 
     await conn.execute(
         "UPDATE reports SET status = 'approved', reviewed_by = ?, credited_troops = ?, paid = 0 WHERE id = ?",
-        (reviewed_by, troops, report_id)
+        (reviewed_by, amount, report_id)
     )
     await conn.commit()
-    return troops
+    return amount
 
 
 async def payout_reports() -> list:
@@ -3108,8 +3166,9 @@ async def recompute_region_stats():
     """Пересчитывает статистику по регионам из одобренных отчётов.
 
     troops_24h        — по каждому пилоту и календарным суткам берётся ТОЛЬКО
-                        последний отчёт за сутки (его troops_reported), затем сумма
-                        по региону за последние 24 часа
+                        последний отчёт за сутки, и берётся его ФАКТИЧЕСКИ
+                        засчитанная сумма (credited_troops, а не заявка
+                        troops_reported), затем сумма по региону за последние 24 часа
     active_pilots_72h — число уникальных пилотов с одобренными отчётами за последние 72 часа
     """
     conn = await get_db()
@@ -3125,12 +3184,14 @@ async def recompute_region_stats():
     """)
     pilots_72 = {row['region']: row['pilots'] for row in await cur.fetchall()}
 
-    cur = await conn.execute("""
-        SELECT region, COALESCE(SUM(troops_reported), 0) AS troops_24h
+    # За 24 часа — последний отчёт за сутки каждого пилота; берём ФАКТИЧЕСКИ
+    # засчитанное (credited_troops), а не заявку: заявка может быть завышена.
+    cur = await conn.execute(f"""
+        SELECT region, COALESCE(SUM(credited), 0) AS troops_24h
         FROM (
-            SELECT r.region, r.troops_reported,
+            SELECT r.region, COALESCE(r.credited_troops, r.troops_reported) AS credited,
                    ROW_NUMBER() OVER (
-                       PARTITION BY r.user_id, date(r.created_at)
+                       PARTITION BY r.user_id, {_report_day('r.created_at')}
                        ORDER BY r.created_at DESC, r.id DESC
                    ) AS rn
             FROM reports r

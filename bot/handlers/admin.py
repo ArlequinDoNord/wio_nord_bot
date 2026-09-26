@@ -3305,6 +3305,28 @@ async def report_auto_approve_edit_value(message: Message, state: FSMContext):
     await show_pending_reports(message)
 
 
+async def _report_payout_block(report) -> str:
+    """Блок оплаты для карточки отчёта: база (накоплено до этого дня), прирост,
+    сумма к выдаче. Платится только прирост за текущие сутки."""
+    from database.db import report_payout_context
+    total_claim = report['total_troops'] if 'total_troops' in report.keys() else 0
+    ctx = await report_payout_context(
+        report['user_id'], report['troops_reported'], total_claim, exclude_id=report['id'])
+    if not ctx["base_known"]:
+        return (f"⚠️ Первый отчёт: база неизвестна — сверить не с чем\n"
+                f"⚔️ К выдаче: {ctx['payable']} (по заявке, только после проверки скриншота)")
+    lines = [
+        f"📉 Накоплено до этого дня: {ctx['base']}",
+        f"📈 Прирост за сутки: {ctx['growth']}",
+        f"⚔️ К выдаче: {ctx['payable']}",
+    ]
+    if ctx["growth"] is not None and ctx["growth"] < report["troops_reported"]:
+        lines.append("⛔ Заявка за сутки больше прироста «всего» — лишнее не оплачивается")
+    if ctx["assigned_today"]:
+        lines.append(f"📋 Уже засчитано за сутки: {ctx['assigned_today']}")
+    return "\n".join(lines)
+
+
 async def show_pending_reports(message):
     reports = await get_pending_reports()
     if not reports:
@@ -3343,9 +3365,9 @@ async def show_pending_reports(message):
     caption = (
         f"📋 ОТЧЁТ #{report['id']}\n\n"
         f"Пилот: {report['first_name']} (@{report['username']})\n"
-        f"Войск за сутки: {report['troops_reported']}\n"
-        f"К оплате (дельта): {report['credited_troops'] if ('credited_troops' in report.keys() and report['credited_troops'] is not None) else report['troops_reported']}\n"
-        f"Всего войск: {report['total_troops'] if 'total_troops' in report.keys() else '—'}\n"
+        f"Войск за сутки (заявка): {report['troops_reported']}\n"
+        f"Всего войск (заявка): {report['total_troops'] if 'total_troops' in report.keys() else '—'}\n"
+        f"{await _report_payout_block(report)}\n"
         f"Регион: {report['region'] or '—'}\n"
         f"Время: {report['created_at'][:16] if report['created_at'] else '—'}\n\n"
         f"Проверьте скриншот и примите решение:"
@@ -3372,17 +3394,16 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
         await callback.message.answer("❌ Нет прав.")
         return
     report = await get_report_safe(report_id)
-    # Новые отчёты начисляют дельту (может быть 0); старые (без дельты, NULL) — всю заявку.
-    if 'credited_troops' in report.keys() and report['credited_troops'] is not None:
-        troops = report['credited_troops']
-    else:
-        troops = report['troops_reported']
+    # Сумма зафиксирована при сдаче отчёта (credited_troops) и показана в карточке
+    # как «К выдаче». Пересчитывать её здесь нельзя: за сутки платится максимум заявок,
+    # а «уже засчитано» меняется по мере одобрения — итог зависел бы от порядка нажатий.
     pilot = await get_user(report['user_id'])
-    amount = await approve_report(report_id, callback.from_user.id, troops)
+    amount = await approve_report(report_id, callback.from_user.id)
     await log_action(callback.from_user.id, 'approve_report', report['user_id'], f"report={report_id}")
     await callback.message.answer(
         f"✅ Отчёт #{report_id} принят.\n"
         f"⚔️ К начислению: {amount} войск (выплата раз в сутки — в начале следующих суток)."
+        + ("" if amount > 0 else "\nℹ️ Прироста за сутки нет — оплата не начислена.")
     )
     await show_pending_reports(callback.message)
 

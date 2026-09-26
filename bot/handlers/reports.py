@@ -5,7 +5,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from config import REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT
-from database.db import add_report, approve_report, get_user_reports, get_report_tax_percent, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist
+from database.db import add_report, approve_report, get_user_reports, get_report_tax_percent, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist, report_payout_context
 from utils.helpers import is_main_menu_text
 from keyboards.keyboards import report_keyboard, cancel_keyboard
 
@@ -74,8 +74,9 @@ async def report_receive_photo(message: Message, state: FSMContext):
     await state.update_data(screenshot_file_id=photo.file_id)
     await state.set_state(ReportSubmit.waiting_daily_troops)
     await message.answer(
-        f"✍️ Сколько войск ты заработал за сутки? (цифрами, до {REPORT_MAX_TROOPS:,})"
-        .replace(",", " "),
+        "✍️ Сколько войск ты заработал за СЕГОДНЯШНИЕ сутки?\n"
+        "Только то, что набежало сегодня — НЕ всё накопленное за все дни.\n"
+        f"(цифрами, до {REPORT_MAX_TROOPS:,})".replace(",", " "),
         reply_markup=cancel_keyboard()
     )
 
@@ -131,6 +132,11 @@ async def report_receive_total_troops(message: Message, state: FSMContext):
         reminder = f"\n\n📊 Отчётов на сегодня останется после этого: {remaining_after}."
     else:
         reminder = "\n\n📊 Это последний отчёт за сегодня (лимит 3)."
+    if total < (await state.get_data()).get("daily_troops", 0):
+        reminder += (
+            "\n\n⚠️ «Всего» меньше, чем «за сутки» — так бывает, если ты вписал в «за сутки»"
+            " всё накопленное. Оплата считается по приросту «всего» за сегодня, лишнее не платится."
+        )
     from aiogram.types import FSInputFile
     map_photo = FSInputFile("assets/img/maps/map.jpg")
     await message.answer_photo(
@@ -174,6 +180,19 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
     await log_activity(message.from_user.id, "report_submit",
                        f"Сдал отчёт #{report_id}: {daily_troops} войск, регион {region_code or '—'}")
 
+    ctx = await report_payout_context(message.from_user.id, daily_troops, total_troops,
+                                      exclude_id=report_id)
+    # Разбор оплаты для показа: база (накоплено до этого дня), прирост «всего», итог.
+    if not ctx["base_known"]:
+        payout_info = (f"📉 Накоплено до этого дня: неизвестно (первый отчёт) — "
+                       f"к оплате {credited} по твоей заявке, проверят по скриншоту")
+    else:
+        payout_info = (
+            f"📉 Накоплено до этого дня: {ctx['base']}\n"
+            f"📈 Прирост за сутки: {ctx['growth']}\n"
+            f"⚔️ К оплате: {credited} (не больше заявки и не больше прироста)"
+        )
+
     remaining_after = REPORT_DAILY_LIMIT - (reports_today + 1)
     if remaining_after > 0:
         reminder = f"\n📊 Осталось отчётов на сегодня: {remaining_after}."
@@ -181,8 +200,9 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
         reminder = "\n📊 Это последний отчёт за сегодня (лимит 3)."
 
     auto_approve_limit = await get_report_auto_approve_troops()
-    if daily_troops <= auto_approve_limit:
-        actual = await approve_report(report_id, 0, credited)
+    # Автоодобрение — только когда сумма проверяема (есть база) и заявка в пороге.
+    if daily_troops <= auto_approve_limit and ctx["base_known"]:
+        actual = await approve_report(report_id, 0)
         if actual <= 0:
             await state.clear()
             await message.answer(
@@ -199,12 +219,14 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
         )
     else:
         await state.clear()
+        auto_note = "" if ctx["base_known"] else "\n⚠️ Первый отчёт: сумму не с чем сверить, нужен ручной просмотр."
         await message.answer(
-            f"📤 Отчёт #{report_id} отправлен на проверку.\n"
-            f"Войск за сутки: {daily_troops}\n"
-            f"Доплата к начислению: {credited}\n"
-            f"Всего войск: {total_troops}\n"
-            f"Регион: {region_code}\n"
+            f"📤 Отчёт #{report_id} отправлен на проверку.\n\n"
+            f"Войск за сутки (заявка): {daily_troops}\n"
+            f"Всего войск (заявка): {total_troops}\n"
+            f"{payout_info}\n"
+            f"Регион: {region_code}\n\n"
+            f"Оплачиваются только сегодняшние сутки — накопленное ранее не входит.{auto_note}\n"
             f"Ожидай решения администратора/МВД.{reminder}"
         )
 
