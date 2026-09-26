@@ -201,8 +201,9 @@ async def shop_menu(message: Message):
     for it in items:
         if it['category'] in counts:
             counts[it['category']] += 1
+    is_tourist = await user_is_tourist(message.from_user.id)
     padder = await market_offer_items()
-    if padder:
+    if padder and not is_tourist:
         counts['market'] = counts.get('market', 0) + len(padder)
     counts = {k: v for k, v in counts.items() if v > 0}
 
@@ -227,8 +228,9 @@ async def shop_catalog(callback: CallbackQuery):
     for it in items:
         if it['category'] in counts:
             counts[it['category']] += 1
+    is_tourist = await user_is_tourist(callback.from_user.id)
     padder = await market_offer_items()
-    if padder:
+    if padder and not is_tourist:
         counts['market'] = counts.get('market', 0) + len(padder)
     counts = {k: v for k, v in counts.items() if v > 0}
     await edit_or_replace(
@@ -243,6 +245,9 @@ async def shop_category(callback: CallbackQuery):
     await callback.answer()
     category = callback.data.split(":")[1]
     if category == "market":
+        if await user_is_tourist(callback.from_user.id):
+            await callback.message.answer("⛔ Рынок — только для пилотов.")
+            return
         items = await market_offer_items()
     else:
         items = await visible_items(callback.from_user.id, await get_available_items(category=category))

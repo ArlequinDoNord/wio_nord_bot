@@ -20,7 +20,7 @@ from database.db import (
     add_fish_catch, get_user, update_user,
     remove_ap, log_activity, get_active_run,
     get_water_fish_pool, get_water_fish_kind, get_water_fish_photo_by_name, get_award_bonus,
-    get_water_junk_map, JUNK_DEFAULT_CHANCES,
+    get_water_junk_map, JUNK_DEFAULT_CHANCES, user_is_tourist,
 )
 from utils.helpers import resolve_image, time_of_day_key, plural_nordmark, item_local_photo, fish_weight_tier, fish_sell_price
 from config import FISH_AP_COST, FISH_WEIGHTS
@@ -393,6 +393,14 @@ async def fishing_lake_menu(callback: CallbackQuery):
     """Меню озера с рыбалкой (вход из парка: park:lake)."""
     await callback.answer()
 
+    # Туристы не рыбачат: прогулка по парку остаётся, озеро — пилотам.
+    if await user_is_tourist(callback.from_user.id):
+        await callback.message.answer(
+            "⛔ Рыбалка — только для пилотов.\n"
+            "Прогуляйся по парку: аллея статуй и фонтан в твоём распоряжении 🌳"
+        )
+        return
+
     # В подземелье рыбачить нельзя
     if await get_active_run(callback.from_user.id):
         await callback.message.answer(
@@ -513,6 +521,9 @@ async def fish_cast(callback: CallbackQuery):
     if not await _fish_ok(callback):
         return
     user_id = callback.from_user.id
+    if await user_is_tourist(user_id):
+        await callback.answer("⛔ Рыбалка — только для пилотов.", show_alert=True)
+        return
     if user_id in FISHING_CASTING:
         await callback.answer("Ты уже закинул удочку — дождись результата!", show_alert=True)
         return

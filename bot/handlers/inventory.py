@@ -20,6 +20,7 @@ from database.db import (
     item_fits_slot, ARMOR_SLOTS, EQUIPMENT_SLOT_LABELS, EQUIPMENT_LOCKED_SLOTS,
     get_award_bonus, get_player_weapon_damage, get_player_armor,
     get_player_armor_with_bonus, get_player_dodge, get_equipped_weapon,
+    user_is_tourist,
 )
 from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text,
@@ -700,7 +701,8 @@ async def _render_item_card(message, user_id: int, item_id: int, note: str = "")
                              sellable=(item['sell_price'] or 0) > 0 and sellable_qty > 0,
                              qty=sellable_qty,
                              occupied=occupied,
-                             market_ok=bool(item.get('market_ok')) and sellable_qty > 0)
+                             market_ok=bool(item.get('market_ok')) and sellable_qty > 0
+                             and not await user_is_tourist(user_id))
 
     photo_id = item['photo_file_id'] if 'photo_file_id' in item.keys() else None
     local_photo = None if photo_id else item_local_photo(item['name'])
@@ -992,6 +994,9 @@ async def item_market_set_price(callback: CallbackQuery):
     await callback.answer()
     item_id = int(callback.data.split(":")[1])
     user_id = callback.from_user.id
+    if await user_is_tourist(user_id):
+        await callback.message.answer("⛔ Рынок — только для пилотов.")
+        return
     item = await get_item(item_id)
     if not item:
         return
@@ -1195,7 +1200,7 @@ async def _show_fish_catch(message, user_id: int, item_id: int, weight: int):
     tier = fish_weight_tier(weight)
     sell = fish_sell_price(item['sell_price'], weight)
     sell_text = f"{sell} {plural_nordmark(sell)}"
-    market_allowed = bool(item.get('market_ok'))
+    market_allowed = bool(item.get('market_ok')) and not await user_is_tourist(user_id)
 
     if kind == 'resource':
         use_ok = (item.get('category') == 'consumable'
@@ -1286,6 +1291,9 @@ async def fish_market_set_price(callback: CallbackQuery):
     """Экран выбора цены ±30% от рыночной для вылова на рынок."""
     await callback.answer()
     user_id = callback.from_user.id
+    if await user_is_tourist(user_id):
+        await callback.message.answer("⛔ Рынок — только для пилотов.")
+        return
     _, item_id_s, weight_s = callback.data.split(":")
     item_id, weight = int(item_id_s), int(weight_s)
     item = await get_item(item_id)
