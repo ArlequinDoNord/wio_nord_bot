@@ -3012,6 +3012,44 @@ async def report_payout_context(user_id: int, daily_claim: int, total_claim: int
     }
 
 
+async def correct_report_numbers(report_id: int, troops_reported: int, total_troops: int,
+                                 corrected_by: int = None) -> dict:
+    """Исправить цифры отчёта: «за сутки» и «всего» (для супер-админа).
+
+    Пилоты часто путают поля (пишут «всё накопленное» в «за сутки»), и такая заявка
+    искажает статистику. Здесь заявка заменяется на проверенную, а credited_troops
+    ПЕРЕСЧИТЫВАЕТСЯ по правилу report_payout_context — как при обычной сдаче, поэтому
+    оплата остаётся ограничена приростом «всего» за сутки.
+
+    Править можно только отчёты в статусе pending: одобренные и выплаченные не трогаем.
+    Возвращает контекст оплаты после правки (base_known/base/growth/payable) либо
+    {'error': ...}.
+    """
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT user_id, troops_reported, total_troops, status FROM reports WHERE id = ?",
+        (report_id,)
+    )
+    row = await cursor.fetchone()
+    if not row:
+        return {"error": "Отчёт не найден."}
+    if row['status'] != 'pending':
+        return {"error": f"Отчёт #{report_id} уже не в очереди "
+                         f"(статус: {row['status']}) — править нельзя."}
+
+    ctx = await report_payout_context(row['user_id'], troops_reported, total_troops,
+                                      exclude_id=report_id)
+    await conn.execute(
+        "UPDATE reports SET troops_reported = ?, total_troops = ?, credited_troops = ? "
+        "WHERE id = ?",
+        (troops_reported, total_troops, ctx["payable"], report_id)
+    )
+    await conn.commit()
+    ctx['old_daily'] = row['troops_reported']
+    ctx['old_total'] = row['total_troops']
+    return ctx
+
+
 async def add_report(user_id: int, screenshot_file_id: str, troops_reported: int, total_troops: int = 0, region: str = ""):
     """Добавить отчёт. Возвращает (report_id, credited_troops).
 

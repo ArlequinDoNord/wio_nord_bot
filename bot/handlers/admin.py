@@ -12,7 +12,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
     add_item, delete_item, delete_item_completely, update_item, get_available_items, get_all_items,
-    get_item, get_all_users, get_pending_reports, approve_report,
+    get_item, get_all_users, get_pending_reports, approve_report, correct_report_numbers,
     reject_report, add_nordmarks, remove_nordmarks, add_ap, remove_ap,
     create_status, delete_status, get_all_statuses, get_status,
     grant_status, revoke_status, get_user_statuses,
@@ -121,6 +121,12 @@ class AdminTax(StatesGroup):
 
 class AdminReportAutoApprove(StatesGroup):
     value = State()
+
+
+class AdminReportFix(StatesGroup):
+    # Правка цифр отчёта (только супер-админ): сутки → всего → применение
+    daily = State()
+    total = State()
 
 
 class AdminRoles(StatesGroup):
@@ -3355,8 +3361,14 @@ async def show_pending_reports(message):
             InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rep_no:{report['id']}"),
         ])
     buttons.append([InlineKeyboardButton(text="Следующий ▶️", callback_data="rep:next")])
+    # Супер-админ: исправить цифры отчёта (пилоты путают «за сутки» и «всего»).
+    is_super = 'super_admin' in await get_user_role(message.chat.id)
+    if is_super and await has_permission(message.chat.id, "can_approve_reports"):
+        buttons.append([InlineKeyboardButton(
+            text="✏️ Поправить цифры и принять",
+            callback_data=f"rep_fix:{report['id']}")])
     # Супер-админ: порог автопроверки отчётов (кнопка видна и при пустой очереди).
-    if 'super_admin' in await get_user_role(message.chat.id):
+    if is_super:
         limit = await get_report_auto_approve_troops()
         buttons.append([InlineKeyboardButton(
             text=f"⚙️ Порог автопроверки: {limit}",
@@ -3384,6 +3396,135 @@ async def show_pending_reports(message):
             caption,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
         )
+
+
+_KEEP_VALUES = ("-", "—", "без", "безизменений", "оставить", "безизменений")
+
+
+def _report_fix_parse(text: str):
+    """Разбор числа от супер-админа. None — «оставить как есть»."""
+    t = text.strip().replace(" ", "").replace("\u00a0", "").lower()
+    if t in _KEEP_VALUES:
+        return None
+    if t.isdigit():
+        return int(t)
+    return False  # мусор
+
+
+@router.callback_query(F.data.startswith("rep_fix:"))
+async def report_fix_start(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if 'super_admin' not in await get_user_role(callback.from_user.id):
+        await callback.message.answer("❌ Править цифры отчёта может только супер-админ.")
+        return
+    if not await has_permission(callback.from_user.id, "can_approve_reports"):
+        await callback.message.answer("❌ Нет прав на рассмотрение отчётов.")
+        return
+    report_id = int(callback.data.split(":")[1])
+    report = await get_report_safe(report_id)
+    if not report or report.get('user_id') == 0:
+        await callback.message.answer("❌ Отчёт не найден в очереди.")
+        return
+    old_total = report['total_troops'] if 'total_troops' in report.keys() else None
+    await state.update_data(fix_report_id=report_id, fix_old_daily=report['troops_reported'],
+                            fix_old_total=old_total)
+    await state.set_state(AdminReportFix.daily)
+    await callback.message.answer(
+        f"✏️ ПРАВКА ОТЧЁТА #{report_id}\n\n"
+        f"Сейчас указано:\n"
+        f"• за сутки: <b>{report['troops_reported']}</b>\n"
+        f"• всего: <b>{old_total if old_total is not None else '—'}</b>\n\n"
+        f"Введи ПРАВИЛЬНОЕ число войск за сегодняшние сутки — только то, что набежало "
+        f"сегодня. Оставить как есть — отправь <code>-</code>:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminReportFix.daily)
+async def report_fix_daily(message: Message, state: FSMContext):
+    data = await state.get_data()
+    report_id = data.get('fix_report_id')
+    if not report_id:
+        await state.clear()
+        await message.answer("❌ Сессия правки сброшена, начни заново.")
+        return
+    daily = _report_fix_parse(message.text)
+    if daily is False:
+        await message.answer("❌ Введи целое число (или «-», чтобы оставить как есть):")
+        return
+    if daily is None:
+        daily = data.get('fix_old_daily') or 0
+    await state.update_data(fix_daily=daily)
+    await state.set_state(AdminReportFix.total)
+    old_total = data.get('fix_old_total')
+    await message.answer(
+        f"Принято: за сутки <b>{daily}</b>.\n\n"
+        f"Теперь введи ПРАВИЛЬНОЕ значение «всего» — сколько войск у пилота набежало "
+        f"ВСЕГО на данный момент. Это число нужно, чтобы посчитать прирост за сутки.\n"
+        f"Сейчас указано: {old_total if old_total is not None else '—'}\n"
+        f"Оставить как есть — отправь <code>-</code>:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminReportFix.total)
+async def report_fix_total(message: Message, state: FSMContext):
+    data = await state.get_data()
+    report_id = data.get('fix_report_id')
+    daily = data.get('fix_daily')
+    if not report_id or daily is None:
+        await state.clear()
+        await message.answer("❌ Сессия правки сброшена, начни заново.")
+        return
+    total = _report_fix_parse(message.text)
+    if total is False:
+        await message.answer("❌ Введи целое число (или «-», чтобы оставить как есть):")
+        return
+    if total is None:
+        total = data.get('fix_old_total')
+    if total is None:
+        await message.answer("❌ Введи значение «всего» числом:")
+        return
+
+    ctx = await correct_report_numbers(report_id, daily, total, message.from_user.id)
+    if ctx.get('error'):
+        await state.clear()
+        await message.answer(f"❌ {ctx['error']}")
+        await show_pending_reports(message)
+        return
+
+    old_daily = data.get('fix_old_daily')
+    old_total = data.get('fix_old_total')
+    await log_action(
+        message.from_user.id, 'correct_report', None,
+        f"report={report_id} было: сутки {old_daily}, всего {old_total} | "
+        f"стало: сутки {daily}, всего {total} | к выдаче {ctx['payable']}")
+
+    if not ctx["base_known"]:
+        payout = (f"⚠️ Первый отчёт пилота: базы нет, сверить не с чем\n"
+                  f"⚔️ К выдаче: <b>{ctx['payable']}</b> (по указанной тобой сумме)")
+    else:
+        payout = (f"📉 Накоплено до этого дня: {ctx['base']}\n"
+                  f"📈 Прирост за сутки: {ctx['growth']}\n"
+                  f"⚔️ К выдаче: <b>{ctx['payable']}</b>")
+    note = ""
+    if ctx["base_known"] and ctx["payable"] == 0 and daily > 0:
+        note = "\n\n⚠️ Прирост за сутки нулевой — оплата будет 0. Проверь «всего»."
+
+    await state.clear()
+    await message.answer(
+        f"✏️ Цифры отчёта #{report_id} исправлены\n\n"
+        f"было: за сутки {old_daily}, всего {old_total}\n"
+        f"стало: за сутки <b>{daily}</b>, всего <b>{total}</b>\n\n"
+        f"{payout}{note}\n\nОтчёт пока не одобрен — подтверди решение:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Принять", callback_data=f"rep_ok:{report_id}"),
+                InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rep_no:{report_id}"),
+            ],
+            [InlineKeyboardButton(text="🔙 К отчётам", callback_data="rep:next")],
+        ])
+    )
 
 
 @router.callback_query(F.data.startswith("rep_ok:"))
