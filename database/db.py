@@ -1,6 +1,7 @@
 import json
 import time
 import aiosqlite
+import config
 from config import (DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MINUTES,
                     DUNGEON_RUN_STALE_SEC)
 from config import get_effective_rank
@@ -2440,6 +2441,133 @@ async def set_report_auto_approve_troops(value: int):
     await conn.commit()
 
 
+# ============ СУТОЧНЫЙ ЛИМИТ ОПЛАТЫ ОТЧЁТОВ ============
+
+REPORT_DAILY_PAY_CAP_SETTING_KEY = "report_daily_pay_cap"
+
+
+async def get_report_daily_pay_cap() -> int:
+    """Сколько войск максимум можно начислить за одни сутки по всем отчётам пилота.
+
+    По умолчанию 4000 (config.REPORT_DAILY_PAY_CAP). 0 — без ограничения.
+    Ограничивается только оплата за сутки; значение «всего» не ограничивается
+    (в регионе за пару месяцев накапливаются десятки тысяч).
+    """
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT value FROM settings WHERE key = ?", (REPORT_DAILY_PAY_CAP_SETTING_KEY,)
+    )
+    row = await cursor.fetchone()
+    if not row:
+        return config.REPORT_DAILY_PAY_CAP
+    try:
+        return max(0, int(row['value']))
+    except (TypeError, ValueError):
+        return config.REPORT_DAILY_PAY_CAP
+
+
+async def set_report_daily_pay_cap(value: int):
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (REPORT_DAILY_PAY_CAP_SETTING_KEY, str(max(0, int(value))))
+    )
+    await conn.commit()
+
+
+# ============ ЧАТ ОПОВЕЩЕНИЙ (ТОПИК СУПЕРГРУППЫ) ============
+
+NEWS_CHAT_SETTING_KEY = "news_chat_id"
+NEWS_TOPIC_SETTING_KEY = "news_topic_id"
+
+
+async def _get_setting_int(key: str, default=None):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT value FROM settings WHERE key = ?", (key,))
+    row = await cursor.fetchone()
+    if not row or row['value'] in (None, ''):
+        return default
+    try:
+        return int(row['value'])
+    except (TypeError, ValueError):
+        return default
+
+
+async def set_news_chat(chat_id: int, topic_id: int = None):
+    """Куда слать игровые оповещения: чат + (для форума) топик.
+
+    Пустое значение chat_id отключает оповещения.
+    """
+    conn = await get_db()
+    if chat_id:
+        await conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (NEWS_CHAT_SETTING_KEY, str(int(chat_id)))
+        )
+    else:
+        await conn.execute("DELETE FROM settings WHERE key = ?", (NEWS_CHAT_SETTING_KEY,))
+    if topic_id:
+        await conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (NEWS_TOPIC_SETTING_KEY, str(int(topic_id)))
+        )
+    else:
+        await conn.execute("DELETE FROM settings WHERE key = ?", (NEWS_TOPIC_SETTING_KEY,))
+    await conn.commit()
+
+
+async def get_news_chat() -> tuple:
+    """(chat_id, topic_id) для оповещений. Пусто — оповещения выключены.
+
+    Значение из настроек важнее переменной окружения: её можно задать прямо в боте.
+    """
+    chat_id = await _get_setting_int(NEWS_CHAT_SETTING_KEY)
+    if chat_id is None and config.NEWS_CHAT_ID:
+        chat_id = int(config.NEWS_CHAT_ID)
+    topic_id = await _get_setting_int(NEWS_TOPIC_SETTING_KEY)
+    if chat_id is None:
+        return None, None
+    return chat_id, topic_id
+
+
+# Чаты, в которых бот работает кроме личных сообщений (список через запятую).
+ALLOWED_CHATS_SETTING_KEY = "allowed_chats"
+
+
+async def get_allowed_chats() -> list:
+    """Белый список чатов, где бот отвечает (сверх личных сообщений)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT value FROM settings WHERE key = ?", (ALLOWED_CHATS_SETTING_KEY,)
+    )
+    row = await cursor.fetchone()
+    if not row or not row['value']:
+        return []
+    out = []
+    for raw in str(row['value']).replace(';', ',').split(','):
+        raw = raw.strip()
+        if not raw:
+            continue
+        digits = raw.lstrip('-')
+        if digits.isdigit():
+            out.append(int(raw))
+    return out
+
+
+async def set_allowed_chats(chats: list):
+    conn = await get_db()
+    value = ','.join(str(int(c)) for c in chats if c)
+    await conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (ALLOWED_CHATS_SETTING_KEY, value)
+    )
+    await conn.commit()
+
+
 # ============ НАЛОГ НА ПРОДАЖИ ============
 
 async def get_sale_tax_percent() -> int:
@@ -2989,7 +3117,12 @@ async def report_payout_context(user_id: int, daily_claim: int, total_claim: int
     полях не проходит: платится только прирост. Несколько отчётов за сутки не
     суммируются: за день платится максимум из заявок.
 
-    Возвращает: payable, target, base, growth, assigned_today, base_known.
+    Дополнительно действует суточный лимит оплаты (report_daily_pay_cap): за сутки
+    нельзя начислить больше лимита, поэтому «за сутки» = 999999 в первый же отчёт
+    даёт не 999999, а лимит. «Всего» лимитом НЕ ограничивается (накопить за пару
+    месяцев в регионе — обычное дело).
+
+    Возвращает: payable, target, base, growth, assigned_today, base_known, cap, capped_by_limit.
     """
     conn = await get_db()
     base = await _report_base_total(conn, user_id, exclude_id)
@@ -3002,13 +3135,25 @@ async def report_payout_context(user_id: int, daily_claim: int, total_claim: int
     else:
         growth = max(0, (total_claim or 0) - base)
         target = min(daily, growth)
+
+    cap = await get_report_daily_pay_cap()
+    # 0 — без ограничения.
+    cap = cap if (cap or 0) > 0 else None
+    # Остаток лимита на сутки: уже засчитаноное съедает лимит.
+    room = cap - assigned if cap is not None else None
+    payable = max(0, target - assigned)
+    if room is not None and payable > room:
+        payable = max(0, room)
     return {
-        "payable": max(0, target - assigned),
+        "payable": payable,
         "target": target,
         "base": base,
         "growth": growth,
         "assigned_today": assigned,
         "base_known": base is not None,
+        "cap": cap,
+        "capped_by_limit": room is not None and payable < max(0, target - assigned),
+        "room_today": room,
     }
 
 

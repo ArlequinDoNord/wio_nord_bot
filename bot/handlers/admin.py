@@ -6,6 +6,7 @@
 import json
 
 from aiogram import Router, F, Bot
+from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -22,6 +23,8 @@ from database.db import (
     get_treasury_balance, transfer_from_treasury, get_treasury_stats,
     get_report_tax_percent, set_report_tax_percent,
     get_report_auto_approve_troops, set_report_auto_approve_troops,
+    get_report_daily_pay_cap, set_report_daily_pay_cap,
+    get_news_chat, set_news_chat,
     get_sale_tax_percent, set_sale_tax_percent,
     get_special_dept_code, set_special_dept_code,
     get_salaried_users, get_user_salary, set_user_salary, pay_salaries,
@@ -120,6 +123,10 @@ class AdminTax(StatesGroup):
 
 
 class AdminReportAutoApprove(StatesGroup):
+    value = State()
+
+
+class AdminReportPayCap(StatesGroup):
     value = State()
 
 
@@ -2505,6 +2512,81 @@ async def roles_apply(callback: CallbackQuery, state: FSMContext):
     await callback.message.answer(("✅ " if ok else "❌ ") + msg)
 
 
+# ============ ОПОВЕЩЕНИЯ: ЧАТ И ТОПИК ============
+
+@router.message(Command("chatinfo"))
+async def admin_chatinfo(message: Message):
+    """Показать параметры текущего чата (супер-админ).
+
+    Нужно, чтобы настроить оповещения в конкретный топик супергруппы: отправьте
+    эту команду прямо в нужной теме — бот покажет id чата и id топика, а кнопками
+    можно сразу сохранить их как чат/топик оповещений.
+    """
+    if 'super_admin' not in await get_user_role(message.from_user.id):
+        await message.answer("❌ Команда только для супер-админа.")
+        return
+    chat = message.chat
+    thread = getattr(message, "message_thread_id", None)
+    cur_chat, cur_topic = await get_news_chat()
+    lines = [
+        "📍 ПАРАМЕТРЫ ЭТОГО ЧАТА\n",
+        f"chat_id: <code>{chat.id}</code>",
+        f"тип: <code>{chat.type}</code>",
+        f"топик (message_thread_id): <code>{thread if thread else '— (общий раздел)'}</code>",
+        f"forum: <code>{getattr(chat, 'is_forum', '—')}</code>",
+        "",
+        "Сейчас оповещения идут: "
+        + (f"чат <code>{cur_chat}</code>, топик <code>{cur_topic if cur_topic else '— общий раздел'}</code>"
+           if cur_chat else "<b>никуда — чат не настроен</b>"),
+    ]
+    rows = []
+    if chat.type in ("supergroup", "channel"):
+        rows.append([InlineKeyboardButton(
+            text="📌 Сделать этот чат чатом оповещений",
+            callback_data=f"news:chat:{chat.id}:{thread or 0}")])
+    if thread:
+        rows.append([InlineKeyboardButton(
+            text="🧵 Топик для оповещений (этот чат)",
+            callback_data=f"news:topic:{chat.id}:{thread}")])
+    if cur_chat:
+        rows.append([InlineKeyboardButton(
+            text="♻️ Без топика (общий раздел чата)",
+            callback_data=f"news:topic:{cur_chat}:0")])
+    if rows:
+        rows.append([InlineKeyboardButton(
+            text="🔕 Выключить оповещения", callback_data="news:off")])
+    await message.answer("\n".join(lines),
+                         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows) if rows else None)
+
+
+@router.callback_query(F.data.startswith("news:"))
+async def admin_news_chat(callback: CallbackQuery):
+    await callback.answer()
+    if 'super_admin' not in await get_user_role(callback.from_user.id):
+        await callback.message.answer("❌ Настройка оповещений только для супер-админа.")
+        return
+    _, action, *rest = callback.data.split(":")
+    if action == "off":
+        await set_news_chat(None, None)
+        from utils.chat_guard import reset_cache
+        reset_cache()
+        await log_action(callback.from_user.id, 'set_news_chat', None, 'disabled')
+        await callback.message.answer("🔕 Игровые оповещения выключены.")
+        return
+    chat_id = int(rest[0])
+    thread = int(rest[1]) if len(rest) > 1 and rest[1] != "0" else None
+    if action == "chat":
+        await set_news_chat(chat_id, thread)
+    elif action == "topic":
+        await set_news_chat(chat_id, thread)
+    from utils.chat_guard import reset_cache
+    reset_cache()
+    await log_action(callback.from_user.id, 'set_news_chat', None,
+                     f"chat={chat_id} topic={thread}")
+    where = f"топик <code>{thread}</code>" if thread else "общий раздел чата"
+    await callback.message.answer(f"✅ Оповещения будут идти в чат <code>{chat_id}</code>, {where}.")
+
+
 # ============ СТАТУСЫ ============
 
 @router.callback_query(F.data == "admin:statuses")
@@ -3311,6 +3393,47 @@ async def report_auto_approve_edit_value(message: Message, state: FSMContext):
     await show_pending_reports(message)
 
 
+@router.callback_query(F.data == "rep:pay_cap_edit")
+async def report_pay_cap_edit_cb(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if 'super_admin' not in await get_user_role(callback.from_user.id):
+        await callback.message.answer("❌ Только супер-админ меняет суточный лимит оплаты.")
+        return
+    current = await get_report_daily_pay_cap()
+    await state.set_state(AdminReportPayCap.value)
+    await callback.message.edit_text(
+        f"🚦 СУТОЧНЫЙ ЛИМИТ ОПЛАТЫ ОТЧЁТОВ\n\n"
+        f"Сейчас: за одни сутки начисляется не больше <b>{current if current else '— (без ограничения)'}</b> "
+        f"войск суммарно по всем отчётам пилота.\n"
+        f"Лимит режет «всё накопленное», вписанное в «за сутки».\n"
+        f"Значение «всего» лимитом не ограничивается.\n\n"
+        f"Введи новое значение (0 — без ограничения, до 10 000 000):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 К отчётам", callback_data="admin:reports")]
+        ])
+    )
+
+
+@router.message(AdminReportPayCap.value)
+async def report_pay_cap_edit_value(message: Message, state: FSMContext):
+    raw = message.text.strip().replace(" ", "").replace("\u00a0", "")
+    if not raw.isdigit():
+        await message.answer("❌ Введи целое число (0 — без ограничения):")
+        return
+    value = int(raw)
+    if value > 10000000:
+        await message.answer("❌ Значение должно быть от 0 до 10 000 000:")
+        return
+    await set_report_daily_pay_cap(value)
+    await log_action(message.from_user.id, 'set_report_pay_cap', None, f"value={value}")
+    await state.clear()
+    await message.answer(
+        f"✅ Суточный лимит оплаты: {value if value else 'без ограничения'}.\n"
+        f"За сутки теперь начисляется не больше {value} войск суммарно."
+    )
+    await show_pending_reports(message)
+
+
 async def _report_payout_block(report) -> str:
     """Блок оплаты для карточки отчёта: база (накоплено до этого дня), прирост,
     сумма к выдаче. Платится только прирост за текущие сутки."""
@@ -3328,6 +3451,9 @@ async def _report_payout_block(report) -> str:
     ]
     if ctx["growth"] is not None and ctx["growth"] < report["troops_reported"]:
         lines.append("⛔ Заявка за сутки больше прироста «всего» — лишнее не оплачивается")
+    if ctx.get("capped_by_limit"):
+        lines.append(f"🚦 Обрезано суточным лимитом ({ctx['cap']}); осталось в лимите на сутки: "
+                     f"{max(0, ctx['room_today'] or 0) - ctx['payable']}")
     if ctx["assigned_today"]:
         lines.append(f"📋 Уже засчитано за сутки: {ctx['assigned_today']}")
     return "\n".join(lines)
@@ -3340,12 +3466,18 @@ async def show_pending_reports(message):
         if 'super_admin' in await get_user_role(message.chat.id):
             from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             limit = await get_report_auto_approve_troops()
-            text += f"\n\n⚙️ Порог автопроверки: отчёты до {limit} войск за сутки — автоматически."
+            cap = await get_report_daily_pay_cap()
+            text += (f"\n\n⚙️ Порог автопроверки: отчёты до {limit} войск за сутки — автоматически."
+                     f"\n🚦 Суточный лимит оплаты: {cap if cap else 'нет'} (0 = без ограничения).")
             await message.answer(
                 text,
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="⚙️ Изменить порог",
-                                          callback_data="rep:auto_approve_edit")],
+                    [
+                        InlineKeyboardButton(text="⚙️ Изменить порог",
+                                             callback_data="rep:auto_approve_edit"),
+                        InlineKeyboardButton(text="🚦 Потолок за сутки",
+                                             callback_data="rep:pay_cap_edit"),
+                    ],
                 ])
             )
         else:
@@ -3367,12 +3499,16 @@ async def show_pending_reports(message):
         buttons.append([InlineKeyboardButton(
             text="✏️ Поправить цифры и принять",
             callback_data=f"rep_fix:{report['id']}")])
-    # Супер-админ: порог автопроверки отчётов (кнопка видна и при пустой очереди).
+    # Супер-админ: порог автопроверки и суточный лимит оплаты отчётов.
     if is_super:
         limit = await get_report_auto_approve_troops()
-        buttons.append([InlineKeyboardButton(
-            text=f"⚙️ Порог автопроверки: {limit}",
-            callback_data="rep:auto_approve_edit")])
+        cap = await get_report_daily_pay_cap()
+        buttons.append([
+            InlineKeyboardButton(text=f"⚙️ Порог автопроверки: {limit}",
+                                 callback_data="rep:auto_approve_edit"),
+            InlineKeyboardButton(text=f"🚦 Потолок за сутки: {cap if cap else 'нет'}",
+                                 callback_data="rep:pay_cap_edit"),
+        ])
 
     caption = (
         f"📋 ОТЧЁТ #{report['id']}\n\n"

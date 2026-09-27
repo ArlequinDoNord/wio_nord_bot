@@ -29,6 +29,7 @@ async def run():
         backfill_rank_statuses, promote_user_rank, grant_status_for_rank,
         get_user_statuses, get_selected_status,
         add_report, approve_report, payout_reports,
+        set_report_daily_pay_cap,
         get_users_for_rank_promotion,
     )
 
@@ -126,6 +127,9 @@ async def run():
           (await get_user(u_p2))['promoted_rank'] == "Капитан")
 
     # ── 5. Начисление войск через отчёты → авто-статус ──
+    # Суточный лимит оплаты (v0.15.34) по умолчанию 4000, поэтому для проверки
+    # начисления 4040 лимит временно снимаем; ниже отдельная проверка, что лимит режет.
+    await set_report_daily_pay_cap(0)
     u_po = await mk(34005, 0)
     rid, _ = await add_report(u_po, "f", 4040)
     credited = await approve_report(rid, 0, 4040)
@@ -135,6 +139,17 @@ async def run():
     check("payout: войска 4040", u_po_row and u_po_row['troops'] == 4040)
     check("payout: авто-выдан Ветеран (veteran) и выбран",
           await has_tag(u_po, "veteran") and await sel_tag(u_po) == "veteran")
+
+    # Лимит по умолчанию (4000) режет «всё накопленное» в первом отчёте
+    await set_report_daily_pay_cap(4000)
+    u_cap = await mk(34008, 0)
+    rid_cap, credited_cap = await add_report(u_cap, "f", 999999, 7045)
+    check("суточный лимит 4000: первый отчёт 999999 → 4000", credited_cap == 4000)
+    check("одобренный отчёт в пределах лимита платится полностью",
+          await approve_report(rid_cap, 0) == 4000)
+    await payout_reports()
+    u_cap_row = await get_user(u_cap)
+    check("payout по лимиту: 4000", u_cap_row and u_cap_row['troops'] == 4000)
 
     # ── 6. Список кандидатов на админское звание ──
     await mk(34006, 6000)

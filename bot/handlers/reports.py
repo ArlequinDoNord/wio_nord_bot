@@ -192,6 +192,9 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
             f"📈 Прирост за сутки: {ctx['growth']}\n"
             f"⚔️ К оплате: {credited} (не больше заявки и не больше прироста)"
         )
+    if ctx.get("capped_by_limit"):
+        payout_info += (f"\n🚦 Сработал суточный лимит: за сутки начисляется не больше "
+                        f"{ctx['cap']} войск. Излишек в оплату не идёт.")
 
     remaining_after = REPORT_DAILY_LIMIT - (reports_today + 1)
     if remaining_after > 0:

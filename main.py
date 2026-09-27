@@ -18,6 +18,7 @@ from database.db import (
     log_activity, prune_activity_log, prune_location_visits,
 )
 from utils.notify import notify_treasury_shortage
+from utils.chat_guard import ChatGuard
 from utils.helpers import is_main_menu_text
 from bot.handlers.start import router as start_router
 from bot.handlers.profile import router as profile_router
@@ -319,8 +320,10 @@ async def main():
               polls_router, library_router, locations_router, park_router,
               fishing_router, housing_router, news_router, kvp_router,
               wall_router, hq_router, clans_router, nii_router):
+        r.message.middleware(ChatGuard())
         r.message.middleware(FishingActiveLock())
         r.message.middleware(MainMenuFSMReset())
+        r.callback_query.middleware(ChatGuard())
         r.callback_query.middleware(FishingActiveLock())
 
     logger.info("Хендлеры зарегистрированы")

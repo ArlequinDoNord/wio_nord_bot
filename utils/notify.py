@@ -6,8 +6,7 @@
 
 from aiogram import Bot
 
-from config import NEWS_CHAT_ID
-from database.db import get_db, get_user
+from database.db import get_db, get_user, get_news_chat
 from config import ADMIN_IDS
 
 # Отчёты с таким количеством очков (и выше) обязательно публикуются после одобрения
@@ -47,18 +46,25 @@ async def notifications_enabled(user_id: int) -> bool:
 
 
 async def notify(bot: Bot, text: str, user_id: int = None):
-    """Отправить игровое оповещение в группу.
+    """Отправить игровое оповещение в общую группу (или в её топик).
+
+    Куда именно — настройка «news_chat_id» + «news_topic_id» (см. get_news_chat):
+    для супергруппы с форумом бот пишет в конкретный топик, иначе — в общий чат.
 
     Если пользователь отключил оповещения о себе — сообщение не отправляется.
+    Ошибка отправки пишется в журнал (handle_error), а не проглатывается молча:
+    иначе «нет оповещений» и «бот не имеет прав в чате» выглядят одинаково.
     """
-    if not NEWS_CHAT_ID:
+    chat_id, topic_id = await get_news_chat()
+    if not chat_id:
         return
     if user_id is not None and not await notifications_enabled(user_id):
         return
     try:
-        await bot.send_message(NEWS_CHAT_ID, text)
-    except Exception:
-        pass
+        await bot.send_message(chat_id, text, message_thread_id=topic_id)
+    except Exception as e:
+        from database.db import log_activity
+        await log_activity(None, 'notify_failed', f"chat={chat_id} topic={topic_id}: {e}")
 
 
 async def treasury_staff_ids() -> list:
