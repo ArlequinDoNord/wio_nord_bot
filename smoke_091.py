@@ -138,6 +138,23 @@ async def run():
     check("правка: к выдаче обрезано лимитом 4000", ctx4['payable'] == 4000)
     check("правка: обрезание отмечено", ctx4['capped_by_limit'] is True)
 
+    # ── 7b. Последний рубеж: одобрение тоже режет по лимиту ──
+    # Отчёт с завышенной credited_troops, посчитанной ДО введения лимита.
+    U5 = 70005
+    await add_user(U5, "cap05", "Пилот", "Пять")
+    conn = await get_db()
+    cur = await conn.execute(
+        "INSERT INTO reports (user_id, screenshot_file_id, troops_reported, total_troops, "
+        "region, credited_troops, status, created_at) "
+        "VALUES (?, 'f', 999999, 7045, '0', 999999, 'pending', datetime('now'))", (U5,))
+    rid5 = cur.lastrowid
+    await conn.commit()
+    check("одобрение старого завышенного отчёта режется до лимита",
+          await approve_report(rid5, 0) == 4000)
+    row5 = await (await conn.execute(
+        "SELECT credited_troops FROM reports WHERE id = ?", (rid5,))).fetchone()
+    check("в базе тоже зафиксировано 4000", row5['credited_troops'] == 4000)
+
     # ── 8. Настройки чата/топика оповещений ──
     chat_id, topic = await get_news_chat()
     check("изначально чат не настроен (окружение пустое)", chat_id is None)

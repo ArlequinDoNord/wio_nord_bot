@@ -3225,6 +3225,10 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
     раз в сутки функцией payout_reports() (в начале следующих суток).
 
     Для старых отчётов (credited_troops IS NULL, до введения дельты) — вся заявка целиком.
+
+    Последний рубеж: итог обрезается суточным лимитом оплаты. Это важно для отчётов,
+    посчитанных до введения лимита (credited_troops мог остаться с завышенной суммой) —
+    даже если админ нажал «Принять» без правки цифр, лишнее не начислится.
     """
     conn = await get_db()
     cursor = await conn.execute(
@@ -3240,6 +3244,13 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
             amount = min(amount, max(0, troops))
     else:
         amount = row['troops_reported']
+
+    # Обрезка по суточному лимиту (0 — лимит выключен).
+    cap = await get_report_daily_pay_cap()
+    if cap > 0:
+        room = cap - await _report_assigned_today(conn, row['user_id'], exclude_id=report_id)
+        if amount > max(0, room):
+            amount = max(0, room)
 
     await conn.execute(
         "UPDATE reports SET status = 'approved', reviewed_by = ?, credited_troops = ?, paid = 0 WHERE id = ?",
