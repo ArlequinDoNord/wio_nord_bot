@@ -24,7 +24,7 @@ from database.db import (
     get_report_tax_percent, set_report_tax_percent,
     get_report_auto_approve_troops, set_report_auto_approve_troops,
     get_report_daily_pay_cap, set_report_daily_pay_cap,
-    get_news_chat, set_news_chat,
+        get_news_chat, set_news_chat, get_allowed_chats, set_allowed_chats,
     get_sale_tax_percent, set_sale_tax_percent,
     get_special_dept_code, set_special_dept_code,
     get_salaried_users, get_user_salary, set_user_salary, pay_salaries,
@@ -2555,6 +2555,17 @@ async def admin_chatinfo(message: Message):
     if rows:
         rows.append([InlineKeyboardButton(
             text="🔕 Выключить оповещения", callback_data="news:off")])
+    if chat.type != "private":
+        # Рабочий чат: бот отвечает и показывает меню, как в личке.
+        # (Чат оповещений всегда остаётся «только для исходящих оповещений».)
+        if chat.id in await get_allowed_chats():
+            rows.append([InlineKeyboardButton(
+                text="🚫 Запретить работу бота в этом чате",
+                callback_data=f"news:disallow:{chat.id}")])
+        else:
+            rows.append([InlineKeyboardButton(
+                text="➕ Разрешить работу бота в этом чате",
+                callback_data=f"news:allow:{chat.id}")])
     await message.answer("\n".join(lines),
                          reply_markup=InlineKeyboardMarkup(inline_keyboard=rows) if rows else None)
 
@@ -2575,6 +2586,34 @@ async def admin_news_chat(callback: CallbackQuery):
         return
     chat_id = int(rest[0])
     thread = int(rest[1]) if len(rest) > 1 and rest[1] != "0" else None
+    if action in ("allow", "disallow"):
+        cur_allowed = await get_allowed_chats()
+        if action == "allow":
+            if chat_id not in cur_allowed:
+                cur_allowed.append(chat_id)
+            await set_allowed_chats(cur_allowed)
+            from utils.chat_guard import reset_cache
+            reset_cache()
+            await log_action(callback.from_user.id, 'set_news_chat', None,
+                             f"allow_chat={chat_id}")
+            extra = ""
+            cur_news, _ = await get_news_chat()
+            if cur_news and int(cur_news) == chat_id:
+                extra = ("\n⚠️ Это же чат оповещений: бот туда только отправляет "
+                         "оповещения, команды игроков по-прежнему игнорирует. "
+                         "Для рабочего чата возьмите другую группу/топик.")
+            await callback.message.answer(
+                f"✅ Бот работает в чате <code>{chat_id}</code> как в личке.{extra}")
+            return
+        await set_allowed_chats([c for c in cur_allowed if c != chat_id])
+        from utils.chat_guard import reset_cache
+        reset_cache()
+        await log_action(callback.from_user.id, 'set_news_chat', None,
+                         f"disallow_chat={chat_id}")
+        await callback.message.answer(
+            f"🚫 Бот больше не обслуживает команды в чате <code>{chat_id}</code>.\n"
+            f"Оповещения в него приходят по-прежнему, если он настроен как чат оповещений.")
+        return
     if action == "chat":
         await set_news_chat(chat_id, thread)
     elif action == "topic":

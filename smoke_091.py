@@ -1,4 +1,4 @@
-"""Smoke v0.15.34: суточный лимит оплаты отчётов, гард чатов, настройка чата/топика.
+﻿"""Smoke v0.15.34: суточный лимит оплаты отчётов, гард чатов, настройка чата/топика.
 
 Что проверяем:
   • суточный лимит оплаты (по умолчанию 4000) режет «всё накопленное», но НЕ режет
@@ -61,6 +61,7 @@ async def run():
         set_allowed_chats, get_db,
     )
     from utils import chat_guard
+    from utils.notify import notify
     from utils.permissions import get_user_role
 
     await init_db()
@@ -194,22 +195,36 @@ async def run():
 
     allowed = FakeMessage(FakeChat(-100111, "supergroup"), text="/start")
     await guard(handler, allowed, {})
-    check("разрешённый чат проходит", len(handled) == 2)
+    check("разрешённый чат проходит (бот работает как в личке)", len(handled) == 2)
 
+    # Чат оповещений: бот ТОЛЬКО отправляет туда оповещения, команды игнорирует
     news = FakeMessage(FakeChat(-100999, "supergroup"), text="привет")
-    await guard(handler, news, {})
-    check("чат оповещений проходит", len(handled) == 3)
+    res = await guard(handler, news, {})
+    check("чат оповещений: текст игнорируется", res is None and len(handled) == 2)
+    check("чат оповещений: подсказки в свой чат не шлём", not news.answers)
+    news_cmd = FakeMessage(FakeChat(-100999, "supergroup"), text="/start")
+    res = await guard(handler, news_cmd, {})
+    check("чат оповещений: команда не доходит до хендлера",
+          res is None and len(handled) == 2)
+    check("чат оповещений: на команду тоже тишина", not news_cmd.answers)
+    class FakeNewsCb:
+        def __init__(self, chat):
+            self.message = FakeMessage(chat)
+            self.data = "admin:menu"
+            self.from_user = type("U", (), {"id": 1})()
+    res = await guard(handler, FakeNewsCb(FakeChat(-100999, "supergroup")), {})
+    check("чат оповещений: нажатие кнопки игнорируется", res is None and len(handled) == 2)
 
     # Чужой чат: обычный текст — тишина
     foreign = FakeMessage(FakeChat(-100777, "supergroup"), text="просто текст")
     res = await guard(handler, foreign, {})
-    check("чужой чат: текст игнорируется", res is None and len(handled) == 3)
+    check("чужой чат: текст игнорируется", res is None and len(handled) == 2)
     check("чужой чат: подсказки на текст нет", not foreign.answers)
 
     # Чужой чат: команда — одна подсказка, и только раз в час
     cmd = FakeMessage(FakeChat(-100777, "supergroup"), text="/start")
     await guard(handler, cmd, {})
-    check("чужой чат: команда не доходит до хендлера", len(handled) == 3)
+    check("чужой чат: команда не доходит до хендлера", len(handled) == 2)
     check("чужой чат: подсказка отправлена", len(cmd.answers) == 1)
     check("в подсказке есть ник бота", "Nord_Wio_bot" in cmd.answers[0])
 
@@ -234,7 +249,7 @@ async def run():
             self.message = FakeMessage(chat)
     cb = FakeEvent(FakeChat(-100777, "supergroup"))
     res = await guard(handler, cb, {})
-    check("callback из чужого чата игнорируется", res is None and len(handled) == 3)
+    check("callback из чужого чата игнорируется", res is None and len(handled) == 2)
 
     # ── 6b. Настройка своего чата из самого чата: супер-админ проходит ──
     admin_id = 990001
@@ -251,27 +266,54 @@ async def run():
     setup = FakeMessage(FakeChat(-100555, "supergroup"), text="/chatinfo", user_id=admin_id)
     res = await guard(handler, setup, {})
     check("/chatinfo супер-админа проходит даже вне белого списка",
-          res == "ok" and len(handled) == 4)
+          res == "ok" and len(handled) == 3)
     check("/chatinfo не съедает лимит подсказок", not setup.answers)
 
     setup_cb = FakeCallbackQuery(
         FakeMessage(FakeChat(-100555, "supergroup"), user_id=admin_id),
         data="news:chat", user_id=admin_id)
     res = await guard(handler, setup_cb, {})
-    check("кнопка сохранения чата проходит", res == "ok" and len(handled) == 5)
+    check("кнопка сохранения чата проходит", res == "ok" and len(handled) == 4)
 
     # Обычный пилот в чужом чате — по-прежнему тишина
     fake_pilot = FakeMessage(FakeChat(-100666, "supergroup"), text="/chatinfo", user_id=user_id)
     res = await guard(handler, fake_pilot, {})
     check("чужой пилот: /chatinfo срезается, хендлер не вызван",
-          res is None and len(handled) == 5)
+          res is None and len(handled) == 4)
 
-    # Сохранение чата сразу сбрасывает кэш гарда — чат начинает работать без перезапуска
+    # Сохранение чата сразу сбрасывает кэш гарда — правила применяются без перезапуска
     await set_news_chat(-100555, 42)
     fresh = FakeMessage(FakeChat(-100555, "supergroup"), text="привет", user_id=user_id)
     res = await guard(handler, fresh, {})
-    check("после сохранения чат оповещений работает сразу", res == "ok" and len(handled) == 6)
+    check("после сохранения чат оповещений — режим «только отправка»",
+          res is None and len(handled) == 4)
     check("кэш гарда сброшен без перезапуска", chat_guard._cache["ts"] > 0)
+    check("чат оповещений запомнен гардом", chat_guard._cache["news"] == -100555)
+
+    # Даже если чат оповещений добавить в рабочие — он остаётся «только отправка»
+    await set_allowed_chats([-100555])
+    res = await guard(handler, fresh, {})
+    check("чат оповещений в рабочем списке всё равно игнорирует команды",
+          res is None and len(handled) == 4)
+
+    # А вот другой чат из рабочего списка работает как в личке
+    await set_allowed_chats([-100555, -100444])
+    work = FakeMessage(FakeChat(-100444, "supergroup"), text="/start", user_id=user_id)
+    res = await guard(handler, work, {})
+    check("разрешённый чат работает полноценно", res == "ok" and len(handled) == 5)
+
+    # Отправка оповещений бот делает сам — гард не мешает исходящим
+    class FakeBot:
+        def __init__(self):
+            self.sent = []
+
+        async def send_message(self, chat_id, text, message_thread_id=None):
+            self.sent.append((chat_id, text, message_thread_id))
+
+    fake_bot = FakeBot()
+    await notify(fake_bot, "✅ Отчёт принят на 1 войск!", None)
+    check("оповещение уходит в чат и топик",
+          fake_bot.sent == [(-100555, "✅ Отчёт принят на 1 войск!", 42)])
 
     await close_db()
     print(f"\nSmoke 091: {passed} passed, {failed} failed")

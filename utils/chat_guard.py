@@ -1,14 +1,16 @@
 """Ограничение работы бота по чатам.
 
 Бота постоянно добавляют в посторонние группы и там вызывают команды: он отвечал
-меню с кнопками прямо в общем чате. Теперь вне личных сообщений бот работает только
-в разрешённых чатах (настраивается), а в чужих группах не отвечает ничего, кроме
-короткой подсказки «работаю в личке» — и то не чаще раза в час на чат, чтобы не
-засорять чат.
+меню с кнопками прямо в общем чате. Теперь вне личных сообщений бот:
+  • в рабочем чате (белый список) — работает как в личке;
+  • в чате оповещений — ТОЛЬКО отправляет оповещения, команды игнорирует;
+  • в чужих группах — не отвечает ничего, кроме короткой подсказки «работаю в личке»
+    и то не чаще раза в час на чат.
 
 Белый список:
   • личные сообщения — всегда разрешены;
-  • чат оповещений (news_chat_id) и чаты из настройки allowed_chats.
+  • чаты из настройки allowed_chats (бот отвечает и показывает меню);
+  • чат оповещений (news_chat_id) + топик — только для исходящих оповещений.
 """
 
 import time
@@ -25,13 +27,13 @@ HINT_INTERVAL = 3600  # не чаще раза в час на один чат
 # Служебные команды настройки чата/топика: их супер-админ должен иметь возможность
 # выполнить ПРЯМО в будущем своём чате — до того, как тот попал в белый список.
 SETUP_COMMANDS = {"/chatinfo"}
-SETUP_CALLBACKS = {"news:chat", "news:topic"}
+SETUP_CALLBACK_PREFIX = "news:"
 
 # chat_id -> время последней подсказки
 _hints: dict[int, float] = {}
 
 # Кэш белого списка, чтобы не ходить в БД на каждое обновление.
-_cache: dict = {"ts": 0.0, "ids": set()}
+_cache: dict = {"ts": 0.0, "ids": set(), "news": None}
 
 
 def _event_chat(event):
@@ -47,21 +49,24 @@ def _is_command(event) -> bool:
     return bool(text and text.startswith("/"))
 
 
-async def allowed_chat_ids() -> set:
+async def chat_lists() -> tuple:
+    """(белый список чатов, чат оповещений). Кэш, чтобы не ходить в БД на каждое событие."""
     now = time.monotonic()
     if now - _cache["ts"] > 30:
-        ids = set(await get_allowed_chats())
+        allowed = set(await get_allowed_chats())
         news_chat, _ = await get_news_chat()
         if news_chat:
-            ids.add(int(news_chat))
-        _cache["ids"] = ids
+            allowed.add(int(news_chat))
+        _cache["ids"] = allowed
+        _cache["news"] = int(news_chat) if news_chat else None
         _cache["ts"] = now
-    return _cache["ids"]
+    return _cache["ids"], _cache["news"]
 
 
 def reset_cache():
     _cache["ts"] = 0.0
     _cache["ids"] = set()
+    _cache["news"] = None
     _hints.clear()
 
 
@@ -79,7 +84,7 @@ async def _is_setup(event) -> bool:
     """Команда/кнопка настройки чата от супер-админа (её нельзя срезать гардом)."""
     text = getattr(event, "text", None)
     data = getattr(event, "data", None)
-    is_setup = bool(data) and str(data) in SETUP_CALLBACKS
+    is_setup = bool(data) and str(data).startswith(SETUP_CALLBACK_PREFIX)
     if not is_setup and text and text.startswith("/"):
         is_setup = text.split()[0].split("@")[0].lower() in SETUP_COMMANDS
     if not is_setup:
@@ -91,7 +96,13 @@ async def _is_setup(event) -> bool:
 
 
 class ChatGuard(BaseMiddleware):
-    """Пропускает обновления из лички и разрешённых чатов, остальное — тишина."""
+    """Пропускает обновления из лички и рабочих чатов, остальное — тишина.
+
+    Чат оповещений — особый случай: туда бот ТОЛЬКО отправляет оповещения, а команды
+    и любые сообщения игнорирует. Игроки общаются с ботом в личке, в группе бот —
+    «вещатель», а не собеседник. Исключение — служебная настройка /chatinfo
+    супер-админа, иначе настроить чат было бы нечем.
+    """
 
     async def __call__(self, handler, event, data):
         chat = _event_chat(event)
@@ -99,7 +110,16 @@ class ChatGuard(BaseMiddleware):
             return await handler(event, data)
         if chat.type == "private":
             return await handler(event, data)
-        if chat.id in await allowed_chat_ids():
+
+        allowed, news_chat = await chat_lists()
+
+        # Чат оповещений: бот пишет туда сам, но обслуживать запросы игроков не должен.
+        if news_chat and chat.id == news_chat:
+            if await _is_setup(event):
+                return await handler(event, data)
+            return None
+
+        if chat.id in allowed:
             return await handler(event, data)
         # Настройку своего чата супер-админ проводит из самого чата — пропускаем.
         if await _is_setup(event):
