@@ -5,8 +5,9 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from config import REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT
-from database.db import add_report, approve_report, get_user_reports, get_report_tax_percent, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist, report_payout_context
+from database.db import add_report, approve_report, get_user, get_user_reports, get_report_tax_percent, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist, report_payout_context
 from utils.helpers import is_main_menu_text
+from utils.notify import notify_report_praise
 from keyboards.keyboards import report_keyboard, cancel_keyboard
 
 router = Router()
@@ -220,6 +221,9 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
             f"⚔️ К начислению: {actual} войск (налог {tax_percent}% — в казну).\n"
             f"💰 Оплата по отчётам производится раз в сутки — придёт в начале следующих суток.{reminder}"
         )
+        # Принятый отчёт — похвала в общий чат (сама функция молчит ниже порога).
+        pilot_row = await get_user(message.from_user.id)
+        await notify_report_praise(message.bot, pilot_row, actual, message.from_user.id)
     else:
         await state.clear()
         auto_note = "" if ctx["base_known"] else "\n⚠️ Первый отчёт: сумму не с чем сверить, нужен ручной просмотр."

@@ -58,7 +58,7 @@ async def run():
         init_db, close_db, add_user, add_report, approve_report, payout_reports,
         report_payout_context, correct_report_numbers, get_report_daily_pay_cap,
         set_report_daily_pay_cap, get_news_chat, set_news_chat, get_allowed_chats,
-        set_allowed_chats, get_db,
+        set_allowed_chats, get_db, reject_report,
     )
     from utils import chat_guard
     from utils.notify import notify
@@ -316,7 +316,7 @@ async def run():
           fake_bot.sent == [(-100555, "✅ Отчёт принят на 1 войск!", 42)])
 
     # ── 8. Тексты оповещений: похвала без цифр, награда общим текстом ──
-    from utils.notify import report_praise_text, notify_award
+    from utils.notify import report_praise_text, notify_award, notify_report_praise
     check("отчёт 150 и ниже — без оповещения",
           report_praise_text("@vasya", 150) is None and report_praise_text("@vasya", 1) is None)
     m = report_praise_text("@vasya", 151)
@@ -340,6 +340,31 @@ async def run():
     await notify_award(bot3, None, "", None)
     check("награда без названия не ломает текст",
           bot3.sent == [(-100555, "🎖️ пилот награждён: награда", 42)])
+
+    # Похвала шлётся только при принятии: отклонение и «в очереди» её не порождают.
+    # Проверяем решение на уровне approve/reject: approve → approved, reject → rejected,
+    # и похвала считается от credited (а не от заявки).
+    from database.db import reject_report
+    U6 = 70006
+    await add_user(U6, "ace", "Ас", "Асов")
+    rid6, credited6 = await add_report(U6, "f", 400, 400, "0")
+    check("крупный отчёт ждёт одобрения", credited6 == 400)
+    bot4 = FakeBot()
+    await notify_report_praise(bot4, {"username": "ace", "first_name": "Ас", "user_id": U6}, 0, U6)
+    check("неодобренный отчёт похвалы не вызывает (нулевая принятая сумма)",
+          not bot4.sent)
+    paid = await approve_report(rid6, 0)
+    bot5 = FakeBot()
+    await notify_report_praise(bot5, {"username": "ace", "first_name": "Ас", "user_id": U6},
+                               paid, U6)
+    check("принятый отчёт 400 → «истинный Ас»", bot5.sent ==
+          [(-100555, "🏆 @ace проявляет характер истинного Аса!", 42)])
+    rid7, _ = await add_report(U6, "f", 5, 405, "0")
+    await reject_report(rid7, 0)
+    bot6 = FakeBot()
+    await notify_report_praise(bot6, {"username": "ace", "first_name": "Ас", "user_id": U6},
+                               0, U6)
+    check("отклонённый отчёт похвалы не вызывает", not bot6.sent)
 
     await close_db()
     print(f"\nSmoke 091: {passed} passed, {failed} failed")
