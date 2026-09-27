@@ -2,6 +2,9 @@
 
 Каждого игрока можно исключить из оповещений (флаг notify_enabled),
 переключаемый в профиле — доступно со статуса «Ветеран» и выше.
+
+Все тексты оповещений в общий чат намеренно обходятся БЕЗ точных цифр отчётов:
+в группе видно только похвалу за мастерство, имена и названия наград.
 """
 
 from aiogram import Bot
@@ -9,8 +12,10 @@ from aiogram import Bot
 from database.db import get_db, get_user, get_news_chat
 from config import ADMIN_IDS
 
-# Отчёты с таким количеством очков (и выше) обязательно публикуются после одобрения
-NOTIFY_REPORT_MIN_TROOPS = 300
+# Пороги для похвалы за суточный отчёт (строго больше):
+#   > MASTERY — «высокое мастерство», > ACE — «истинный Ас», иначе молчим.
+NOTIFY_REPORT_MASTERY_TROOPS = 150
+NOTIFY_REPORT_ACE_TROOPS = 300
 
 
 async def player_display(user) -> str:
@@ -65,6 +70,37 @@ async def notify(bot: Bot, text: str, user_id: int = None):
     except Exception as e:
         from database.db import log_activity
         await log_activity(None, 'notify_failed', f"chat={chat_id} topic={topic_id}: {e}")
+
+
+def report_praise_text(display: str, amount: int):
+    """Похвала за суточный отчёт. Без цифр — только ободряющая фраза.
+
+    Ниже порогов возвращается None: обычные отчёты в общий чат не попадают.
+    """
+    try:
+        amount = int(amount)
+    except (TypeError, ValueError):
+        return None
+    if amount > NOTIFY_REPORT_ACE_TROOPS:
+        return f"🏆 {display} проявляет характер истинного Аса!"
+    if amount > NOTIFY_REPORT_MASTERY_TROOPS:
+        return f"⚡ {display} показал высокое мастерство!"
+    return None
+
+
+async def notify_report_praise(bot: Bot, pilot, amount: int, user_id: int = None):
+    """Отправить похвалу за крупный суточный отчёт (без точных цифр)."""
+    text = report_praise_text(await player_display(pilot), amount)
+    if not text:
+        return False
+    await notify(bot, text, user_id)
+    return True
+
+
+async def notify_award(bot: Bot, pilot, award_title: str, user_id: int = None):
+    """Оповещение о выдаче любой награды: «@pilot награждён: Название»."""
+    title = (award_title or "").strip() or "награда"
+    await notify(bot, f"🎖️ {await player_display(pilot)} награждён: {title}", user_id)
 
 
 async def treasury_staff_ids() -> list:

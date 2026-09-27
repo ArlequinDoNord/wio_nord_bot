@@ -52,7 +52,7 @@ from utils.permissions import (
 )
 from utils.helpers import plural_nordmark
 from config import RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES, get_effective_rank, VERSION, DRINK_EFFECT_LABELS
-from utils.notify import notify, player_display, NOTIFY_REPORT_MIN_TROOPS
+from utils.notify import notify, player_display, notify_award, notify_report_praise
 
 router = Router()
 
@@ -3331,13 +3331,8 @@ async def award_grant_comment(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(("✅ " if ok else "❌ ") + msg)
     if ok and a:
-        from utils.notify import notify as notify_group
-        await notify_group(
-            message.bot,
-            f"🏅 {a['emoji'] or '🏅'} {a['name']} выдана игроку {data.get('target_name', '') or target_id}"
-            + (f"\n💬 {comment}" if comment else ""),
-            user_id=target_id
-        )
+        target = await get_user(target_id)
+        await notify_award(message.bot, target, f"{a['emoji'] or '🏅'} {a['name']}", target_id)
 
 
 async def award_grant_finish(callback: CallbackQuery, state: FSMContext, comment):
@@ -3355,13 +3350,9 @@ async def award_grant_finish(callback: CallbackQuery, state: FSMContext, comment
     await state.clear()
     await callback.message.answer(("✅ " if ok else "❌ ") + msg)
     if ok and a:
-        from utils.notify import notify as notify_group
-        await notify_group(
-            callback.message.bot,
-            f"🏅 {a['emoji'] or '🏅'} {a['name']} выдана игроку {data.get('target_name', '') or target_id}"
-            + (f"\n💬 {comment}" if comment else ""),
-            user_id=target_id
-        )
+        target = await get_user(target_id)
+        await notify_award(callback.message.bot, target,
+                           f"{a['emoji'] or '🏅'} {a['name']}", target_id)
 
 
 @router.callback_query(F.data == "aw:revoke")
@@ -3723,8 +3714,10 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
     )
     await show_pending_reports(callback.message)
 
-    if pilot and amount >= NOTIFY_REPORT_MIN_TROOPS:
-        await notify(bot, f"⚡ Пилот {await player_display(pilot)} сдал отчёт на {amount} очков!", pilot['user_id'])
+    # В общий чат — только похвала, без точных цифр: обычные отчёты не публикуются.
+    if pilot:
+        from utils.notify import notify_report_praise
+        await notify_report_praise(bot, pilot, amount, pilot['user_id'])
 
 
 @router.callback_query(F.data.startswith("rep_no:"))

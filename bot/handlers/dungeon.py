@@ -949,7 +949,7 @@ async def _enemy_defeated(callback, state, bot, run, enemy, player_hp):
                                f"Прошёл «{enemy['name']}»/подземелье на {run['floor']} этаже")
             await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
             pilot = await get_user(user_id)
-            await notify(bot, f"🏆 Пилот {await player_display(pilot)} прошёл подземелье и победил босса «{enemy['name']}»!", user_id)
+            await notify(bot, f"🏆 {await player_display(pilot)} прошёл подземелье и победил босса «{enemy['name']}»!", user_id)
     else:
         hp_text = _hp_bar(player_hp, run['hp_max'])
         text = (

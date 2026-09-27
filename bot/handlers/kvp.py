@@ -28,7 +28,7 @@ from utils.combat import (
     get_enemy_bar, get_enemy_attack_text,
 )
 from utils.states import get_state_info, combat_multipliers
-from utils.notify import notify, player_display
+from utils.notify import notify, player_display, notify_award
 from bot.handlers.dungeon import (
     dungeon_current_step, dungeon_new_step, dungeon_entrance_photo, answer_enemy_photo,
 )
@@ -682,6 +682,9 @@ async def kvp_win(callback: CallbackQuery, run, user_id, state: FSMContext, bot:
                     f"\n🎖️ Получена награда «{KVP_BADGE_NAME}»!\n"
                     f"Постоянный бонус: +2% урона и +3% уклонения в подземельях."
                 )
+                # Один текст оповещения о награде — как и для остальных наград
+                pilot = await get_user(user_id)
+                await notify_award(bot, pilot, f"{KVP_BADGE_NAME}", user_id)
 
     await end_run(run['id'], 0)
     await state.clear()
@@ -702,12 +705,6 @@ async def kvp_win(callback: CallbackQuery, run, user_id, state: FSMContext, bot:
     text += f"\n📊 Прогресс курса: {progress['completions']}/{KVP_MAX_COMPLETIONS}"
 
     await answer_course_photo(callback.message, text, reply_markup=kvp_menu_keyboard())
-
-    pilot = await get_user(user_id)
-    await notify(bot,
-                 f"🎖️ Пилот {await player_display(pilot)} прошёл Курс Выживания и "
-                 f"получил «{KVP_BADGE_NAME}»!",
-                 user_id)
 
 
 # ----- Выход -----

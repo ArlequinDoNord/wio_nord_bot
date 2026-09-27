@@ -4040,6 +4040,12 @@ async def remove_user_role(user_id: int, role: str):
 
 async def grant_award(user_id: int, award_id: int, granted_by: int = None,
                       comment: str = None):
+    """Выдать награду. Возвращает (ok, текст).
+
+    ВАЖНО: это единственная точка выдачи наград, но оповещение в общий чат здесь
+    НЕ отправляется (нет доступа к боту) — после успешной выдачи вызывающий обязан
+    вызвать utils.notify.notify_award(bot, user, "эмодзи Название", user_id).
+    """
     conn = await get_db()
     try:
         await conn.execute(

@@ -315,6 +315,32 @@ async def run():
     check("оповещение уходит в чат и топик",
           fake_bot.sent == [(-100555, "✅ Отчёт принят на 1 войск!", 42)])
 
+    # ── 8. Тексты оповещений: похвала без цифр, награда общим текстом ──
+    from utils.notify import report_praise_text, notify_award
+    check("отчёт 150 и ниже — без оповещения",
+          report_praise_text("@vasya", 150) is None and report_praise_text("@vasya", 1) is None)
+    m = report_praise_text("@vasya", 151)
+    check("отчёт 151 — «высокое мастерство»",
+          bool(m) and "высокое мастерство" in m and "@vasya" in m)
+    m300 = report_praise_text("@vasya", 300)
+    check("отчёт 300 — ещё мастерство, не Ас",
+          bool(m300) and "мастерство" in m300 and "Аса" not in m300)
+    ace = report_praise_text("@vasya", 301)
+    check("отчёт 301 — «истинный Ас»", bool(ace) and "истинного Аса" in ace)
+    check("в похвале нет точных цифр отчёта",
+          all(str(n) not in (ace or "") for n in (301, 300, 150))
+          and all(str(n) not in (m or "") for n in (151, 150)))
+
+    bot2 = FakeBot()
+    await notify_award(bot2, {"username": "petr", "first_name": "Пётр", "user_id": 5},
+                       "🏅 Значок Отваги", 5)
+    check("награда: общий текст «награждён: <название>»",
+          bot2.sent == [(-100555, "🎖️ @petr награждён: 🏅 Значок Отваги", 42)])
+    bot3 = FakeBot()
+    await notify_award(bot3, None, "", None)
+    check("награда без названия не ломает текст",
+          bot3.sent == [(-100555, "🎖️ пилот награждён: награда", 42)])
+
     await close_db()
     print(f"\nSmoke 091: {passed} passed, {failed} failed")
     return 0 if failed == 0 else 1
