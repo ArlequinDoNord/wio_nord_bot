@@ -2517,6 +2517,7 @@ async def set_news_chat(chat_id: int, topic_id: int = None):
     else:
         await conn.execute("DELETE FROM settings WHERE key = ?", (NEWS_TOPIC_SETTING_KEY,))
     await conn.commit()
+    await _reset_chat_guard_cache()
 
 
 async def get_news_chat() -> tuple:
@@ -2535,6 +2536,15 @@ async def get_news_chat() -> tuple:
 
 # Чаты, в которых бот работает кроме личных сообщений (список через запятую).
 ALLOWED_CHATS_SETTING_KEY = "allowed_chats"
+
+
+async def _reset_chat_guard_cache():
+    """Сбросить кэш белого списка чатов, чтобы новый чат заработал сразу."""
+    try:
+        from utils.chat_guard import reset_cache
+        reset_cache()
+    except Exception:
+        pass
 
 
 async def get_allowed_chats() -> list:
@@ -2566,6 +2576,7 @@ async def set_allowed_chats(chats: list):
         (ALLOWED_CHATS_SETTING_KEY, value)
     )
     await conn.commit()
+    await _reset_chat_guard_cache()
 
 
 # ============ НАЛОГ НА ПРОДАЖИ ============
@@ -3141,7 +3152,8 @@ async def report_payout_context(user_id: int, daily_claim: int, total_claim: int
     cap = cap if (cap or 0) > 0 else None
     # Остаток лимита на сутки: уже засчитаноное съедает лимит.
     room = cap - assigned if cap is not None else None
-    payable = max(0, target - assigned)
+    want = max(0, target - assigned)
+    payable = want
     if room is not None and payable > room:
         payable = max(0, room)
     return {
@@ -3152,7 +3164,7 @@ async def report_payout_context(user_id: int, daily_claim: int, total_claim: int
         "assigned_today": assigned,
         "base_known": base is not None,
         "cap": cap,
-        "capped_by_limit": room is not None and payable < max(0, target - assigned),
+        "capped_by_limit": room is not None and want > 0 and payable < want,
         "room_today": room,
     }
 

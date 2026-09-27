@@ -16,10 +16,16 @@ import time
 from aiogram import BaseMiddleware
 
 from database.db import get_allowed_chats, get_news_chat
+from utils.permissions import get_user_role
 
 HINT = ("🤖 Н.О.Р.Д. работает только в личных сообщениях и в своей группе.\n"
         "Напишите мне в личку: @Nord_Wio_bot")
 HINT_INTERVAL = 3600  # не чаще раза в час на один чат
+
+# Служебные команды настройки чата/топика: их супер-админ должен иметь возможность
+# выполнить ПРЯМО в будущем своём чате — до того, как тот попал в белый список.
+SETUP_COMMANDS = {"/chatinfo"}
+SETUP_CALLBACKS = {"news:chat", "news:topic"}
 
 # chat_id -> время последней подсказки
 _hints: dict[int, float] = {}
@@ -69,6 +75,21 @@ def _hint_target(event):
     return None
 
 
+async def _is_setup(event) -> bool:
+    """Команда/кнопка настройки чата от супер-админа (её нельзя срезать гардом)."""
+    text = getattr(event, "text", None)
+    data = getattr(event, "data", None)
+    is_setup = bool(data) and str(data) in SETUP_CALLBACKS
+    if not is_setup and text and text.startswith("/"):
+        is_setup = text.split()[0].split("@")[0].lower() in SETUP_COMMANDS
+    if not is_setup:
+        return False
+    user = getattr(event, "from_user", None)
+    if user is None:
+        return False
+    return "super_admin" in await get_user_role(user.id)
+
+
 class ChatGuard(BaseMiddleware):
     """Пропускает обновления из лички и разрешённых чатов, остальное — тишина."""
 
@@ -79,6 +100,9 @@ class ChatGuard(BaseMiddleware):
         if chat.type == "private":
             return await handler(event, data)
         if chat.id in await allowed_chat_ids():
+            return await handler(event, data)
+        # Настройку своего чата супер-админ проводит из самого чата — пропускаем.
+        if await _is_setup(event):
             return await handler(event, data)
 
         # Чужой чат: не выполняем хендлер. На команду отвечаем подсказкой (раз в час).

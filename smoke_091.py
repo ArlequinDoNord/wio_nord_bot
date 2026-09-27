@@ -43,10 +43,10 @@ class FakeMessage:
 
 
 class FakeCallbackQuery:
-    def __init__(self, message, data=""):
+    def __init__(self, message, data="", user_id=1):
         self.message = message
         self.data = data
-        self.from_user = type("U", (), {"id": 1})()
+        self.from_user = type("U", (), {"id": user_id})()
         self.answered = False
 
     async def answer(self, *a, **kw):
@@ -61,6 +61,7 @@ async def run():
         set_allowed_chats, get_db,
     )
     from utils import chat_guard
+    from utils.permissions import get_user_role
 
     await init_db()
     passed = 0
@@ -234,6 +235,43 @@ async def run():
     cb = FakeEvent(FakeChat(-100777, "supergroup"))
     res = await guard(handler, cb, {})
     check("callback из чужого чата игнорируется", res is None and len(handled) == 3)
+
+    # ── 6b. Настройка своего чата из самого чата: супер-админ проходит ──
+    admin_id = 990001
+    user_id = 990002
+    await add_user(admin_id, "super", "Супер", "Админ")
+    await add_user(user_id, "pilot", "Пилот", "Пилотов")
+    conn = await get_db()
+    await conn.execute(
+        "INSERT OR IGNORE INTO user_roles (telegram_id, role, granted_by) VALUES (?, ?, ?)",
+        (admin_id, "super_admin", admin_id))
+    await conn.commit()
+    check("супер-админ в тесте есть", "super_admin" in await get_user_role(admin_id))
+
+    setup = FakeMessage(FakeChat(-100555, "supergroup"), text="/chatinfo", user_id=admin_id)
+    res = await guard(handler, setup, {})
+    check("/chatinfo супер-админа проходит даже вне белого списка",
+          res == "ok" and len(handled) == 4)
+    check("/chatinfo не съедает лимит подсказок", not setup.answers)
+
+    setup_cb = FakeCallbackQuery(
+        FakeMessage(FakeChat(-100555, "supergroup"), user_id=admin_id),
+        data="news:chat", user_id=admin_id)
+    res = await guard(handler, setup_cb, {})
+    check("кнопка сохранения чата проходит", res == "ok" and len(handled) == 5)
+
+    # Обычный пилот в чужом чате — по-прежнему тишина
+    fake_pilot = FakeMessage(FakeChat(-100666, "supergroup"), text="/chatinfo", user_id=user_id)
+    res = await guard(handler, fake_pilot, {})
+    check("чужой пилот: /chatinfo срезается, хендлер не вызван",
+          res is None and len(handled) == 5)
+
+    # Сохранение чата сразу сбрасывает кэш гарда — чат начинает работать без перезапуска
+    await set_news_chat(-100555, 42)
+    fresh = FakeMessage(FakeChat(-100555, "supergroup"), text="привет", user_id=user_id)
+    res = await guard(handler, fresh, {})
+    check("после сохранения чат оповещений работает сразу", res == "ok" and len(handled) == 6)
+    check("кэш гарда сброшен без перезапуска", chat_guard._cache["ts"] > 0)
 
     await close_db()
     print(f"\nSmoke 091: {passed} passed, {failed} failed")
