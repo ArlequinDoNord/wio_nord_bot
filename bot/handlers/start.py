@@ -9,7 +9,7 @@ from database.db import (add_user, get_user, ensure_base_status, user_is_tourist
 from keyboards.keyboards import main_menu_keyboard, city_keyboard
 from utils.permissions import is_admin
 from utils.helpers import resolve_image
-from config import VERSION, VERSION_NOTES
+from config import VERSION, VERSION_NOTES, PREV_VERSION, PREV_VERSION_NOTES
 
 router = Router()
 
@@ -39,6 +39,8 @@ async def cmd_start(message: Message):
         f"{VERSION}\n\n"
         ">> Что нового:\n"
         f"{VERSION_NOTES}\n"
+        f">> Сборка {PREV_VERSION}:\n"
+        f"{PREV_VERSION_NOTES}\n"
         "```"
     )
 
