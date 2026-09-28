@@ -737,6 +737,51 @@ async def init_db():
             logger.info("Статистика регионов пересчитана под новое правило")
         except Exception as e:
             logger.error("Не удалось пересчитать статистику регионов: %s", e)
+    # v0.18.0: «Офицерский стек» выведен из игры — он был старой версией «Сержантской
+    # трости» (⚔️2 без эффекта против ⚔️3 с оглушением). Странность была в том, что
+    # предмет держался на сиде ensure_kvp_items(): удаление из БД не помогало, он
+    # воскресал при каждом старте. Теперь сид переписан на трость, поэтому здесь
+    # же убираем сам стек. Удаляем только если его никто не держит: сорванная
+    # выдача хуже, чем лишний товар в каталоге — такой случай лучше разбирать руками.
+    _stick = await (await conn.execute(
+        "SELECT id FROM items WHERE name = 'Офицерский стек'")).fetchone()
+    if _stick:
+        _holders = await (await conn.execute(
+            "SELECT COUNT(*) AS n FROM inventory WHERE item_id = ?",
+            (_stick['id'],))).fetchone()
+        if not _holders['n']:
+            await conn.execute("DELETE FROM items WHERE id = ?", (_stick['id'],))
+            logger.info("«Офицерский стек» удалён: заменён «Сержантской тростью»")
+        else:
+            logger.warning(
+                "«Офицерский стек» остался в игре: %d шт. у игроков", _holders['n'])
+    # Трость была продублирована в дропе босса курса (25%, добавлено админом вручную
+    # в БД): из-за этого она фармилась повторно, без ограничения «раз за аккаунт».
+    # Теперь единственный путь — 30% с босса прямо в коде курса (kvp.py), один раз.
+    _cane = await (await conn.execute(
+        "SELECT id FROM items WHERE name = ?", (KVP_CANE_NAME,))).fetchone()
+    _cane_id = _cane['id'] if _cane else None
+    _drops_fixed = 0
+    for _enemy in await (await conn.execute(
+            "SELECT id, drops FROM dungeon_enemies "
+            "WHERE name = ? AND drops IS NOT NULL", ('Старший сержант',))).fetchall():
+        try:
+            _drops = json.loads(_enemy['drops'] or '[]')
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(_drops, list) or not _drops:
+            continue
+        _kept = [d for d in _drops
+                 if not (isinstance(d, dict)
+                         and ((_cane_id and d.get('item_id') == _cane_id)
+                              or d.get('item') == KVP_CANE_NAME))]
+        if len(_kept) != len(_drops):
+            await conn.execute("UPDATE dungeon_enemies SET drops = ? WHERE id = ?",
+                               (json.dumps(_kept, ensure_ascii=False), _enemy['id']))
+            _drops_fixed += 1
+    if _drops_fixed:
+        await conn.commit()
+        logger.info("Дроп «Сержантской трости» убран из врагов: %d", _drops_fixed)
     await _ensure_column(conn, "player_dungeon_run", "loot_nm", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "player_dungeon_run", "started_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
     # «Аптечка» — это +AP (энергетик); лечит HP в данже «Малая настойка здоровья»
@@ -5681,6 +5726,10 @@ async def seed_dungeon():
 
 KVP_DUNGEON_NAME = "Курс Выживания для Пилотов (К.В.П.)"
 KVP_BADGE_NAME = "Значок В.У.С.П."
+# Эксклюзивная награда босса курса. Заменила «Офицерский стек» (⚔️2), который был
+# его старой версией: та же роль в игре, но слабее и без эффекта. Единственный
+# источник трости — босс К.В.П., один раз на аккаунт (см. kvp.py CANE_CHANCE).
+KVP_CANE_NAME = "Сержантская трость"
 KVP_MAX_COMPLETIONS = 4
 KVP_OD_COST = 5  # стоимость прохождения препятствия (одиночное действие)
 
@@ -5744,28 +5793,30 @@ async def get_kvp_dungeon():
 
 
 async def ensure_kvp_items():
-    """Добавляет предметы К.В.П. (Офицерский стек), если их ещё нет.
+    """Обеспечивает эксклюзивный предмет К.В.П. — «Сержантскую трость».
 
-    «Офицерский стек» — эксклюзивный лут босса для новичков: в магазине не
-    продаётся (is_available=0), а продажа игроком не возвращает его в продажу.
+    Трость заменила «Офицерский стек» (v0.18.0): стек был её более слабой версией
+    (⚔️2 без эффекта), и он же был прописан сидом — из-за чего предмет нельзя было
+    вывести из игры, он воскресал при каждом старте. Теперь трость создаётся
+    только если её ещё нет: параметры, выставленные админом (цена, остаток,
+    эффект), не перетираются.
+
+    Трость не продаётся в магазине (loot_only), единственный источник — босс
+    курса, один раз на аккаунт (см. kvp.py CANE_CHANCE).
     """
     conn = await get_db()
-    cursor = await conn.execute("SELECT id FROM items WHERE name = 'Офицерский стек'")
-    row = await cursor.fetchone()
-    if row:
-        # Миграция: скрыть из магазина уже созданный предмет.
-        await conn.execute(
-            "UPDATE items SET is_available = 0 WHERE name = 'Офицерский стек'")
-        await conn.commit()
+    cursor = await conn.execute("SELECT id FROM items WHERE name = ?", (KVP_CANE_NAME,))
+    if await cursor.fetchone():
         return
-    item_id = await add_item(
-        name="Офицерский стек",
-        description="Офицерский стек Старшего сержанта. Тяжёлый, но дисциплинирующий.",
-        price=100, sell_price=50, rarity=3, category="weapon",
+    await add_item(
+        name=KVP_CANE_NAME,
+        description=("Трость Старшего сержанта. Замахнётся — и противник на пару "
+                     "ходов теряет бой."),
+        price=200, sell_price=100, rarity=2, category="weapon",
         stock=-1, added_by=0, ap_cost=0,
-        damage=2, heal=0, armor=0, drink_effect=None
+        damage=3, heal=0, armor=0, drink_effect=None,
+        weapon_effect="stun", loot_only=1,
     )
-    await update_item(item_id, is_available=0)
 
 
 async def ensure_kvp_award():

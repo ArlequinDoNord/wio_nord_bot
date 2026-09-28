@@ -290,7 +290,7 @@ async def main():
     logger.info("К.В.П. (Курс выживания) создан или проверен")
 
     await ensure_kvp_items()
-    logger.info("Предметы К.В.П. (Офицерский стек) проверены")
+    logger.info("Предметы К.В.П. (Сержантская трость) проверены")
 
     await ensure_kvp_award()
     logger.info("Награда К.В.П. («Значок В.У.С.П.») проверена")

@@ -22,6 +22,7 @@ from database.db import (
     get_item_by_name, add_inventory_item, get_kvp_progress,
     increment_kvp_completions, mark_kvp_badge, mark_kvp_stick, grant_award,
     log_activity, user_has_status_tag, KVP_BADGE_NAME, KVP_MAX_COMPLETIONS,
+    KVP_CANE_NAME,
 )
 from utils.combat import (
     calculate_attack, calculate_enemy_damage, roll_dodge, _hp_bar,
@@ -50,11 +51,11 @@ OD_ATTEMPT_COST = 5         # стоимость попытки преодоле
 WATER_FAIL_CHANCE = 0.10    # вероятность срыва на водном препятствии
 ROPE_FAIL_CHANCE = 0.20     # вероятность срыва на верёвке
 NM_CHANCE = 0.30            # шанс дропа 2 НМ с врага
-STICK_CHANCE = 0.15         # шанс дропа «Офицерского стека» с босса (один раз)
+CANE_CHANCE = 0.30          # шанс дропа «Сержантской трости» с босса (один раз)
 
 EFREITOR_NAME = "Ефрейтор"
 BOSS_NAME = "Старший сержант"
-STICK_NAME = "Офицерский стек"
+CANE_NAME = KVP_CANE_NAME   # «Сержантская трость» — заменила «Офицерский стек» (v0.18.0)
 
 # Допуск по снаряжению: на курс не пускают с овергиром (иначе врагов выносят за секунды).
 WPN_MAX_DAMAGE = 1          # максимальный урон оружия для входа
@@ -396,7 +397,7 @@ async def show_boss_room(message, run, user_id, state: FSMContext, current_hp=No
                             kvp_room_type=ROOM_BOSS, kvp_in_boss=1)
     text = (
         f"🎖️ {_course_header(run, 'БОСС')}\n"
-        f"💀 КОМНАТА БОССА! В центре — «{boss['name']}» с «Офицерским стеком».\n"
+        f"💀 КОМНАТА БОССА! В центре — «{boss['name']}» с «{CANE_NAME}».\n"
         f"👾 {boss['name']} (HP: {boss['hp']}, АТК: {boss['attack']}, УКЛ: {boss['dodge'] if 'dodge' in boss.keys() else 0}%)\n\n"
         f"⚠️ Убежать с полигона нельзя — сдай экзамен!"
     )
@@ -655,15 +656,16 @@ async def kvp_win(callback: CallbackQuery, run, user_id, state: FSMContext, bot:
     if loot_nm > 0:
         await add_nordmarks(user_id, loot_nm, "kvp_win", "Вынесено с курса")
 
-    # Дроп «Офицерского стека» — только один раз за пилота
-    stick_line = ""
+    # Дроп «Сержантской трости» — только один раз за пилота (player_kvp.stick_dropped).
+    # Поле называется по старому предмету, но означает «награда с босса курса выдана».
+    cane_line = ""
     progress = await get_kvp_progress(user_id)
-    if not progress['stick_dropped'] and random.random() < STICK_CHANCE:
-        stick = await get_item_by_name(STICK_NAME)
-        if stick:
-            await add_inventory_item(user_id, stick['id'], 1)
+    if not progress['stick_dropped'] and random.random() < CANE_CHANCE:
+        cane = await get_item_by_name(CANE_NAME)
+        if cane:
+            await add_inventory_item(user_id, cane['id'], 1)
             await mark_kvp_stick(user_id)
-            stick_line = f"\n💼 Дроп: «{STICK_NAME}» (оружие, урон 2)!"
+            cane_line = f"\n💼 Дроп: «{CANE_NAME}» (оружие, урон 3, оглушает)!"
 
     # Зачёт прохождения
     await increment_kvp_completions(user_id)
@@ -692,14 +694,14 @@ async def kvp_win(callback: CallbackQuery, run, user_id, state: FSMContext, bot:
 
     text = (
         f"🎖️ БОСС ПОБЕЖДЁН!\n"
-        f"💀 «{BOSS_NAME}» сложил стек. Курс пройден!\n\n"
+        f"💀 «{BOSS_NAME}» бросил трость. Курс пройден!\n\n"
     )
     if loot_nm > 0:
         text += f"💰 Вынесено: {loot_nm} Нордмарок\n"
     for name, qty in transferred:
         text += f"🎁 {name} x{qty}\n"
-    if stick_line:
-        text += stick_line + "\n"
+    if cane_line:
+        text += cane_line + "\n"
     if badge_line:
         text += badge_line + "\n"
     text += f"\n📊 Прогресс курса: {progress['completions']}/{KVP_MAX_COMPLETIONS}"

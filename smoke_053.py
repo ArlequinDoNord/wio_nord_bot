@@ -353,10 +353,15 @@ async def run():
     check("training dungeons exist", len(train_dngs) >= 1)
 
     await ensure_kvp_items()
-    stick = await get_item_by_name("Офицерский стек")
-    check("Офицерский стек created", stick is not None)
-    if stick:
-        check("Офицерский стек weapon dmg=2", (stick["damage"] or 0) == 2)
+    cane = await get_item_by_name("Сержантская трость")
+    check("Сержантская трость created", cane is not None)
+    if cane:
+        check("Сержантская трость weapon dmg=3", (cane["damage"] or 0) == 3)
+        check("Сержантская трость оглушает", (cane["weapon_effect"] or "") == "stun")
+        check("Сержантская трость не в магазине", bool(cane["loot_only"]))
+    # Стек выведен из игры: сид его больше не создаёт, удаление на повторе безвредно
+    check("Офицерский стек выведен из игры",
+          await get_item_by_name("Офицерский стек") is None)
 
     await ensure_kvp_award()
     awards = await get_all_awards()
