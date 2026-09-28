@@ -16,7 +16,7 @@ from database.db import (
     get_item, get_all_users, get_pending_reports, approve_report, correct_report_numbers,
     reject_report, add_nordmarks, remove_nordmarks, add_ap, remove_ap,
     create_status, delete_status, get_all_statuses, get_status,
-    grant_status, revoke_status, get_user_statuses,
+    grant_status, revoke_status, get_user_statuses, citizen_user_ids,
     get_users_for_rank_promotion, promote_user_rank, get_user,
     recompute_region_stats, get_region_stats,
     get_daily_spent, add_daily_spent,
@@ -271,16 +271,24 @@ def rarity_choice_markup():
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def pilot_picker_markup(next_step: str):
-    """Клавиатура выбора пилота из списка; next_step — куда переходить после выбора."""
+async def pilot_picker_markup(next_step: str, mark_tourists: bool = False):
+    """Клавиатура выбора пилота из списка; next_step — куда переходить после выбора.
+
+    mark_tourists — помечать 🎫 тех, у кого ещё нет гражданства (меню статусов:
+    суперадмину сразу видно, кому гражданство ещё выдавать, вместо поиска по списку).
+    """
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     users = await get_all_users()
+    # 🎫 — тот же бейдж, что в списке пилотов Ратуши (bot/handlers/pilots.py).
+    citizens = (await citizen_user_ids()) if mark_tourists else None
     rows = []
     if users:
         for u in users[:50]:
             label = u['first_name'] or u['username'] or str(u['user_id'])
             if u['username']:
                 label += f" (@{u['username']})"
+            if citizens is not None and u['user_id'] not in citizens:
+                label += " 🎫"
             rows.append([InlineKeyboardButton(
                 text=label,
                 callback_data=f"pickuser:{next_step}:{u['user_id']}"
@@ -2833,10 +2841,18 @@ async def _send_status_picker(chat, target):
     who = (target['first_name'] if 'first_name' in target.keys() else '') or str(target['user_id'])
     if target['username']:
         who += f" (@{target['username']})"
+    # 🎫 — гражданства ещё нет: сразу видно прямо на экране статуса.
+    # Без parse_mode (в админке он не задан) — поэтому без **жирного**.
+    # Про Штаб ВВС здесь ничего не обещаем: фильтр пилотов по гражданству
+    # ещё не сделан (пункт в PLAN.md), текст должен быть правдой.
+    no_cit = target['user_id'] not in await citizen_user_ids()
+    warn = ("🎫 Турист: гражданства Нордхайма пока нет.\n"
+            "Гражданство — это статус от «Рекрута» и выше.\n\n") if no_cit else ""
     text = (
         "🎖 СТАТУС ПИЛОТА\n\n"
         f"👤 {who}\n"
         f"🆔 {target['user_id']}\n\n"
+        f"{warn}"
         f"{_status_current_line(have)}\n\n"
         "Выбери статус для выдачи. Список снизу вверх — от слабого к сильному."
     )
@@ -2848,8 +2864,12 @@ async def _send_status_picker(chat, target):
 async def status_grant_target(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     await state.set_state(AdminStatuses.target)
-    markup = await pilot_picker_markup("status_pick")
-    await callback.message.answer("Выбери пилота для выдачи статуса:", reply_markup=markup)
+    markup = await pilot_picker_markup("status_pick", mark_tourists=True)
+    await callback.message.answer(
+        "Выбери пилота для выдачи статуса:\n"
+        "🎫 — ещё турист, гражданства Нордхайма нет "
+        "(гражданство = статус от «Рекрута» и выше).",
+        reply_markup=markup)
 
 
 @router.message(AdminStatuses.target)
@@ -2891,8 +2911,10 @@ async def status_revoke_target(callback: CallbackQuery, state: FSMContext):
     target_id = data.get('target_id')
     if not target_id:
         await state.set_state(AdminStatuses.target)
-        markup = await pilot_picker_markup("status_revoke")
-        await callback.message.answer("У кого снять статус? Выбери пилота:", reply_markup=markup)
+        markup = await pilot_picker_markup("status_revoke", mark_tourists=True)
+        await callback.message.answer(
+            "У кого снять статус? Выбери пилота (🎫 — ещё без гражданства):",
+            reply_markup=markup)
         return
     target = await get_user(target_id)
     if not target:

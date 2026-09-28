@@ -4628,6 +4628,28 @@ async def user_is_tourist(user_id: int) -> bool:
     return bool(row) and row['access_tag'] == 'tourist'
 
 
+async def citizen_user_ids() -> set:
+    """user_id'ы пилотов с гражданством: старший статус не ниже «Рекрута» (sort_order >= 1).
+
+    Единое определение гражданства для всего кода: отсекает «Туриста» (-10) и
+    игроков вообще без статусов, но не трогает legacy-статус «Пилот» (2)
+    и «Хранителя» (100) — Хранитель это такой же пилот, просто с правами.
+    Используется для отметки туристов в списках и (после починки штаба)
+    для фильтра пилотов в списках Штаба ВВС.
+    """
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT us.user_id FROM user_statuses us
+        JOIN statuses s ON us.status_id = s.id
+        WHERE s.sort_order = (
+            SELECT MAX(s2.sort_order) FROM user_statuses us2
+            JOIN statuses s2 ON us2.status_id = s2.id
+            WHERE us2.user_id = us.user_id
+        ) AND s.sort_order >= 1
+    """)
+    return {r['user_id'] for r in await cursor.fetchall()}
+
+
 async def can_enter_location(user_id: int, key: str) -> bool:
     """Проверка доступа к локации: статусный режим + блокирующие состояния.
 
