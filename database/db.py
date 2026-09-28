@@ -832,6 +832,10 @@ async def init_db():
     await _ensure_column(conn, "awards", "bonus_dodge", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "awards", "bonus_fishing", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "awards", "bonus_hp", "INTEGER DEFAULT 0")
+    # v0.18.2: экономические бонусы медалей — скидка в магазине (в %) и
+    # снижение налога с отчёта (в процентных пунктах от ставки).
+    await _ensure_column(conn, "awards", "bonus_shop_discount", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "awards", "bonus_report_tax", "INTEGER DEFAULT 0")
     # Счётчик водорослей (для «несварения»: >6 в сутки → запрет расходников на 24 ч)
     await _ensure_column(conn, "users", "seaweed_used_today", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "seaweed_used_day", "TEXT DEFAULT NULL")
@@ -3520,7 +3524,6 @@ async def payout_reports() -> list:
         entry['report_ids'].append(r['report_id'])
         entry['troops'] += r['troops']
 
-    tax_percent = await get_report_tax_percent()
     results = []
     for uid, data in agg.items():
         troops_total = data['troops']
@@ -3529,6 +3532,8 @@ async def payout_reports() -> list:
         if troops_total <= 0:
             await conn.execute(f"UPDATE reports SET paid = 1 WHERE id IN ({placeholders})", report_ids)
             continue
+        # Ставка индивидуальная: у пилота с медалью налог ниже (report_tax_percent_for).
+        tax_percent = await report_tax_percent_for(uid)
         tax = int(troops_total * tax_percent / 100)
         nordmarks = troops_total - tax
         # Войска = накопленный опыт (звание). xp_balance = тратимый опыт, 1:1 с фармом
@@ -4118,12 +4123,19 @@ async def user_is_tourist(user_id: int) -> bool:
 
 
 async def create_award(name: str, description: str = None, emoji: str = "🏅",
-                       created_by: int = None):
+                       created_by: int = None, **bonuses):
+    """Создать награду. Бонусы — kwargs: bonus_attack/defense/dodge/fishing/hp,
+    bonus_shop_discount (%, скидка в магазине), bonus_report_tax (п.п. налога)."""
+    allowed = {"bonus_attack", "bonus_defense", "bonus_dodge", "bonus_fishing",
+               "bonus_hp", "bonus_shop_discount", "bonus_report_tax"}
+    clean = {k: max(0, int(v or 0)) for k, v in bonuses.items() if k in allowed}
+    cols = ["name", "description", "emoji", "created_by"] + list(clean)
     conn = await get_db()
     try:
         cursor = await conn.execute(
-            "INSERT INTO awards (name, description, emoji, created_by) VALUES (?, ?, ?, ?)",
-            (name, description, emoji, created_by)
+            f"INSERT INTO awards ({', '.join(cols)}) "
+            f"VALUES ({', '.join('?' * len(cols))})",
+            (name, description, emoji, created_by, *clean.values())
         )
         await conn.commit()
         return True, cursor.lastrowid
@@ -4153,7 +4165,8 @@ async def delete_award(award_id: int):
 async def update_award(award_id: int, **fields) -> bool:
     """Обновление награды: описание, картинка, процентные бонусы. None = очистить."""
     allowed = {"description", "image", "bonus_attack", "bonus_defense",
-               "bonus_dodge", "bonus_fishing", "bonus_hp"}
+               "bonus_dodge", "bonus_fishing", "bonus_hp",
+               "bonus_shop_discount", "bonus_report_tax"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return False
@@ -4168,20 +4181,62 @@ async def update_award(award_id: int, **fields) -> bool:
 
 
 async def get_award_bonus(user_id: int) -> dict:
-    """Суммарные бонусы всех наград игрока (в %; hp — в единицах HP)."""
+    """Суммарные бонусы всех наград игрока (в %; hp — в единицах HP).
+
+    shop_discount — суммарная скидка в магазине в % (потолок AWARD_MAX_SHOP_DISCOUNT),
+    report_tax — суммарное снижение налога с отчёта в процентных пунктах.
+    """
     conn = await get_db()
     cursor = await conn.execute("""
         SELECT COALESCE(SUM(a.bonus_attack), 0) AS attack,
                COALESCE(SUM(a.bonus_defense), 0) AS defense,
                COALESCE(SUM(a.bonus_dodge), 0) AS dodge,
                COALESCE(SUM(a.bonus_fishing), 0) AS fishing,
-               COALESCE(SUM(a.bonus_hp), 0) AS hp
+               COALESCE(SUM(a.bonus_hp), 0) AS hp,
+               COALESCE(SUM(a.bonus_shop_discount), 0) AS shop_discount,
+               COALESCE(SUM(a.bonus_report_tax), 0) AS report_tax
         FROM user_awards ua
         JOIN awards a ON ua.award_id = a.id
         WHERE ua.user_id = ?
     """, (user_id,))
     row = await cursor.fetchone()
-    return dict(row) if row else {"attack": 0, "defense": 0, "dodge": 0, "fishing": 0, "hp": 0}
+    if not row:
+        return {"attack": 0, "defense": 0, "dodge": 0, "fishing": 0, "hp": 0,
+                "shop_discount": 0, "report_tax": 0}
+    return dict(row)
+
+
+async def shop_price_for(user_id: int, price: int) -> int:
+    """Цена товара для конкретного пилота с учётом скидок от медалей.
+
+    ЕДИНСТВЕННОЕ место, где считается итоговая цена: и карточка товара, и
+    списание НМ обязаны звать его, иначе покажут одну сумму, а снимут другую.
+    Скидка — в процентах, потолок AWARD_MAX_SHOP_DISCOUNT. Округление вниз,
+    но не ниже 1 НМ: иначе копеечный товар становится бесплатным.
+    """
+    from config import AWARD_MAX_SHOP_DISCOUNT
+    price = int(price or 0)
+    if price <= 0:
+        return max(0, price)
+    discount = (await get_award_bonus(user_id))['shop_discount']
+    if discount <= 0:
+        return price
+    discount = min(int(discount), AWARD_MAX_SHOP_DISCOUNT)
+    return max(1, price * (100 - discount) // 100)
+
+
+async def report_tax_percent_for(user_id: int) -> int:
+    """Ставка налога с отчёта для пилота: общая минус снижения от медалей.
+
+    Снижение задано в процентных пунктах (медаль -5 при ставке 15% → 10%).
+    Ниже AWARD_MIN_REPORT_TAX не опускаем — отчёт не должен стать бесплатным.
+    """
+    from config import AWARD_MIN_REPORT_TAX
+    base = await get_report_tax_percent()
+    reduction = (await get_award_bonus(user_id))['report_tax']
+    if reduction <= 0:
+        return base
+    return max(AWARD_MIN_REPORT_TAX, base - int(reduction))
 
 
 async def set_callsign(user_id: int, callsign: str):

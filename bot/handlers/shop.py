@@ -25,7 +25,9 @@ from database.db import (
     get_fish_offers, get_fish_offer, remove_fish_offer,
     get_item_offers, get_item_offer, remove_item_offer,
     add_fish_catch,
+    shop_price_for, get_award_bonus,
 )
+from config import AWARD_MAX_SHOP_DISCOUNT
 from keyboards.keyboards import (
     shop_catalog_keyboard, item_card_keyboard, cancel_keyboard, main_menu_kb,
 )
@@ -261,7 +263,7 @@ async def shop_category(callback: CallbackQuery):
     await show_items_page(callback, category, items, 0)
 
 
-def items_page_markup(items, category, page: int):
+async def items_page_markup(items, category, page: int, user_id: int = None):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     total = len(items)
     pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
@@ -289,8 +291,9 @@ def items_page_markup(items, category, page: int):
             stats += f" ⚔️{it['damage']}"
         if it['armor'] > 0:
             stats += f" 🛡{it['armor']}"
+        price = await shop_price_for(user_id, it['price']) if user_id else it['price']
         buttons.append([InlineKeyboardButton(
-            text=f"{emoji} {it['name']}{stats} — {it['price']} НМ",
+            text=f"{emoji} {it['name']}{stats} — {price} НМ",
             callback_data=f"shopitem:{it['id']}"
         )])
 
@@ -308,10 +311,20 @@ def items_page_markup(items, category, page: int):
 
 
 async def show_items_page(callback: CallbackQuery, category: str, items, page: int):
+    header = f"🛒 {ITEM_CATEGORIES.get(category, category)}:"
+    # Пометка о скидке от медали — только в магазинных категориях и только если
+    # медаль реально даёт скидку (на рынке чужие цены, скидка там не действует).
+    if category != "market":
+        disc = (await get_award_bonus(callback.from_user.id))['shop_discount']
+        if disc > 0:
+            header += (
+                f"\n💰 Медальные скидки уже учтены: до "
+                f"{min(int(disc), AWARD_MAX_SHOP_DISCOUNT)}% на этот раздел."
+            )
     await edit_or_replace(
         callback.message,
-        f"🛒 {ITEM_CATEGORIES.get(category, category)}:",
-        items_page_markup(items, category, page)
+        header,
+        await items_page_markup(items, category, page, callback.from_user.id)
     )
 
 
@@ -352,7 +365,12 @@ async def _item_card_text(item, user_id: int) -> str:
     body = ""
     if item['description']:
         body += f"📝 {item['description']}\n\n"
-    body += f"💰 Цена: {item['price']} {plural_nordmark(item['price'])}"
+    # Цена с учётом скидок от медалей (shop_price_for — единственный расчёт)
+    price = await shop_price_for(user_id, item['price'])
+    disc = (await get_award_bonus(user_id))['shop_discount']
+    body += f"💰 Цена: {price} {plural_nordmark(price)}"
+    if price < item['price']:
+        body += f" (было {item['price']}, скидка {min(disc, AWARD_MAX_SHOP_DISCOUNT)}%)"
     stock_text = "безлимит" if item['stock'] == -1 else item['stock']
     body += f"\n📦 Остаток: {stock_text}"
 
@@ -391,11 +409,11 @@ async def _item_card_text(item, user_id: int) -> str:
     cannot_buy = (item['stock'] == 0) or not has_access
     user = await get_user(user_id)
     balance = user['nordmarks'] if user else 0
-    if item['price'] > 0 and not cannot_buy and balance < item['price']:
+    if price > 0 and not cannot_buy and balance < price:
         body += (
-            f"\n⚠️ Не хватает {item['price'] - balance} "
-            f"{plural_nordmark(item['price'] - balance)} "
-            f"(нужно {item['price']}, у тебя {balance})"
+            f"\n⚠️ Не хватает {price - balance} "
+            f"{plural_nordmark(price - balance)} "
+            f"(нужно {price}, у тебя {balance})"
         )
 
     return header + body
@@ -405,13 +423,14 @@ async def _item_card_markup(item, user_id: int) -> InlineKeyboardMarkup:
     """Кнопки карточки товара."""
     has_access = await user_has_status_tag(user_id, item['required_status'])
     cannot_buy = (item['stock'] == 0) or not has_access
-    markup = item_card_keyboard(item['id'], item['price'], can_buy_nord=not cannot_buy)
+    markup = item_card_keyboard(item['id'], await shop_price_for(user_id, item['price']),
+                                can_buy_nord=not cannot_buy)
 
     # Для безлимитных расходников и наживки — кнопка «Купить 5 шт»
     if (item['stock'] == -1 and not cannot_buy and item['price'] > 0
             and _allow_multi_buy(item)):
         rows = list(markup.inline_keyboard)
-        buy5_price = item['price'] * 5
+        buy5_price = (await shop_price_for(user_id, item['price'])) * 5
         rows.insert(-1, [InlineKeyboardButton(
             text=f"💰 Купить 5 за {buy5_price}",
             callback_data=f"buy5_nord:{item['id']}"
@@ -605,7 +624,10 @@ async def _buy_item_impl(callback: CallbackQuery, item_id: int, qty: int, specia
         return
 
     user = await get_user(user_id)
-    total = item['price'] * qty
+    # Скидка от медалей применяется здесь же, где цена показана в карточке:
+    # unit — та же функция, что и в тексте, иначе покажут одно, а снимут другое.
+    unit = await shop_price_for(user_id, item['price'])
+    total = unit * qty
     if user['nordmarks'] < total:
         await callback.answer(
             f"❌ Недостаточно. Нужно {total} {plural_nordmark(total)}", show_alert=True
@@ -927,12 +949,16 @@ async def _housing_purchase_confirm(callback: CallbackQuery, item):
     item = dict(item)
     h = await get_player_housing(callback.from_user.id)
     current_name = HOUSING_TYPES[h['housing_type']]['name'] if h else '—'
+    price = await shop_price_for(callback.from_user.id, item['price'])
+    price_line = f"• Стоимость: {price} {plural_nordmark(price)}"
+    if price < item['price']:
+        price_line += f" (было {item['price']}, скидка от медали)"
     text = (
         f"{rarity_emoji(item['rarity'])} {item['name']}\n\n"
         f"⚠️ Это жильё покупается сразу как ПЕРЕЕЗД:\n"
         f"• Текущее жильё «{current_name}» будет заменено.\n"
         f"• Вся установленная мебель вернётся в инвентарь.\n"
-        f"• Стоимость: {item['price']} {plural_nordmark(item['price'])}\n\n"
+        f"{price_line}\n\n"
         f"Подтверждаешь переезд?"
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -986,7 +1012,8 @@ async def buy_housing_confirm(callback: CallbackQuery):
         return
 
     user = await get_user(uid)
-    total = item['price']
+    # Жильё покупается отдельным обработчиком, но скидка от медали действует и здесь.
+    total = await shop_price_for(uid, item['price'])
     if user['nordmarks'] < total:
         await callback.answer(
             f"❌ Недостаточно. Нужно {total} {plural_nordmark(total)}", show_alert=True

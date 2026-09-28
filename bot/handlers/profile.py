@@ -397,9 +397,26 @@ async def profile_awards(callback: CallbackQuery):
     lines = ["🎖️ ТВОИ НАГРАДЫ:\n"]
     for a in awards:
         emoji = a['emoji'] or '🏅'
+        perks = []
+        if a['bonus_attack']:
+            perks.append(f"⚔️ +{a['bonus_attack']}%")
+        if a['bonus_defense']:
+            perks.append(f"🛡 +{a['bonus_defense']}%")
+        if a['bonus_dodge']:
+            perks.append(f"💨 +{a['bonus_dodge']}%")
+        if a['bonus_fishing']:
+            perks.append(f"🎣 +{a['bonus_fishing']}%")
+        if a['bonus_hp']:
+            perks.append(f"❤️ +{a['bonus_hp']}")
+        if a['bonus_shop_discount']:
+            perks.append(f"💰 −{a['bonus_shop_discount']}% в магазине")
+        if a['bonus_report_tax']:
+            perks.append(f"🧾 налог −{a['bonus_report_tax']} п.п.")
         lines.append(f"{emoji} {a['name']}")
         if a['description']:
             lines.append(f"   — {a['description']}")
+        if perks:
+            lines.append("   " + ", ".join(perks))
         lines.append(f"   📅 {a['granted_at']}")
         if a['comment']:
             lines.append(f"   💬 {a['comment']}")

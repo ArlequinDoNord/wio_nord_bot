@@ -107,7 +107,8 @@ async def run():
 
     # ── бонусы наград ──
     b = await get_award_bonus(uid)
-    check("бонусы по умолчанию = 0", b == {"attack": 0, "defense": 0, "dodge": 0, "fishing": 0, "hp": 0})
+    check("бонусы по умолчанию = 0", b == {"attack": 0, "defense": 0, "dodge": 0, "fishing": 0,
+                                           "hp": 0, "shop_discount": 0, "report_tax": 0})
     ok, aid = await create_award("Тест-бонус", "desc", "🎖️")
     check("награда создана", ok and aid)
     await update_award(aid, bonus_attack=10, bonus_defense=20, bonus_dodge=5,

@@ -14,7 +14,7 @@ from aiogram.fsm.state import State, StatesGroup
 from database.db import (
     add_item, delete_item, delete_item_completely, update_item, get_available_items, get_all_items,
     get_item, get_all_users, get_pending_reports, approve_report, correct_report_numbers,
-    reject_report, add_nordmarks, remove_nordmarks, add_ap, remove_ap,
+    reject_report, add_nordmarks, remove_nordmarks,
     create_status, delete_status, get_all_statuses, get_status,
     grant_status, revoke_status, get_user_statuses, citizen_user_ids,
     get_users_for_rank_promotion, promote_user_rank, get_user,
@@ -51,7 +51,7 @@ from utils.permissions import (
     add_role, remove_role, ROLES, role_label, log_action,
 )
 from utils.helpers import plural_nordmark
-from config import RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES, get_effective_rank, VERSION, DRINK_EFFECT_LABELS
+from config import RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES, get_effective_rank, VERSION, DRINK_EFFECT_LABELS, AWARD_MAX_SHOP_DISCOUNT, AWARD_MIN_REPORT_TAX
 from utils.notify import notify, player_display, notify_award, notify_report_praise
 
 router = Router()
@@ -158,6 +158,8 @@ class AdminAwards(StatesGroup):
     name = State()
     desc = State()
     emoji = State()
+    bonus = State()
+    preview = State()
     target = State()
     award_pick = State()
     comment = State()
@@ -1952,9 +1954,6 @@ async def admin_finance(callback: CallbackQuery):
     if can_remove:
         buttons.append([InlineKeyboardButton(text="Списать НМ", callback_data="fin:nord:sub")])
     if can_full:
-        buttons.append([InlineKeyboardButton(text="Начислить AP", callback_data="fin:ap:add")])
-        buttons.append([InlineKeyboardButton(text="Списать AP", callback_data="fin:ap:sub")])
-    if can_full:
         buttons.append([InlineKeyboardButton(text="🏛️ Казна", callback_data="admin:treasury")])
         buttons.append([InlineKeyboardButton(text="📊 Налог на отчёты", callback_data="admin:tax")])
         buttons.append([InlineKeyboardButton(text="📊 Налог на продажи", callback_data="admin:saletax")])
@@ -2408,16 +2407,11 @@ async def finance_amount(message: Message, state: FSMContext):
             verb = "списано"
         unit = plural_nordmark(amount)
     else:
-        if action == "add":
-            await add_ap(target_id, amount, reason=f"начисление админом #{admin}")
-            verb = "начислено"
-        else:
-            ok = await remove_ap(target_id, amount, reason=f"списание админом #{admin}")
-            if not ok:
-                await message.answer("❌ У игрока недостаточно AP.")
-                return
-            verb = "списано"
-        unit = "AP"
+        # ОД (AP) из меню финансов убраны намеренно: они восстанавливаются
+        # сами и выдаются только через механики игры.
+        await message.answer("❌ Эта операция недоступна.")
+        await state.clear()
+        return
 
     await log_action(admin, 'finance', target_id, f"{currency} {action} {amount}")
     await state.clear()
@@ -3028,19 +3022,73 @@ async def award_create_start(callback: CallbackQuery, state: FSMContext):
     if not await has_permission(callback.from_user.id, "can_manage_awards"):
         await callback.message.answer("❌ Нет прав.")
         return
+    await state.update_data(bonuses={})
     await state.set_state(AdminAwards.name)
     await callback.message.answer(
-        "🏅 Создание награды. Шаг 1/3\nВведи название (например: «За отвагу», «Герой Нордхайма»):",
+        "🏅 Создание награды. Шаг 1 — название (например: «За отвагу», «Герой Нордхайма»).\n"
+        f"Бонусы задашь далее, в конце покажу превью:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+def _award_bonus_total_steps() -> int:
+    return 1 + 1 + 1 + len(AWARD_CREATE_BONUS_STEPS) + 1
+
+
+def _award_bonus_step_no(idx: int) -> str:
+    return f"Шаг {2 + idx} из {_award_bonus_total_steps()}"
+
+
+async def _award_ask_bonus(message, state, idx: int):
+    """Спрашиваем idx-ый бонус (по порядку AWARD_CREATE_BONUS_STEPS)."""
+    if idx >= len(AWARD_CREATE_BONUS_STEPS):
+        # бонусы кончились — показываем превью
+        data = await state.get_data()
+        draft = {
+            "name": data["name"], "description": data.get("desc"), "emoji": data["emoji"],
+            "id": 0, "image": None,
+            **{"bonus_attack": 0, "bonus_defense": 0, "bonus_dodge": 0, "bonus_fishing": 0,
+               "bonus_hp": 0, "bonus_shop_discount": 0, "bonus_report_tax": 0},
+            **data.get("bonuses", {}),
+        }
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Создать награду", callback_data="aw_confirm")],
+            [InlineKeyboardButton(text="↩️ Заново", callback_data="aw:create")],
+            [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:awards")],
+        ])
+        await state.set_state(AdminAwards.preview)
+        await message.answer(
+            "🏅 Превью награды — проверь и подтверди:\n\n" +
+            "\n".join(_award_summary_lines(draft)) +
+            "\n\nЭмодзи: " + (draft["emoji"] or "🏅") + " · Название: " + draft["name"],
+            reply_markup=kb
+        )
+        return
+    field, label = AWARD_CREATE_BONUS_STEPS[idx]
+    data = await state.get_data()
+    current = data.get("bonuses", {}).get(field, 0)
+    await state.update_data(create_bonus_idx=idx)
+    await state.set_state(AdminAwards.bonus)
+    await message.answer(
+        f"{_award_bonus_step_no(idx)} — {label}\n"
+        f"Введи целое число (текущее: {current}). 0 или «-» — пропустить.",
         reply_markup=cancel_keyboard()
     )
 
 
 @router.message(AdminAwards.name)
 async def award_create_name(message: Message, state: FSMContext):
-    await state.update_data(name=message.text.strip())
+    title = message.text.strip()
+    if not title:
+        await message.answer("Название не может быть пустым.")
+        return
+    await state.update_data(name=title)
     await state.set_state(AdminAwards.desc)
-    await message.answer("Шаг 2/3 — Описание награды (или «-» если нет):",
-                         reply_markup=cancel_keyboard())
+    await message.answer(
+        f"{_award_bonus_step_no(-1)} — Описание награды (или «-» если нет):",
+        reply_markup=cancel_keyboard()
+    )
 
 
 @router.message(AdminAwards.desc)
@@ -3048,23 +3096,63 @@ async def award_create_desc(message: Message, state: FSMContext):
     text = message.text.strip()
     await state.update_data(desc=None if text == "-" else text)
     await state.set_state(AdminAwards.emoji)
-    await message.answer("Шаг 3/3 — Эмодзи награды (один символ, например 🏅, ⭐, 🎖️). Или «-» для 🏅:",
-                         reply_markup=cancel_keyboard())
+    await message.answer(
+        f"{_award_bonus_step_no(0)} — Эмодзи награды (один символ, например 🏅, ⭐, 🎖️). Или «-» для 🏅:",
+        reply_markup=cancel_keyboard()
+    )
 
 
 @router.message(AdminAwards.emoji)
 async def award_create_emoji(message: Message, state: FSMContext):
     text = message.text.strip()
     emoji = text if text and text != "-" else "🏅"
-    data = await state.get_data()
-    ok, res = await create_award(data['name'], data.get('desc'), emoji, message.from_user.id)
-    await state.clear()
-    if ok:
-        await log_action(message.from_user.id, 'create_award', None,
-                         f"award={data['name']} id={res}")
-        await message.answer(f"✅ Награда «{emoji} {data['name']}» создана!")
+    await state.update_data(emoji=emoji[:1])
+    await _award_ask_bonus(message, state, 0)
+
+
+@router.message(AdminAwards.bonus)
+async def award_create_bonus(message: Message, state: FSMContext):
+    text = message.text.strip()
+    if text != "-":
+        try:
+            value = max(0, int(float(text)))
+        except ValueError:
+            await message.answer("Введи целое число или «-» чтобы пропустить.",
+                                 reply_markup=cancel_keyboard())
+            return
     else:
-        await message.answer(f"❌ {res}")
+        value = 0
+    data = await state.get_data()
+    idx = data.get("create_bonus_idx", 0)
+    field = AWARD_CREATE_BONUS_STEPS[idx][0]
+    bonuses = dict(data.get("bonuses", {}))
+    bonuses[field] = value
+    await state.update_data(bonuses=bonuses)
+    await _award_ask_bonus(message, state, idx + 1)
+
+
+@router.callback_query(F.data == "aw_confirm")
+async def award_create_confirm(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_awards"):
+        await callback.message.answer("❌ Нет прав.")
+        return
+    data = await state.get_data()
+    await state.clear()
+    name, desc = data.get("name"), data.get("desc")
+    emoji = data.get("emoji") or "🏅"
+    bonuses = data.get("bonuses", {})
+    ok, res = await create_award(name, desc, emoji, callback.from_user.id, **bonuses)
+    if ok:
+        await log_action(callback.from_user.id, 'create_award', None,
+                         f"award={name} id={res} bonuses={bonuses}")
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(f"✅ Награда «{emoji} {name}» создана с бонусами.")
+    else:
+        await callback.message.answer(f"❌ {res}")
 
 
 @router.callback_query(F.data == "aw:delete")
@@ -3106,6 +3194,8 @@ AWARD_EDIT_FIELDS = {
     "bonus_dodge": "💨 Уклонение, %",
     "bonus_fishing": "🎣 Рыбалка, %",
     "bonus_hp": "❤️ HP сверх 100",
+    "bonus_shop_discount": "💰 Скидка в магазине, %",
+    "bonus_report_tax": "🧾 Снижение налога с отчёта, п.п.",
 }
 
 AWARD_EDIT_PROMPTS = {
@@ -3116,7 +3206,62 @@ AWARD_EDIT_PROMPTS = {
     "bonus_dodge": "Введи бонус уклонения в % (целое число):",
     "bonus_fishing": "Введи бонус шанса рыбалки в % (целое число):",
     "bonus_hp": "Введи бонус HP сверх базовых 100 (целое число):",
+    "bonus_shop_discount": (
+        "Введи скидку в магазине в % (целое число, 0 — без скидки). "
+        f"Действует на все товары, включая оружие и Спец-отдел. Потолок — {AWARD_MAX_SHOP_DISCOUNT}% "
+        "даже если несколько наград складываются:"),
+    "bonus_report_tax": (
+        "Введи снижение налога с отчёта в процентных пунктах (целое число, 0 — без снижения).\n"
+        "Например, при общей ставке 15% и снижении 5 будет 10%.\n"
+        f"Ниже {AWARD_MIN_REPORT_TAX}% не опускается даже с несколькими наградами:"),
 }
+
+
+def _award_bonus_summary(award) -> str:
+    """Человеческое описание бонусов награды одной строкой — для списков и превью."""
+    parts = []
+    simple = [
+        ("bonus_attack", "⚔️{v}%"), ("bonus_defense", "🛡{v}%"),
+        ("bonus_dodge", "💨{v}%"), ("bonus_fishing", "🎣{v}%"),
+        ("bonus_hp", "❤️+{v}"),
+    ]
+    for col, fmt in simple:
+        v = award[col] or 0
+        if v:
+            parts.append(fmt.format(v=v))
+    disc = award['bonus_shop_discount'] or 0
+    if disc:
+        parts.append(f"💰скидка {min(disc, AWARD_MAX_SHOP_DISCOUNT)}%" if disc <= AWARD_MAX_SHOP_DISCOUNT
+                     else f"💰скидка {AWARD_MAX_SHOP_DISCOUNT}% (потолок)")
+    tax = award['bonus_report_tax'] or 0
+    if tax:
+        parts.append(f"🧾налог −{tax} п.п.")
+    return ", ".join(parts) if parts else "без бонусов"
+
+
+AWARD_CREATE_BONUS_STEPS = [
+    ("bonus_attack", "⚔️ Бонус атаки, %"),
+    ("bonus_defense", "🛡️ Бонус защиты, %"),
+    ("bonus_dodge", "💨 Бонус уклонения, %"),
+    ("bonus_fishing", "🎣 Бонус рыбалки, %"),
+    ("bonus_hp", "❤️ Бонус HP (сверх 100)"),
+    ("bonus_shop_discount", "💰 Скидка в магазине, % (потолок 40% с учётом всех наград)"),
+    ("bonus_report_tax", "🧾 Снижение налога с отчёта, п.п. (например −5 → 10% при ставке 15%)"),
+]
+
+
+def _award_summary_lines(award) -> list:
+    """Бонусные строки для карточки: совпадают с полями редактирования."""
+    return [
+        "Бонусы (в %):",
+        f"⚔️ Атака: {award['bonus_attack'] or 0}",
+        f"🛡️ Защита: {award['bonus_defense'] or 0}",
+        f"💨 Уклонение: {award['bonus_dodge'] or 0}",
+        f"🎣 Рыбалка: {award['bonus_fishing'] or 0}",
+        f"❤️ HP: {award['bonus_hp'] or 0}",
+        f"💰 Скидка в магазине: {award['bonus_shop_discount'] or 0}%",
+        f"🧾 Снижение налога с отчёта: −{award['bonus_report_tax'] or 0} п.п.",
+    ]
 
 
 def _award_edit_card(award) -> str:
@@ -3128,13 +3273,7 @@ def _award_edit_card(award) -> str:
         f"📝 {award['description'] or '—'}",
         f"🖼 Картинка: {'есть' if award['image'] else 'нет'}",
         "",
-        "Бонусы (в %):",
-        f"⚔️ Атака: {award['bonus_attack'] or 0}",
-        f"🛡️ Защита: {award['bonus_defense'] or 0}",
-        f"💨 Уклонение: {award['bonus_dodge'] or 0}",
-        f"🎣 Рыбалка: {award['bonus_fishing'] or 0}",
-        f"❤️ HP: {award['bonus_hp'] or 0}",
-    ]
+    ] + _award_summary_lines(award)
     return "\n".join(lines)
 
 

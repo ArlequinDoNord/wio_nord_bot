@@ -5,7 +5,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from config import REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT
-from database.db import add_report, approve_report, get_user, get_user_reports, get_report_tax_percent, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist, report_payout_context, report_prev_day_total
+from database.db import add_report, approve_report, get_user, get_user_reports, report_tax_percent_for, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist, report_payout_context, report_prev_day_total
 from utils.helpers import is_main_menu_text
 from utils.notify import notify_report_praise
 from keyboards.keyboards import report_keyboard, cancel_keyboard
@@ -216,7 +216,7 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
                 f"Суточный лимит уже выбран ({ctx['assigned_today']}) — доплата не начислена.{reminder}"
             )
             return
-        tax_percent = await get_report_tax_percent()
+        tax_percent = await report_tax_percent_for(message.from_user.id)
         await state.clear()
         await message.answer(
             f"✅ Отчёт #{report_id} автоматически принят!\n"
