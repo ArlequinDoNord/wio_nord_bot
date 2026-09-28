@@ -403,7 +403,15 @@ async def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
-        CREATE TABLE IF NOT EXISTS activity_log (
+        CREATE TABLE IF NOT EXISTS report_notify_tiers (
+    user_id INTEGER NOT NULL,
+    day TEXT NOT NULL,
+    tier INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, day)
+);
+
+CREATE TABLE IF NOT EXISTS activity_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             action TEXT NOT NULL,
@@ -3118,22 +3126,74 @@ async def _report_assigned_today(conn, user_id: int, exclude_id: int = None) -> 
     return row['s'] if row else 0
 
 
+async def report_day_credited_total(user_id: int, exclude_id: int = None) -> int:
+    """Сколько начислено по ПРИНЯТЫМ отчётам за текущие МСК-сутки.
+
+    Это накопленная сумма за день: несколько отчётов складываются. Нужна для
+    уровней похвалы — уровень считается от суммы за сутки, а не от одного отчёта.
+    Висящие (pending) отчёты не считаются: похвала приходит только за принятые.
+    """
+    conn = await get_db()
+    sql = ("SELECT COALESCE(SUM(COALESCE(credited_troops, troops_reported)), 0) AS s "
+           "FROM reports WHERE user_id = ? AND status = 'approved' "
+           f"AND {_report_day('created_at')} = {_TODAY_MSK}")
+    params = [user_id]
+    if exclude_id:
+        sql += " AND id != ?"
+        params.append(exclude_id)
+    row = await (await conn.execute(sql, tuple(params))).fetchone()
+    return row['s'] if row else 0
+
+
+async def get_report_notify_tier(user_id: int) -> int:
+    """Максимальный уровень похвалы, уже отправленный за текущие МСК-сутки (0 — не было)."""
+    conn = await get_db()
+    row = await (await conn.execute(
+        f"SELECT tier FROM report_notify_tiers WHERE user_id = ? AND day = {_TODAY_MSK}",
+        (user_id,)
+    )).fetchone()
+    return row['tier'] if row else 0
+
+
+async def bump_report_notify_tier(user_id: int, tier: int) -> int:
+    """Запомнить отправленный уровень похвалы за сутки. Возвращает уровень после записи.
+
+    Уровень только растёт: повторное оповещение того же уровня за сутки невозможно,
+    но переход на следующий (например, 160 → 350 за день) проходит.
+    """
+    conn = await get_db()
+    await conn.execute(
+        f"INSERT INTO report_notify_tiers (user_id, day, tier) VALUES (?, {_TODAY_MSK}, ?) "
+        "ON CONFLICT(user_id, day) DO UPDATE SET tier = MAX(tier, excluded.tier), "
+        "updated_at = CURRENT_TIMESTAMP",
+        (user_id, tier)
+    )
+    await conn.commit()
+    return await get_report_notify_tier(user_id)
+
+
 async def report_payout_context(user_id: int, daily_claim: int, total_claim: int,
                                 exclude_id: int = None) -> dict:
     """Расчёт суммы к оплате за отчёт по правилу «только те сутки, в которые сдал отчёт».
 
     Всё, что накоплено за прошлые дни, в оплату не входит: база = «всего» на конец
-    прошлого отчётного дня, прирост = «всего» сейчас − база. К оплате — не больше
-    прироста и не больше заявки за сутки, поэтому заявка «всё накопленное» в обоих
-    полях не проходит: платится только прирост. Несколько отчётов за сутки не
-    суммируются: за день платится максимум из заявок.
+    прошлого отчётного дня, прирост = «всего» сейчас − база. Заявка «всё накопленное»
+    в обоих полях не проходит: платится только прирост.
+
+    Несколько отчётов за сутки СУММИРУЮТСЯ: каждый следующий отчёт дня доплачивает
+    свой прирост сверх уже засчитанного. Прирост считается накопительно за сутки,
+    поэтому итог за день не превышает фактический прирост «всего», а повторная заявка
+    с тем же «всего» получает 0. Если истории нет (первый отчёт пилота) сверить не с чем,
+    поэтому за сутки начисляется сумма заявок — такие отчёты идут только на ручную
+    проверку и не проходят автоодобрение.
 
     Дополнительно действует суточный лимит оплаты (report_daily_pay_cap): за сутки
     нельзя начислить больше лимита, поэтому «за сутки» = 999999 в первый же отчёт
     даёт не 999999, а лимит. «Всего» лимитом НЕ ограничивается (накопить за пару
     месяцев в регионе — обычное дело).
 
-    Возвращает: payable, target, base, growth, assigned_today, base_known, cap, capped_by_limit.
+    Возвращает: payable, target, base, growth, assigned_today, base_known, cap,
+    capped_by_limit, room_today, unpaid_growth.
     """
     conn = await get_db()
     base = await _report_base_total(conn, user_id, exclude_id)
@@ -3142,17 +3202,20 @@ async def report_payout_context(user_id: int, daily_claim: int, total_claim: int
     if base is None:
         # Первый отчёт: сверить не с чем — платим по заявке, но помечаем как
         # непроверяемый (такие отчёты не проходят автоодобрение).
-        target, growth = daily, None
+        target, growth, unpaid = daily, None, None
     else:
         growth = max(0, (total_claim or 0) - base)
-        target = min(daily, growth)
+        # Неоплаченная часть прироста за сутки: несколько отчётов дня доплачивают
+        # друг друга, но вместе не больше фактического прироста.
+        unpaid = max(0, growth - assigned)
+        target = min(daily, unpaid)
 
     cap = await get_report_daily_pay_cap()
     # 0 — без ограничения.
     cap = cap if (cap or 0) > 0 else None
     # Остаток лимита на сутки: уже засчитаноное съедает лимит.
     room = cap - assigned if cap is not None else None
-    want = max(0, target - assigned)
+    want = target
     payable = want
     if room is not None and payable > room:
         payable = max(0, room)
@@ -3161,6 +3224,7 @@ async def report_payout_context(user_id: int, daily_claim: int, total_claim: int
         "target": target,
         "base": base,
         "growth": growth,
+        "unpaid_growth": unpaid,
         "assigned_today": assigned,
         "base_known": base is not None,
         "cap": cap,
@@ -3228,10 +3292,10 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
     """Одобрить отчёт. Возвращает сумму к начислению (войск) или False, если отчёт не найден.
 
     Сумма берётся из credited_troops — она зафиксирована при сдаче отчёта по правилу
-    report_payout_context. Повторный пересчёт здесь не нужен и был бы вредным: за
-    сутки платится максимум заявок, а «уже засчитано» меняется по мере одобрения,
-    из-за чего итог зависел бы от порядка нажатий. Переданный troops может только
-    УМЕНЬШИТЬ сумму (частичное одобрение админом), но не увеличить её.
+    report_payout_context. Повторный пересчёт здесь не нужен и был бы вредным: несколько
+    отчётов за сутки суммируются по приросту, а «уже засчитано» меняется по мере
+    одобрения, из-за чего итог зависел бы от порядка нажатий. Переданный troops может
+    только УМЕНЬШИТЬ сумму (частичное одобрение админом), но не увеличить её.
 
     Начисление здесь НЕ производится: допущенные отчёты копятся, а оплата выполняется
     раз в сутки функцией payout_reports() (в начале следующих суток).

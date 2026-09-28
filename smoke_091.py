@@ -108,7 +108,7 @@ async def run():
 
     # ── 4. Второй отчёт в тот же день: лимит уже исчерпан ──
     rid2, credited2 = await add_report(U, "f", 5000, 60000, "0")
-    check("второй отчёт в тот же день — 0 (лимит исчерпан)", credited2 == 0)
+    check("второй отчёт в тот же день — 0 (суточный лимит исчерпан)", credited2 == 0)
 
     # ── 5. «Всего» лимитом не ограничивается (накопление 50000) ──
     U2 = 70002
@@ -156,6 +156,44 @@ async def run():
     row5 = await (await conn.execute(
         "SELECT credited_troops FROM reports WHERE id = ?", (rid5,))).fetchone()
     check("в базе тоже зафиксировано 4000", row5['credited_troops'] == 4000)
+
+    # ── 7c. Несколько отчётов за сутки СУММИРУЮТСЯ (было: платился максимум) ──
+    # Реальный кейс: отчёт 21/4077, потом 11/4098 в тот же МСК-день → второй 0.
+    UA = 70010
+    await add_user(UA, "acc", "Акк", "Умножает")
+    _, c1 = await add_report(UA, "f", 21, 4077, "0")
+    _, c2 = await add_report(UA, "f", 11, 4098, "0")
+    check("история есть — второй отчёт дня доплачивается (11, не 0)", c2 == 11)
+    check("за сутки начислено 32", c1 + c2 == 32)
+
+    # Первая заявка дня без истории: дальше отчёты суммируются, а не отбрасываются.
+    UB = 70011
+    await add_user(UB, "acc2", "Акк", "Второй")
+    _, b1 = await add_report(UB, "f", 21, 4077, "0")
+    _, b2 = await add_report(UB, "f", 11, 4098, "0")
+    check("без истории первый отчёт по заявке", b1 == 21)
+    check("без истории второй отчёт дня тоже платится (было 0)", b2 == 11)
+
+    # База известна: несколько отчётов дают сумму, но не больше прироста «всего».
+    UC = 70012
+    await add_user(UC, "acc3", "Акк", "Третий")
+    await _yesterday_report(UC, 4000, 4000)
+    _, d1 = await add_report(UC, "f", 160, 4160, "0")
+    _, d2 = await add_report(UC, "f", 200, 4360, "0")
+    check("первый отчёт дня 160 → 160", d1 == 160)
+    check("второй отчёт дня 200 → 200 (не 40)", d2 == 200)
+    check("за сутки 360 = прирост «всего»", d1 + d2 == 360)
+    ctx_dup = await report_payout_context(UC, 200, 4360)
+    check("повторная заявка с тем же «всего» → 0", ctx_dup['payable'] == 0)
+    check("неоплаченный прирост 0", ctx_dup['unpaid_growth'] == 0)
+    _, d3 = await add_report(UC, "f", 50, 4410, "0")
+    check("следующий прирост 50 доплачивается", d3 == 50)
+    ctx_cap3 = await report_payout_context(UC, 100000, 1000000)
+    check("суточный лимит 4000 всё ещё режет", ctx_cap3['payable'] <= 4000)
+
+    # Уже принято за сутки видно в контексте (для показа пилоту).
+    ctx_acc = await report_payout_context(UA, 5, 4103)
+    check("assigned_today учитывает оба отчёта", ctx_acc['assigned_today'] == 32)
 
     # ── 8. Настройки чата/топика оповещений ──
     chat_id, topic = await get_news_chat()
@@ -316,7 +354,8 @@ async def run():
           fake_bot.sent == [(-100555, "✅ Отчёт принят на 1 войск!", 42)])
 
     # ── 8. Тексты оповещений: похвала без цифр, награда общим текстом ──
-    from utils.notify import report_praise_text, notify_award, notify_report_praise
+    from utils.notify import (report_praise_text, notify_award, notify_report_praise,
+                              praise_tier_for)
     check("отчёт 150 и ниже — без оповещения",
           report_praise_text("@vasya", 150) is None and report_praise_text("@vasya", 1) is None)
     m = report_praise_text("@vasya", 151)
@@ -330,6 +369,9 @@ async def run():
     check("в похвале нет точных цифр отчёта",
           all(str(n) not in (ace or "") for n in (301, 300, 150))
           and all(str(n) not in (m or "") for n in (151, 150)))
+    check("уровень считается по сумме за сутки: 150→0, 151→1, 300→1, 301→2",
+          (praise_tier_for(150), praise_tier_for(151), praise_tier_for(300),
+           praise_tier_for(301)) == (0, 1, 1, 2))
 
     bot2 = FakeBot()
     await notify_award(bot2, {"username": "petr", "first_name": "Пётр", "user_id": 5},
@@ -342,29 +384,62 @@ async def run():
           bot3.sent == [(-100555, "🎖️ пилот награждён: награда", 42)])
 
     # Похвала шлётся только при принятии: отклонение и «в очереди» её не порождают.
-    # Проверяем решение на уровне approve/reject: approve → approved, reject → rejected,
-    # и похвала считается от credited (а не от заявки).
-    from database.db import reject_report
+    # Уровень — от накопленной суммы за сутки, один уровень за сутки отправляется один раз.
+    from database.db import reject_report, report_day_credited_total
     U6 = 70006
     await add_user(U6, "ace", "Ас", "Асов")
     rid6, credited6 = await add_report(U6, "f", 400, 400, "0")
     check("крупный отчёт ждёт одобрения", credited6 == 400)
     bot4 = FakeBot()
-    await notify_report_praise(bot4, {"username": "ace", "first_name": "Ас", "user_id": U6}, 0, U6)
-    check("неодобренный отчёт похвалы не вызывает (нулевая принятая сумма)",
-          not bot4.sent)
+    await notify_report_praise(bot4, {"username": "ace", "first_name": "Ас", "user_id": U6}, U6)
+    check("неодобренный отчёт похвалы не вызывает (в очереди)", not bot4.sent)
     paid = await approve_report(rid6, 0)
     bot5 = FakeBot()
-    await notify_report_praise(bot5, {"username": "ace", "first_name": "Ас", "user_id": U6},
-                               paid, U6)
+    await notify_report_praise(bot5, {"username": "ace", "first_name": "Ас", "user_id": U6}, U6)
     check("принятый отчёт 400 → «истинный Ас»", bot5.sent ==
           [(-100555, "🏆 @ace проявляет характер истинного Аса!", 42)])
+    bot5b = FakeBot()
+    await notify_report_praise(bot5b, {"username": "ace", "first_name": "Ас", "user_id": U6}, U6)
+    check("повтор того же уровня за сутки не дублируется", not bot5b.sent)
     rid7, _ = await add_report(U6, "f", 5, 405, "0")
     await reject_report(rid7, 0)
     bot6 = FakeBot()
-    await notify_report_praise(bot6, {"username": "ace", "first_name": "Ас", "user_id": U6},
-                               0, U6)
+    await notify_report_praise(bot6, {"username": "ace", "first_name": "Ас", "user_id": U6}, U6)
     check("отклонённый отчёт похвалы не вызывает", not bot6.sent)
+
+    # Накопление за сутки: 160 → «мастерство», +200 (350 за день) → «Ас» (кейс из ТЗ).
+    U7 = 70013
+    await add_user(U7, "sum", "Сум", "Накопитель")
+    r1, _ = await add_report(U7, "f", 160, 4160, "0")
+    await approve_report(r1, 0)
+    check("сумма за сутки 160", await report_day_credited_total(U7) == 160)
+    b7 = FakeBot()
+    await notify_report_praise(b7, {"username": "sum", "first_name": "Сум", "user_id": U7}, U7)
+    check("160 за сутки → «высокое мастерство»", len(b7.sent) == 1
+          and "мастерство" in b7.sent[0][1])
+    r2, _ = await add_report(U7, "f", 200, 4360, "0")
+    await approve_report(r2, 0)
+    check("сумма за сутки 360", await report_day_credited_total(U7) == 360)
+    b8 = FakeBot()
+    await notify_report_praise(b8, {"username": "sum", "first_name": "Сум", "user_id": U7}, U7)
+    check("накопивший 360 за сутки → второе оповещение «истинный Ас»", len(b8.sent) == 1
+          and "истинного Аса" in b8.sent[0][1])
+    r3, _ = await add_report(U7, "f", 50, 4410, "0")
+    await approve_report(r3, 0)
+    b9 = FakeBot()
+    await notify_report_praise(b9, {"username": "sum", "first_name": "Сум", "user_id": U7}, U7)
+    check("тот же уровень выше — тишина", not b9.sent)
+
+    # Ниже порога за сутки — молчим, даже если отчётов несколько.
+    U8 = 70014
+    await add_user(U8, "quiet", "Тихий", "Молчун")
+    q1, _ = await add_report(U8, "f", 100, 100, "0")
+    await approve_report(q1, 0)
+    q2, _ = await add_report(U8, "f", 40, 140, "0")
+    await approve_report(q2, 0)
+    b10 = FakeBot()
+    await notify_report_praise(b10, {"username": "quiet", "first_name": "Тихий", "user_id": U8}, U8)
+    check("140 за сутки (два отчёта) — без оповещения", not b10.sent)
 
     await close_db()
     print(f"\nSmoke 091: {passed} passed, {failed} failed")

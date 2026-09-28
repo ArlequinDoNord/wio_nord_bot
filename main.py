@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import sys
+from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot, Dispatcher, BaseMiddleware
 from aiogram.fsm.context import FSMContext
@@ -124,8 +125,32 @@ class FishingActiveLock(BaseMiddleware):
         return await handler(event, data)
 
 
+# Выплаты по отчётам, налоги, зарплаты и восстановление AP идут в одном суточном цикле.
+# Время фиксировано по МСК: каждый день в 00:05. Раньше цикл был «раз в 24 часа от
+# старта процесса», поэтому время выплат плыло при каждом перезапуске (деплой), а
+# отчёт, одобренный сразу после цикла, ждал почти сутки.
+PAYOUT_HOUR_MSK = 0
+PAYOUT_MINUTE_MSK = 5
+MSK = timezone(timedelta(hours=3))
+
+
+def _seconds_until_payout() -> float:
+    """Сколько секунд до ближайшего суточного цикла (00:05 МСК)."""
+    local = datetime.now(MSK)
+    target = local.replace(hour=PAYOUT_HOUR_MSK, minute=PAYOUT_MINUTE_MSK,
+                           second=10, microsecond=0)
+    if target <= local:
+        target += timedelta(days=1)
+    return (target - local).total_seconds()
+
+
 async def scheduled_jobs(bot: Bot):
     while True:
+        wait = _seconds_until_payout()
+        logger.info(
+            f"Суточный цикл: выплаты в {PAYOUT_HOUR_MSK:02d}:{PAYOUT_MINUTE_MSK:02d} МСК, "
+            f"следующий запуск через {wait / 3600:.1f} ч"
+        )
         try:
             await daily_ap_recovery()
             logger.info("Суточное восстановление AP выполнено")
@@ -193,7 +218,7 @@ async def scheduled_jobs(bot: Bot):
                 logger.info(f"Очистка location_visits: удалено записей {pruned}")
         except Exception as e:
             logger.error(f"Ошибка очистки location_visits: {e}", exc_info=True)
-        await asyncio.sleep(24 * 60 * 60)
+        await asyncio.sleep(max(60.0, _seconds_until_payout()))
 
 
 async def main():

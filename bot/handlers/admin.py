@@ -3702,22 +3702,23 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
         return
     report = await get_report_safe(report_id)
     # Сумма зафиксирована при сдаче отчёта (credited_troops) и показана в карточке
-    # как «К выдаче». Пересчитывать её здесь нельзя: за сутки платится максимум заявок,
-    # а «уже засчитано» меняется по мере одобрения — итог зависел бы от порядка нажатий.
+    # как «К выдаче». Пересчитывать её здесь нельзя: несколько отчётов за сутки
+    # доплачивают друг друга по приросту, а «уже засчитано» меняется по мере
+    # одобрения — итог зависел бы от порядка нажатий.
     pilot = await get_user(report['user_id'])
     amount = await approve_report(report_id, callback.from_user.id)
     await log_action(callback.from_user.id, 'approve_report', report['user_id'], f"report={report_id}")
     await callback.message.answer(
         f"✅ Отчёт #{report_id} принят.\n"
         f"⚔️ К начислению: {amount} войск (выплата раз в сутки — в начале следующих суток)."
-        + ("" if amount > 0 else "\nℹ️ Прироста за сутки нет — оплата не начислена.")
+        + ("" if amount > 0 else "\nℹ️ Прироста за сутки не осталось — оплата не начислена.")
     )
     await show_pending_reports(callback.message)
 
-    # В общий чат — только похвала, без точных цифр: обычные отчёты не публикуются.
+    # В общий чат — только похвала по накопленной сумме за сутки, без точных цифр.
     if pilot:
         from utils.notify import notify_report_praise
-        await notify_report_praise(bot, pilot, amount, pilot['user_id'])
+        await notify_report_praise(bot, pilot, pilot['user_id'])
 
 
 @router.callback_query(F.data.startswith("rep_no:"))

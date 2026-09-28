@@ -72,28 +72,73 @@ async def notify(bot: Bot, text: str, user_id: int = None):
         await log_activity(None, 'notify_failed', f"chat={chat_id} topic={topic_id}: {e}")
 
 
+PRIZE_TIER_NONE = 0
+PRIZE_TIER_MASTERY = 1
+PRIZE_TIER_ACE = 2
+
+
+def praise_tier_for(day_total: int) -> int:
+    """Уровень похвалы по накопленной сумме за сутки.
+
+    Считается от суммы всех принятых отчётов за МСК-сутки, поэтому несколько
+    отчётов складываются: 160 → «мастерство», а +200 сверху (350 за сутки) →
+    «истинный Ас».
+    """
+    try:
+        day_total = int(day_total)
+    except (TypeError, ValueError):
+        return PRIZE_TIER_NONE
+    if day_total > NOTIFY_REPORT_ACE_TROOPS:
+        return PRIZE_TIER_ACE
+    if day_total > NOTIFY_REPORT_MASTERY_TROOPS:
+        return PRIZE_TIER_MASTERY
+    return PRIZE_TIER_NONE
+
+
 def report_praise_text(display: str, amount: int):
     """Похвала за суточный отчёт. Без цифр — только ободряющая фраза.
 
     Ниже порогов возвращается None: обычные отчёты в общий чат не попадают.
     """
-    try:
-        amount = int(amount)
-    except (TypeError, ValueError):
-        return None
-    if amount > NOTIFY_REPORT_ACE_TROOPS:
+    return praise_tier_text(display, praise_tier_for(amount))
+
+
+def praise_tier_text(display: str, tier: int):
+    """Текст похвалы для заданного уровня (None — уровня нет)."""
+    if tier >= PRIZE_TIER_ACE:
         return f"🏆 {display} проявляет характер истинного Аса!"
-    if amount > NOTIFY_REPORT_MASTERY_TROOPS:
+    if tier >= PRIZE_TIER_MASTERY:
         return f"⚡ {display} показал высокое мастерство!"
     return None
 
 
-async def notify_report_praise(bot: Bot, pilot, amount: int, user_id: int = None):
-    """Отправить похвалу за крупный суточный отчёт (без точных цифр)."""
-    text = report_praise_text(await player_display(pilot), amount)
+async def notify_report_praise(bot: Bot, pilot, user_id: int = None, day_total: int = None):
+    """Похвала за суточный отчёт по накопленной сумме за сутки.
+
+    Уровень считается по сумме всех принятых отчётов за МСК-сутки, а не по одному
+    отчёту. За сутки один уровень отправляется только один раз: переход на
+    следующий (накопил свыше 300 за день) приходит повторным оповещением, отчёт
+    ниже порога молчит.
+
+    day_total — переопределение суммы за сутки (для тестов).
+    """
+    from database.db import report_day_credited_total, get_report_notify_tier, bump_report_notify_tier
+
+    uid = user_id if user_id is not None else getattr(pilot, "id", None)
+    if uid is None:
+        return False
+    if day_total is None:
+        day_total = await report_day_credited_total(uid)
+    tier = praise_tier_for(day_total)
+    if tier == PRIZE_TIER_NONE:
+        return False
+    if tier <= await get_report_notify_tier(uid):
+        return False
+    text = praise_tier_text(await player_display(pilot), tier)
     if not text:
         return False
-    await notify(bot, text, user_id)
+    await notify(bot, text, uid)
+    await bump_report_notify_tier(uid, tier)
     return True
 
 

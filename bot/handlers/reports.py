@@ -185,14 +185,25 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
                                       exclude_id=report_id)
     # Разбор оплаты для показа: база (накоплено до этого дня), прирост «всего», итог.
     if not ctx["base_known"]:
-        payout_info = (f"📉 Накоплено до этого дня: неизвестно (первый отчёт) — "
-                       f"к оплате {credited} по твоей заявке, проверят по скриншоту")
+        if ctx["assigned_today"] > 0:
+            # Отчёты за день уже есть, но истории до этого дня нет: базу сверить
+            # не с чем, но за сутки начисления суммируются.
+            payout_info = (
+                f"📉 Накоплено до этого дня: неизвестно (это первый отчёт в истории)\n"
+                f"⚔️ Уже принято за сутки: {ctx['assigned_today']}\n"
+                f"⚔️ К оплате за этот отчёт: {credited} по твоей заявке, проверят по скриншоту"
+            )
+        else:
+            payout_info = (f"📉 Накоплено до этого дня: неизвестно (первый отчёт) — "
+                           f"к оплате {credited} по твоей заявке, проверят по скриншоту")
     else:
         payout_info = (
             f"📉 Накоплено до этого дня: {ctx['base']}\n"
             f"📈 Прирост за сутки: {ctx['growth']}\n"
-            f"⚔️ К оплате: {credited} (не больше заявки и не больше прироста)"
+            f"⚔️ К оплате: {credited} (не больше заявки и не больше прироста за сутки)"
         )
+        if ctx["assigned_today"] > 0:
+            payout_info += f"\n⚔️ Уже принято за сутки: {ctx['assigned_today']}"
     if ctx.get("capped_by_limit"):
         payout_info += (f"\n🚦 Сработал суточный лимит: за сутки начисляется не больше "
                         f"{ctx['cap']} войск. Излишек в оплату не идёт.")
@@ -211,7 +222,7 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
             await state.clear()
             await message.answer(
                 f"✅ Отчёт #{report_id} принят.\n"
-                f"Новых войск за сутки нет (значение {daily_troops} уже засчитано ранее) — доплата не начислена.{reminder}"
+                f"Прирост за сутки уже засчитан ({ctx['assigned_today']}) — доплата не начислена.{reminder}"
             )
             return
         tax_percent = await get_report_tax_percent()
@@ -221,9 +232,10 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
             f"⚔️ К начислению: {actual} войск (налог {tax_percent}% — в казну).\n"
             f"💰 Оплата по отчётам производится раз в сутки — придёт в начале следующих суток.{reminder}"
         )
-        # Принятый отчёт — похвала в общий чат (сама функция молчит ниже порога).
+        # Принятый отчёт — похвала в общий чат по накопленной сумме за сутки
+        # (сама функция молчит ниже порога и не дублирует уже отправленный уровень).
         pilot_row = await get_user(message.from_user.id)
-        await notify_report_praise(message.bot, pilot_row, actual, message.from_user.id)
+        await notify_report_praise(message.bot, pilot_row, message.from_user.id)
     else:
         await state.clear()
         auto_note = "" if ctx["base_known"] else "\n⚠️ Первый отчёт: сумму не с чем сверить, нужен ручной просмотр."
