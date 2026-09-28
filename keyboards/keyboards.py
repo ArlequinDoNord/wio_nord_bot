@@ -250,6 +250,7 @@ def wall_keyboard(page: int = 0, total_posts: int = 0, post_ids: list = None,
         if nav:
             buttons.append(nav)
     buttons.append([InlineKeyboardButton(text="✍️ Оставить изречение", callback_data="wall:write")])
+    buttons.append([InlineKeyboardButton(text="🗂 Архив изречений", callback_data="wall:archive")])
     buttons.append([InlineKeyboardButton(text="🏠 В меню города", callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

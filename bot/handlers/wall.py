@@ -13,15 +13,17 @@ from aiogram.fsm.state import State, StatesGroup
 
 from config import (
     WALL_TEXT_MAX_LEN, WALL_FREE_PER_DAY, WALL_PAID_STEPS, WALL_REVIEW_TOTAL,
-    WALL_PAGE_SIZE,
+    WALL_PAGE_SIZE, WALL_ARCHIVE_PAGE_SIZE,
 )
 from database.db import (
     get_user, count_wall_posts_today, wall_post_tier, add_wall_post,
     get_wall_posts, get_wall_post, count_wall_posts, delete_wall_post,
     log_activity, log_location_visit,
+    count_wall_archives, get_wall_archives, get_wall_archive,
+    count_wall_archive_posts, get_wall_archive_posts, has_library_access,
 )
-from utils.helpers import plural_nordmark, is_main_menu_text
-from utils.permissions import has_permission, log_action
+from utils.helpers import plural_nordmark, is_main_menu_text, edit_message_safe
+from utils.permissions import has_permission, is_admin, log_action
 from keyboards.keyboards import wall_keyboard, cancel_keyboard
 
 router = Router()
@@ -229,6 +231,149 @@ async def wall_delete(callback: CallbackQuery, state: FSMContext):
         parts.append(f"Автору возвращено {res['refund']} НМ (⅓ от {res['cost']}).")
     await callback.message.answer("\n".join(parts))
     await log_action(actor, "wall_delete", res['author_id'], f"post #{post_id}, refund {res['refund']}")
+
+
+# ============ АРХИВ СТЕНЫ ИЗРЕЧЕНИЙ ============
+
+async def _archive_allowed(user_id: int) -> bool:
+    """Доступ к архиву — как у архива новостей: суперадмин, корреспондент
+    ГосСМИ или владелец читательского билета."""
+    if await is_admin(user_id):
+        return True
+    if await has_permission(user_id, "can_post_news"):
+        return True
+    return await has_library_access(user_id)
+
+
+def _archive_denied_markup():
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 В библиотеку", callback_data="lib:menu")]
+    ])
+
+
+def _archive_list_markup(archives, page: int, total: int):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    pages = max(1, (total + WALL_ARCHIVE_PAGE_SIZE - 1) // WALL_ARCHIVE_PAGE_SIZE)
+    page = max(0, min(page, pages - 1))
+    rows = []
+    for a in archives:
+        n = a['post_count'] or 0
+        label = f"🧱 {a['title']} · {n} изречений"
+        rows.append([InlineKeyboardButton(
+            text=label, callback_data=f"wall:archread:{a['id']}")])
+    nav = []
+    if pages > 1:
+        if page > 0:
+            nav.append(InlineKeyboardButton(text="◀️", callback_data=f"wall:archpage:{page-1}"))
+        nav.append(InlineKeyboardButton(text=f"{page+1}/{pages}", callback_data="noop"))
+        if page < pages - 1:
+            nav.append(InlineKeyboardButton(text="▶️", callback_data=f"wall:archpage:{page+1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text="🔙 В библиотеку", callback_data="lib:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _archive_read_markup(archive_id: int, page: int, total_posts: int):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    pages = max(1, (total_posts + WALL_PAGE_SIZE - 1) // WALL_PAGE_SIZE)
+    page = max(0, min(page, pages - 1))
+    nav = []
+    if pages > 1:
+        if page > 0:
+            nav.append(InlineKeyboardButton(text="◀️", callback_data=f"wall:archread:{archive_id}:{page-1}"))
+        nav.append(InlineKeyboardButton(text=f"{page+1}/{pages}", callback_data="noop"))
+        if page < pages - 1:
+            nav.append(InlineKeyboardButton(text="▶️", callback_data=f"wall:archread:{archive_id}:{page+1}"))
+    rows = [nav] if nav else []
+    rows.append([InlineKeyboardButton(text="🔙 К архиву", callback_data="wall:archive")])
+    rows.append([InlineKeyboardButton(text="🔙 В библиотеку", callback_data="lib:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _archive_denied_answer(callback: CallbackQuery):
+    await callback.message.answer(
+        "🧱 Архив стены изречений живёт в Библиотеке и доступен владельцам "
+        "читательского билета.\n\n"
+        "Купи «Читательский билет» в Магазине → раздел «Читательские билеты».",
+        reply_markup=_archive_denied_markup()
+    )
+
+
+@router.callback_query(F.data == "wall:archive")
+async def wall_archive_list(callback: CallbackQuery):
+    await callback.answer()
+    if not await _archive_allowed(callback.from_user.id):
+        await _archive_denied_answer(callback)
+        return
+    total = await count_wall_archives()
+    if not total:
+        await edit_message_safe(
+            callback.message,
+            "🗂 АРХИВ СТЕНЫ ИЗРЕЧЕНИЙ\n\nПока пуст. Записи появляются раз в "
+            "неделю после архивации стены (когда на ней больше одной страницы).",
+            reply_markup=_archive_list_markup([], 0, 0)
+        )
+        return
+    archives = await get_wall_archives(0, WALL_ARCHIVE_PAGE_SIZE)
+    await edit_message_safe(
+        callback.message,
+        f"🗂 АРХИВ СТЕНЫ ИЗРЕЧЕНИЙ\nВсего записей: {total}",
+        _archive_list_markup(archives, 0, total)
+    )
+
+
+@router.callback_query(F.data.regexp(r"^wall:archpage:\d+$"))
+async def wall_archive_page(callback: CallbackQuery):
+    await callback.answer()
+    if not await _archive_allowed(callback.from_user.id):
+        await _archive_denied_answer(callback)
+        return
+    page = int(callback.data.split(":")[2])
+    total = await count_wall_archives()
+    if not total:
+        await edit_message_safe(callback.message, "🗂 Архив пуст.", reply_markup=_archive_list_markup([], 0, 0))
+        return
+    archives = await get_wall_archives(page, WALL_ARCHIVE_PAGE_SIZE)
+    await edit_message_safe(
+        callback.message,
+        f"🗂 АРХИВ СТЕНЫ ИЗРЕЧЕНИЙ\nВсего записей: {total}",
+        _archive_list_markup(archives, page, total)
+    )
+
+
+@router.callback_query(F.data.regexp(r"^wall:archread:\d+(?::\d+)?$"))
+async def wall_archive_read(callback: CallbackQuery):
+    await callback.answer()
+    if not await _archive_allowed(callback.from_user.id):
+        await _archive_denied_answer(callback)
+        return
+    parts = callback.data.split(":")
+    archive_id = int(parts[2])
+    page = int(parts[3]) if len(parts) > 3 else 0
+    a = await get_wall_archive(archive_id)
+    if not a:
+        await edit_message_safe(callback.message, "❌ Запись архива не найдена.", reply_markup=None)
+        return
+    total_posts = await count_wall_archive_posts(archive_id)
+    posts = await get_wall_archive_posts(archive_id, page, WALL_PAGE_SIZE)
+    lines = [
+        f"🗂 {a['title']}",
+        f"🗓 {a['period_start']} — {a['period_end']} · {a['post_count']} изречений",
+    ]
+    for r in posts:
+        author = _author_label(r)
+        price_tag = f" · {r['cost']} НМ" if (r.get('cost') or 0) > 0 else ""
+        lines.append(
+            f"\n💬 {r['text']} "
+            f"\n   — {author}{price_tag} · №{r['post_id']} · {_post_date_short(r['created_at'])}"
+        )
+    text = "\n".join(lines)
+    if len(text) > 3900:
+        await callback.message.answer(text, reply_markup=_archive_read_markup(archive_id, page, total_posts))
+    else:
+        await edit_message_safe(callback.message, text, _archive_read_markup(archive_id, page, total_posts))
 
 
 __all__ = ["router"]

@@ -638,6 +638,27 @@ async def init_db():
             FOREIGN KEY (user_id) REFERENCES users(user_id)
         );
 
+        CREATE TABLE IF NOT EXISTS wall_archives (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            period_start TEXT NOT NULL DEFAULT '',
+            period_end TEXT NOT NULL DEFAULT '',
+            post_count INTEGER DEFAULT 0,
+            archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS wall_archive_posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            archive_id INTEGER NOT NULL,
+            post_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT '',
+            created_day TEXT NOT NULL DEFAULT '',
+            cost INTEGER DEFAULT 0,
+            tier INTEGER DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS clans (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             kind TEXT NOT NULL DEFAULT 'clan',          -- 'clan' | 'party'
@@ -3169,6 +3190,196 @@ async def _delete_wall_rows(post_id: int):
     conn = await get_db()
     await conn.execute("DELETE FROM wall_posts WHERE id = ?", (post_id,))
     await conn.commit()
+
+
+# ============ АРХИВ СТЕНЫ ИЗРЕЧЕНИЙ ============
+
+WALL_ARCHIVE_WEEK_SETTING_KEY = "wall_last_checked_week"
+
+_WALL_MONTHS = {
+    1: "Январь", 2: "Февраль", 3: "Март", 4: "Апрель", 5: "Май", 6: "Июнь",
+    7: "Июль", 8: "Август", 9: "Сентябрь", 10: "Октябрь", 11: "Ноябрь", 12: "Декабрь",
+}
+
+
+def _wall_archive_title(start_day: str, end_day: str) -> str:
+    """Заголовок записи архива стены — «неделя · месяц · год».
+
+    Одна календарная неделя: «Неделя 38 · Сентябрь 2026». Несколько недель
+    (стена копилась и не архивировалась): период по датам с диапазоном недель
+    «02.09 — 20.09 2026 · Недели 36–38».
+    """
+    try:
+        sd = datetime.strptime(start_day[:10], "%Y-%m-%d")
+        ed = datetime.strptime(end_day[:10], "%Y-%m-%d")
+    except (TypeError, ValueError):
+        return f"Архив {start_day} — {end_day}"
+    sy, sw, _ = sd.isocalendar()
+    ey, ew, _ = ed.isocalendar()
+    if sy == ey and sw == ew:
+        return f"Неделя {sw} · {_WALL_MONTHS.get(ed.month, ed.month)} {ed.year}"
+    if sy == ey:
+        weeks = f"Недели {sw}" + (f"–{ew}" if ew != sw else "")
+        return f"{sd:%d.%m} — {ed:%d.%m} {ed.year} · {weeks}"
+    return f"{sd:%d.%m.%Y} — {ed:%d.%m.%Y}"
+
+
+async def _all_wall_posts() -> list:
+    """Все изречения на стене (свежие сверху) с авторами — как get_wall_posts.
+
+    Период архива считается по created_day (сутки по МСК), у старых записей
+    пустой — запасёмся и created_at.
+    """
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT w.*, u.username, u.callsign, u.first_name, u.last_name "
+        "FROM wall_posts w LEFT JOIN users u ON u.user_id = w.user_id "
+        "ORDER BY w.id DESC"
+    )
+    return await cursor.fetchall()
+
+
+async def add_wall_archive(title: str, period_start: str, period_end: str,
+                           post_count: int) -> int:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "INSERT INTO wall_archives (title, period_start, period_end, post_count) "
+        "VALUES (?, ?, ?, ?)",
+        (title, period_start, period_end, post_count)
+    )
+    await conn.commit()
+    return cursor.lastrowid
+
+
+async def _copy_wall_posts_to_archive(archive_id: int, posts: list):
+    conn = await get_db()
+    rows = [
+        (archive_id, p['id'], p['user_id'], p['text'], p['created_at'],
+         (p.get('created_day') or ''), p.get('cost') or 0, p.get('tier') or 0)
+        for p in posts
+    ]
+    if rows:
+        await conn.executemany(
+            "INSERT INTO wall_archive_posts "
+            "(archive_id, post_id, user_id, text, created_at, created_day, cost, tier) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            rows
+        )
+    await conn.commit()
+
+
+async def clear_wall_posts() -> int:
+    """Очистить стену после архивации. Возвращает число удалённых записей."""
+    conn = await get_db()
+    cursor = await conn.execute("DELETE FROM wall_posts")
+    await conn.commit()
+    return cursor.rowcount
+
+
+async def count_wall_archives() -> int:
+    conn = await get_db()
+    cursor = await conn.execute("SELECT COUNT(*) AS n FROM wall_archives")
+    row = await cursor.fetchone()
+    return row['n'] if row else 0
+
+
+async def get_wall_archives(page: int = 0, page_size: int = 8) -> list:
+    """Записи архива (новые сверху): id, title, период, число изречений."""
+    conn = await get_db()
+    offset = max(0, page) * page_size
+    cursor = await conn.execute(
+        "SELECT id, title, period_start, period_end, post_count, archived_at "
+        "FROM wall_archives ORDER BY id DESC LIMIT ? OFFSET ?",
+        (page_size, offset)
+    )
+    return await cursor.fetchall()
+
+
+async def get_wall_archive(archive_id: int) -> dict | None:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id, title, period_start, period_end, post_count, archived_at "
+        "FROM wall_archives WHERE id = ?",
+        (archive_id,)
+    )
+    return await cursor.fetchone()
+
+
+async def count_wall_archive_posts(archive_id: int) -> int:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT COUNT(*) AS n FROM wall_archive_posts WHERE archive_id = ?",
+        (archive_id,)
+    )
+    row = await cursor.fetchone()
+    return row['n'] if row else 0
+
+
+async def get_wall_archive_posts(archive_id: int, page: int = 0,
+                                 page_size: int = 5) -> list:
+    """Страница изречений внутри записи архива (свежие сверху) — как на стене."""
+    conn = await get_db()
+    offset = max(0, page) * page_size
+    cursor = await conn.execute(
+        "SELECT p.*, u.username, u.callsign, u.first_name, u.last_name "
+        "FROM wall_archive_posts p LEFT JOIN users u ON u.user_id = p.user_id "
+        "WHERE p.archive_id = ? ORDER BY p.post_id DESC LIMIT ? OFFSET ?",
+        (archive_id, page_size, offset)
+    )
+    return await cursor.fetchall()
+
+
+async def maybe_archive_wall_weekly():
+    """Еженедельная проверка стены (пн 05:05 МСК, вызывается из суточного цикла).
+
+    Раз в календарную неделю (ключ в settings, смена недели — триггер): если
+    изречений на стене больше одной страницы (WALL_PAGE_SIZE) — собрать всё в
+    архив с периодом от первой до последней записи и очистить стену. Если
+    меньше или ровно страница — стену не трогаем, следующая проверка через
+    неделю: период архива тогда покроет несколько недель одним периодом.
+
+    Возвращает None, если проверка на этой неделе уже была; dict с результатом
+    иначе: {"archived": bool, "count": int, "archive_id": int | None}.
+    """
+    from datetime import datetime
+    from utils.helpers import MOSCOW_TZ
+    from config import WALL_PAGE_SIZE
+    conn = await get_db()
+    now = datetime.now(MOSCOW_TZ)
+    year, week, _ = now.isocalendar()
+    week_key = f"{year}-W{week:02d}"
+
+    cursor = await conn.execute(
+        "SELECT value FROM settings WHERE key = ?", (WALL_ARCHIVE_WEEK_SETTING_KEY,))
+    row = await cursor.fetchone()
+    if row and row['value'] == week_key:
+        return None
+
+    await conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (WALL_ARCHIVE_WEEK_SETTING_KEY, week_key))
+    await conn.commit()
+
+    total = await count_wall_posts()
+    if total <= WALL_PAGE_SIZE:
+        return {"archived": False, "count": total, "archive_id": None}
+
+    posts = await _all_wall_posts()
+    days = []
+    for p in posts:
+        d = (p.get('created_day') or '').strip()
+        if not d:
+            d = (p.get('created_at') or '')[:10]
+        if d:
+            days.append(d)
+    period_start = min(days)
+    period_end = max(days)
+    title = _wall_archive_title(period_start, period_end)
+    archive_id = await add_wall_archive(title, period_start, period_end, len(posts))
+    await _copy_wall_posts_to_archive(archive_id, posts)
+    cleared = await clear_wall_posts()
+    return {"archived": True, "count": cleared, "archive_id": archive_id}
 
 
 async def wall_author_name(user) -> str:

@@ -19,6 +19,7 @@ from database.db import (
     ensure_water_fish, migrate_legacy_junk,
     ensure_recipe_shop_items, ensure_user_recipes_backfill,
     log_activity, prune_activity_log, prune_location_visits, recompute_region_stats,
+    maybe_archive_wall_weekly,
 )
 from utils.notify import notify_treasury_shortage
 from utils.chat_guard import ChatGuard
@@ -231,6 +232,24 @@ async def scheduled_jobs(bot: Bot):
                 logger.info(f"Очистка location_visits: удалено записей {pruned}")
         except Exception as e:
             logger.error(f"Ошибка очистки location_visits: {e}", exc_info=True)
+        # Стена изречений: раз в неделю (пн) архивируем накопившееся, если его
+        # больше одной страницы; иначе стена копится дальше, и архив покроет
+        # несколько недель одним периодом.
+        try:
+            wall_res = await maybe_archive_wall_weekly()
+            if wall_res:
+                if wall_res.get('archived'):
+                    logger.info(
+                        f"Стена изречений: архивация #{wall_res['archive_id']} "
+                        f"({wall_res['count']} изречений), стена очищена"
+                    )
+                else:
+                    logger.info(
+                        f"Стена изречений: архивация не нужна, "
+                        f"{wall_res['count']} изречений (не больше страницы)"
+                    )
+        except Exception as e:
+            logger.error(f"Ошибка недельной архивации стены: {e}", exc_info=True)
         await asyncio.sleep(max(60.0, _seconds_until_payout()))
 
 
