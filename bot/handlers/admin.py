@@ -3465,25 +3465,21 @@ async def report_pay_cap_edit_value(message: Message, state: FSMContext):
 
 
 async def _report_payout_block(report) -> str:
-    """Блок оплаты для карточки отчёта: база (накоплено до этого дня), прирост,
-    сумма к выдаче. Платится только прирост за текущие сутки."""
+    """Блок оплаты для карточки отчёта: платим заявку «за сутки» в пределах суточного
+    лимита. «Всего» и регион — справочные данные для статистики, на оплату не влияют."""
     from database.db import report_payout_context
     total_claim = report['total_troops'] if 'total_troops' in report.keys() else 0
     ctx = await report_payout_context(
         report['user_id'], report['troops_reported'], total_claim, exclude_id=report['id'])
-    if not ctx["base_known"]:
-        return (f"⚠️ Первый отчёт: база неизвестна — сверить не с чем\n"
-                f"⚔️ К выдаче: {ctx['payable']} (по заявке, только после проверки скриншота)")
     lines = [
-        f"📉 Накоплено до этого дня: {ctx['base']}",
-        f"📈 Прирост за сутки: {ctx['growth']}",
-        f"⚔️ К выдаче: {ctx['payable']}",
+        f"⚔️ Заявка за сутки: {ctx['claim']}",
+        f"💰 К выдаче: {ctx['payable']}",
+        f"🗓 Сутки: {ctx['day_label']}",
     ]
-    if ctx["growth"] is not None and ctx["growth"] < report["troops_reported"]:
-        lines.append("⛔ Заявка за сутки больше прироста «всего» — лишнее не оплачивается")
+    if total_claim:
+        lines.append(f"🗺 В регионе накоплено (статистика): {total_claim}")
     if ctx.get("capped_by_limit"):
-        lines.append(f"🚦 Обрезано суточным лимитом ({ctx['cap']}); осталось в лимите на сутки: "
-                     f"{max(0, ctx['room_today'] or 0) - ctx['payable']}")
+        lines.append(f"🚦 Обрезано суточным лимитом ({ctx['cap']})")
     if ctx["assigned_today"]:
         lines.append(f"📋 Уже засчитано за сутки: {ctx['assigned_today']}")
     return "\n".join(lines)
@@ -3544,9 +3540,9 @@ async def show_pending_reports(message):
         f"📋 ОТЧЁТ #{report['id']}\n\n"
         f"Пилот: {report['first_name']} (@{report['username']})\n"
         f"Войск за сутки (заявка): {report['troops_reported']}\n"
-        f"Всего войск (заявка): {report['total_troops'] if 'total_troops' in report.keys() else '—'}\n"
+        f"Всего войск (на счётчике пилота): {report['total_troops'] if 'total_troops' in report.keys() else '—'}\n"
         f"{await _report_payout_block(report)}\n"
-        f"Регион: {report['region'] or '—'}\n"
+        f"Регион: {report['region'] or '—'} (для статистики сил)\n"
         f"Время: {report['created_at'][:16] if report['created_at'] else '—'}\n\n"
         f"Проверьте скриншот и примите решение:"
     )
@@ -3625,8 +3621,9 @@ async def report_fix_daily(message: Message, state: FSMContext):
     old_total = data.get('fix_old_total')
     await message.answer(
         f"Принято: за сутки <b>{daily}</b>.\n\n"
-        f"Теперь введи ПРАВИЛЬНОЕ значение «всего» — сколько войск у пилота набежало "
-        f"ВСЕГО на данный момент. Это число нужно, чтобы посчитать прирост за сутки.\n"
+        f"Теперь введи ПРАВИЛЬНОЕ значение «всего» — сколько очков у пилота набежало "
+        f"ВСЕГО на данный момент. На выплату это число не влияет: оно идёт в "
+        f"статистику сил по региону.\n"
         f"Сейчас указано: {old_total if old_total is not None else '—'}\n"
         f"Оставить как есть — отправь <code>-</code>:",
         reply_markup=cancel_keyboard()
@@ -3666,16 +3663,12 @@ async def report_fix_total(message: Message, state: FSMContext):
         f"report={report_id} было: сутки {old_daily}, всего {old_total} | "
         f"стало: сутки {daily}, всего {total} | к выдаче {ctx['payable']}")
 
-    if not ctx["base_known"]:
-        payout = (f"⚠️ Первый отчёт пилота: базы нет, сверить не с чем\n"
-                  f"⚔️ К выдаче: <b>{ctx['payable']}</b> (по указанной тобой сумме)")
-    else:
-        payout = (f"📉 Накоплено до этого дня: {ctx['base']}\n"
-                  f"📈 Прирост за сутки: {ctx['growth']}\n"
-                  f"⚔️ К выдаче: <b>{ctx['payable']}</b>")
+    payout = (f"⚔️ Заявка за сутки: {ctx['claim']}\n"
+              f"💰 К выдаче: <b>{ctx['payable']}</b>\n"
+              f"🗓 Сутки: {ctx['day_label']}")
     note = ""
-    if ctx["base_known"] and ctx["payable"] == 0 and daily > 0:
-        note = "\n\n⚠️ Прирост за сутки нулевой — оплата будет 0. Проверь «всего»."
+    if ctx["capped_by_limit"]:
+        note = f"\n\n🚦 Обрезано суточным лимитом ({ctx['cap']} войск)"
 
     await state.clear()
     await message.answer(
@@ -3701,17 +3694,16 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
         await callback.message.answer("❌ Нет прав.")
         return
     report = await get_report_safe(report_id)
-    # Сумма зафиксирована при сдаче отчёта (credited_troops) и показана в карточке
-    # как «К выдаче». Пересчитывать её здесь нельзя: несколько отчётов за сутки
-    # доплачивают друг друга по приросту, а «уже засчитано» меняется по мере
-    # одобрения — итог зависел бы от порядка нажатий.
+    # Сумма пересчитывается в approve_report по текущему остатку суточного лимита
+    # (отчёт мог провисеть, пока пилот сдавал другие за эти же сутки).
     pilot = await get_user(report['user_id'])
     amount = await approve_report(report_id, callback.from_user.id)
     await log_action(callback.from_user.id, 'approve_report', report['user_id'], f"report={report_id}")
     await callback.message.answer(
         f"✅ Отчёт #{report_id} принят.\n"
-        f"⚔️ К начислению: {amount} войск (выплата раз в сутки — в начале следующих суток)."
-        + ("" if amount > 0 else "\nℹ️ Прироста за сутки не осталось — оплата не начислена.")
+        f"⚔️ К начислению: {amount} войск и столько же опыта "
+        f"(выплата в 05:05 МСК — в начале новых суток)."
+        + ("" if amount > 0 else "\nℹ️ Суточный лимит уже выбран — оплата не начислена.")
     )
     await show_pending_reports(callback.message)
 
@@ -3782,13 +3774,15 @@ async def show_region_stats(message, refreshed: bool = False, to_edit: CallbackQ
         text += "Данные ещё не рассчитаны.\n\n"
 
     if stats:
+        text += ("🪖 Силы — сумма показаний «всего» пилотов региона из их последних отчётов.\n"
+                 "👤 Пилотов — кто сейчас в регионе. Переезд меняет оба показателя.\n\n")
         for s in stats:
             region_label = f"Регион {s['region']}"
             if s['region'] == "0":
                 region_label += " (Столица)"
             text += (f"🌍 {region_label}\n"
-                     f"   🪖 Войска за 24ч: {s['troops_24h']}\n"
-                     f"   👤 Активные пилоты (3 дн): {s['active_pilots_72h']}\n\n")
+                     f"   🪖 Силы: {s['troops_24h']}\n"
+                     f"   👤 Пилотов: {s['active_pilots_72h']}\n\n")
     else:
         text += "Нет данных. Регионы появятся после одобренных отчётов."
 

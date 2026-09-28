@@ -1,10 +1,10 @@
-"""Smoke v0.15.32: оплата отчётов — только за те сутки, в которые пилот сдал отчёт.
+"""Smoke v0.15.32 (обновлён под v0.17.0): оплата отчётов — заявка «за сутки».
 
-Правило: к оплате идёт не заявка «сколько заработал за сутки», а прирост счётчика
-«всего» относительно прошлых дней, и не больше заявки. Поэтому заявка
-«всё накопленное за все дни» в обоих полях не проходит — платится только прирост.
-Несколько отчётов за сутки не суммируются (платится максимум), отклонённые отчёты
-не поднимают базу, первый отчёт (базы нет) не проходит автоодобрение.
+Правило: к оплате идёт заявка «сколько заработал за сутки» в пределах суточного
+лимита. Поле «всего» (остаток очков пилота в регионе) в оплате НЕ участвует: оно
+может уменьшаться на обороне и расти не от фарма. «Всего» и регион идут в
+статистику сил по регионам. Несколько отчётов за сутки суммируются, отклонённые
+отчёты не съедают лимит, опыт копится 1:1 с фармом и без налога.
 
 Запуск: .venv\\Scripts\\python.exe smoke_089.py
 """
@@ -21,21 +21,28 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 
 async def _yesterday_report(uid, daily, total, status="approved", credited=None):
-    """Отчёт «за вчера»: напрямую в БД, чтобы задать базу прошлых дней."""
-    from database.db import get_db
+    """Отчёт «за вчера»: напрямую в БД, часом раньше границы текущих суток.
+
+    Граница берётся из report_day_bounds(), а не «сейчас минус сутки»: сутки идут
+    от 05:05 МСК, и в 00:00–05:05 МСК «минус сутки» попал бы внутрь тех же суток.
+    """
+    from datetime import timedelta, timezone
+    from database.db import get_db, report_day_bounds
+    start, _end = report_day_bounds()
+    ts = (start - timedelta(hours=1)).astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     conn = await get_db()
     await conn.execute(
         "INSERT INTO reports (user_id, screenshot_file_id, troops_reported, total_troops, "
         "region, credited_troops, status, paid, created_at) "
-        "VALUES (?, 'f', ?, ?, '0', ?, ?, 1, datetime('now', '-1 day'))",
-        (uid, daily, total, credited, status))
+        "VALUES (?, 'f', ?, ?, '0', ?, ?, 1, ?)",
+        (uid, daily, total, credited, status, ts))
     await conn.commit()
 
 
 async def run():
     from database.db import (
         init_db, close_db, add_user, add_report, approve_report, payout_reports,
-        report_payout_context, get_user, count_reports_today, get_db,
+        report_payout_context, get_user, count_reports_today, get_db, reject_report,
         get_report_auto_approve_troops, get_region_stats, recompute_region_stats,
     )
 
@@ -53,84 +60,85 @@ async def run():
 
     U = 51001
     await add_user(U, "rep01", "Репёрт", "Тестов")
-    # У второго пилота история есть — для проверки базы
+    # У второго пилота история есть — для проверки справки по «всего»
     U2 = 51002
     await add_user(U2, "rep02", "Второй", "Тестов")
 
-    # ── 1. Первый отчёт: базы нет ──
+    # ── 1. Первый отчёт: платим заявку «за сутки» ──
     ctx = await report_payout_context(U, 782, 782)
-    check("первый отчёт: база неизвестна", ctx["base_known"] is False and ctx["base"] is None)
     check("первый отчёт: к оплате по заявке", ctx["payable"] == 782)
     rid, credited = await add_report(U, "f", 782, 782, "0")
     check("add_report первого отчёта: credited 782", credited == 782)
 
-    # ── 2. База = максимум «всего» прошлых дней ──
+    # ── 2. «Всего» — только справочные данные, на оплату не влияет ──
     await _yesterday_report(U2, 900, 14000)
+    ctx = await report_payout_context(U2, 900, 14000)   # «всего» не изменилось
+    check("«всего» в оплате не участвует (заявка 900 оплачена вся)", ctx["payable"] == 900)
+    check("«всего» остаётся справкой (14000)", ctx["base"] == 14000)
     ctx = await report_payout_context(U2, 15000, 15000)
-    check("база взята из прошлых дней (14000)", ctx["base"] == 14000)
-    check("прирост = всего − база (1000)", ctx["growth"] == 1000)
-    check("заявка «всё накопленное» урезана до прироста", ctx["payable"] == 1000)
+    check("суточный лимит режет заявку (15000 → 4000)", ctx["payable"] == 4000)
 
-    # ── 3. Именно тот случай из жалобы: одно число во всех полях ──
+    # ── 3. Именно тот случай из жалобы: «всего» не выросло, а фарм есть ──
     U3 = 51003
     await add_user(U3, "rep03", "Третий", "")
     await _yesterday_report(U3, 782, 400)      # вчера накоплено 400
     ctx = await report_payout_context(U3, 782, 782)   # сегодня вписал 782 и туда, и туда
-    check("жалоба: вписано 782/782 → к оплате только прирост 382", ctx["payable"] == 382)
-    check("жалоба: прирост посчитан от базы 400", ctx["growth"] == 382)
+    check("«всего» не выросло — фарм 782 оплачивается полностью", ctx["payable"] == 782)
 
-    # ── 4. Заявка меньше прироста — платится заявка ──
-    ctx = await report_payout_context(U3, 100, 700)
-    check("заявка меньше прироста → к оплате заявка", ctx["payable"] == 100)
+    # ── 3b. Реальный случай Антонио: заявка 291, «всего» без изменений ──
+    U3b = 510031
+    await add_user(U3b, "antonio", "Антонио", "")
+    await _yesterday_report(U3b, 1, 7045)
+    ctx = await report_payout_context(U3b, 291, 7045)
+    check("Антонио: 291 за сутки оплачиваются, «всего» не урезает", ctx["payable"] == 291)
 
-    # ── 5. «Всего» не выросло — оплаты нет ──
+    # ── 4. Заявка больше «всего» (накопленное ушло на оборону) — платится заявка ──
     ctx = await report_payout_context(U3, 500, 400)
-    check("прироста нет → к оплате 0", ctx["payable"] == 0 and ctx["growth"] == 0)
+    check("«всего» меньше заявки (оборона) → к оплате заявка", ctx["payable"] == 500)
 
-    # ── 6. Несколько отчётов за сутки не суммируются ──
+    # ── 5. Несколько отчётов за сутки суммируются ──
     U4 = 51004
     await add_user(U4, "rep04", "Четвёртый", "")
     await _yesterday_report(U4, 100, 1000)
-    r1, c1 = await add_report(U4, "f", 100, 1100, "1")   # прирост 100
-    r2, c2 = await add_report(U4, "f", 200, 1200, "1")   # прирост 200
-    r3, c3 = await add_report(U4, "f", 300, 1300, "1")   # прирост 300
-    check("3 отчёта за сутки: 100 + 100 + 100 (итого 300 = максимум)",
-          (c1, c2, c3) == (100, 100, 100))
+    r1, c1 = await add_report(U4, "f", 100, 1100, "1")
+    r2, c2 = await add_report(U4, "f", 200, 1200, "1")
+    r3, c3 = await add_report(U4, "f", 300, 1300, "1")
+    check("3 отчёта за сутки суммируются (100 + 200 + 300)", (c1, c2, c3) == (100, 200, 300))
     await approve_report(r1, 0, c1)
     await approve_report(r2, 0, c2)
     await approve_report(r3, 0, c3)
     payouts = await payout_reports()
     paid4 = [p for p in payouts if p['user_id'] == U4]
-    check("выплата за сутки = 300, не 600", paid4 and paid4[0]['troops'] == 300)
+    check("выплата за сутки = 600", paid4 and paid4[0]['troops'] == 600)
 
-    # ── 7. Отклонённый отчёт не поднимает базу ──
+    # ── 6. Отклонённый отчёт не тратит суточный лимит ──
     U5 = 51005
     await add_user(U5, "rep05", "Пятый", "")
-    await _yesterday_report(U5, 999999, 999999, status="rejected", credited=999999)
+    r5, _c5 = await add_report(U5, "f", 999999, 999999, "0")
+    await reject_report(r5, 1)
     ctx = await report_payout_context(U5, 500, 2500)
-    check("отклонённый отчёт не в базе (базы нет)", ctx["base_known"] is False)
-    check("после отклонённого — оплата по заявке", ctx["payable"] == 500)
+    check("отклонённый отчёт не съедает лимит суток", ctx["payable"] == 500)
 
-    # ── 8. approve_report: пересчёт, частичное одобрение, потолок ──
+    # ── 7. approve_report: пересчёт по лимиту, частичное одобрение ──
     U6 = 51006
     await add_user(U6, "rep06", "Шестой", "")
     await _yesterday_report(U6, 100, 1000)
-    rid6, credited6 = await add_report(U6, "f", 500, 1300, "2")   # прирост 300 → credited 300
-    check("add_report: credited = прирост (300)", credited6 == 300)
-    got = await approve_report(rid6, 1, 300)
-    check("approve: 300", got == 300)
-    # Повторное одобрение того же отчёта (имитация гонки) — не удваивает и не обнуляет
-    got2 = await approve_report(rid6, 1, 300)
-    check("повторное одобрение идемпотентно (300)", got2 == 300)
+    rid6, credited6 = await add_report(U6, "f", 500, 1300, "2")
+    check("add_report: credited = заявка (500)", credited6 == 500)
+    got = await approve_report(rid6, 1, 500)
+    check("approve: 500", got == 500)
+    # Повторное одобрение того же отчёта (имитация гонки) — идемпотентно
+    got2 = await approve_report(rid6, 1, 500)
+    check("повторное одобрение идемпотентно (500)", got2 == 500)
 
     U7 = 51007
     await add_user(U7, "rep07", "Седьмой", "")
     await _yesterday_report(U7, 100, 1000)
-    rid7, credited7 = await add_report(U7, "f", 400, 1200, "2")   # прирост 200
+    rid7, credited7 = await add_report(U7, "f", 400, 1200, "2")
     partial = await approve_report(rid7, 1, 120)                 # админ режет до 120
-    check("частичное одобрение (120 из 200)", partial == 120)
+    check("частичное одобрение (120 из 400)", partial == 120)
 
-    # ── 8b. Порядок одобрения не влияет на итог за сутки ──
+    # ── 7b. Порядок одобрения не влияет на итог за сутки ──
     U9 = 51009
     await add_user(U9, "rep09", "Девятый", "")
     await _yesterday_report(U9, 100, 1000)
@@ -141,9 +149,9 @@ async def run():
         await approve_report(rid_, 1)
     payouts = await payout_reports()
     paid9 = [p for p in payouts if p['user_id'] == U9]
-    check("обратный порядок одобрения → тот же итог 300", paid9 and paid9[0]['troops'] == 300)
+    check("обратный порядок одобрения → тот же итог 600", paid9 and paid9[0]['troops'] == 600)
 
-    # ── 9. Старые отчёты без credited (NULL) — вся заявка, как раньше ──
+    # ── 8. Старые отчёты без credited (NULL) — вся заявка, как раньше ──
     U8 = 51008
     await add_user(U8, "rep08", "Восьмой", "")
     conn = await get_db()
@@ -155,21 +163,23 @@ async def run():
     await conn.commit()
     check("старый отчёт (NULL) → вся заявка", await approve_report(legacy_id, 1, 700) == 700)
 
-    # ── 10. Сутки считаются по МСК: отчёт «вчера» не попадает в сегодняшний лимит ──
+    # ── 9. Сутки считаются по циклу выплаты: отчёт «вчера» не в сегодняшнем лимите ──
     check("счётчик суток не считает вчерашний отчёт", await count_reports_today(U2) == 0)
     await add_report(U2, "f", 100, 1500, "0")
     check("после сегодняшнего отчёта счётчик = 1", await count_reports_today(U2) == 1)
 
-    # ── 11. Статистика регионов считает фактически засчитанное, а не заявку ──
+    # ── 10. Статистика регионов: силы = накопленное «всего» пилота ──
     await recompute_region_stats()
     stats = {r['region']: r for r in await get_region_stats()}
-    # За сутки по пилоту берётся последний отчёт: у U4 это 100 (а не заявка 300).
-    check("регион 1: 24ч = засчитанное последнего отчёта (100), не заявка (300) и не сумма (600)",
-          stats["1"]['troops_24h'] == 100)
+    # У U4 последний отчёт: 1300 всего, 3 пилота в регионе 1 за 72ч
+    check("регион 1: силы = «всего» последнего отчёта пилота (1300)",
+          stats["1"]['troops_24h'] == 1300)
+    check("регион 1: активных пилотов за 72ч = 1", stats["1"]['active_pilots_72h'] == 1)
 
-    # ── 12. Баланс игрока не завышен ──
+    # ── 11. Баланс игрока = выплаченному, опыт копится 1:1 и без налога ──
     u4 = await get_user(U4)
-    check("войска игрока = 300 (а не сумма отчётов 600)", u4['troops'] == 300)
+    check("войска игрока = 600 (сумма отчётов)", u4['troops'] == 600)
+    check("накопительный опыт = 600 (1:1 с фармом)", u4['xp_balance'] == 600)
 
     await close_db()
     print(f"\nSmoke 089: {passed} passed, {failed} failed")

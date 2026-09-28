@@ -77,12 +77,17 @@ async def run():
             print(f"  FAIL: {name}")
 
     async def _yesterday_report(uid, daily, total):
+        """Отчёт «за вчера»: часом раньше границы текущих суток (05:05 МСК)."""
+        from datetime import timedelta, timezone
+        from database.db import report_day_bounds
+        start, _end = report_day_bounds()
+        ts = (start - timedelta(hours=1)).astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
         conn = await get_db()
         await conn.execute(
             "INSERT INTO reports (user_id, screenshot_file_id, troops_reported, total_troops, "
             "region, credited_troops, status, paid, created_at) "
-            "VALUES (?, 'f', ?, ?, '0', ?, 'approved', 1, datetime('now', '-1 day'))",
-            (uid, daily, total, daily))
+            "VALUES (?, 'f', ?, ?, '0', ?, 'approved', 1, ?)",
+            (uid, daily, total, daily, ts))
         await conn.commit()
 
     # ── 1. Лимит по умолчанию и настройка ──
@@ -110,15 +115,16 @@ async def run():
     rid2, credited2 = await add_report(U, "f", 5000, 60000, "0")
     check("второй отчёт в тот же день — 0 (суточный лимит исчерпан)", credited2 == 0)
 
-    # ── 5. «Всего» лимитом не ограничивается (накопление 50000) ──
+    # ── 5. «Всего» (остаток очков в регионе) не ограничивает выплату ──
     U2 = 70002
     await add_user(U2, "cap02", "Пилот", "Два")
     await _yesterday_report(U2, 4000, 20000)
     ctx = await report_payout_context(U2, 4000, 50000)
-    check("прирост 30000 считается", ctx['growth'] == 30000)
+    check("заявка 4000 засчитывается вся", ctx['claim'] == 4000)
     check("но к выдаче 4000 (лимит)", ctx['payable'] == 4000)
+    check("«всего» 50000 — только справочно", ctx['total_claim'] == 50000)
     rid3, credited3 = await add_report(U2, "f", 4000, 50000, "0")
-    check("отчёт с «всего» 50000 принят в базу как 4000", credited3 == 4000)
+    check("отчёт с «всего» 50000 принят как 4000", credited3 == 4000)
     conn = await get_db()
     cur = await conn.execute("SELECT total_troops FROM reports WHERE id = ?", (rid3,))
     row = await cur.fetchone()
@@ -174,20 +180,20 @@ async def run():
     check("без истории первый отчёт по заявке", b1 == 21)
     check("без истории второй отчёт дня тоже платится (было 0)", b2 == 11)
 
-    # База известна: несколько отчётов дают сумму, но не больше прироста «всего».
+    # «Всего» не влияет на оплату: за сутки платится сумма заявок (в пределах лимита).
     UC = 70012
     await add_user(UC, "acc3", "Акк", "Третий")
     await _yesterday_report(UC, 4000, 4000)
     _, d1 = await add_report(UC, "f", 160, 4160, "0")
     _, d2 = await add_report(UC, "f", 200, 4360, "0")
     check("первый отчёт дня 160 → 160", d1 == 160)
-    check("второй отчёт дня 200 → 200 (не 40)", d2 == 200)
-    check("за сутки 360 = прирост «всего»", d1 + d2 == 360)
+    check("второй отчёт дня 200 → 200", d2 == 200)
+    check("за сутки 360", d1 + d2 == 360)
     ctx_dup = await report_payout_context(UC, 200, 4360)
-    check("повторная заявка с тем же «всего» → 0", ctx_dup['payable'] == 0)
-    check("неоплаченный прирост 0", ctx_dup['unpaid_growth'] == 0)
+    check("повторная заявка оплачивается снова (200)", ctx_dup['payable'] == 200)
+    check("assigned_today = 360", ctx_dup['assigned_today'] == 360)
     _, d3 = await add_report(UC, "f", 50, 4410, "0")
-    check("следующий прирост 50 доплачивается", d3 == 50)
+    check("третий отчёт 50 доплачивается", d3 == 50)
     ctx_cap3 = await report_payout_context(UC, 100000, 1000000)
     check("суточный лимит 4000 всё ещё режет", ctx_cap3['payable'] <= 4000)
 

@@ -8,7 +8,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import BotCommand, Message, CallbackQuery
 from dotenv import load_dotenv
 
-from config import BOT_TOKEN
+from config import (BOT_TOKEN,
+                    REPORT_DAY_START_HOUR as PAYOUT_HOUR_MSK,
+                    REPORT_DAY_START_MINUTE as PAYOUT_MINUTE_MSK)
 from database.db import (
     init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon,
     ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, ensure_life_items, ensure_recipes,
@@ -16,7 +18,7 @@ from database.db import (
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award,
     ensure_water_fish, migrate_legacy_junk,
     ensure_recipe_shop_items, ensure_user_recipes_backfill,
-    log_activity, prune_activity_log, prune_location_visits,
+    log_activity, prune_activity_log, prune_location_visits, recompute_region_stats,
 )
 from utils.notify import notify_treasury_shortage
 from utils.chat_guard import ChatGuard
@@ -126,12 +128,11 @@ class FishingActiveLock(BaseMiddleware):
 
 
 # Выплаты по отчётам, налоги, зарплаты и восстановление AP идут в одном суточном цикле.
-# Время фиксировано по МСК: каждый день в 05:05. Раньше цикл был «раз в 24 часа от
-# старта процесса», поэтому время выплат плыло при каждом перезапуске (деплой).
-# 05:05, а не 00:05: пилоты много фармят допоздна, и отчёт почти всегда сдаётся
-# после полуночи — ночью его ещё не сдадут, к утру уже накопят за сутки больше.
-PAYOUT_HOUR_MSK = 5
-PAYOUT_MINUTE_MSK = 5
+# Время фиксировано по МСК: каждый день в 05:05 (PAYOUT_* импортированы из config —
+# тот же час задаёт начало суток для отчётов, см. _report_day в database/db.py).
+# Раньше цикл был «раз в 24 часа от старта процесса», поэтому время выплат плыло при
+# каждом перезапуске (деплой). 05:05, а не 00:05: пилоты много фармят допоздна, и
+# к утру их суточный заработок уже полный.
 MSK = timezone(timedelta(hours=3))
 
 
@@ -198,6 +199,8 @@ async def scheduled_jobs(bot: Bot):
                             "💰 ОПЛАТА ЗА ОТЧЁТЫ\n\n"
                             f"Одобрено отчётов: {p['count']}\n"
                             f"⚔️ Войска: +{p['troops']}\n"
+                            f"✨ Опыт (накопительный): +{p['xp']} "
+                            f"(всего {p['xp_balance']}, без налога)\n"
                             f"💰 Нордмарки: +{p['nordmarks']} (налог {p['tax']} НМ в казну)\n"
                             f"──────────────\n"
                             f"Итого у тебя: {p['total_troops']} войск, {p['total_nordmarks']} нордмарок"
@@ -207,6 +210,15 @@ async def scheduled_jobs(bot: Bot):
                 logger.info(f"Оплата отчётов: выплачено игрокам {len(payouts)}")
         except Exception as e:
             logger.error(f"Ошибка выплаты по отчётам: {e}", exc_info=True)
+        # Статистика регионов = сумма показаний пилотов из их последних одобренных
+        # отчётов, поэтому пересчитывается после выплаты: к этому моменту одобрены все
+        # вчерашние сдачи. Раньше считалась только по кнопке админа и на проде
+        # показывала устаревшие значения.
+        try:
+            regions = await recompute_region_stats()
+            logger.info(f"Статистика регионов пересчитана: регионов {regions}")
+        except Exception as e:
+            logger.error(f"Ошибка пересчёта статистики регионов: {e}", exc_info=True)
         try:
             pruned = await prune_activity_log(days=30)
             if pruned:

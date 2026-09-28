@@ -5,7 +5,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from config import REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT
-from database.db import add_report, approve_report, get_user, get_user_reports, get_report_tax_percent, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist, report_payout_context
+from database.db import add_report, approve_report, get_user, get_user_reports, get_report_tax_percent, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist, report_payout_context, report_prev_day_total
 from utils.helpers import is_main_menu_text
 from utils.notify import notify_report_praise
 from keyboards.keyboards import report_keyboard, cancel_keyboard
@@ -101,9 +101,13 @@ async def report_receive_daily_troops(message: Message, state: FSMContext):
         return
     await state.update_data(daily_troops=troops)
     await state.set_state(ReportSubmit.waiting_total_troops)
+    prev_total = await report_prev_day_total(message.from_user.id)
+    prev_note = (f"\n🗓 За прошлые сутки ты сдал: {prev_total}." if prev_total else "")
     await message.answer(
         f"📊 Сколько у тебя всего войск на данный момент? (цифрами, до {REPORT_MAX_TROOPS:,})"
-        .replace(",", " "),
+        .replace(",", " ")
+        + prev_note + "\n\nЭто число нужно для статистики сил по регионам — на оплату "
+                       "оно не влияет.",
         reply_markup=cancel_keyboard()
     )
 
@@ -135,8 +139,8 @@ async def report_receive_total_troops(message: Message, state: FSMContext):
         reminder = "\n\n📊 Это последний отчёт за сегодня (лимит 3)."
     if total < (await state.get_data()).get("daily_troops", 0):
         reminder += (
-            "\n\n⚠️ «Всего» меньше, чем «за сутки» — так бывает, если ты вписал в «за сутки»"
-            " всё накопленное. Оплата считается по приросту «всего» за сегодня, лишнее не платится."
+            "\n\nℹ️ «Всего» меньше, чем «за сутки» — бывает при обороте региона. "
+            "На оплату это не влияет: платят за «за сутки»."
         )
     from aiogram.types import FSInputFile
     map_photo = FSInputFile("assets/img/maps/map.jpg")
@@ -183,27 +187,14 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
 
     ctx = await report_payout_context(message.from_user.id, daily_troops, total_troops,
                                       exclude_id=report_id)
-    # Разбор оплаты для показа: база (накоплено до этого дня), прирост «всего», итог.
-    if not ctx["base_known"]:
-        if ctx["assigned_today"] > 0:
-            # Отчёты за день уже есть, но истории до этого дня нет: базу сверить
-            # не с чем, но за сутки начисления суммируются.
-            payout_info = (
-                f"📉 Накоплено до этого дня: неизвестно (это первый отчёт в истории)\n"
-                f"⚔️ Уже принято за сутки: {ctx['assigned_today']}\n"
-                f"⚔️ К оплате за этот отчёт: {credited} по твоей заявке, проверят по скриншоту"
-            )
-        else:
-            payout_info = (f"📉 Накоплено до этого дня: неизвестно (первый отчёт) — "
-                           f"к оплате {credited} по твоей заявке, проверят по скриншоту")
-    else:
-        payout_info = (
-            f"📉 Накоплено до этого дня: {ctx['base']}\n"
-            f"📈 Прирост за сутки: {ctx['growth']}\n"
-            f"⚔️ К оплате: {credited} (не больше заявки и не больше прироста за сутки)"
-        )
-        if ctx["assigned_today"] > 0:
-            payout_info += f"\n⚔️ Уже принято за сутки: {ctx['assigned_today']}"
+    # Разбор оплаты: платим заявку «за сутки» (накопленное «всего» — только статистика).
+    prev_note = (f"\n🗓 За прошлые сутки ты сдал: {ctx['prev_day_total']}"
+                 if ctx['prev_day_total'] else "")
+    payout_info = (
+        f"⚔️ К оплате за текущие сутки: {credited} по заявке «за сутки»{prev_note}"
+    )
+    if ctx["assigned_today"] > 0:
+        payout_info += f"\n⚔️ Уже принято за сутки: {ctx['assigned_today']}"
     if ctx.get("capped_by_limit"):
         payout_info += (f"\n🚦 Сработал суточный лимит: за сутки начисляется не больше "
                         f"{ctx['cap']} войск. Излишек в оплату не идёт.")
@@ -215,22 +206,23 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
         reminder = "\n📊 Это последний отчёт за сегодня (лимит 3)."
 
     auto_approve_limit = await get_report_auto_approve_troops()
-    # Автоодобрение — только когда сумма проверяема (есть база) и заявка в пороге.
-    if daily_troops <= auto_approve_limit and ctx["base_known"]:
+    # Автоодобрение — когда заявка в пороге.
+    if daily_troops <= auto_approve_limit:
         actual = await approve_report(report_id, 0)
         if actual <= 0:
             await state.clear()
             await message.answer(
                 f"✅ Отчёт #{report_id} принят.\n"
-                f"Прирост за сутки уже засчитан ({ctx['assigned_today']}) — доплата не начислена.{reminder}"
+                f"Суточный лимит уже выбран ({ctx['assigned_today']}) — доплата не начислена.{reminder}"
             )
             return
         tax_percent = await get_report_tax_percent()
         await state.clear()
         await message.answer(
             f"✅ Отчёт #{report_id} автоматически принят!\n"
-            f"⚔️ К начислению: {actual} войск (налог {tax_percent}% — в казну).\n"
-            f"💰 Оплата по отчётам производится раз в сутки — придёт в начале следующих суток.{reminder}"
+            f"⚔️ К начислению: {actual} войск и столько же опыта (налог {tax_percent}% — "
+            f"только с денег, в казну).\n"
+            f"💰 Оплата по отчётам — в 05:05 МСК, в начале новых суток.{reminder}"
         )
         # Принятый отчёт — похвала в общий чат по накопленной сумме за сутки
         # (сама функция молчит ниже порога и не дублирует уже отправленный уровень).
@@ -238,14 +230,14 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
         await notify_report_praise(message.bot, pilot_row, message.from_user.id)
     else:
         await state.clear()
-        auto_note = "" if ctx["base_known"] else "\n⚠️ Первый отчёт: сумму не с чем сверить, нужен ручной просмотр."
         await message.answer(
             f"📤 Отчёт #{report_id} отправлен на проверку.\n\n"
             f"Войск за сутки (заявка): {daily_troops}\n"
             f"Всего войск (заявка): {total_troops}\n"
             f"{payout_info}\n"
             f"Регион: {region_code}\n\n"
-            f"Оплачиваются только сегодняшние сутки — накопленное ранее не входит.{auto_note}\n"
+            f"Оплачивается только фарм за текущие сутки (по суткам {ctx['day_label']}). "
+            f"«Всего» и регион идут в статистику сил Нордхайма.\n"
             f"Ожидай решения администратора/МВД.{reminder}"
         )
 

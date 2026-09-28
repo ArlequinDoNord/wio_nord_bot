@@ -60,8 +60,10 @@ async def _profile_caption(user_id: int, owner: bool = True):
         f"📡 Позывной: {_callsign(user)}\n"
     )
     if is_pilot:
+        xp = user['xp_balance'] if 'xp_balance' in user.keys() and user['xp_balance'] else 0
         caption += f"⭐ Звание: {rank}\n"
-        caption += f"💂 Войска: {user['troops']}\n"
+        caption += f"💂 Войска (опыт звания): {user['troops']}\n"
+        caption += f"✨ Опыт (накопительный): {xp}\n"
         from utils.wings import wing_display
         caption += f"🪽 Авиакрыло: {wing_display(user.get('wing'))}\n"
 
@@ -348,7 +350,11 @@ async def pilot_card(callback: CallbackQuery):
     state_line = format_state_line(await get_state_info(callback.from_user.id))
 
     rank_line = f"Звание: {rank}\n" if is_pilot else ""
-    troops_line = f"Войска: {user['troops']}\n" if is_pilot else ""
+    if is_pilot:
+        xp = user['xp_balance'] if 'xp_balance' in user.keys() and user['xp_balance'] else 0
+        troops_line = f"Войска (опыт звания): {user['troops']}\n" f"Опыт (накопительный): {xp}\n"
+    else:
+        troops_line = ""
 
     card = (
         f"═══════════════════════════\n"
