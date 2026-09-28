@@ -394,7 +394,13 @@ async def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
-        CREATE TABLE IF NOT EXISTS admin_logs (
+        CREATE TABLE IF NOT EXISTS wing_deputies (
+        wing TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             admin_id INTEGER NOT NULL,
             action TEXT NOT NULL,
@@ -404,14 +410,14 @@ async def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS report_notify_tiers (
-    user_id INTEGER NOT NULL,
-    day TEXT NOT NULL,
-    tier INTEGER NOT NULL DEFAULT 0,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (user_id, day)
-);
+        user_id INTEGER NOT NULL,
+        day TEXT NOT NULL,
+        tier INTEGER NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (user_id, day)
+    );
 
-CREATE TABLE IF NOT EXISTS activity_log (
+    CREATE TABLE IF NOT EXISTS activity_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             action TEXT NOT NULL,
@@ -4082,6 +4088,116 @@ async def set_wing_commander(wing: str, user_id: int = None):
             (wing, user_id)
         )
     await conn.commit()
+
+
+async def get_wing_deputy(wing: str):
+    """Telegram-id заместителя командира крыла или None."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT user_id FROM wing_deputies WHERE wing = ?", (wing,))
+    row = await cursor.fetchone()
+    return row['user_id'] if row else None
+
+
+async def get_wing_deputies() -> dict:
+    """Словарь {крыло: telegram-id заместителя} по всем крыльям."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT wing, user_id FROM wing_deputies")
+    return {row['wing']: row['user_id'] for row in await cursor.fetchall()}
+
+
+async def get_wing_deputy_by_user(user_id: int):
+    """Ключ крыла ('1'/'2'/'3'), в которой пилот — заместитель, или None."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT wing FROM wing_deputies WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    return row['wing'] if row else None
+
+
+async def set_wing_deputy(wing: str, user_id: int = None):
+    """Назначить заместителя командира крыла; user_id=None — снять.
+
+    Пилот не может быть заместителем двух крыльев сразу: прежняя запись снимается.
+    """
+    conn = await get_db()
+    if user_id is None:
+        await conn.execute("DELETE FROM wing_deputies WHERE wing = ?", (wing,))
+    else:
+        await conn.execute("DELETE FROM wing_deputies WHERE user_id = ?", (user_id,))
+        await conn.execute(
+            "INSERT INTO wing_deputies (wing, user_id) VALUES (?, ?) "
+            "ON CONFLICT(wing) DO UPDATE SET user_id = excluded.user_id",
+            (wing, user_id)
+        )
+    await conn.commit()
+
+
+async def get_wing_staff_wing(user_id: int):
+    """Крыло, в котором пилот — командир или заместитель (командир важнее), иначе None."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT wing, 'commander' AS role FROM wing_commanders WHERE user_id = ? "
+        "UNION ALL "
+        "SELECT wing, 'deputy' AS role FROM wing_deputies WHERE user_id = ?",
+        (user_id, user_id)
+    )
+    row = await cursor.fetchone()
+    return row['wing'] if row else None
+
+
+async def get_wing_staff_role(user_id: int) -> str:
+    """'commander' / 'deputy' / '' — должность пилота в крыле."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT 'commander' AS role FROM wing_commanders WHERE user_id = ? "
+        "UNION ALL "
+        "SELECT 'deputy' AS role FROM wing_deputies WHERE user_id = ? LIMIT 1",
+        (user_id, user_id)
+    )
+    row = await cursor.fetchone()
+    return row['role'] if row else ''
+
+
+async def count_unassigned_pilots() -> int:
+    """Сколько пилотов ещё не в Composition ни одного крыла — их можно взять в состав."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT COUNT(*) AS n FROM users WHERE wing IS NULL OR wing = '' OR wing = 'none'"
+    )
+    row = await cursor.fetchone()
+    return row['n'] if row else 0
+
+
+async def get_unassigned_pilots(limit: int = None, offset: int = 0) -> list:
+    """Пилоты без крыла — их командир может принять в своё крыло."""
+    conn = await get_db()
+    sql = ("SELECT user_id, username, first_name, last_name, wing FROM users "
+           "WHERE wing IS NULL OR wing = '' OR wing = 'none' ORDER BY user_id")
+    params = []
+    if limit is not None:
+        sql += " LIMIT ? OFFSET ?"
+        params = [limit, offset]
+    cursor = await conn.execute(sql, tuple(params))
+    return await cursor.fetchall()
+
+
+async def get_wing_member_rows(wing: str, limit: int = None, offset: int = 0) -> list:
+    """Пилоты крыла (для «убрать из состава» и выбора заместителя)."""
+    conn = await get_db()
+    sql = ("SELECT user_id, username, first_name, last_name, wing FROM users "
+           "WHERE wing = ? ORDER BY user_id")
+    params = [wing]
+    if limit is not None:
+        sql += " LIMIT ? OFFSET ?"
+        params += [limit, offset]
+    cursor = await conn.execute(sql, tuple(params))
+    return await cursor.fetchall()
+
+
+async def count_wing_members(wing: str) -> int:
+    conn = await get_db()
+    cursor = await conn.execute("SELECT COUNT(*) AS n FROM users WHERE wing = ?", (wing,))
+    row = await cursor.fetchone()
+    return row['n'] if row else 0
 
 
 async def add_user_role(user_id: int, role: str, granted_by: int = None):
