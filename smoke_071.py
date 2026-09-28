@@ -123,6 +123,7 @@ async def run():
         init_db, close_db, add_user, get_user, set_wing,
         set_wing_commander, get_wing_commander, get_wing_commanders,
         get_wing_commander_by_user, add_user_role, remove_user_role,
+        get_status_by_tag, grant_status,
     )
     from utils.permissions import ROLES, ROLE_LABELS, has_permission
     from bot.handlers import hq as HQQ
@@ -136,6 +137,10 @@ async def run():
     pilot_c = 430013  # пилот 3 АК
     for uid in (admin, cmd, pilot_a, pilot_b, pilot_c):
         await add_user(uid, "user%d" % uid, "Пилот%d" % uid, "")
+    # V0.18.3+: в пикер штаба идут только гражданские (от «Рекрута»).
+    _recruit = await get_status_by_tag("recruit")
+    for uid in (admin, cmd, pilot_a, pilot_b, pilot_c):
+        await grant_status(uid, _recruit['id'], 0)
     await set_wing(pilot_a, "1")
     await set_wing(pilot_b, "2")
     await set_wing(pilot_c, "3")

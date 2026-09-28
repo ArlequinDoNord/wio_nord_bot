@@ -19,6 +19,7 @@ from database.db import (
     get_wing_deputy, get_wing_deputies, get_wing_deputy_by_user, set_wing_deputy,
     get_wing_staff_wing, get_wing_staff_role, count_unassigned_pilots,
     get_unassigned_pilots, get_wing_member_rows, count_wing_members,
+    citizen_user_ids,
 )
 from utils.permissions import has_permission, log_action
 from utils.wings import WINGS, WINGS_SHORT, wing_display
@@ -179,7 +180,7 @@ async def hq_wing_cb(callback: CallbackQuery):
     if not await has_permission(callback.from_user.id, "can_manage_wing"):
         await callback.message.answer("❌ Нет доступа к составу ВВС.")
         return
-    users = await get_all_users()
+    users = await get_all_users(citizens_only=True)
     grouped = {"1": 0, "2": 0, "3": 0, "": 0}
     for u in users:
         wing = u['wing'] if 'wing' in u.keys() and u['wing'] else ""
@@ -245,7 +246,7 @@ async def _pilot_picker(callback: CallbackQuery, page: int, page_base: str,
     или только пилоты своего крыла).
     """
     if users is None:
-        users = await get_all_users()
+        users = await get_all_users(citizens_only=True)
     users = sorted(users, key=lambda u: u['user_id'])
     total = len(users)
     pages = max(1, (total + ROSTER_PAGE_SIZE - 1) // ROSTER_PAGE_SIZE)
@@ -540,6 +541,14 @@ async def hq_wing_take_cb(callback: CallbackQuery):
                 f"командир берёт только свободных пилотов. Переводы — через штаб."
             )
             return
+        # Гражданство перепроверяем как «свободен»: кнопка из отфильтрованного
+        # списка в порядке, но старый/подделанный callback не должен зачислить туриста.
+        if u['user_id'] not in await citizen_user_ids():
+            await callback.message.answer(
+                f"❌ {await player_display(u)} — турист (нет гражданства). "
+                f"В крыло берём только гражданских пилотов, от «Рекрута» и выше."
+            )
+            return
         await set_wing(uid, wing)
         await log_action(callback.from_user.id, 'hq_wing_take_pilot',
                          details=f"pilot={uid}, wing={wing}")
@@ -557,7 +566,7 @@ async def hq_wing_take_cb(callback: CallbackQuery):
         page = int(parts[2])
     except ValueError:
         page = 0
-    free = await get_unassigned_pilots()
+    free = await get_unassigned_pilots(citizens_only=True)
     if not free:
         await callback.message.answer(
             f"✅ Свободных пилотов нет — все уже в крыльях.\n"

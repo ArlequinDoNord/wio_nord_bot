@@ -84,7 +84,7 @@ def markup_callbacks(markup):
 async def run():
     from database.db import (
         init_db, close_db, add_user, get_user, seed_kvp, update_dungeon_photos,
-        get_kvp_dungeon, DUNGEON_PHOTO_KEYS,
+        get_kvp_dungeon, DUNGEON_PHOTO_KEYS, get_status_by_tag, grant_status,
     )
     from bot.handlers.kvp import answer_enemy_or_course_photo, answer_obstacle_photo
     from bot.handlers.admin import _dungeon_photos_pick_send
@@ -181,6 +181,10 @@ async def run():
     pid3 = 420012
     await add_user(pid2, "sova", "Сова", "")
     await add_user(pid3, "ten", "Тень", "")
+    # В0.18.3+: в списки штаба идут только гражданские (от «Рекрута»).
+    _recruit = await get_status_by_tag("recruit")
+    await grant_status(pid2, _recruit['id'], 0)
+    await grant_status(pid3, _recruit['id'], 0)
 
     # Назначение крыла (право can_manage_wing у админа есть).
     cb_set = FakeCallback(admin, data=f"hq:wing:set:{pid2}:2", message=FakeMessage(admin))

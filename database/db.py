@@ -3842,11 +3842,34 @@ async def get_transactions_history(user_id: int, limit: int = 10):
     return await cursor.fetchall()
 
 
-async def get_all_users():
+def _citizens_sql(user_id_expr: str = "users.user_id") -> str:
+    """Единый SQL-фрагмент «гражданство»: старший статус пилота (sort_order >= 1).
+
+    Одно определение гражданства во всём коде: отсекает «Туриста» (-10) и игроков
+    без статусов, но пропускает legacy-«Пилот» (2) и «Хранителя» (100). Используется
+    и в списках штаба (get_all_users/get_unassigned_pilots/count_unassigned_pilots),
+    и в citizen_user_ids() — списки и проверка в действии не разойдутся.
+    """
+    return f"""EXISTS (
+        SELECT 1 FROM user_statuses us_c
+        JOIN statuses s_c ON us_c.status_id = s_c.id
+        WHERE us_c.user_id = {user_id_expr}
+          AND s_c.sort_order = (
+              SELECT MAX(s2.sort_order) FROM user_statuses us2
+              JOIN statuses s2 ON us2.status_id = s2.id
+              WHERE us2.user_id = us_c.user_id
+          )
+          AND s_c.sort_order >= 1
+    )"""
+
+
+async def get_all_users(citizens_only: bool = False):
+    """Все пользователи; citizens_only=True — только гражданские (sort_order >= 1)."""
     conn = await get_db()
-    cursor = await conn.execute(
-        "SELECT user_id, username, first_name, last_name, wing FROM users"
-    )
+    sql = "SELECT user_id, username, first_name, last_name, wing FROM users"
+    if citizens_only:
+        sql += " WHERE " + _citizens_sql()
+    cursor = await conn.execute(sql)
     return await cursor.fetchall()
 
 
@@ -4374,21 +4397,27 @@ async def get_wing_staff_role(user_id: int) -> str:
     return row['role'] if row else ''
 
 
-async def count_unassigned_pilots() -> int:
-    """Сколько пилотов ещё не в Composition ни одного крыла — их можно взять в состав."""
+async def count_unassigned_pilots(citizens_only: bool = False) -> int:
+    """Сколько пилотов ещё не в составе ни одного крыла — их можно взять в состав."""
     conn = await get_db()
-    cursor = await conn.execute(
-        "SELECT COUNT(*) AS n FROM users WHERE wing IS NULL OR wing = '' OR wing = 'none'"
-    )
+    sql = ("SELECT COUNT(*) AS n FROM users "
+           "WHERE (wing IS NULL OR wing = '' OR wing = 'none')")
+    if citizens_only:
+        sql += " AND " + _citizens_sql()
+    cursor = await conn.execute(sql)
     row = await cursor.fetchone()
     return row['n'] if row else 0
 
 
-async def get_unassigned_pilots(limit: int = None, offset: int = 0) -> list:
+async def get_unassigned_pilots(limit: int = None, offset: int = 0,
+                                citizens_only: bool = False) -> list:
     """Пилоты без крыла — их командир может принять в своё крыло."""
     conn = await get_db()
     sql = ("SELECT user_id, username, first_name, last_name, wing FROM users "
-           "WHERE wing IS NULL OR wing = '' OR wing = 'none' ORDER BY user_id")
+           "WHERE (wing IS NULL OR wing = '' OR wing = 'none')")
+    if citizens_only:
+        sql += " AND " + _citizens_sql()
+    sql += " ORDER BY user_id"
     params = []
     if limit is not None:
         sql += " LIMIT ? OFFSET ?"
@@ -4686,22 +4715,15 @@ async def user_is_tourist(user_id: int) -> bool:
 async def citizen_user_ids() -> set:
     """user_id'ы пилотов с гражданством: старший статус не ниже «Рекрута» (sort_order >= 1).
 
-    Единое определение гражданства для всего кода: отсекает «Туриста» (-10) и
-    игроков вообще без статусов, но не трогает legacy-статус «Пилот» (2)
-    и «Хранителя» (100) — Хранитель это такой же пилот, просто с правами.
-    Используется для отметки туристов в списках и (после починки штаба)
-    для фильтра пилотов в списках Штаба ВВС.
+    Единое определение гражданства для всего кода через _citizens_sql():
+    отсекает «Туриста» (-10) и игроков вообще без статусов, но не трогает
+    legacy-статус «Пилот» (2) и «Хранителя» (100) — Хранитель это такой же пилот,
+    просто с правами.
     """
     conn = await get_db()
-    cursor = await conn.execute("""
-        SELECT us.user_id FROM user_statuses us
-        JOIN statuses s ON us.status_id = s.id
-        WHERE s.sort_order = (
-            SELECT MAX(s2.sort_order) FROM user_statuses us2
-            JOIN statuses s2 ON us2.status_id = s2.id
-            WHERE us2.user_id = us.user_id
-        ) AND s.sort_order >= 1
-    """)
+    cursor = await conn.execute(
+        "SELECT user_id FROM users WHERE " + _citizens_sql()
+    )
     return {r['user_id'] for r in await cursor.fetchall()}
 
 

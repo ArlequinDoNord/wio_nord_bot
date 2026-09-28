@@ -73,7 +73,7 @@ async def run():
         get_wing_deputies, get_wing_deputy_by_user, get_wing_staff_wing,
         get_wing_staff_role, add_user_role, remove_user_role,
         count_unassigned_pilots, get_unassigned_pilots, get_wing_member_rows,
-        count_wing_members,
+        count_wing_members, get_status_by_tag, grant_status,
     )
     from utils.permissions import has_permission, get_user_role
     from bot.handlers.hq import (
@@ -102,6 +102,12 @@ async def run():
     for uid, name in ((CMD, "cmd"), (DEP, "dep"), (P1, "p1"), (P2, "p2"),
                       (OTHER, "other"), (STRAFF, "staff")):
         await add_user(uid, name, name.capitalize(), name.capitalize())
+
+    # Пилоты V0.18.3: в крыло и списки штаба берём только гражданских
+    # (старший статус от «Рекрута»); выдаём всем персонажам «Рекрут».
+    recruit = await get_status_by_tag("recruit")
+    for uid in (CMD, DEP, P1, P2, OTHER, STRAFF):
+        await grant_status(uid, recruit['id'], 0)
 
     # Командир 1-го и 2-го крыльев; в 1-м уже есть один пилот.
     await set_wing_commander(W1, CMD)
