@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 
 async def _yesterday_report(uid, daily, total, status="approved", credited=None):
-    """Отчёт «за вчера»: часом раньше границы текущих суток (05:05 МСК)."""
+    """Отчёт «за вчера»: часом раньше границы текущих суток (10:00 МСК)."""
     from datetime import timedelta, timezone
     from database.db import get_db, report_day_bounds
     start, _end = report_day_bounds()

@@ -3,7 +3,7 @@
 Новое правило: «всего» — остаток очков пилота в регионе (статистика), а не счётчик
 фарма, поэтому оно может уменьшаться (оборона) и расти не от фарма. К оплате идёт
 заявка «за сутки» в пределах суточного лимита 4000, независимо от «всего».
-Сутки считаются от 05:05 МСК до 05:05 МСК. XP копится 1:1 с фармом и без налога.
+Сутки считаются от 10:00 МСК до 10:00 МСК. XP копится 1:1 с фармом и без налога.
 
 Проверяем: неизменное «всего», несколько отчётов за сутки, лимит, сутки по циклу
 выплаты, справку за прошлые сутки, XP без налога, региональную статистику по «всего»,
@@ -57,16 +57,19 @@ async def run():
         await conn.commit()
 
     start, end = report_day_bounds()
-    # Время «позавчера»/«вчера» относительно границы суток (05:05 МСК).
+    # Время «позавчера»/«вчера» относительно границы суток (10:00 МСК).
     yday = (start - timedelta(hours=1)).astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     d2 = (start - timedelta(days=1, hours=1)).astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    # «Сегодня» — уже ПОСЛЕ границы (11:00 МСК), чтобы отчёт гарантированно попадал
+    # в текущие сутки независимо от времени запуска теста (например, рано утром).
+    today_ts = (start + timedelta(hours=1)).astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
 
-    # ── 1. Сутки идут от 05:05 МСК: отчёт за час до границы — вчерашние ──
+    # ── 1. Сутки идут от 10:00 МСК: отчёт за час до границы — вчерашние ──
     check("отчёт часом раньше границы попадает в прошлые сутки",
           _report_day(yday) != _TODAY_MSK)
     check("отчёт сутки назад попадает в прошлые сутки",
           _report_day(d2) != _TODAY_MSK)
-    check("граница суток = 05:05 МСК", (start.hour, start.minute) == (5, 5))
+    check("граница суток = 10:00 МСК", (start.hour, start.minute) == (10, 0))
     check("сутки длятся ровно сутки", (end - start) == timedelta(days=1))
 
     # ── 2. «Всего» не растёт — фарм всё равно оплачивается (кейс Антонио) ──
@@ -158,11 +161,12 @@ async def run():
     rid_y, credited_y = await add_report(UB, "f", 291, 7045, "25")
     await conn.execute("UPDATE reports SET created_at = ? WHERE id = ?", (yday, rid_y))
     rid_t, credited_t = await add_report(UB, "f", 3900, 8000, "25")
+    await conn.execute("UPDATE reports SET created_at = ? WHERE id = ?", (today_ts, rid_t))
     await conn.commit()
     check("сегодняшний отчёт съедает лимит сегодняшних суток", credited_t == 3900)
     check("одобрение ВЧЕРАШНЕГО отчёта не режется сегодняшним лимитом",
           await approve_report(rid_y, 0) == 291)
-    # v0.18.6: отчёт за прошлые сутки, одобренный ПОСЛЕ его расчётных 05:05,
+    # v0.18.6: отчёт за прошлые сутки, одобренный ПОСЛЕ его расчётных 10:00,
     # платится СРАЗУ при одобрении — ждать ближайшей выплаты не должен.
     u_late = await get_user(UB)
     check("вчерашний отчёт оплачен сразу при одобрении (войска 291)",
@@ -170,7 +174,7 @@ async def run():
     check("одобрение сегодняшнего — по сегодняшнему лимиту",
           await approve_report(rid_t, 0) == 3900)
     u_late2 = await get_user(UB)
-    check("сегодняшний отчёт ждёт 05:05 (войска не выросли)", u_late2['troops'] == 291)
+    check("сегодняшний отчёт ждёт 10:00 (войска не выросли)", u_late2['troops'] == 291)
     paid_b = [p for p in await payout_reports() if p['user_id'] == UB]
     check("в цикле доплачивается только сегодняшний отчёт: 3900",
           paid_b and paid_b[0]['troops'] == 3900)
@@ -184,6 +188,7 @@ async def run():
     rid_c1, _ = await add_report(UC, "f", 4000, 4000, "13")
     await conn.execute("UPDATE reports SET created_at = ? WHERE id = ?", (yday, rid_c1))
     rid_c2, c_c2 = await add_report(UC, "f", 4000, 8000, "13")
+    await conn.execute("UPDATE reports SET created_at = ? WHERE id = ?", (today_ts, rid_c2))
     await conn.commit()
     check("вчерашний отчёт 4000 не съел сегодняшний лимит", c_c2 == 4000)
     check("одобрение вчерашнего 4000", await approve_report(rid_c1, 0) == 4000)

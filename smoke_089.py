@@ -24,7 +24,7 @@ async def _yesterday_report(uid, daily, total, status="approved", credited=None)
     """Отчёт «за вчера»: напрямую в БД, часом раньше границы текущих суток.
 
     Граница берётся из report_day_bounds(), а не «сейчас минус сутки»: сутки идут
-    от 05:05 МСК, и в 00:00–05:05 МСК «минус сутки» попал бы внутрь тех же суток.
+    от 10:00 МСК, и в 00:00–10:00 МСК «минус сутки» попал бы внутрь тех же суток.
     """
     from datetime import timedelta, timezone
     from database.db import get_db, report_day_bounds

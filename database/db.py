@@ -3345,7 +3345,7 @@ async def get_wall_archive_posts(archive_id: int, page: int = 0,
 
 
 async def maybe_archive_wall_weekly():
-    """Еженедельная проверка стены (пн 05:05 МСК, вызывается из суточного цикла).
+    """Еженедельная проверка стены (пн 10:00 МСК, вызывается из суточного цикла).
 
     Раз в календарную неделю (ключ в settings, смена недели — триггер): если
     изречений на стене больше одной страницы (WALL_PAGE_SIZE) — собрать всё в
@@ -3406,12 +3406,12 @@ async def wall_author_name(user) -> str:
 
 
 def _report_day(date_expr: str) -> str:
-    """Отчётные сутки по Нордхайму: от выплаты до выплаты (05:05 МСК → 05:05 МСК).
+    """Отчётные сутки по Нордхайму: от выплаты до выплаты (10:00 МСК → 10:00 МСК).
 
-    created_at хранится в UTC. Сутки начинаются в 05:05 МСК, поэтому к времени
-    отчёта прибавляется смещение «+3 часа минус 5 часов 5 минут» = −2:05, и берётся
+    created_at хранится в UTC. Сутки начинаются в 10:00 МСК, поэтому к времени
+    отчёта прибавляется смещение «+3 часа минус 10 часов» = −7:00, и берётся
     дата. Отчёт, сданный в 04:00 МСК, попадает в ПРЕДЫДУЩИЕ сутки (те, что
-    закрылись в 05:05) — он честно заработан ночью.
+    закрылись в 10:00) — он честно заработан ночью.
     """
     from config import REPORT_DAY_START_HOUR, REPORT_DAY_START_MINUTE
     offset_minutes = 3 * 60 - REPORT_DAY_START_HOUR * 60 - REPORT_DAY_START_MINUTE
@@ -3435,7 +3435,7 @@ def report_day_value_of(created_at: str) -> str:
 def today_report_day() -> str:
     """Текущие отчётные сутки 'YYYY-MM-DD' — то же, что SQL _TODAY_MSK, но в Python.
 
-    Нужно для правила «одобрил отчёт за прошлые сутки после 05:05 → плати сразу»:
+    Нужно для правила «одобрил отчёт за прошлые сутки после 10:00 → плати сразу»:
     отчёт из более ранних суток, чем сегодняшние, утренний цикл уже пропустил.
     """
     return report_day_value_of(datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
@@ -3448,8 +3448,8 @@ _TODAY_MSK = _report_day("'now'")
 def report_day_bounds() -> tuple:
     """Границы текущих отчётных суток как datetime в МСК: (начало, конец).
 
-    Начало — ближайший прошедший 05:05 МСК, конец — следующий. Отчёты внутри
-    этого окна оплачиваются вместе в 05:05.
+    Начало — ближайший прошедший 10:00 МСК, конец — следующий. Отчёты внутри
+    этого окна оплачиваются вместе в 10:00.
     """
     from config import REPORT_DAY_START_HOUR, REPORT_DAY_START_MINUTE
     msk = timezone(timedelta(hours=3))
@@ -3462,7 +3462,7 @@ def report_day_bounds() -> tuple:
 
 
 def report_day_label(offset_days: int = 0) -> str:
-    """Заголовок отчётных суток для интерфейса: «28.09 05:05 — 29.09 05:05»."""
+    """Заголовок отчётных суток для интерфейса: «28.09 10:00 — 29.09 10:00»."""
     start, end = report_day_bounds()
     if offset_days:
         start += timedelta(days=offset_days)
@@ -3496,19 +3496,11 @@ def _report_cycle_day_of(created_at: str) -> str:
     """Отчётные сутки ('YYYY-MM-DD') конкретного отчёта по его created_at (UTC).
 
     Нужна, когда отчёт одобряют в следующие сутки: лимит считается по суткам САМОГО
-    отчёта, а не по текущим.
+    отчёта, а не по текущим. Должна совпадать с report_day_value_of: раньше метка
+    UTC трактовалась как МСК, и отчёты, сданные ночью/утром (до границы в МСК),
+    получали НЕВЕРНЫЕ сутки именно там, где лимит решает судьбу выплаты.
     """
-    from config import REPORT_DAY_START_HOUR, REPORT_DAY_START_MINUTE
-    msk = timezone(timedelta(hours=3))
-    try:
-        dt = datetime.strptime(str(created_at)[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=msk)
-    except (ValueError, TypeError):
-        return None
-    start = dt.replace(hour=REPORT_DAY_START_HOUR, minute=REPORT_DAY_START_MINUTE,
-                       second=0, microsecond=0)
-    if dt < start:
-        start -= timedelta(days=1)
-    return start.strftime("%Y-%m-%d")
+    return report_day_value_of(created_at)
 
 
 async def _report_assigned_today(conn, user_id: int, exclude_id: int = None,
@@ -3747,8 +3739,8 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
     но не увеличить её выше заявки.
 
     МОМЕНТ ОПЛАТЫ (v0.18.6, правило владельца): отчёт за сутки, чей «расчётный»
-    05:05 ещё НЕ наступил (отчёт текущих суток), оплачивается раз в сутки в 05:05 МСК
-    функцией payout_reports(). А вот отчёт, одобренный ПОСЛЕ того, как его 05:05 уже
+    10:00 ещё НЕ наступил (отчёт текущих суток), оплачивается раз в сутки в 10:00 МСК
+    функцией payout_reports(). А вот отчёт, одобренный ПОСЛЕ того, как его 10:00 уже
     прошло (это всегда отчёт из прошлых суток: утренний цикл его пропустил), а заняться
     им некому до завтра — платится СРАЗУ при одобрении, чтобы пилот не ждал почти
     сутки уже заработанного. Мгновенная оплата идёт через _apply_report_payout, той же
@@ -3771,8 +3763,8 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
     if troops is not None:
         amount = min(amount, max(0, troops))
 
-    # Правило «одобрил после расчётных 05:05 → плати сразу». Условие: отчёт за
-    # сутки РАНЬШЕ текущих — ровно тогда его 05:05 уже прошло. Одобрение и «захват»
+    # Правило «одобрил после расчётных 10:00 → плати сразу». Условие: отчёт за
+    # сутки РАНЬШЕ текущих — ровно тогда его 10:00 уже прошло. Одобрение и «захват»
     # (paid=1) делаем в ОДНОМ запросе (WHERE status='pending'): суточный цикл видит
     # только approved+paid=0, поэтому гонки «оплатили дважды» быть не может.
     report_day = report_day_value_of(row['created_at'])
@@ -3855,7 +3847,7 @@ async def _apply_report_payout(conn, user_id: int, report_ids: list, troops_tota
 
 
 async def payout_reports() -> list:
-    """Суточное начисление за одобренные отчёты — в 05:05 МСК, в начале новых суток.
+    """Суточное начисление за одобренные отчёты — в 10:00 МСК, в начале новых суток.
 
     Собирает все одобренные, ещё не оплаченные отчёты (paid = 0), одной суммой:
       • войска (users.troops) — это накопленный опыт, по нему звание;

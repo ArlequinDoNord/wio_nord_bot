@@ -77,7 +77,7 @@ async def run():
             print(f"  FAIL: {name}")
 
     async def _yesterday_report(uid, daily, total):
-        """Отчёт «за вчера»: часом раньше границы текущих суток (05:05 МСК)."""
+        """Отчёт «за вчера»: часом раньше границы текущих суток (10:00 МСК)."""
         from datetime import timedelta, timezone
         from database.db import report_day_bounds
         start, _end = report_day_bounds()

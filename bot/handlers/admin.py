@@ -3610,8 +3610,8 @@ async def show_approved_reports(message):
     else:
         text += (
             f"\nПоследние {len(reports)} (из них ещё не оплачено: {unpaid}).\n"
-            f"Отчёты за текущие сутки оплачиваются в 05:05 МСК; отчёт за прошлые "
-            f"сутки, одобренный после его 05:05, — сразу при одобрении.\n\n"
+            f"Отчёты за текущие сутки оплачиваются в 10:00 МСК; отчёт за прошлые "
+            f"сутки, одобренный после его 10:00, — сразу при одобрении.\n\n"
         )
         for r in reports:
             credited = r['credited_troops'] if r['credited_troops'] is not None else r['troops_reported']
@@ -3955,7 +3955,7 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
     amount = await approve_report(report_id, callback.from_user.id)
     await log_action(callback.from_user.id, 'approve_report', report['user_id'], f"report={report_id}")
 
-    # Мгновенная оплата: отчёт был за прошлые сутки, его 05:05 уже прошло → деньги
+    # Мгновенная оплата: отчёт был за прошлые сутки, его 10:00 уже прошло → деньги
     # ушли сразу при одобрении (видно по paid=1 уже после approve_report).
     report_after = await get_report_safe(report_id)
     if amount > 0 and report_after.get('paid'):
@@ -3982,7 +3982,7 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
         await callback.message.answer(
             f"✅ Отчёт #{report_id} принят.\n"
             f"⚔️ К начислению: {amount} войск и столько же опыта "
-            f"(выплата в 05:05 МСК — в начале новых суток)."
+            f"(выплата в 10:00 МСК — в начале новых суток)."
             + ("" if amount > 0 else "\nℹ️ Суточный лимит уже выбран — оплата не начислена.")
         )
     await show_pending_reports(callback.message)

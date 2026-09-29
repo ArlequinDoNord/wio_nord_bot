@@ -1,6 +1,7 @@
-"""Smoke v0.16.1: время суточного цикла 05:05 МСК и приветствие (2 деплоя).
+"""Smoke v0.16.1: время суточного цикла 10:00 МСК и приветствие (2 деплоя).
 
-Проверяем, что выплаты по отчётам идут в 05:05 МСК (ночной фарм попадает в сутки),
+Проверяем, что выплаты по отчётам идут в 10:00 МСК (ночной/утренний фарм попадает
+в прошлые сутки вместе с игровым сбросом очков),
 и что приветствие показывает ровно два блока: текущий деплой и один предыдущий —
 никакой простыни из трёх-четырёх сборок.
 
@@ -29,19 +30,19 @@ def run():
     import config
     from main import PAYOUT_HOUR_MSK, PAYOUT_MINUTE_MSK, MSK, _seconds_until_payout
 
-    # ── 1. Время цикла: 05:05 МСК ──
-    check("цикл назначен на 05:05 МСК",
-          (PAYOUT_HOUR_MSK, PAYOUT_MINUTE_MSK) == (5, 5))
+    # ── 1. Время цикла: 10:00 МСК ──
+    check("цикл назначен на 10:00 МСК",
+          (PAYOUT_HOUR_MSK, PAYOUT_MINUTE_MSK) == (10, 0))
 
     now = datetime.now(MSK)
-    target = now.replace(hour=5, minute=5, second=10, microsecond=0)
+    target = now.replace(hour=10, minute=0, second=10, microsecond=0)
     if target <= now:
         target += timedelta(days=1)
-    check("до 05:05 МСК считается верно",
+    check("до 10:00 МСК считается верно",
           abs(_seconds_until_payout() - (target - now).total_seconds()) < 2)
     check("ожидание в пределах суток", 0 < _seconds_until_payout() <= 24 * 3600)
     check("следующий запуск не в прошлом",
-          datetime.fromtimestamp(datetime.now().timestamp() + _seconds_until_payout(), MSK).hour == 5)
+          datetime.fromtimestamp(datetime.now().timestamp() + _seconds_until_payout(), MSK).hour == 10)
 
     # ── 2. Заметки о деплоях: ровно две, короткие ──
     check("VERSION_NOTES заполнены", bool(config.VERSION_NOTES.strip()))
