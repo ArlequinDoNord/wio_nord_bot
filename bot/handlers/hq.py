@@ -12,6 +12,8 @@ from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
+import re
+
 from database.db import (
     get_wing_members, get_all_users, get_user, set_wing,
     get_wing_commander, get_wing_commanders, get_wing_commander_by_user,
@@ -21,6 +23,7 @@ from database.db import (
     get_unassigned_pilots, get_wing_member_rows, count_wing_members,
     wing_members_report_farms, report_day_label,
     citizen_user_ids,
+    create_wing, update_wing, delete_wing, get_wing_rows, get_wing_row,
 )
 from utils.permissions import has_permission, log_action
 from utils.wings import WINGS, WINGS_SHORT, wing_display
@@ -35,9 +38,25 @@ class HqOrder(StatesGroup):
     target = State()
 
 
+class HqWingCreate(StatesGroup):
+    """Создание нового формирования ВВС (число → буквы → название → позывной → эмодзи)."""
+    num = State()
+    abbr = State()
+    name = State()
+    callsign = State()
+    emoji = State()
+
+
+class HqWingEdit(StatesGroup):
+    """Редактирование формирования: поле (name/callsign/emoji), затем значение."""
+    field = State()
+    value = State()
+
+
 def hq_menu_markup(roster_ok: bool = False, can_order: bool = True,
                    commander_ok: bool = False, wing_manage_ok: bool = False,
-                   wing: str = None, wing_farm_ok: bool = False):
+                   wing: str = None, wing_farm_ok: bool = False,
+                   wing_mgmt_ok: bool = False):
     rows = []
     if can_order:
         rows.append([InlineKeyboardButton(text="📢 Отправить приказ", callback_data="hq:send")])
@@ -55,6 +74,8 @@ def hq_menu_markup(roster_ok: bool = False, can_order: bool = True,
                                           callback_data=f"hq:wingdep:{wing}")])
     if roster_ok:
         rows.append([InlineKeyboardButton(text="🪽 Состав ВВС", callback_data="hq:wing")])
+    if wing_mgmt_ok:
+        rows.append([InlineKeyboardButton(text="🛠 Формирования ВВС", callback_data="hq:wings")])
     rows.append([InlineKeyboardButton(text="🏠 В меню города", callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -88,7 +109,8 @@ async def hq_menu_show(msg, user_id: int):
         "Здесь отдаются приказы авиакрыльям и комплектуется состав.",
         reply_markup=hq_menu_markup(roster_ok=roster_ok, can_order=can_order,
                                     commander_ok=can_cmd, wing_manage_ok=wing_manage_ok,
-                                    wing=commander_wing, wing_farm_ok=wing_farm_ok)
+                                    wing=commander_wing, wing_farm_ok=wing_farm_ok,
+                                    wing_mgmt_ok=roster_ok)
     )
     return True
 
@@ -187,7 +209,8 @@ async def hq_wing_cb(callback: CallbackQuery):
         await callback.message.answer("❌ Нет доступа к составу ВВС.")
         return
     users = await get_all_users(citizens_only=True)
-    grouped = {"1": 0, "2": 0, "3": 0, "": 0}
+    grouped = {key: 0 for key in WINGS}
+    grouped[""] = 0
     for u in users:
         wing = u['wing'] if 'wing' in u.keys() and u['wing'] else ""
         grouped[wing] = grouped.get(wing, 0) + 1
@@ -198,7 +221,7 @@ async def hq_wing_cb(callback: CallbackQuery):
         lines.append(f"{label}: {grouped.get(key, 0)}")
     lines.append(f"Без крыла: {grouped.get('', 0)}")
     lines.append(f"\nВсего пилотов: {len(users)}\n")
-    lines.append("🛡 Командиры крыльев:")
+    lines.append("🛡 Командиры формирований:")
     for key, label in WINGS.items():
         uid = commanders.get(key)
         if uid:
@@ -220,7 +243,8 @@ async def hq_wing_cb(callback: CallbackQuery):
         "\n".join(lines),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Выбрать пилота", callback_data="hq:roster:0")],
-            [InlineKeyboardButton(text="🛡 Командиры крыльев", callback_data="hq:wingcmd")],
+            [InlineKeyboardButton(text="🛡 Командиры формирований", callback_data="hq:wingcmd")],
+            [InlineKeyboardButton(text="🛠 Формирования ВВС", callback_data="hq:wings")],
             [InlineKeyboardButton(text="🔙 Назад в штаб", callback_data="hq:menu")],
         ])
     )
@@ -409,7 +433,7 @@ async def hq_wingcmd_cb(callback: CallbackQuery):
         return
     commanders = await get_wing_commanders()
     deputies = await get_wing_deputies()
-    lines = ["🛡 КОМАНДИРЫ И ЗАМЕСТИТЕЛИ КРЫЛЬЕВ\n"]
+    lines = ["🛡 КОМАНДИРЫ И ЗАМЕСТИТЕЛИ ФОРМИРОВАНИЙ\n"]
     rows = []
     for key in WINGS:
         uid = commanders.get(key)
@@ -837,4 +861,228 @@ async def hq_wing_deputy_cb(callback: CallbackQuery):
         f"Заместитель: {dep_name}\n"
         f"Пилотов в крыле: {await count_wing_members(wing)}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+# ----- Формирования ВВС: редактор (штаб, can_manage_wing) -----
+# Новое формирование по ТЗ: всегда ЧИСЛО + ДВЕ ЗАГЛАВНЫЕ буквы — сокращение
+# полного названия + позывной (например «5 ИШ «Шторм»). Командир/заместитель
+# в списках штаба появляются автоматически (экраны итерируют WINGS).
+
+
+def _wing_markup_row(row: dict) -> str:
+    """Метка формирования из строки wings для списка редактора."""
+    short = f"{row['emoji'] or ''} {row['num']} {row['abbr']}".strip()
+    call = row['callsign'] or row['name'] or ""
+    return f"{short} «{call}»" if call else short
+
+
+@router.callback_query(F.data == "hq:wings")
+async def hq_wings_list_cb(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_wing"):
+        await callback.message.answer("❌ Нет доступа к составу ВВС.")
+        return
+    rows_db = await get_wing_rows()
+    lines = ["🛠 ФОРМИРОВАНИЯ ВВС\n"]
+    if not rows_db:
+        lines.append("Формирований пока нет.")
+    rows = []
+    for row in rows_db:
+        members = await get_wing_members(row['key'])
+        n = len(members)
+        noun = "пилот" if n == 1 else ("пилота" if 2 <= n <= 4 else "пилотов")
+        lines.append(f"{_wing_markup_row(row)} — {n} {noun}.")
+        rows.append([
+            InlineKeyboardButton(text=f"✏️ {row['num']} {row['abbr']}",
+                                 callback_data=f"hq:wingedit:{row['key']}"),
+            InlineKeyboardButton(text=f"🗑 {row['num']} {row['abbr']}",
+                                 callback_data=f"hq:wingdel:{row['key']}"),
+        ])
+    rows.append([InlineKeyboardButton(text="➕ Новое формирование", callback_data="hq:wingadd")])
+    rows.append([InlineKeyboardButton(text="🔙 В состав ВВС", callback_data="hq:wing")])
+    await callback.message.answer(
+        "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+@router.callback_query(F.data == "hq:wingadd")
+async def hq_wing_add_start(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_wing"):
+        return
+    await state.clear()
+    await state.set_state(HqWingCreate.num)
+    await callback.message.answer(
+        "➕ Новое формирование, шаг 1/5\n\n"
+        "Введи ЧИСЛО формирования (например 5):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(HqWingCreate.num)
+async def hq_wing_add_num(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_wing"):
+        await state.clear()
+        return
+    num = message.text.strip()
+    if not re.fullmatch(r"\d{1,3}", num):
+        await message.answer("❌ Это номер формирования: только цифры (до 3), например 5. Попробуй ещё раз:")
+        return
+    await state.update_data(num=str(int(num)))
+    await state.set_state(HqWingCreate.abbr)
+    await message.answer(
+        f"📝 Шаг 2/5: число {int(num)}\n\n"
+        "Введи ДВЕ ЗАГЛАВНЫЕ буквы — сокращение полного названия "
+        "(например ИШ для «Истребители Шторма»):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(HqWingCreate.abbr)
+async def hq_wing_add_abbr(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_wing"):
+        await state.clear()
+        return
+    abbr = message.text.strip().upper()
+    if not re.fullmatch(r"[А-ЯЁ]{2}", abbr):
+        await message.answer("❌ Именно ДВЕ ЗАГЛАВНЫЕ буквы (например АК, ИШ). Попробуй ещё раз:")
+        return
+    await state.update_data(abbr=abbr)
+    await state.set_state(HqWingCreate.name)
+    await message.answer(
+        f"📝 Шаг 3/5: {abbr}\n\nПолное название формирования (например «Истребители Шторма»):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(HqWingCreate.name)
+async def hq_wing_add_name(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_wing"):
+        await state.clear()
+        return
+    name = message.text.strip()
+    if not name:
+        await message.answer("❌ Название не может быть пустым. Введи ещё раз:")
+        return
+    await state.update_data(name=name)
+    await state.set_state(HqWingCreate.callsign)
+    await message.answer(
+        f"📝 Шаг 4/5: «{name}»\n\nПозывной формирования (например «Шторм»; «-» — без позывного):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(HqWingCreate.callsign)
+async def hq_wing_add_callsign(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_wing"):
+        await state.clear()
+        return
+    callsign = message.text.strip()
+    if callsign in ("-", "—"):
+        callsign = ""
+    await state.update_data(callsign=callsign)
+    await state.set_state(HqWingCreate.emoji)
+    await message.answer(
+        "📝 Шаг 5/5: позывной готов.\n\nЭмодзи формирования (например 🦅; «-» — без эмодзи):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(HqWingCreate.emoji)
+async def hq_wing_add_emoji(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_wing"):
+        await state.clear()
+        return
+    emoji = message.text.strip()
+    if emoji in ("-", "—"):
+        emoji = ""
+    data = await state.get_data()
+    ok, text = await create_wing(
+        data.get('num'), data.get('abbr'), data.get('name'),
+        data.get('callsign'), emoji)
+    await state.clear()
+    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Ещё одно", callback_data="hq:wingadd")],
+        [InlineKeyboardButton(text="🛠 Формирования ВВС", callback_data="hq:wings")],
+    ]))
+
+
+@router.callback_query(F.data.startswith("hq:wingedit:"))
+async def hq_wing_edit_cb(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_wing"):
+        return
+    target = callback.data.split(":", 2)[2]
+    if target not in ("name", "callsign", "emoji"):
+        row = await get_wing_row(target)
+        if not row:
+            await callback.message.answer("❌ Формирование не найдено.")
+            return
+        await state.clear()
+        await state.update_data(edit_key=target)
+        await callback.message.answer(
+            f"✏️ {_wing_markup_row(row)}\n\nЧто изменить?",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📛 Название", callback_data="hq:wingedit:name")],
+                [InlineKeyboardButton(text="📢 Позывной", callback_data="hq:wingedit:callsign")],
+                [InlineKeyboardButton(text="🙂 Эмодзи", callback_data="hq:wingedit:emoji")],
+                [InlineKeyboardButton(text="🔙 Формирования ВВС", callback_data="hq:wings")],
+            ])
+        )
+        return
+    data = await state.get_data()
+    if not data.get('edit_key'):
+        await callback.message.answer("❌ Сначала выбери формирование из списка.")
+        return
+    await state.update_data(edit_field=target)
+    await state.set_state(HqWingEdit.value)
+    prompts = {
+        "name": "📛 Новое полное название формирования:",
+        "callsign": "📢 Новый позывной (или «-» чтобы убрать):",
+        "emoji": "🙂 Новый эмодзи (или «-» чтобы убрать):",
+    }
+    await callback.message.answer(prompts[target], reply_markup=cancel_keyboard())
+
+
+@router.message(HqWingEdit.value)
+async def hq_wing_edit_value(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_wing"):
+        await state.clear()
+        return
+    data = await state.get_data()
+    key = data.get('edit_key')
+    field = data.get('edit_field')
+    if not key or field not in ("name", "callsign", "emoji"):
+        await state.clear()
+        return
+    val = message.text.strip()
+    if field == "name" and not val:
+        await message.answer("❌ Название не может быть пустым. Введи ещё раз:")
+        return
+    if val in ("-", "—"):
+        val = ""
+    await update_wing(key, **{field: val})
+    await state.clear()
+    await message.answer(
+        "✅ Формирование обновлено.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🛠 Формирования ВВС", callback_data="hq:wings")],
+        ])
+    )
+
+
+@router.callback_query(F.data.startswith("hq:wingdel:"))
+async def hq_wing_delete_cb(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_wing"):
+        return
+    key = callback.data.split(":", 2)[2]
+    ok, text = await delete_wing(key)
+    await callback.message.answer(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🛠 Формирования ВВС", callback_data="hq:wings")],
+        ])
     )

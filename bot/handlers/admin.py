@@ -3056,7 +3056,8 @@ async def _award_ask_bonus(message, state, idx: int):
             "name": data["name"], "description": data.get("desc"), "emoji": data["emoji"],
             "id": 0, "image": None,
             **{"bonus_attack": 0, "bonus_defense": 0, "bonus_dodge": 0, "bonus_fishing": 0,
-               "bonus_hp": 0, "bonus_shop_discount": 0, "bonus_report_tax": 0},
+               "bonus_hp": 0, "bonus_shop_discount": 0, "bonus_report_tax": 0,
+               "reward_nm": 0, "monthly_nm": 0},
             **data.get("bonuses", {}),
         }
         from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -3204,6 +3205,8 @@ AWARD_EDIT_FIELDS = {
     "bonus_hp": "❤️ HP сверх 100",
     "bonus_shop_discount": "💰 Скидка в магазине, %",
     "bonus_report_tax": "🧾 Снижение налога с отчёта, п.п.",
+    "reward_nm": "🎁 Разовая премия, НМ (из казны)",
+    "monthly_nm": "📅 Ежемесячная премия, НМ (из казны)",
 }
 
 AWARD_EDIT_PROMPTS = {
@@ -3222,6 +3225,14 @@ AWARD_EDIT_PROMPTS = {
         "Введи снижение налога с отчёта в процентных пунктах (целое число, 0 — без снижения).\n"
         "Например, при общей ставке 15% и снижении 5 будет 10%.\n"
         f"Ниже {AWARD_MIN_REPORT_TAX}% не опускается даже с несколькими наградами:"),
+    "reward_nm": (
+        "💵 Введи РАЗОВУЮ премию за награду в НМ (целое число, 0 — без премии).\n"
+        "Выплачивается при выдаче награды и только ИЗ КАЗНЫ — если казны нет, "
+        "сумма встанет в зарплатный долг игрока:"),
+    "monthly_nm": (
+        "📅 Введи ЕЖЕМЕСЯЧНУЮ премию в НМ (целое число, 0 — без премии).\n"
+        "Выплачивается 1-го числа каждому владельцу награды, только из казны "
+        "(нехватка — в долг):"),
 }
 
 
@@ -3244,6 +3255,10 @@ def _award_bonus_summary(award) -> str:
     tax = award['bonus_report_tax'] or 0
     if tax:
         parts.append(f"🧾налог −{tax} п.п.")
+    if award.get('reward_nm') or 0:
+        parts.append(f"💵+{award['reward_nm']} НМ")
+    if award.get('monthly_nm') or 0:
+        parts.append(f"📅+{award['monthly_nm']} НМ/мес из казны")
     return ", ".join(parts) if parts else "без бонусов"
 
 
@@ -3255,6 +3270,8 @@ AWARD_CREATE_BONUS_STEPS = [
     ("bonus_hp", "❤️ Бонус HP (сверх 100)"),
     ("bonus_shop_discount", "💰 Скидка в магазине, % (потолок 40% с учётом всех наград)"),
     ("bonus_report_tax", "🧾 Снижение налога с отчёта, п.п. (например −5 → 10% при ставке 15%)"),
+    ("reward_nm", "💵 Разовая премия, НМ (выплачивается из казны при выдаче)"),
+    ("monthly_nm", "📅 Ежемесячная премия, НМ (выплачивается из казны 1-го числа)"),
 ]
 
 
@@ -3262,13 +3279,16 @@ def _award_summary_lines(award) -> list:
     """Бонусные строки для карточки: совпадают с полями редактирования."""
     return [
         "Бонусы (в %):",
-        f"⚔️ Атака: {award['bonus_attack'] or 0}",
-        f"🛡️ Защита: {award['bonus_defense'] or 0}",
-        f"💨 Уклонение: {award['bonus_dodge'] or 0}",
-        f"🎣 Рыбалка: {award['bonus_fishing'] or 0}",
-        f"❤️ HP: {award['bonus_hp'] or 0}",
-        f"💰 Скидка в магазине: {award['bonus_shop_discount'] or 0}%",
-        f"🧾 Снижение налога с отчёта: −{award['bonus_report_tax'] or 0} п.п.",
+        f"⚔️ Атака: {award.get('bonus_attack') or 0}",
+        f"🛡️ Защита: {award.get('bonus_defense') or 0}",
+        f"💨 Уклонение: {award.get('bonus_dodge') or 0}",
+        f"🎣 Рыбалка: {award.get('bonus_fishing') or 0}",
+        f"❤️ HP: {award.get('bonus_hp') or 0}",
+        f"💰 Скидка в магазине: {award.get('bonus_shop_discount') or 0}%",
+        f"🧾 Снижение налога с отчёта: −{award.get('bonus_report_tax') or 0} п.п.",
+        "Деньги (из казны):",
+        f"💵 Разовая премия: {award.get('reward_nm') or 0} НМ",
+        f"📅 Ежемесячная премия: {award.get('monthly_nm') or 0} НМ",
     ]
 
 
@@ -3418,7 +3438,10 @@ async def award_edit_value(message: Message, state: FSMContext):
             except ValueError:
                 await message.answer("❌ Введи целое число (например 5) или «-» для нуля:")
                 return
-            value = max(-100, min(1000, parsed))
+            if field in ("reward_nm", "monthly_nm"):
+                value = max(0, min(1000000, parsed))
+            else:
+                value = max(-100, min(1000, parsed))
     await update_award(award_id, **{field: value})
     await log_action(message.from_user.id, 'edit_award', None,
                      f"award_id={award_id} field={field} value={value}")

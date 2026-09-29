@@ -15,6 +15,7 @@ from database.db import (
     init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon,
     ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, ensure_life_items, ensure_recipes,
     ensure_dungeon_reservoir_items, ensure_market_license_item, pay_salaries, payout_reports,
+    pay_award_monthly,
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award,
     ensure_tourist_booklet,
     ensure_water_fish, migrate_legacy_junk,
@@ -198,6 +199,18 @@ async def scheduled_jobs(bot: Bot):
                 )
         except Exception as e:
             logger.error(f"Ошибка выплаты зарплат: {e}", exc_info=True)
+        try:
+            # v0.18.13: ежемесячные наградные (например, оклад ветерана) — 1-го числа,
+            # деньги всегда из казны. Нехватка казны уходит в зарплатный долг.
+            if datetime.now(MSK).day == 1:
+                monthly = await pay_award_monthly()
+                if monthly['paid'] or monthly['debt']:
+                    logger.info(
+                        f"Ежемесячные наградные: выплачено {len(monthly['paid'])}, "
+                        f"в долг {len(monthly['debt'])}"
+                    )
+        except Exception as e:
+            logger.error(f"Ошибка ежемесячных наградных: {e}", exc_info=True)
         try:
             payouts = await payout_reports()
             if payouts:

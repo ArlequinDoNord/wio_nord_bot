@@ -7,7 +7,7 @@
 """
 from aiogram import Router, F
 from aiogram.filters import Command
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
@@ -208,7 +208,13 @@ async def wall_write_text(message: Message, state: FSMContext):
     if cost > 0:
         parts.append(f"Списано {cost} {plural_nordmark(cost)}.")
     parts.append("Свежие записи — в городе: «🧱 Стена изречений».")
-    await message.answer("\n".join(parts))
+    await message.answer(
+        "\n".join(parts),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✍️ Опубликовать ещё одно", callback_data="wall:write")],
+            [InlineKeyboardButton(text="🏙 В город", callback_data="city:menu")],
+        ])
+    )
     await log_activity(message.from_user.id, "wall_post", text[:60])
 
 

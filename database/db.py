@@ -169,6 +169,14 @@ async def init_db():
 
         INSERT OR IGNORE INTO treasury (id, balance) VALUES (1, 0);
 
+        CREATE TABLE IF NOT EXISTS award_monthly_paid (
+            user_id INTEGER NOT NULL,
+            award_id INTEGER NOT NULL,
+            month TEXT NOT NULL,
+            paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, award_id, month)
+        );
+
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL DEFAULT ''
@@ -402,6 +410,25 @@ async def init_db():
         user_id INTEGER NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+        -- v0.18.13: формирования ВВС в БД (редактор в штабе). Ключ пилота в users.wing
+        -- ссылается сюда (legacy '1'..'4'; новые — 'N АБ', где АБ — две заглавные буквы).
+        -- Номер и аббревиатура хранятся отдельно, чтобы метка всегда была «число + 2 буквы».
+        CREATE TABLE IF NOT EXISTS wings (
+            key TEXT PRIMARY KEY,
+            num TEXT NOT NULL DEFAULT '',
+            abbr TEXT NOT NULL DEFAULT '',
+            name TEXT NOT NULL DEFAULT '',
+            callsign TEXT NOT NULL DEFAULT '',
+            emoji TEXT NOT NULL DEFAULT '',
+            sort_order INTEGER DEFAULT 0
+        );
+
+        INSERT OR IGNORE INTO wings (key, num, abbr, name, callsign, emoji, sort_order) VALUES
+            ('1', '1', 'АК', 'Авиакрыло', 'Небесные Волки', '🐺', 1),
+            ('2', '2', 'АК', 'Авиакрыло', 'Полярные Совы', '🦉', 2),
+            ('3', '3', 'АК', 'Авиакрыло', 'Тени Нордхама', '🌑', 3),
+            ('4', '4', 'СО', 'Спец отряд', 'Буран', '❄️', 4);
 
     CREATE TABLE IF NOT EXISTS admin_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -886,6 +913,18 @@ async def init_db():
     # снижение налога с отчёта (в процентных пунктах от ставки).
     await _ensure_column(conn, "awards", "bonus_shop_discount", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "awards", "bonus_report_tax", "INTEGER DEFAULT 0")
+    # v0.18.13: денежные премии наград — разовая (при выдаче) и ежемесячная,
+    # выплачиваются ТОЛЬКО из казны (treasury), никогда не создаются из воздуха.
+    await _ensure_column(conn, "awards", "reward_nm", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "awards", "monthly_nm", "INTEGER DEFAULT 0")
+    # Формирования ВВС (редактор в штабе): поля добавляются на случай старой
+    # схемы без них.
+    await _ensure_column(conn, "wings", "num", "TEXT DEFAULT ''")
+    await _ensure_column(conn, "wings", "abbr", "TEXT DEFAULT ''")
+    await _ensure_column(conn, "wings", "name", "TEXT DEFAULT ''")
+    await _ensure_column(conn, "wings", "callsign", "TEXT DEFAULT ''")
+    await _ensure_column(conn, "wings", "emoji", "TEXT DEFAULT ''")
+    await _ensure_column(conn, "wings", "sort_order", "INTEGER DEFAULT 0")
     # Счётчик водорослей (для «несварения»: >6 в сутки → запрет расходников на 24 ч)
     await _ensure_column(conn, "users", "seaweed_used_today", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "seaweed_used_day", "TEXT DEFAULT NULL")
@@ -1035,6 +1074,10 @@ async def init_db():
     await seed_locations(conn)
     # Снятые с игры предметы (T-Меч, T-Броня, учебные машины) — полное удаление.
     await purge_retired_items()
+    # v0.18.13: казна платит награды → исторические выплаты значков списываем
+    # с казны задним числом; формирования ВВС читаем в кэш штаба/профиля.
+    await load_wings_cache()
+    await _balance_legacy_booklet_payouts()
 
 
 async def seed_locations(conn):
@@ -2344,6 +2387,35 @@ async def get_treasury_stats() -> dict:
     }
 
 
+async def _balance_legacy_booklet_payouts():
+    """Один раз списывает с казны старые выплаты значков «Опытный турист».
+
+    До v0.18.13 премия буклета (20 НМ) начислялась игроку «из воздуха» — казна
+    не участвовала. Теперь все премии наград платятся из казны, поэтому
+    исторические выплаты вписываем в бюджет задним числом: помечаем те
+    транзакции исходящими из казны (from_user = TREASURY_ID) — они сразу
+    появятся в статистике казны, а баланс уменьшаем на сумму этих выплат
+    (не в минус). Идемпотентно: после первого прогона транзакции помечены.
+    """
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT COALESCE(SUM(amount), 0) AS total FROM transactions "
+        "WHERE tx_type = 'booklet' AND from_user IS NULL AND to_user != 0 AND amount > 0")
+    total = (await cur.fetchone())['total'] or 0
+    if total <= 0:
+        return
+    await conn.execute(
+        "UPDATE transactions SET from_user = ? "
+        "WHERE tx_type = 'booklet' AND from_user IS NULL AND to_user != 0 AND amount > 0",
+        (TREASURY_ID,))
+    balance = await get_treasury_balance()
+    if balance > 0:
+        await conn.execute(
+            "UPDATE treasury SET balance = MAX(0, balance - ?) WHERE id = 1",
+            (total,))
+    await conn.commit()
+
+
 # ============ ЗАРПЛАТЫ ============
 
 async def get_salaried_users():
@@ -2397,9 +2469,12 @@ async def get_salaries_due() -> list:
     """
     conn = await get_db()
     # date('now','weekday 0','-6 days') — понедельник текущей календарной недели (UTC)
+    # В список попадают и те, у кого назначенной зарплаты нет, но есть долг казны
+    # (salary_debt от неоплаченных наградных премий): он погашается тем же циклом.
     cursor = await conn.execute(
         "SELECT user_id, username, first_name, salary, salary_debt FROM users "
-        "WHERE salary IS NOT NULL AND salary > 0 "
+        "WHERE (salary IS NOT NULL AND salary > 0 "
+        "      OR salary_debt IS NOT NULL AND salary_debt > 0) "
         "AND strftime('%w', 'now') = '0' "
         "AND (last_salary_date IS NULL OR "
         "     date(last_salary_date) < date('now', 'weekday 0', '-6 days'))"
@@ -4489,7 +4564,8 @@ async def create_award(name: str, description: str = None, emoji: str = "🏅",
     """Создать награду. Бонусы — kwargs: bonus_attack/defense/dodge/fishing/hp,
     bonus_shop_discount (%, скидка в магазине), bonus_report_tax (п.п. налога)."""
     allowed = {"bonus_attack", "bonus_defense", "bonus_dodge", "bonus_fishing",
-               "bonus_hp", "bonus_shop_discount", "bonus_report_tax"}
+               "bonus_hp", "bonus_shop_discount", "bonus_report_tax",
+               "reward_nm", "monthly_nm"}
     clean = {k: max(0, int(v or 0)) for k, v in bonuses.items() if k in allowed}
     cols = ["name", "description", "emoji", "created_by"] + list(clean)
     conn = await get_db()
@@ -4528,7 +4604,8 @@ async def update_award(award_id: int, **fields) -> bool:
     """Обновление награды: описание, картинка, процентные бонусы. None = очистить."""
     allowed = {"description", "image", "bonus_attack", "bonus_defense",
                "bonus_dodge", "bonus_fishing", "bonus_hp",
-               "bonus_shop_discount", "bonus_report_tax"}
+               "bonus_shop_discount", "bonus_report_tax",
+               "reward_nm", "monthly_nm"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return False
@@ -4615,6 +4692,119 @@ async def set_wing(user_id: int, wing: str = None):
     await conn.execute("UPDATE users SET wing = ? WHERE user_id = ?",
                        (wing if wing else None, user_id))
     await conn.commit()
+
+
+# ============ ФОРМИРОВАНИЯ ВВС (редактор в штабе) ============
+
+async def load_wings_cache():
+    """Перечитать формирования из БД в кэш utils.wings (метки штаба/профиля).
+
+    Айос.также при старте (после init_db) и после каждого изменения.
+    """
+    from utils.wings import set_wings
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT key, num, abbr, name, callsign, emoji, sort_order "
+        "FROM wings ORDER BY sort_order, key")
+    set_wings(await cursor.fetchall())
+
+
+async def get_wing_rows() -> list:
+    """Все формирования (ключ + поля) в порядке сортировки."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT key, num, abbr, name, callsign, emoji, sort_order "
+        "FROM wings ORDER BY sort_order, key")
+    return await cursor.fetchall()
+
+
+async def get_wing_row(key: str):
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT key, num, abbr, name, callsign, emoji, sort_order "
+        "FROM wings WHERE key = ?", (key,))
+    return await cursor.fetchone()
+
+
+async def create_wing(num: str, abbr: str, name: str, callsign: str,
+                      emoji: str, sort_order: int = None) -> tuple:
+    """Создать новое формирование ВВС из штаба.
+
+    Формат нового формирования по ТЗ: сначала ЧИСЛО, потом две ЗАГЛАВНЫЕ
+    буквы — сокращение от полного названия (например «5 ИШ» → «Истребители
+    Шторма»), затем позывной. Возвращает (ok, текст).
+    """
+    num = str(num or "").strip()
+    abbr = str(abbr or "").strip().upper()
+    name = str(name or "").strip()
+    callsign = str(callsign or "").strip()
+    emoji = str(emoji or "").strip()
+    import re
+    if not re.fullmatch(r"\d{1,3}", num):
+        return False, "❌ Число формирования — это номер (например 5), а не текст."
+    if not re.fullmatch(r"[А-ЯЁ]{2}", abbr):
+        return False, ("❌ Аббревиатура — ровно ДВЕ ЗАГЛАВНЫЕ буквы, сокращение "
+                       "полного названия (например ИШ → «Истребители Шторма»).")
+    if not name:
+        return False, "❌ Полное название формирования не может быть пустым."
+    key = f"{int(num)} {abbr}"
+    conn = await get_db()
+    try:
+        await conn.execute(
+            "INSERT INTO wings (key, num, abbr, name, callsign, emoji, sort_order) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (key, str(int(num)), abbr, name, callsign, emoji, sort_order or 999))
+        await conn.commit()
+    except Exception:
+        return False, "❌ Такое формирование уже есть (тот же номер и аббревиатура)."
+    await load_wings_cache()
+    return True, f"✅ Создано формирование: {emoji or ''} {key} «{callsign or name}»".strip()
+
+
+async def update_wing(key: str, name: str = None, callsign: str = None,
+                      emoji: str = None) -> bool:
+    """Переименовать формирование / сменить позывной / эмодзи (но не номер и аббревиатуру)."""
+    conn = await get_db()
+    sets, params = [], []
+    if name is not None:
+        sets.append("name = ?")
+        params.append(str(name or "").strip())
+    if callsign is not None:
+        sets.append("callsign = ?")
+        params.append(str(callsign or "").strip())
+    if emoji is not None:
+        sets.append("emoji = ?")
+        params.append(str(emoji or "").strip())
+    if not sets:
+        return False
+    params.append(key)
+    await conn.execute(f"UPDATE wings SET {', '.join(sets)} WHERE key = ?", params)
+    await conn.commit()
+    await load_wings_cache()
+    return True
+
+
+async def delete_wing(key: str) -> tuple:
+    """Удалить формирование. Занятое (состав/командир/заместитель) — нельзя."""
+    conn = await get_db()
+    members = await get_wing_members(key)
+    if members:
+        return False, "❌ В формировании есть пилоты — сначала переведи их."
+    cmd = await (await conn.execute(
+        "SELECT user_id FROM wing_commanders WHERE wing = ?", (key,))).fetchone()
+    if cmd:
+        return False, "❌ Сначала сними командира формирования."
+    dep = await (await conn.execute(
+        "SELECT user_id FROM wing_deputies WHERE wing = ?", (key,))).fetchone()
+    if dep:
+        return False, "❌ Сначала сними заместителя формирования."
+    row = await get_wing_row(key)
+    if not row:
+        return False, "❌ Формирование не найдено."
+    await conn.execute("DELETE FROM wings WHERE key = ?", (key,))
+    await conn.commit()
+    await load_wings_cache()
+    return True, f"✅ Формирование «{row['num']} {row['abbr']}» удалено."
 
 
 async def get_wing_members(wing: str = None) -> list:
@@ -4871,6 +5061,49 @@ async def remove_user_role(user_id: int, role: str):
     await conn.commit()
 
 
+async def _award_cash_payout(user_id: int, award: dict, amount: int) -> None:
+    """Выплата денежной премии награды ИЗ КАЗНЫ.
+
+    Не создаёт НМ из воздуха: казна списывается, игрок получает на счёт, в бан
+    пишется транзакция. Если казны не хватает — платим чем есть, остаток копится
+    в salary_debt (казна остаётся должна игроку) и будет отдан тем же циклом,
+    что и зарплаты (см. pay_salaries / get_salaries_due).
+    """
+    amount = int(amount or 0)
+    if amount <= 0:
+        return
+    name = award['name'] if award and award.get('name') else 'награда'
+    conn = await get_db()
+    balance = await get_treasury_balance()
+    if balance >= amount:
+        paid = amount
+        await conn.execute("UPDATE treasury SET balance = balance - ? WHERE id = 1", (paid,))
+        await conn.execute(
+            "UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?", (paid, user_id))
+        await conn.execute(
+            "INSERT INTO transactions (from_user, to_user, amount, tx_type, description) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (TREASURY_ID, user_id, paid, "award",
+             f"Награда «{name}»: {paid} НМ из казны")
+        )
+        await conn.commit()
+    elif balance > 0:
+        paid = balance
+        await conn.execute("UPDATE treasury SET balance = 0 WHERE id = 1")
+        await conn.execute(
+            "UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?", (paid, user_id))
+        await conn.execute(
+            "INSERT INTO transactions (from_user, to_user, amount, tx_type, description) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (TREASURY_ID, user_id, paid, "award",
+             f"Награда «{name}»: {paid} НМ из казны (частично)")
+        )
+        await conn.commit()
+        await add_salary_debt(user_id, amount - paid)
+    else:
+        await add_salary_debt(user_id, amount)
+
+
 async def grant_award(user_id: int, award_id: int, granted_by: int = None,
                       comment: str = None):
     """Выдать награду. Возвращает (ok, текст).
@@ -4878,6 +5111,9 @@ async def grant_award(user_id: int, award_id: int, granted_by: int = None,
     ВАЖНО: это единственная точка выдачи наград, но оповещение в общий чат здесь
     НЕ отправляется (нет доступа к боту) — после успешной выдачи вызывающий обязан
     вызвать utils.notify.notify_award(bot, user, "эмодзи Название", user_id).
+
+    Денежная премия награды (awards.reward_nm) выплачивается из казны отдельным
+    шагом — деньги на счёт игрока НЕ создаются из ничего.
     """
     conn = await get_db()
     try:
@@ -4886,12 +5122,18 @@ async def grant_award(user_id: int, award_id: int, granted_by: int = None,
             (user_id, award_id, granted_by, comment)
         )
         await conn.commit()
-        return True, "Награда выдана"
     except Exception as e:
         error = str(e).lower()
         if "foreign key" in error:
             return False, "Игрок не найден — регистрация нужна через /start"
         return False, "Не удалось выдать награду"
+
+    award = await (await conn.execute(
+        "SELECT id, name, reward_nm FROM awards WHERE id = ?", (award_id,))).fetchone()
+    if award and (award['reward_nm'] or 0) > 0:
+        await _award_cash_payout(user_id, award, award['reward_nm'])
+        return True, f"Награда выдана (+{award['reward_nm']} НМ из казны)"
+    return True, "Награда выдана"
 
 
 async def revoke_award(user_award_id: int):
@@ -4907,7 +5149,8 @@ async def get_user_awards(user_id: int):
         SELECT ua.id as grant_id, ua.comment, ua.created_at AS granted_at,
                a.id AS award_id, a.name, a.description, a.emoji, a.image,
                a.bonus_attack, a.bonus_defense, a.bonus_dodge, a.bonus_fishing,
-               a.bonus_hp, a.bonus_shop_discount, a.bonus_report_tax
+               a.bonus_hp, a.bonus_shop_discount, a.bonus_report_tax,
+               a.reward_nm, a.monthly_nm
         FROM user_awards ua
         JOIN awards a ON ua.award_id = a.id
         WHERE ua.user_id = ?
@@ -4927,6 +5170,52 @@ async def get_award_recipients(award_id: int):
         ORDER BY ua.created_at DESC
     """, (award_id,))
     return await cursor.fetchall()
+
+
+async def pay_award_monthly() -> dict:
+    """Ежемесячные наградные выплаты ИЗ КАЗНЫ.
+
+    Деньги не создаются из воздуха: каждая награда с awards.monthly_nm > 0
+    платит владельцам раз в календарный месяц (YYYY-MM по Москве), если за этот
+    месяц ещё не платили (таблица award_monthly_paid). Нехватка казны уходит
+    в salary_debt и догоняется циклом зарплат.
+
+    Возвращает {'paid': [...], 'debt': [...], 'skipped': [...]}.
+    """
+    month = datetime.now(MOSCOW_TZ).strftime("%Y-%m")
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT ua.user_id, a.id AS award_id, a.name, a.monthly_nm
+        FROM user_awards ua
+        JOIN awards a ON ua.award_id = a.id
+        WHERE a.monthly_nm IS NOT NULL AND a.monthly_nm > 0
+          AND NOT EXISTS (
+              SELECT 1 FROM award_monthly_paid amp
+              WHERE amp.user_id = ua.user_id AND amp.award_id = ua.award_id
+                AND amp.month = ?
+          )
+    """, (month,))
+    rows = await cursor.fetchall()
+
+    paid, debt, skipped = [], [], []
+    for row in rows:
+        award = {"id": row['award_id'], "name": row['name']}
+        before_debt = (await (await conn.execute(
+            "SELECT salary_debt FROM users WHERE user_id = ?", (row['user_id'],))).fetchone())['salary_debt'] or 0
+        await _award_cash_payout(row['user_id'], award, row['monthly_nm'])
+        after_debt = (await (await conn.execute(
+            "SELECT salary_debt FROM users WHERE user_id = ?", (row['user_id'],))).fetchone())['salary_debt'] or 0
+        await conn.execute(
+            "INSERT OR IGNORE INTO award_monthly_paid (user_id, award_id, month) "
+            "VALUES (?, ?, ?)",
+            (row['user_id'], row['award_id'], month))
+        if after_debt > before_debt:
+            debt.append((row['user_id'], row['award_id'],
+                         award['name'], after_debt - before_debt))
+        else:
+            paid.append((row['user_id'], row['award_id'], award['name'], row['monthly_nm']))
+    await conn.commit()
+    return {"paid": paid, "debt": debt, "skipped": skipped}
     if not tag:
         return True
     conn = await get_db()
@@ -6424,7 +6713,17 @@ async def ensure_tourist_booklet():
         description=config.TOURIST_BOOKLET_AWARD_DESCRIPTION,
         emoji=config.TOURIST_BOOKLET_AWARD_EMOJI,
         created_by=None,
+        reward_nm=config.TOURIST_BOOKLET_REWARD_NM,
     )
+    # У уже существующей награды (созданной до появления премий) проставляем
+    # разовую премию один раз — при условии, что её ещё не настраивал админ
+    # (0 = не настроено). Дальше премией рулит редактор наград.
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE awards SET reward_nm = ? WHERE name = ? AND reward_nm = 0",
+        (config.TOURIST_BOOKLET_REWARD_NM, config.TOURIST_BOOKLET_AWARD)
+    )
+    await conn.commit()
 
 
 async def has_booklet(user_id: int) -> bool:
@@ -6509,40 +6808,35 @@ async def claim_booklet_reward(user_id: int) -> tuple:
     if not award:
         return False, "Награда ещё не настроена — сообщи командованию."
 
+    # Отмечаем получение и выдаём значок через grant_award: единственную точку
+    # выдачи наград. Разовая премия (reward_nm) платится из казны, а не
+    # создаётся из воздуха. При неудаче откатываем отметку — игрок повторит.
     try:
         await conn.execute(
             "INSERT INTO booklet_claims (user_id, claimed_at) VALUES (?, datetime('now'))",
             (user_id,))
-        await conn.execute(
-            "INSERT INTO user_awards (user_id, award_id, granted_by, comment) "
-            "VALUES (?, ?, NULL, ?)",
-            (user_id, award['id'],
-             f"Буклет туриста: все {len(config.TOURIST_BOOKLET_LOCATIONS)} локаций")
-        )
-        await conn.execute(
-            "UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?",
-            (config.TOURIST_BOOKLET_REWARD_NM, user_id))
-        await conn.execute(
-            "INSERT INTO transactions (to_user, amount, tx_type, description) "
-            "VALUES (?, ?, ?, ?)",
-            (user_id, config.TOURIST_BOOKLET_REWARD_NM,
-             config.TOURIST_BOOKLET_REWARD_TX,
-             f"Буклет туриста: награда за все локации")
-        )
         await conn.commit()
     except Exception:
         await conn.rollback()
         return False, "Не удалось получить награду — попробуй ещё раз."
 
+    granted, _ = await grant_award(
+        user_id, award['id'], None,
+        comment=f"Буклет туриста: все {len(config.TOURIST_BOOKLET_LOCATIONS)} локаций")
+    if not granted:
+        await conn.execute("DELETE FROM booklet_claims WHERE user_id = ?", (user_id,))
+        await conn.commit()
+        return False, "Не удалось получить награду — попробуй ещё раз."
+
     await log_activity(
         user_id, "booklet_claim",
         f"Буклет туриста: награда «{config.TOURIST_BOOKLET_AWARD}», "
-        f"+{config.TOURIST_BOOKLET_REWARD_NM} НМ"
+        f"+{config.TOURIST_BOOKLET_REWARD_NM} НМ из казны"
     )
     return True, (
         f"🧭 {config.TOURIST_BOOKLET_AWARD_EMOJI} «{config.TOURIST_BOOKLET_AWARD}» получен!\n"
         f"Все локации Нордхайма отмечены, командование не забудет такого гостя.\n\n"
-        f"💰 Награда: +{config.TOURIST_BOOKLET_REWARD_NM} НМ"
+        f"💰 Награда: +{config.TOURIST_BOOKLET_REWARD_NM} НМ (из казны)"
     )
 
 

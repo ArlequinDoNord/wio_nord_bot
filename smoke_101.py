@@ -8,6 +8,8 @@ get_booklet_visits, claim_booklet_reward):
   • локации отмечаются ТОЛЬКО при наличии буклета (ретроспективы нет);
   • лишние/небуклетные ключи не считаются;
   • награда один раз на аккаунт: повторная выдача отбивается.
+  • v0.18.13: премия 20 НМ выплачивается ИЗ КАЗНЫ (транзакция award,
+    списание из treasury), а не создаётся из воздуха.
 
 Запуск: .venv\\Scripts\\python.exe smoke_101.py
 """
@@ -49,9 +51,12 @@ async def main():
         check("буклет стоит 1 НМ", item['price'] == TOURIST_BOOKLET_PRICE)
         check("буклет не продаётся (sell_price = 0)", item['sell_price'] == 0)
 
-    cur = await conn.execute("SELECT name FROM awards WHERE name = ?",
+    cur = await conn.execute("SELECT name, reward_nm FROM awards WHERE name = ?",
                              (TOURIST_BOOKLET_AWARD,))
-    check("награда «Опытный турист» создана", bool(await cur.fetchone()))
+    award_row = await cur.fetchone()
+    check("награда «Опытный турист» создана", bool(award_row))
+    check("награда несёт разовую премию 20 НМ",
+          award_row and award_row['reward_nm'] == TOURIST_BOOKLET_REWARD_NM)
 
     uid = 777
     await D.add_user(uid, "guest", "Гость", "Нордхайма")
@@ -79,18 +84,33 @@ async def main():
 
     check("награда ещё не получена", await D.is_booklet_claimed(uid) is False)
 
+    # v0.18.13: премию платит казна. Кладём в казну 25 НМ — после выдачи
+    # останется 5, а игрок получит на счёт 20 (сверх стартовых 10).
+    await D.add_treasury(25, "тест: наполнение казны")
+    check("казна: 25 до выдачи", await D.get_treasury_balance() == 25)
+
     ok, _msg = await D.claim_booklet_reward(uid)
     check("награда получена", ok is True)
 
     user = await D.get_user(uid)
     check("+20 НМ начислены",
           user['nordmarks'] == 10 + TOURIST_BOOKLET_REWARD_NM)
+    check("казна: списаны 20 (остаток 5)",
+          await D.get_treasury_balance() == 5)
 
     cur = await conn.execute(
-        "SELECT COUNT(*) AS n FROM transactions WHERE to_user = ? AND tx_type = 'booklet'",
+        "SELECT COUNT(*) AS n FROM transactions WHERE to_user = ? AND tx_type = 'award'",
         (uid,))
     row = await cur.fetchone()
-    check("в бане записана транзакция награды", row['n'] == 1)
+    check("в бане записана транзакция награды (award)", row['n'] == 1)
+
+    cur = await conn.execute(
+        "SELECT from_user, to_user, amount FROM transactions "
+        "WHERE to_user = ? AND tx_type = 'award' ORDER BY id DESC LIMIT 1",
+        (uid,))
+    tx = await cur.fetchone()
+    check("премия прошла из казны (from_user = TREASURY_ID)",
+          tx and tx['from_user'] == D.TREASURY_ID and tx['amount'] == TOURIST_BOOKLET_REWARD_NM)
 
     cur = await conn.execute(
         "SELECT COUNT(*) AS n FROM user_awards ua "

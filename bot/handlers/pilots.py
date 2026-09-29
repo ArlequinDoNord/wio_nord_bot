@@ -26,7 +26,12 @@ def town_hall_markup(voted: int = 0, active: int = 0) -> InlineKeyboardMarkup:
     ])
 
 
-def pilots_list_markup(users, tourists=frozenset()) -> InlineKeyboardMarkup:
+PILOTS_PER_PAGE = 12
+
+
+def pilots_list_markup(users, tourists=frozenset(), page: int = 0,
+                       pages: int = 1) -> InlineKeyboardMarkup:
+    """Список пилотов страницей: туристы (🎫) вверху, ниже — граждане."""
     buttons = []
     for u in users:
         name = (u['first_name'] + " " + (u['last_name'] or "")).strip()
@@ -37,8 +42,24 @@ def pilots_list_markup(users, tourists=frozenset()) -> InlineKeyboardMarkup:
             text=f"🪖 {name}",
             callback_data=f"rathaus:{u['user_id']}"
         )])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"city:pilots:list:{page - 1}"))
+    nav.append(InlineKeyboardButton(text=f"Стр. {page + 1}/{pages}", callback_data="noop"))
+    if page < pages - 1:
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"city:pilots:list:{page + 1}"))
+    if nav:
+        buttons.append(nav)
     buttons.append([InlineKeyboardButton(text="🔙 В Ратушу", callback_data="city:pilots")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def _pilots_sorted(users, tourists) -> list:
+    """Туристы (гости) всегда в начале списка; внутри групп — по алфавиту."""
+    return sorted(
+        users,
+        key=lambda u: (u['user_id'] not in tourists, (u['first_name'] or "").lower())
+    )
 
 
 async def _show_hall(callback: CallbackQuery):
@@ -99,6 +120,20 @@ async def _render_hall_context(callback: CallbackQuery, caption: str, markup: In
 @router.callback_query(F.data == "city:pilots:list")
 async def town_hall_pilots_list(callback: CallbackQuery):
     await callback.answer()
+    await _pilots_list_page(callback, 0)
+
+
+@router.callback_query(F.data.startswith("city:pilots:list:"))
+async def town_hall_pilots_page(callback: CallbackQuery):
+    await callback.answer()
+    try:
+        page = int(callback.data.split(":")[3])
+    except (ValueError, IndexError):
+        page = 0
+    await _pilots_list_page(callback, page)
+
+
+async def _pilots_list_page(callback: CallbackQuery, page: int):
     users = await get_all_users()
     if not users:
         text = "🪖 ПИЛОТЫ ГОРОДА\n\nПока никого нет — загляни позже!"
@@ -110,12 +145,21 @@ async def town_hall_pilots_list(callback: CallbackQuery):
         )
         return
 
-    users = sorted(users, key=lambda u: (u['first_name'] or "").lower())
     tourists = await users_with_top_status_tag("tourist")
-    text = "🪖 ПИЛОТЫ ГОРОДА (по алфавиту):"
+    users = _pilots_sorted(users, tourists)
+    total = len(users)
+    pages = max(1, (total + PILOTS_PER_PAGE - 1) // PILOTS_PER_PAGE)
+    page = max(0, min(page, pages - 1))
+    chunk = users[page * PILOTS_PER_PAGE:(page + 1) * PILOTS_PER_PAGE]
+
+    header = ["🪖 ПИЛОТЫ ГОРОДА"]
     if tourists:
-        text += "\n\n🎫 — ещё турист (гость): гражданства Нордхайма пока нет."
-    await _render_hall_context(callback, text, pilots_list_markup(users, tourists))
+        header.append("")
+        header.append("Туристы (🎫) — в начале списка, ниже граждане.")
+    header.append("")
+    header.append("🎫 — ещё турист (гость): гражданства Нордхайма пока нет.")
+    await _render_hall_context(callback, "\n".join(header),
+                               pilots_list_markup(chunk, tourists, page, pages))
 
 
 @router.callback_query(F.data.startswith("rathaus:"))
