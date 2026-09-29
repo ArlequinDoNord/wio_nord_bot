@@ -4771,6 +4771,47 @@ async def count_wing_members(wing: str) -> int:
     return row['n'] if row else 0
 
 
+async def wing_members_report_farms(wing: str) -> list:
+    """Пилоты крыла (строй-строки users) + их фарм за сутки: 'prev_farm' и 'today_farm'.
+
+    Фарм считается как report_day_credited_total: сумма COALESCE(credited_troops,
+    troops_reported) по ПРИНЯТЫМ отчётам за конкретные отчётные сутки (10:00 МСК →
+    10:00 МСК). Текущие сутки показывают только уже одобренное — отчёт, висящий
+    на проверке, в цифру не идёт. Нужно командирам крыльев: видят, кто реально
+    фармит, а кто нет, без пересчёта по одному пилоту.
+    """
+    conn = await get_db()
+    today = today_report_day()
+    prev_day = report_day_value_of(
+        (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    )
+    day_expr = _report_day('created_at')
+    cursor = await conn.execute(f"""
+        SELECT user_id, day, COALESCE(SUM(COALESCE(credited_troops, troops_reported)), 0) AS farm
+        FROM (
+            SELECT user_id, created_at, troops_reported, credited_troops,
+                   {day_expr} AS day
+            FROM reports
+            WHERE status = 'approved'
+        )
+        WHERE day IN (?, ?)
+          AND user_id IN (SELECT user_id FROM users WHERE wing = ?)
+        GROUP BY user_id, day
+    """, (prev_day, today, wing))
+    farms = {}
+    for row in await cursor.fetchall():
+        farms.setdefault(row['user_id'], {})[row['day']] = row['farm']
+
+    members = await get_wing_member_rows(wing)
+    result = []
+    for u in members:
+        d = dict(u)
+        d['prev_farm'] = farms.get(u['user_id'], {}).get(prev_day, 0) or 0
+        d['today_farm'] = farms.get(u['user_id'], {}).get(today, 0) or 0
+        result.append(d)
+    return result
+
+
 async def add_user_role(user_id: int, role: str, granted_by: int = None):
     """Выдать роль пилоту (INSERT OR IGNORE) — например, wing_commander."""
     conn = await get_db()

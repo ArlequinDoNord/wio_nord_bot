@@ -19,6 +19,7 @@ from database.db import (
     get_wing_deputy, get_wing_deputies, get_wing_deputy_by_user, set_wing_deputy,
     get_wing_staff_wing, get_wing_staff_role, count_unassigned_pilots,
     get_unassigned_pilots, get_wing_member_rows, count_wing_members,
+    wing_members_report_farms, report_day_label,
     citizen_user_ids,
 )
 from utils.permissions import has_permission, log_action
@@ -36,12 +37,15 @@ class HqOrder(StatesGroup):
 
 def hq_menu_markup(roster_ok: bool = False, can_order: bool = True,
                    commander_ok: bool = False, wing_manage_ok: bool = False,
-                   wing: str = None):
+                   wing: str = None, wing_farm_ok: bool = False):
     rows = []
     if can_order:
         rows.append([InlineKeyboardButton(text="📢 Отправить приказ", callback_data="hq:send")])
     if commander_ok:
         rows.append([InlineKeyboardButton(text="📢 Приказ своему крылу", callback_data="hq:wingcmd_send")])
+    if wing_farm_ok:
+        rows.append([InlineKeyboardButton(text="🪽 Состав формирования",
+                                          callback_data="hq:wingfarm:0")])
     if wing_manage_ok and wing:
         rows.append([
             InlineKeyboardButton(text="➕ Взять пилота", callback_data="hq:wingtake:0"),
@@ -76,13 +80,15 @@ async def hq_menu_show(msg, user_id: int):
     # Составом своего крыла управляет только командир; штаб работает через «Состав ВВС».
     commander_wing = await get_wing_commander_by_user(user_id)
     wing_manage_ok = commander_wing is not None
+    # Состав формирования видит и командир, и заместитель (can_wing_commands).
+    wing_farm_ok = bool(can_cmd)
     await msg.answer(
         "🎖️ ШТАБ ВВС\n\n"
         "Командный центр военно-воздушных сил Нордхайма.\n"
         "Здесь отдаются приказы авиакрыльям и комплектуется состав.",
         reply_markup=hq_menu_markup(roster_ok=roster_ok, can_order=can_order,
                                     commander_ok=can_cmd, wing_manage_ok=wing_manage_ok,
-                                    wing=commander_wing)
+                                    wing=commander_wing, wing_farm_ok=wing_farm_ok)
     )
     return True
 
@@ -326,6 +332,63 @@ async def hq_wingset(callback: CallbackQuery):
     )
 
 
+
+
+# ----- Состав формирования: фарм подчинённых -----
+
+FARM_PAGE_SIZE = 15
+
+
+@router.callback_query(F.data.startswith("hq:wingfarm:"))
+async def hq_wing_farm_cb(callback: CallbackQuery):
+    """Состав боевого формирования: фарм пилотов крыла за прошлые и текущие сутки.
+
+    Доступно командиру и заместителю крыла. Текущие сутки показывают только уже
+    одобренный фарм — отчёт, висящий на проверке, в цифру не входит.
+    """
+    await callback.answer()
+    wing = await get_wing_staff_wing(callback.from_user.id)
+    if not wing or not await has_permission(callback.from_user.id, "can_wing_commands"):
+        await callback.message.answer("❌ Это меню доступно командирам авиакрыльев.")
+        return
+    try:
+        page = int(callback.data.split(":", 2)[2])
+    except (ValueError, IndexError):
+        page = 0
+    members = await wing_members_report_farms(wing)
+    total = len(members)
+    pages = max(1, (total + FARM_PAGE_SIZE - 1) // FARM_PAGE_SIZE)
+    page = max(0, min(page, pages - 1))
+    chunk = members[page * FARM_PAGE_SIZE:(page + 1) * FARM_PAGE_SIZE]
+
+    wing_prev = sum(m['prev_farm'] for m in members)
+    wing_today = sum(m['today_farm'] for m in members)
+    lines = [
+        f"🪽 СОСТАВ БОЕВОГО ФОРМИРОВАНИЯ\n{WINGS[wing]}",
+        "",
+        f"Прошлые сутки: {report_day_label(-1)}",
+        f"Текущие сутки: {report_day_label(0)}",
+        "",
+        f"Всего по крылу: {wing_prev} прошлые • {wing_today} сегодня",
+        "",
+        "Пилот — прошлые / сегодня (только принятое):",
+    ]
+    for m in chunk:
+        today_s = str(m['today_farm']) if m['today_farm'] else "—"
+        lines.append(f"{await player_display(m)} — {m['prev_farm']} / {today_s}")
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"hq:wingfarm:{page - 1}"))
+    nav.append(InlineKeyboardButton(text=f"{page + 1}/{pages}", callback_data="hq:noop"))
+    if page < pages - 1:
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"hq:wingfarm:{page + 1}"))
+    rows = [nav] if nav else []
+    rows.append([InlineKeyboardButton(text="🔙 В штаб", callback_data="hq:menu")])
+    await callback.message.answer(
+        "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
 
 
 @router.callback_query(F.data == "hq:noop")
