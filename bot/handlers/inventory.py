@@ -28,6 +28,7 @@ from utils.helpers import (
     row_get,
 )
 from keyboards.keyboards import cancel_keyboard, main_menu_kb
+from config import TOURIST_BOOKLET_NAME
 
 router = Router()
 
@@ -686,6 +687,7 @@ async def _render_item_card(message, user_id: int, item_id: int, note: str = "")
 
     can_use = (
         item['category'] == "recipes"
+        or item['name'] == TOURIST_BOOKLET_NAME
         or (item['category'] == "consumable"
             and item['name'] not in NOT_EDIBLE_ITEMS
             and (not (item['heal'] or 0) or bool(row_get(item, 'drink_effect'))))
@@ -846,12 +848,18 @@ async def inv_potion_unslot(callback: CallbackQuery):
 async def inv_use(callback: CallbackQuery):
     await callback.answer()
     user_id = callback.from_user.id
+    item_id = int(callback.data.split(":")[1])
+    item = await get_item(item_id)
+    # Буклет туриста — не расходник: открываем панель буклета в любом состоянии.
+    if item and item.get('name') == TOURIST_BOOKLET_NAME:
+        from bot.handlers.tourist_booklet import show_booklet_menu
+        await show_booklet_menu(callback.message, user_id)
+        return
     run = await get_active_run(user_id)
     if run:
         await callback.message.answer("⏳ Идёт забег в подземелье: использовать расходники из инвентаря нельзя. "
                                       "Зелья — только через активные слоты в бою, водоросли/энергетики — после забега.")
         return
-    item_id = int(callback.data.split(":")[1])
     ok, msg = await process_item_use(callback.from_user.id, item_id)
     if ok:
         item = await get_item(item_id)

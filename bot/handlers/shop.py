@@ -39,7 +39,7 @@ from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, item_local_photo,
     edit_or_replace, fish_weight_tier, fish_sell_price,
 )
-from config import ITEM_CATEGORIES, SPECIAL_DEPT_ATTEMPTS_LIMIT
+from config import ITEM_CATEGORIES, SPECIAL_DEPT_ATTEMPTS_LIMIT, TOURIST_BOOKLET_NAME
 
 router = Router()
 
@@ -639,6 +639,15 @@ async def _buy_item_impl(callback: CallbackQuery, item_id: int, qty: int, specia
         await callback.answer()
         await _housing_purchase_confirm(callback, item)
         return
+
+    # Буклет туриста — один на аккаунт: галочки в нём живут с момента покупки, а
+    # продажа отключена, поэтому второго экземпляра быть не должно.
+    if item['name'] == TOURIST_BOOKLET_NAME:
+        existing = await get_inventory_item(user_id, item_id)
+        if existing and existing['quantity'] > 0:
+            await callback.answer("❌ У тебя уже есть «Буклет туриста» — он один на аккаунт.",
+                                  show_alert=True)
+            return
 
     await callback.answer()
 

@@ -371,11 +371,13 @@ async def hq_wing_farm_cb(callback: CallbackQuery):
         "",
         f"Всего по крылу: {wing_prev} прошлые • {wing_today} сегодня",
         "",
-        "Пилот — прошлые / сегодня (только принятое):",
+        "Пилот — регион • войска — прошлые / сегодня (только принятое):",
     ]
     for m in chunk:
         today_s = str(m['today_farm']) if m['today_farm'] else "—"
-        lines.append(f"{await player_display(m)} — {m['prev_farm']} / {today_s}")
+        region = m.get('region') or "—"
+        troops = m.get('troops') or 0
+        lines.append(f"{await player_display(m)} — {region} • {troops} — {m['prev_farm']} / {today_s}")
 
     nav = []
     if page > 0:

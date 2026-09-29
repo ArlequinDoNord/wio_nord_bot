@@ -16,6 +16,7 @@ from database.db import (
     ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, ensure_life_items, ensure_recipes,
     ensure_dungeon_reservoir_items, ensure_market_license_item, pay_salaries, payout_reports,
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award,
+    ensure_tourist_booklet,
     ensure_water_fish, migrate_legacy_junk,
     ensure_recipe_shop_items, ensure_user_recipes_backfill,
     log_activity, prune_activity_log, prune_location_visits, recompute_region_stats,
@@ -45,6 +46,7 @@ from bot.handlers.wall import router as wall_router
 from bot.handlers.hq import router as hq_router
 from bot.handlers.clans import router as clans_router
 from bot.handlers.nii import router as nii_router
+from bot.handlers.tourist_booklet import router as tourist_booklet_router
 
 load_dotenv()
 
@@ -319,6 +321,9 @@ async def main():
     await ensure_kvp_award()
     logger.info("Награда К.В.П. («Значок В.У.С.П.») проверена")
 
+    await ensure_tourist_booklet()
+    logger.info("Буклет туриста (предмет и награда) проверены")
+
     bot = Bot(token=BOT_TOKEN)
     dp = Dispatcher()
 
@@ -376,6 +381,7 @@ async def main():
     dp.include_router(hq_router)
     dp.include_router(clans_router)
     dp.include_router(nii_router)
+    dp.include_router(tourist_booklet_router)
 
     for r in (start_router, profile_router, bank_router, admin_router, shop_router,
               inventory_router, reports_router, dungeon_router, pilots_router,

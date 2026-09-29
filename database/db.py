@@ -452,6 +452,20 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_locvis_user ON location_visits(user_id, id);
         CREATE INDEX IF NOT EXISTS idx_locvis_loc ON location_visits(location_key, created_at);
 
+        CREATE TABLE IF NOT EXISTS booklet_visits (
+            user_id INTEGER NOT NULL,
+            location_key TEXT NOT NULL,
+            visited_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, location_key),
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS booklet_claims (
+            user_id INTEGER PRIMARY KEY,
+            claimed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        );
+
         CREATE TABLE IF NOT EXISTS nii_reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -4752,9 +4766,13 @@ async def get_unassigned_pilots(limit: int = None, offset: int = 0,
 
 
 async def get_wing_member_rows(wing: str, limit: int = None, offset: int = 0) -> list:
-    """Пилоты крыла (для «убрать из состава» и выбора заместителя)."""
+    """Пилоты крыла (для «убрать из состава» и выбора заместителя).
+
+    Помимо идентификационных полей возвращает и troops (накопленные войска
+    пилота) — пригодилось в «Составе формирования».
+    """
     conn = await get_db()
-    sql = ("SELECT user_id, username, first_name, last_name, wing FROM users "
+    sql = ("SELECT user_id, username, first_name, last_name, wing, troops FROM users "
            "WHERE wing = ? ORDER BY user_id")
     params = [wing]
     if limit is not None:
@@ -4779,6 +4797,10 @@ async def wing_members_report_farms(wing: str) -> list:
     10:00 МСК). Текущие сутки показывают только уже одобренное — отчёт, висящий
     на проверке, в цифру не идёт. Нужно командирам крыльев: видят, кто реально
     фармит, а кто нет, без пересчёта по одному пилоту.
+
+    Дополнительно каждый пилот несёт 'region' — регион из его ПОСЛЕДНЕГО принятого
+    отчёта (как в recompute_region_stats, старшинство по created_at, затем id) и
+    'troops' — накопленный объём войск из users.
     """
     conn = await get_db()
     today = today_report_day()
@@ -4802,12 +4824,31 @@ async def wing_members_report_farms(wing: str) -> list:
     for row in await cursor.fetchall():
         farms.setdefault(row['user_id'], {})[row['day']] = row['farm']
 
+    # Регион: последний принятый отчёт пилота (регион не пуст). Та же раскладка,
+    # что в recompute_region_stats: ORDER BY created_at DESC, id DESC, rn = 1.
+    cur = await conn.execute("""
+        SELECT user_id, region FROM (
+            SELECT r.user_id, r.region,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY r.user_id
+                       ORDER BY r.created_at DESC, r.id DESC
+                   ) AS rn
+            FROM reports r
+            WHERE r.status = 'approved'
+              AND r.region IS NOT NULL AND r.region != ''
+        )
+        WHERE rn = 1
+          AND user_id IN (SELECT user_id FROM users WHERE wing = ?)
+    """, (wing,))
+    regions = {row['user_id']: row['region'] for row in await cur.fetchall()}
+
     members = await get_wing_member_rows(wing)
     result = []
     for u in members:
         d = dict(u)
         d['prev_farm'] = farms.get(u['user_id'], {}).get(prev_day, 0) or 0
         d['today_farm'] = farms.get(u['user_id'], {}).get(today, 0) or 0
+        d['region'] = regions.get(u['user_id'], None)
         result.append(d)
     return result
 
@@ -6312,6 +6353,159 @@ async def ensure_kvp_award():
             (2, 3, row['id'])
         )
         await conn.commit()
+
+
+# ── Буклет туриста ─────────────────────────────────────────────────────────────
+
+async def get_booklet_item():
+    """Предмет «Буклет туриста» из каталога (None, если ещё не создан)."""
+    return await get_item_by_name(config.TOURIST_BOOKLET_NAME)
+
+
+async def ensure_tourist_booklet():
+    """Создаёт предмет «Буклет туриста» и награду «Опытный турист», если их нет.
+
+    Как и ensure_kvp_items: предмет создаётся только при отсутствии, ручные правки
+    админа (цена, описание) не перетираются. Буклет в сувенирной категории — виден
+    и туристам, и гражданам; продажа отключена (sell_price = 0).
+    """
+    item = await get_booklet_item()
+    if not item:
+        await add_item(
+            name=config.TOURIST_BOOKLET_NAME,
+            description=config.TOURIST_BOOKLET_DESCRIPTION,
+            price=config.TOURIST_BOOKLET_PRICE,
+            sell_price=config.TOURIST_BOOKLET_SELL_PRICE,
+            rarity=1, category="souvenirs",
+            stock=-1, added_by=0, ap_cost=0,
+            damage=0, heal=0, armor=0, drink_effect=None,
+            weapon_effect=None, loot_only=0,
+        )
+    await create_award(
+        name=config.TOURIST_BOOKLET_AWARD,
+        description=config.TOURIST_BOOKLET_AWARD_DESCRIPTION,
+        emoji=config.TOURIST_BOOKLET_AWARD_EMOJI,
+        created_by=None,
+    )
+
+
+async def has_booklet(user_id: int) -> bool:
+    """Есть ли у игрока «Буклет туриста» в инвентаре."""
+    item = await get_booklet_item()
+    if not item:
+        return False
+    inv = await get_inventory_item(user_id, item['id'])
+    return bool(inv and inv['quantity'] > 0)
+
+
+async def mark_booklet_visit(user_id: int, location_key: str):
+    """Отмечает локацию в буклете, если ключ входит в список буклета и буклет есть.
+
+    Пишется только НОВОЕ посещение (после покупки) — ретроспективы нет: без буклета
+    в инвентаре записи не создаются.
+    """
+    if location_key not in config.TOURIST_BOOKLET_LOCATIONS:
+        return
+    if not await has_booklet(user_id):
+        return
+    conn = await get_db()
+    await conn.execute(
+        "INSERT OR IGNORE INTO booklet_visits (user_id, location_key, visited_at) "
+        "VALUES (?, ?, datetime('now'))",
+        (user_id, location_key)
+    )
+    await conn.commit()
+
+
+async def get_booklet_visits(user_id: int) -> set:
+    """Набор посещённых ключей локаций буклета."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT location_key FROM booklet_visits WHERE user_id = ?", (user_id,))
+    return {row['location_key'] for row in await cursor.fetchall()}
+
+
+async def is_booklet_claimed(user_id: int) -> bool:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT 1 FROM booklet_claims WHERE user_id = ?", (user_id,))
+    return bool(await cursor.fetchone())
+
+
+async def get_locations_by_keys(keys) -> dict:
+    """{location_key: name} для переданных ключей (порядок key_dict Preserves)."""
+    if not keys:
+        return {}
+    conn = await get_db()
+    placeholders = ",".join("?" * len(list(keys)))
+    cursor = await conn.execute(
+        f"SELECT key, name FROM locations WHERE key IN ({placeholders})",
+        tuple(keys))
+    return {row['key']: row['name'] for row in await cursor.fetchall()}
+
+
+async def claim_booklet_reward(user_id: int) -> tuple:
+    """Выдача награды буклета: значок + 20 НМ, один раз на аккаунт.
+
+    Возвращает (ok, текст). Проверяются все 9 локаций и отсутствие повторной
+    выдачи; предмет не списывается — буклет остаётся как сувенир.
+    """
+    if await is_booklet_claimed(user_id):
+        return False, "Награда за буклет уже получена."
+
+    visits = await get_booklet_visits(user_id)
+    needed = set(config.TOURIST_BOOKLET_LOCATIONS)
+    missing = needed - visits
+    if missing:
+        names = await get_locations_by_keys(missing)
+        labels = [names[k] or k for k in config.TOURIST_BOOKLET_LOCATIONS if k in missing]
+        return False, (
+            f"Посетил не все локации: не хватает — {', '.join(labels)}.\n"
+            f"Собери {len(config.TOURIST_BOOKLET_LOCATIONS)}/{len(config.TOURIST_BOOKLET_LOCATIONS)}."
+        )
+
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id FROM awards WHERE name = ?", (config.TOURIST_BOOKLET_AWARD,))
+    award = await cursor.fetchone()
+    if not award:
+        return False, "Награда ещё не настроена — сообщи командованию."
+
+    try:
+        await conn.execute(
+            "INSERT INTO booklet_claims (user_id, claimed_at) VALUES (?, datetime('now'))",
+            (user_id,))
+        await conn.execute(
+            "INSERT INTO user_awards (user_id, award_id, granted_by, comment) "
+            "VALUES (?, ?, NULL, ?)",
+            (user_id, award['id'],
+             f"Буклет туриста: все {len(config.TOURIST_BOOKLET_LOCATIONS)} локаций")
+        )
+        await conn.execute(
+            "UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?",
+            (config.TOURIST_BOOKLET_REWARD_NM, user_id))
+        await conn.execute(
+            "INSERT INTO transactions (to_user, amount, tx_type, description) "
+            "VALUES (?, ?, ?, ?)",
+            (user_id, config.TOURIST_BOOKLET_REWARD_NM,
+             config.TOURIST_BOOKLET_REWARD_TX,
+             f"Буклет туриста: награда за все локации")
+        )
+        await conn.commit()
+    except Exception:
+        await conn.rollback()
+        return False, "Не удалось получить награду — попробуй ещё раз."
+
+    await log_activity(
+        user_id, "booklet_claim",
+        f"Буклет туриста: награда «{config.TOURIST_BOOKLET_AWARD}», "
+        f"+{config.TOURIST_BOOKLET_REWARD_NM} НМ"
+    )
+    return True, (
+        f"🧭 {config.TOURIST_BOOKLET_AWARD_EMOJI} «{config.TOURIST_BOOKLET_AWARD}» получен!\n"
+        f"Все локации Нордхайма отмечены, командование не забудет такого гостя.\n\n"
+        f"💰 Награда: +{config.TOURIST_BOOKLET_REWARD_NM} НМ"
+    )
 
 
 async def ensure_kvp_user(user_id: int):

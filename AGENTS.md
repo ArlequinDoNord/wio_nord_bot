@@ -2,7 +2,7 @@
 
 Проект: игровой Telegram-бот (aiogram 3, aiosqlite). Python: `.venv\Scripts\python.exe`.
 Smoke-тесты: `tools/run_smokes.py` — прогон всех `smoke_NNN.py` одной командой
-(27 шт., каждый автономен и специализирован под свою версию/фичу).
+(49 шт., каждый автономен и специализирован под свою версию/фичу).
 
 ## Деплой
 - py_compile + smoke → бамп `VERSION`/`VERSION_NOTES` в `config.py`, `CHANGELOG.md` → commit → tag `vX.Y.Z` → `git push origin main --tags` (github ArlequinDoNord/wio_nord_bot) → `git push server main:main --tags` (server `arlequin@89.19.210.194:/opt/arlequin.git` — post-receive-хук слушает только `refs/heads/main`, поэтому именно `main:main`, а не `main:master`; хук сам пересобирает контейнер).

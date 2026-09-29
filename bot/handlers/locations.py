@@ -14,7 +14,7 @@ from aiogram.fsm.context import FSMContext
 
 from database.db import (
     get_location_by_key, can_enter_location, location_access_label,
-    user_has_status_tag, log_location_visit,
+    user_has_status_tag, log_location_visit, mark_booklet_visit,
 )
 from utils.helpers import resolve_image, time_of_day_key
 from utils.permissions import has_permission, is_admin
@@ -43,6 +43,11 @@ async def location_preview(callback: CallbackQuery):
     else:
         access_label = await location_access_label(loc['access_mode'], loc['required_status'])
         access_line = f"Доступ: {access_label}"
+
+    # Буклет туриста: просмотр превью засчитывает локацию (только если буклет в
+    # инвентаре — ретроспектива не ведётся).
+    await mark_booklet_visit(callback.from_user.id, key)
+
     text = (
         f"📍 {loc['name']}\n"
         f"────────────────\n"
