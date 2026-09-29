@@ -5809,6 +5809,42 @@ async def remove_water_fish(wf_id: int) -> bool:
     return cursor.rowcount > 0
 
 
+async def create_water_fish(water: str, name: str, sell_price: int,
+                            day_weight: int = 1, night_weight: int = 1,
+                            description: str = None,
+                            photo_file_id: str = None,
+                            added_by: int = None) -> tuple:
+    """Создаёт новую рыбу прямо в водоёме: предмет (категория fishing) +
+    запись пула water_fish. Предмет НЕ попадает в магазин (is_available=0) и
+    ловится только в этом водоёме; строка помечается admin_tuned, чтобы
+    стартовая синхронизация её не перезаписала.
+
+    Возвращает (ok, result): True, {item_id, wf_id} либо False, текст ошибки."""
+    conn = await get_db()
+    try:
+        cursor = await conn.execute(
+            """INSERT INTO items (name, description, photo_file_id, price,
+               sell_price, rarity, category, stock, added_by, market_ok)
+               VALUES (?, ?, ?, 0, ?, 1, 'fishing', -1, ?, 1)""",
+            (name, description, photo_file_id, int(sell_price), added_by)
+        )
+        item_id = cursor.lastrowid
+        await conn.execute(
+            "UPDATE items SET is_available = 0 WHERE id = ?", (item_id,))
+        cursor = await conn.execute(
+            """INSERT INTO water_fish (water, item_id, day_weight, night_weight,
+               photo_file_id, admin_tuned)
+               VALUES (?, ?, ?, ?, ?, 1)""",
+            (water, item_id, int(day_weight), int(night_weight), photo_file_id)
+        )
+        wf_id = cursor.lastrowid
+        await conn.commit()
+        return True, {"item_id": item_id, "wf_id": wf_id}
+    except Exception:
+        await conn.rollback()
+        return False, "Не удалось создать рыбу — проверь параметры."
+
+
 async def get_water_fish_candidates(water: str):
     """Рыбы и ресурсы (предметы категорий fishing/resource/consumable вне магазина),
     которых ещё нет в водоёме, — для кнопки «Добавить рыбу»."""

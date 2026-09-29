@@ -40,6 +40,7 @@ from database.db import (
     update_award, get_user_awards, revoke_award,
     get_water_fish_rows, get_water_fish_row, update_water_fish_field,
     set_water_fish_sell_price, add_water_fish, remove_water_fish,
+    create_water_fish,
     get_water_fish_candidates, WATER_LABELS, set_callsign, set_wing,
     get_water_junk_rows, update_water_junk, JUNK_EMOJI,
     log_activity, get_user_activity, clear_user_photo,
@@ -172,6 +173,12 @@ class AdminFishing(StatesGroup):
     water = State()
     wf_id = State()
     value = State()
+    c_name = State()          # мастер создания рыбы: название
+    c_desc = State()          # описание (опционально)
+    c_sell_price = State()    # цена продажи скупщику
+    c_day_weight = State()    # вес днём
+    c_night_weight = State()  # вес ночью
+    c_photo = State()         # фото
 
 
 class AdminCallsign(StatesGroup):
@@ -5976,7 +5983,8 @@ async def _admin_fishing_water_list(callback: CallbackQuery, water: str, prefix:
     else:
         lines.append("Рыб в этом водоёме пока нет.")
     lines.append("\n🐟 — рыба, 📦 — ресурс (находка).")
-    rows.append([InlineKeyboardButton(text="➕ Добавить рыбу", callback_data=f"fishing:addlist:{water}")])
+    rows.append([InlineKeyboardButton(text="➕ Добавить из списка", callback_data=f"fishing:addlist:{water}")])
+    rows.append([InlineKeyboardButton(text="✨ Создать новую рыбу", callback_data=f"fishing:new:{water}")])
     rows.append([InlineKeyboardButton(text="🗑 Находки со дна (шанс и фото)",
                                       callback_data=f"fishing:junk:{water}")])
     rows.append([InlineKeyboardButton(text="🔙 К водоёмам", callback_data="admin:fishing")])
@@ -6118,6 +6126,141 @@ async def admin_fishing_del(callback: CallbackQuery, state: FSMContext):
         callback, fish['water'],
         prefix=f"🗑 «{fish['name']}» убрана из водоёма.\n\n",
     )
+
+
+@router.callback_query(F.data.startswith("fishing:new:"))
+async def admin_fishing_new(callback: CallbackQuery, state: FSMContext):
+    """Мастер создания новой рыбы прямо в водоёме: название → описание →
+    цена продажи → вес дня → вес ночи → фото."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    water = callback.data.split(":", 2)[2]
+    if water not in WATER_LABELS:
+        return
+    await state.clear()
+    await state.update_data(water=water)
+    await state.set_state(AdminFishing.c_name)
+    await callback.message.answer(
+        f"✨ Создание рыбы\n🐟 {WATER_LABELS[water]}\n\n"
+        f"Шаг 1/6 — Название рыбы (например «Карась»):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminFishing.c_name)
+async def admin_fishing_new_name(message: Message, state: FSMContext):
+    name = (message.text or "").strip()
+    if not name:
+        await message.answer("❌ Введи название рыбы.", reply_markup=cancel_keyboard())
+        return
+    if len(name) > 60:
+        await message.answer("❌ Слишком длинное название — максимум 60 символов.",
+                             reply_markup=cancel_keyboard())
+        return
+    await state.update_data(c_name=name)
+    await state.set_state(AdminFishing.c_desc)
+    await message.answer("Шаг 2/6 — Описание рыбы (или «-» если нет):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminFishing.c_desc)
+async def admin_fishing_new_desc(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    await state.update_data(c_desc=None if text in ("-", "—") else text[:300])
+    await state.set_state(AdminFishing.c_sell_price)
+    await message.answer("Шаг 3/6 — Цена продажи скупщику, Нордмарок (целое число ≥ 0):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminFishing.c_sell_price)
+async def admin_fishing_new_sell_price(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    parsed = int(text) if text.isdigit() else None
+    if parsed is None or parsed < 0:
+        await message.answer("❌ Введи целое число ≥ 0.",
+                             reply_markup=cancel_keyboard())
+        return
+    await state.update_data(c_sell_price=parsed)
+    await state.set_state(AdminFishing.c_day_weight)
+    await message.answer(
+        "Шаг 4/6 — Относительный вес рыбы днём (целое число ≥ 0; 0 = не водится днём):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminFishing.c_day_weight)
+async def admin_fishing_new_day_weight(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    parsed = int(text) if text.isdigit() else None
+    if parsed is None or parsed < 0:
+        await message.answer("❌ Введи целое число ≥ 0.",
+                             reply_markup=cancel_keyboard())
+        return
+    await state.update_data(c_day_weight=parsed)
+    await state.set_state(AdminFishing.c_night_weight)
+    await message.answer(
+        "Шаг 5/6 — Относительный вес рыбы ночью (целое число ≥ 0; 0 = не водится ночью):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminFishing.c_night_weight)
+async def admin_fishing_new_night_weight(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    parsed = int(text) if text.isdigit() else None
+    if parsed is None or parsed < 0:
+        await message.answer("❌ Введи целое число ≥ 0.",
+                             reply_markup=cancel_keyboard())
+        return
+    await state.update_data(c_night_weight=parsed)
+    await state.set_state(AdminFishing.c_photo)
+    await message.answer(
+        "Шаг 6/6 — Пришли фото рыбы (Telegram-фото) или «-», если фото нет:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminFishing.c_photo)
+async def admin_fishing_new_photo(message: Message, state: FSMContext):
+    photo_file_id = None
+    if message.photo:
+        photo_file_id = message.photo[-1].file_id
+    else:
+        text = (message.text or "").strip()
+        if text not in ("-", "—"):
+            await message.answer("❌ Отправь именно фото (или «-» без фото).",
+                                 reply_markup=cancel_keyboard())
+            return
+    data = await state.get_data()
+    water = data.get('water')
+    if water not in WATER_LABELS:
+        await state.clear()
+        await message.answer("❌ Водоём не распознан. Начни заново.")
+        return
+    day_w = int(data.get('c_day_weight', 1))
+    night_w = int(data.get('c_night_weight', 1))
+    sell_price = int(data.get('c_sell_price', 0))
+    ok, res = await create_water_fish(
+        water=water, name=data['c_name'], sell_price=sell_price,
+        day_weight=day_w, night_weight=night_w,
+        description=data.get('c_desc'),
+        photo_file_id=photo_file_id,
+        added_by=message.from_user.id,
+    )
+    if not ok:
+        await message.answer(f"❌ {res}", reply_markup=cancel_keyboard())
+        return
+    wf_id = res['wf_id']
+    await log_action(message.from_user.id, 'edit_fishing', None,
+                     f"created water={water} item_id={res['item_id']} "
+                     f"sell={sell_price} day={day_w} night={night_w} "
+                     f"photo={'yes' if photo_file_id else 'no'}")
+    await state.clear()
+    await state.update_data(water=water, wf_id=wf_id)
+    await _admin_fishing_card(
+        message, wf_id,
+        prefix=f"✅ Рыба «{data['c_name']}» создана в водоёме.\n\n")
 
 
 @router.callback_query(F.data.startswith("fishing_field:"))
