@@ -35,8 +35,8 @@ class FakeBot:
 
 async def run():
     from database.db import (
-        init_db, close_db, get_db, add_user, get_user,
-        set_news_chat, report_day_value_of,
+        init_db, close_db, get_db, add_user, add_report, approve_report, payout_reports,
+        get_user, set_news_chat, report_day_value_of,
         report_day_credited_total, get_report_notify_tier,
         get_approved_reports, count_approved_reports, get_pending_reports,
         has_library_access,
@@ -137,6 +137,41 @@ async def run():
     check("всего принятых 2", await count_approved_reports() == 2)
     check("не оплачен среди них 1", await count_approved_reports(unpaid_only=True) == 1)
     check("в очереди никого", await get_pending_reports() == [])
+
+    # ── 5b. Мгновенная оплата отчёта за прошлые сутки (v0.18.6) ──
+    # Правило: отчёт за сутки, одобренный ПОСЛЕ его «расчётных» 05:05 (это всегда
+    # отчёт из прошлых суток), платится сразу при одобрении; отчёт текущих суток
+    # по-прежнему ждёт ближайшей 05:05. Один и тот же пилот — обе ветки.
+    UL = 98110
+    await add_user(UL, "late_pilot", "Опаздывающий", "")
+    rid_y2, _ = await add_report(UL, "f", 400, 1200, "5")
+    await conn.execute("UPDATE reports SET created_at = '2026-09-27 18:00:00' WHERE id = ?", (rid_y2,))
+    rid_t2, _ = await add_report(UL, "f", 100, 100, "5")
+    await conn.commit()
+    check("одобрение ВЧЕРАШНЕГО платит сразу (400)",
+          await approve_report(rid_y2, 0) == 400)
+    u_l = await get_user(UL)
+    check("мгновенно: войска 400 начислены при одобрении", u_l['troops'] == 400)
+    y2_state = await (await conn.execute(
+        "SELECT paid FROM reports WHERE id = ?", (rid_y2,))).fetchone()
+    check("вчерашний помечен paid=1", y2_state['paid'] == 1)
+    # Мгновенная оплата прошла той же формулой, что суточная: налог в казну есть.
+    treas_n = await (await conn.execute(
+        "SELECT COUNT(*) AS n FROM transactions WHERE tx_type='treasury'")).fetchone()
+    check("мгновенная оплата: налог ушёл в казну (транзакция)", treas_n['n'] == 1)
+    check("одобрение СЕГОДНЯШНЕГО — без мгновенной оплаты (100)",
+          await approve_report(rid_t2, 0) == 100)
+    u_l2 = await get_user(UL)
+    check("сегодняшний ждёт 05:05 (войска не выросли)", u_l2['troops'] == 400)
+    pay_late = [p for p in await payout_reports() if p['user_id'] == UL]
+    check("цикл доплачивает только сегодняшний: 100",
+          pay_late and pay_late[0]['troops'] == 100)
+    u_l3 = await get_user(UL)
+    check("итого 500: 400 сразу + 100 суточным циклом", u_l3['troops'] == 500)
+    rep_tx = await (await conn.execute(
+        "SELECT COUNT(*) AS n FROM transactions WHERE tx_type='report' AND to_user=?",
+        (UL,))).fetchone()
+    check("у пилота обе выплаты записаны транзакциями (2)", rep_tx['n'] == 2)
 
     # ── 6. Архив стены: только суперадмин и билет ──
     from database.db import activate_library_card

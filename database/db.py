@@ -3432,6 +3432,15 @@ def report_day_value_of(created_at: str) -> str:
     return (dt + timedelta(minutes=offset_minutes)).strftime("%Y-%m-%d")
 
 
+def today_report_day() -> str:
+    """Текущие отчётные сутки 'YYYY-MM-DD' — то же, что SQL _TODAY_MSK, но в Python.
+
+    Нужно для правила «одобрил отчёт за прошлые сутки после 05:05 → плати сразу»:
+    отчёт из более ранних суток, чем сегодняшние, утренний цикл уже пропустил.
+    """
+    return report_day_value_of(datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
+
+
 # «Сегодня» (текущие отчётные сутки) по Нордхайму — для сравнения с датой отчёта.
 _TODAY_MSK = _report_day("'now'")
 
@@ -3737,8 +3746,13 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
     Переданный troops может только УМЕНЬШИТЬ сумму (частичное одобрение админом),
     но не увеличить её выше заявки.
 
-    Начисление здесь НЕ производится: одобренные отчёты копятся, а оплата выполняется
-    раз в сутки функцией payout_reports() — в 05:05 МСК, в начале новых суток.
+    МОМЕНТ ОПЛАТЫ (v0.18.6, правило владельца): отчёт за сутки, чей «расчётный»
+    05:05 ещё НЕ наступил (отчёт текущих суток), оплачивается раз в сутки в 05:05 МСК
+    функцией payout_reports(). А вот отчёт, одобренный ПОСЛЕ того, как его 05:05 уже
+    прошло (это всегда отчёт из прошлых суток: утренний цикл его пропустил), а заняться
+    им некому до завтра — платится СРАЗУ при одобрении, чтобы пилот не ждал почти
+    сутки уже заработанного. Мгновенная оплата идёт через _apply_report_payout, той же
+    формулой, что и суточная: войска + опыт 1:1, нордмарки за вычетом налога в казну.
     """
     conn = await get_db()
     cursor = await conn.execute(
@@ -3757,12 +3771,87 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
     if troops is not None:
         amount = min(amount, max(0, troops))
 
+    # Правило «одобрил после расчётных 05:05 → плати сразу». Условие: отчёт за
+    # сутки РАНЬШЕ текущих — ровно тогда его 05:05 уже прошло. Одобрение и «захват»
+    # (paid=1) делаем в ОДНОМ запросе (WHERE status='pending'): суточный цикл видит
+    # только approved+paid=0, поэтому гонки «оплатили дважды» быть не может.
+    report_day = report_day_value_of(row['created_at'])
+    if report_day is not None and report_day < today_report_day():
+        cur = await conn.execute(
+            "UPDATE reports SET status = 'approved', reviewed_by = ?, credited_troops = ?, "
+            "paid = 1 WHERE id = ? AND status = 'pending'",
+            (reviewed_by, amount, report_id)
+        )
+        claimed = cur.rowcount
+        if claimed:
+            await _apply_report_payout(conn, row['user_id'], [report_id], amount)
+        await conn.commit()
+        return amount
+
     await conn.execute(
         "UPDATE reports SET status = 'approved', reviewed_by = ?, credited_troops = ?, paid = 0 WHERE id = ?",
         (reviewed_by, amount, report_id)
     )
     await conn.commit()
     return amount
+
+
+async def _apply_report_payout(conn, user_id: int, report_ids: list, troops_total: int) -> dict:
+    """Начислить пилоту оплату за уже «захваченные» отчёты (одна функция для суточного
+    цикла и мгновенной оплаты при одобрении).
+
+    report_ids считаются ПРИНАДЛЕЖАЩИМИ этому циклу выплаты: вызывающий обязан
+    пометить их paid=1 до/внутри вызова и не звать функцию дважды для одного отчёта.
+    Возвращает итог для уведомления (как у payout_reports) либо None при troops_total
+    <= 0 (ничего начислять). НЕ делает conn.commit() — вызывающий завершает сделку.
+    """
+    placeholders = ", ".join("?" * len(report_ids))
+    if troops_total <= 0:
+        await conn.execute(f"UPDATE reports SET paid = 1 WHERE id IN ({placeholders})", report_ids)
+        return None
+    # Ставка индивидуальная: у пилота с медалью налог ниже (report_tax_percent_for).
+    tax_percent = await report_tax_percent_for(user_id)
+    tax = int(troops_total * tax_percent / 100)
+    nordmarks = troops_total - tax
+    # Войска = накопленный опыт (звание). xp_balance = тратимый опыт, 1:1 с фармом
+    # и без налога: налог платится только с выплачиваемых нордмарок.
+    await conn.execute(
+        "UPDATE users SET troops = troops + ?, xp_balance = COALESCE(xp_balance, 0) + ? "
+        "WHERE user_id = ?",
+        (troops_total, troops_total, user_id)
+    )
+    await conn.execute("UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?", (nordmarks, user_id))
+    await conn.execute(
+        "INSERT INTO transactions (to_user, amount, tx_type, description) VALUES (?, ?, ?, ?)",
+        (user_id, nordmarks, "report",
+         f"Оплата по отчётам (шт: {len(report_ids)}, за вычетом налога)")
+    )
+    await conn.execute("UPDATE treasury SET balance = balance + ? WHERE id = 1", (tax,))
+    if tax > 0:
+        await conn.execute(
+            "INSERT INTO transactions (to_user, amount, tx_type, description) VALUES (?, ?, ?, ?)",
+            (TREASURY_ID, tax, "treasury", f"Налог {tax_percent}% с отчётов")
+        )
+    await conn.execute(f"UPDATE reports SET paid = 1 WHERE id IN ({placeholders})", report_ids)
+    cur = await conn.execute(
+        "SELECT troops, nordmarks, promoted_rank, COALESCE(xp_balance, 0) AS xp_balance "
+        "FROM users WHERE user_id = ?", (user_id,)
+    )
+    u = await cur.fetchone()
+    if u:
+        rank = get_effective_rank(u['troops'], u['promoted_rank'])
+        await grant_status_for_rank(user_id, rank)
+    return {
+        'user_id': user_id,
+        'troops': troops_total,
+        'xp': troops_total,
+        'xp_balance': u['xp_balance'] if u else troops_total,
+        'nordmarks': nordmarks,
+        'tax': tax,
+        'count': len(report_ids),
+        'total_troops': u['troops'] if u else troops_total,
+        'total_nordmarks': u['nordmarks'] if u else nordmarks,
+    }
 
 
 async def payout_reports() -> list:
@@ -3793,55 +3882,9 @@ async def payout_reports() -> list:
 
     results = []
     for uid, data in agg.items():
-        troops_total = data['troops']
-        report_ids = data['report_ids']
-        placeholders = ", ".join("?" * len(report_ids))
-        if troops_total <= 0:
-            await conn.execute(f"UPDATE reports SET paid = 1 WHERE id IN ({placeholders})", report_ids)
-            continue
-        # Ставка индивидуальная: у пилота с медалью налог ниже (report_tax_percent_for).
-        tax_percent = await report_tax_percent_for(uid)
-        tax = int(troops_total * tax_percent / 100)
-        nordmarks = troops_total - tax
-        # Войска = накопленный опыт (звание). xp_balance = тратимый опыт, 1:1 с фармом
-        # и без налога: налог платится только с выплачиваемых нордмарок.
-        await conn.execute(
-            "UPDATE users SET troops = troops + ?, xp_balance = COALESCE(xp_balance, 0) + ? "
-            "WHERE user_id = ?",
-            (troops_total, troops_total, uid)
-        )
-        await conn.execute("UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?", (nordmarks, uid))
-        await conn.execute(
-            "INSERT INTO transactions (to_user, amount, tx_type, description) VALUES (?, ?, ?, ?)",
-            (uid, nordmarks, "report",
-             f"Оплата по отчётам (шт: {len(report_ids)}, за вычетом налога)")
-        )
-        await conn.execute("UPDATE treasury SET balance = balance + ? WHERE id = 1", (tax,))
-        if tax > 0:
-            await conn.execute(
-                "INSERT INTO transactions (to_user, amount, tx_type, description) VALUES (?, ?, ?, ?)",
-                (TREASURY_ID, tax, "treasury", f"Налог {tax_percent}% с отчётов")
-            )
-        await conn.execute(f"UPDATE reports SET paid = 1 WHERE id IN ({placeholders})", report_ids)
-        cur = await conn.execute(
-            "SELECT troops, nordmarks, promoted_rank, COALESCE(xp_balance, 0) AS xp_balance "
-            "FROM users WHERE user_id = ?", (uid,)
-        )
-        u = await cur.fetchone()
-        if u:
-            rank = get_effective_rank(u['troops'], u['promoted_rank'])
-            await grant_status_for_rank(uid, rank)
-        results.append({
-            'user_id': uid,
-            'troops': troops_total,
-            'xp': troops_total,
-            'xp_balance': u['xp_balance'] if u else troops_total,
-            'nordmarks': nordmarks,
-            'tax': tax,
-            'count': len(report_ids),
-            'total_troops': u['troops'] if u else troops_total,
-            'total_nordmarks': u['nordmarks'] if u else nordmarks,
-        })
+        res = await _apply_report_payout(conn, uid, data['report_ids'], data['troops'])
+        if res:
+            results.append(res)
     await conn.commit()
     return results
 

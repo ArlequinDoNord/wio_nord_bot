@@ -15,7 +15,7 @@ from database.db import (
     add_item, delete_item, delete_item_completely, update_item, get_available_items, get_all_items,
     get_item, get_all_users, get_pending_reports, approve_report, correct_report_numbers,
     reject_report, add_nordmarks, remove_nordmarks,
-    get_approved_reports, count_approved_reports, report_day_value_of,
+    get_approved_reports, count_approved_reports, report_day_value_of, report_tax_percent_for,
     create_status, delete_status, get_all_statuses, get_status,
     grant_status, revoke_status, get_user_statuses, citizen_user_ids,
     get_users_for_rank_promotion, promote_user_rank, get_user,
@@ -3610,7 +3610,8 @@ async def show_approved_reports(message):
     else:
         text += (
             f"\nПоследние {len(reports)} (из них ещё не оплачено: {unpaid}).\n"
-            f"Принятые отчёты оплачиваются в 05:05 МСК — в начале следующих суток.\n\n"
+            f"Отчёты за текущие сутки оплачиваются в 05:05 МСК; отчёт за прошлые "
+            f"сутки, одобренный после его 05:05, — сразу при одобрении.\n\n"
         )
         for r in reports:
             credited = r['credited_troops'] if r['credited_troops'] is not None else r['troops_reported']
@@ -3953,12 +3954,37 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
     pilot = await get_user(report['user_id'])
     amount = await approve_report(report_id, callback.from_user.id)
     await log_action(callback.from_user.id, 'approve_report', report['user_id'], f"report={report_id}")
-    await callback.message.answer(
-        f"✅ Отчёт #{report_id} принят.\n"
-        f"⚔️ К начислению: {amount} войск и столько же опыта "
-        f"(выплата в 05:05 МСК — в начале новых суток)."
-        + ("" if amount > 0 else "\nℹ️ Суточный лимит уже выбран — оплата не начислена.")
-    )
+
+    # Мгновенная оплата: отчёт был за прошлые сутки, его 05:05 уже прошло → деньги
+    # ушли сразу при одобрении (видно по paid=1 уже после approve_report).
+    report_after = await get_report_safe(report_id)
+    if amount > 0 and report_after.get('paid'):
+        tax_percent = await report_tax_percent_for(pilot['user_id'])
+        tax = int(amount * tax_percent / 100)
+        u = await get_user(pilot['user_id'])
+        try:
+            await bot.send_message(
+                pilot['user_id'],
+                "💰 ОПЛАТА ЗА ОТЧЁТЫ\n\n"
+                f"Отчёт #{report_id} (за прошлые сутки) одобрен после утреннего цикла и оплачен сразу.\n"
+                f"⚔️ Войска: +{amount}\n✨ Опыт (накопительный): +{amount} "
+                f"(всего {u['xp_balance']}, без налога)\n"
+                f"💰 Нордмарки: +{amount - tax} (налог {tax} НМ в казну)\n"
+                f"──────────────\nИтого у тебя: {u['troops']} войск, {u['nordmarks']} нордмарок"
+            )
+        except Exception:
+            pass
+        await callback.message.answer(
+            f"✅ Отчёт #{report_id} принят и оплачен сразу (отчёт за прошлые сутки).\n"
+            f"⚔️ Начислено: {amount} войск — пилот уведомлён в личке."
+        )
+    else:
+        await callback.message.answer(
+            f"✅ Отчёт #{report_id} принят.\n"
+            f"⚔️ К начислению: {amount} войск и столько же опыта "
+            f"(выплата в 05:05 МСК — в начале новых суток)."
+            + ("" if amount > 0 else "\nℹ️ Суточный лимит уже выбран — оплата не начислена.")
+        )
     await show_pending_reports(callback.message)
 
     # В общий чат — только похвала по накопленной сумме за сутки, без точных цифр.
