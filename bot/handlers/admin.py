@@ -15,6 +15,7 @@ from database.db import (
     add_item, delete_item, delete_item_completely, update_item, get_available_items, get_all_items,
     get_item, get_all_users, get_pending_reports, approve_report, correct_report_numbers,
     reject_report, add_nordmarks, remove_nordmarks,
+    get_approved_reports, count_approved_reports, report_day_value_of,
     create_status, delete_status, get_all_statuses, get_status,
     grant_status, revoke_status, get_user_statuses, citizen_user_ids,
     get_users_for_rank_promotion, promote_user_rank, get_user,
@@ -3542,7 +3543,93 @@ async def admin_reports(callback: CallbackQuery):
     if not await has_permission(callback.from_user.id, "can_view_reports"):
         await callback.message.answer("❌ Нет прав для просмотра отчётов.")
         return
+    await show_reports_menu(callback.message)
+
+
+@router.callback_query(F.data == "admin:reports_pending")
+async def admin_reports_pending(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_view_reports"):
+        await callback.message.answer("❌ Нет прав для просмотра отчётов.")
+        return
     await show_pending_reports(callback.message)
+
+
+async def show_reports_menu(message):
+    """Вкладка «Отчёты»: пункты «на проверку» и «принятые»."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    pending = await get_pending_reports()
+    approved_total = await count_approved_reports()
+    unpaid = await count_approved_reports(unpaid_only=True)
+    text = (
+        "📋 ОТЧЁТЫ\n\n"
+        f"• 🕵️ На проверке: {len(pending)}\n"
+        f"• ✅ Принятые: {approved_total} (не оплачено: {unpaid})\n\n"
+        "Выбери пункт:"
+    )
+    buttons = [
+        [InlineKeyboardButton(
+            text=f"🕵️ Отчёты на проверку · {len(pending)}",
+            callback_data="admin:reports_pending")],
+        [InlineKeyboardButton(
+            text=f"✅ Принятые отчёты · {approved_total}",
+            callback_data="admin:reports_done")],
+    ]
+    if 'super_admin' in await get_user_role(message.chat.id):
+        buttons.append([
+            InlineKeyboardButton(text="⚙️ Порог автопроверки",
+                                 callback_data="rep:auto_approve_edit"),
+            InlineKeyboardButton(text="🚦 Потолок за сутки",
+                                 callback_data="rep:pay_cap_edit"),
+        ])
+    buttons.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])
+    await message.answer(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+
+
+@router.callback_query(F.data == "admin:reports_done")
+async def admin_reports_done(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_view_reports"):
+        await callback.message.answer("❌ Нет прав для просмотра отчётов.")
+        return
+    await show_approved_reports(callback.message)
+
+
+async def show_approved_reports(message):
+    """Список принятых отчётов с меткой «оплачен / не оплачен»."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    reports = await get_approved_reports(20)
+    pending = await get_pending_reports()
+    unpaid = await count_approved_reports(unpaid_only=True)
+    text = "✅ ПРИНЯТЫЕ ОТЧЁТЫ\n"
+    if not reports:
+        text += "\nПока нет ни одного принятого отчёта."
+    else:
+        text += (
+            f"\nПоследние {len(reports)} (из них ещё не оплачено: {unpaid}).\n"
+            f"Принятые отчёты оплачиваются в 05:05 МСК — в начале следующих суток.\n\n"
+        )
+        for r in reports:
+            credited = r['credited_troops'] if r['credited_troops'] is not None else r['troops_reported']
+            paid = "✅ оплачен" if r['paid'] else "⏳ не оплачен"
+            when = (r['created_at'] or '')[:16]
+            text += (
+                f"#{r['id']} · {r['first_name']} (@{r['username']}) · "
+                f"{credited} ⚔️ · {paid} · {when}\n"
+            )
+    buttons = [
+        [InlineKeyboardButton(
+            text=f"🕵️ Отчёты на проверку · {len(pending)}",
+            callback_data="admin:reports_pending")],
+        [InlineKeyboardButton(text="🔙 К списку отчётов", callback_data="admin:reports")],
+    ]
+    await message.answer(
+        text,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
 
 
 @router.callback_query(F.data == "rep:auto_approve_edit")
@@ -3650,8 +3737,9 @@ async def show_pending_reports(message):
     reports = await get_pending_reports()
     if not reports:
         text = "✅ В очереди нет отчётов на проверку."
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        _back = [InlineKeyboardButton(text="📋 К списку отчётов", callback_data="admin:reports")]
         if 'super_admin' in await get_user_role(message.chat.id):
-            from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
             limit = await get_report_auto_approve_troops()
             cap = await get_report_daily_pay_cap()
             text += (f"\n\n⚙️ Порог автопроверки: отчёты до {limit} войск за сутки — автоматически."
@@ -3665,10 +3753,14 @@ async def show_pending_reports(message):
                         InlineKeyboardButton(text="🚦 Потолок за сутки",
                                              callback_data="rep:pay_cap_edit"),
                     ],
+                    _back,
                 ])
             )
         else:
-            await message.answer(text)
+            await message.answer(
+                text,
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[_back])
+            )
         return
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -3680,6 +3772,7 @@ async def show_pending_reports(message):
             InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rep_no:{report['id']}"),
         ])
     buttons.append([InlineKeyboardButton(text="Следующий ▶️", callback_data="rep:next")])
+    buttons.append([InlineKeyboardButton(text="📋 К списку отчётов", callback_data="admin:reports")])
     # Супер-админ: исправить цифры отчёта (пилоты путают «за сутки» и «всего»).
     is_super = 'super_admin' in await get_user_role(message.chat.id)
     if is_super and await has_permission(message.chat.id, "can_approve_reports"):
@@ -3869,9 +3962,14 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
     await show_pending_reports(callback.message)
 
     # В общий чат — только похвала по накопленной сумме за сутки, без точных цифр.
+    # День фиксируем по САМОМУ отчёту: его одобряют часто на следующих сутках
+    # (пилоты сдают ночью), иначе «сегодняшняя» сумма была бы пустой, и похвала
+    # за честно нафармленный день терялась бы.
     if pilot:
         from utils.notify import notify_report_praise
-        await notify_report_praise(bot, pilot, pilot['user_id'])
+        await notify_report_praise(
+            bot, pilot, pilot['user_id'],
+            day=report_day_value_of(report.get('created_at')))
 
 
 @router.callback_query(F.data.startswith("rep_no:"))

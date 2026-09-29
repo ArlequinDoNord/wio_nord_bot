@@ -154,6 +154,12 @@ async def scheduled_jobs(bot: Bot):
             f"Суточный цикл: выплаты в {PAYOUT_HOUR_MSK:02d}:{PAYOUT_MINUTE_MSK:02d} МСК, "
             f"следующий запуск через {wait / 3600:.1f} ч"
         )
+        # Сначала ЖДЁМ плановое время: цикл не должен срабатывать в момент рестарта
+        # бота/деплоя, иначе выплаты и налоги происходят посреди дня. Раньше тело
+        # выполнялось сразу при старте, и после деплоя вечером начисления шли
+        # «в 22:00» вместо 05:05 — время плыло при каждом перезапуске.
+        if wait > 0:
+            await asyncio.sleep(wait)
         try:
             await daily_ap_recovery()
             logger.info("Суточное восстановление AP выполнено")
@@ -250,7 +256,6 @@ async def scheduled_jobs(bot: Bot):
                     )
         except Exception as e:
             logger.error(f"Ошибка недельной архивации стены: {e}", exc_info=True)
-        await asyncio.sleep(max(60.0, _seconds_until_payout()))
 
 
 async def main():

@@ -37,7 +37,7 @@ def admin_panel_keyboard(permissions: dict):
     if permissions.get('can_manage_finance') or permissions.get('can_add_currency') or permissions.get('can_remove_currency'):
         buttons.append([InlineKeyboardButton(text="💰 Финансы", callback_data="admin:finance")])
     if permissions.get('can_view_reports') or permissions.get('can_approve_reports'):
-        buttons.append([InlineKeyboardButton(text="📋 Отчёты на проверку", callback_data="admin:reports")])
+        buttons.append([InlineKeyboardButton(text="📋 Отчёты", callback_data="admin:reports")])
         buttons.append([InlineKeyboardButton(text="📊 Статистика регионов", callback_data="admin:region_stats")])
     if permissions.get('can_manage_admins'):
         buttons.append([InlineKeyboardButton(text="👑 Управление ролями", callback_data="admin:roles")])

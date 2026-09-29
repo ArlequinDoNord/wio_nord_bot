@@ -112,13 +112,18 @@ def praise_tier_text(display: str, tier: int):
     return None
 
 
-async def notify_report_praise(bot: Bot, pilot, user_id: int = None, day_total: int = None):
-    """Похвала за суточный отчёт по накопленной сумме за сутки.
+async def notify_report_praise(bot: Bot, pilot, user_id: int = None, day_total: int = None,
+                               day: str = None):
+    """Похвала за суточный отчёт по накопленной сумме за отчётные сутки.
 
-    Уровень считается по сумме всех принятых отчётов за МСК-сутки, а не по одному
+    Уровень считается по сумме всех принятых отчётов за сутки, а не по одному
     отчёту. За сутки один уровень отправляется только один раз: переход на
     следующий (накопил свыше 300 за день) приходит повторным оповещением, отчёт
     ниже порога молчит.
+
+    day — отчётные сутки 'YYYY-MM-DD' САМОГО одобряемого отчёта. Когда отчёт
+    сдан вчера (после 05:05), а одобряется сегодня, без этого дня «сегодняшняя»
+    сумма была бы пустой и похвала терялась бы.
 
     day_total — переопределение суммы за сутки (для тестов).
     """
@@ -128,17 +133,17 @@ async def notify_report_praise(bot: Bot, pilot, user_id: int = None, day_total: 
     if uid is None:
         return False
     if day_total is None:
-        day_total = await report_day_credited_total(uid)
+        day_total = await report_day_credited_total(uid, day=day)
     tier = praise_tier_for(day_total)
     if tier == PRIZE_TIER_NONE:
         return False
-    if tier <= await get_report_notify_tier(uid):
+    if tier <= await get_report_notify_tier(uid, day=day):
         return False
     text = praise_tier_text(await player_display(pilot), tier)
     if not text:
         return False
     await notify(bot, text, uid)
-    await bump_report_notify_tier(uid, tier)
+    await bump_report_notify_tier(uid, tier, day=day)
     return True
 
 

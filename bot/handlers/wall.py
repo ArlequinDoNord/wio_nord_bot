@@ -13,7 +13,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from config import (
     WALL_TEXT_MAX_LEN, WALL_FREE_PER_DAY, WALL_PAID_STEPS, WALL_REVIEW_TOTAL,
-    WALL_PAGE_SIZE, WALL_ARCHIVE_PAGE_SIZE,
+    WALL_PAGE_SIZE, WALL_ARCHIVE_PAGE_SIZE, ADMIN_IDS,
 )
 from database.db import (
     get_user, count_wall_posts_today, wall_post_tier, add_wall_post,
@@ -23,7 +23,7 @@ from database.db import (
     count_wall_archive_posts, get_wall_archive_posts, has_library_access,
 )
 from utils.helpers import plural_nordmark, is_main_menu_text, edit_message_safe
-from utils.permissions import has_permission, is_admin, log_action
+from utils.permissions import has_permission, log_action
 from keyboards.keyboards import wall_keyboard, cancel_keyboard
 
 router = Router()
@@ -236,11 +236,13 @@ async def wall_delete(callback: CallbackQuery, state: FSMContext):
 # ============ АРХИВ СТЕНЫ ИЗРЕЧЕНИЙ ============
 
 async def _archive_allowed(user_id: int) -> bool:
-    """Доступ к архиву — как у архива новостей: суперадмин, корреспондент
-    ГосСМИ или владелец читательского билета."""
-    if await is_admin(user_id):
-        return True
-    if await has_permission(user_id, "can_post_news"):
+    """Доступ к архиву изречений — только суперадмин или владелец читательского билета.
+
+    Решение владельца: корреспонденты ГосСМИ архив стены не читают (в отличие от
+    архива новостей) — изречения жителей не их сфера. Суперадмин здесь — строго
+    ADMIN_IDS, а не любой обладатель роли.
+    """
+    if user_id in ADMIN_IDS:
         return True
     return await has_library_access(user_id)
 

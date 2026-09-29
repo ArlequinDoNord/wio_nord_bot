@@ -702,6 +702,21 @@ async def init_db():
     # по нему НЕ считается (звание — по users.troops). Создан для будущего магазина
     # уникальных покупок: тратить можно, звания остаются.
     xp_added = await _ensure_column(conn, "users", "xp_balance", "INTEGER DEFAULT 0")
+    # v0.18.5: накопительный опыт выравнивается с войсками ОДИН раз. Поле появилось
+    # позже (v0.17.0), поэтому у ветеранов xp_balance меньше troops: раньше опыт
+    # копился только с новых выплат. Тратить опыт пока негде (магазин уникальных
+    # покупок не реализован), поэтому разово приравниваем к войскам. Повторно не
+    # запускается (флаг в settings): в будущем расхождение станет законным.
+    _xp_backfill = await (await conn.execute(
+        "SELECT value FROM settings WHERE key = 'xp_backfill_v0185'")).fetchone()
+    if not _xp_backfill:
+        await conn.execute("UPDATE users SET xp_balance = troops "
+                           "WHERE COALESCE(xp_balance, 0) < troops")
+        await conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('xp_backfill_v0185', '1') "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+        await conn.commit()
+        logger.info("Накопительный опыт выровнен с войсками (v0.18.5)")
     await _ensure_column(conn, "users", "notify_enabled", "INTEGER DEFAULT 1")
     await _ensure_column(conn, "users", "profile_public", "INTEGER DEFAULT 1")
     await _ensure_column(conn, "users", "about", "TEXT DEFAULT ''")
@@ -3404,6 +3419,19 @@ def _report_day(date_expr: str) -> str:
     return (f"date({date_expr}, '{sign}{abs(offset_minutes)} minutes')")
 
 
+def report_day_value_of(created_at: str) -> str:
+    """Отчётные сутки 'YYYY-MM-DD' для created_at (UTC) — ровно то же правило, что у
+    SQL _report_day. Нужна вне SQL: например, для похвалы (день самого отчёта) и
+    для отображения. None, если дата не разобралась."""
+    from config import REPORT_DAY_START_HOUR, REPORT_DAY_START_MINUTE
+    try:
+        dt = datetime.strptime(str(created_at)[:19], "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return None
+    offset_minutes = 3 * 60 - REPORT_DAY_START_HOUR * 60 - REPORT_DAY_START_MINUTE
+    return (dt + timedelta(minutes=offset_minutes)).strftime("%Y-%m-%d")
+
+
 # «Сегодня» (текущие отчётные сутки) по Нордхайму — для сравнения с датой отчёта.
 _TODAY_MSK = _report_day("'now'")
 
@@ -3499,18 +3527,27 @@ async def _report_assigned_today(conn, user_id: int, exclude_id: int = None,
     return row['s'] if row else 0
 
 
-async def report_day_credited_total(user_id: int, exclude_id: int = None) -> int:
-    """Сколько начислено по ПРИНЯТЫМ отчётам за текущие МСК-сутки.
+async def report_day_credited_total(user_id: int, exclude_id: int = None, day: str = None) -> int:
+    """Сколько начислено по ПРИНЯТЫМ отчётам за отчётные сутки.
 
     Это накопленная сумма за день: несколько отчётов складываются. Нужна для
     уровней похвалы — уровень считается от суммы за сутки, а не от одного отчёта.
     Висящие (pending) отчёты не считаются: похвала приходит только за принятые.
+
+    day — конкретные отчётные сутки 'YYYY-MM-DD'. По умолчанию — текущие (как
+    в SQL _TODAY_MSK). День САМОГО отчёта нужен, когда отчёт одобряют на следующих
+    сутках: иначе очка пилота за вчера не попадут в «сегодня», и похвала не уйдёт.
     """
     conn = await get_db()
+    params = [user_id]
+    if day is not None:
+        day_sql = "?"
+        params.append(day)
+    else:
+        day_sql = _TODAY_MSK
     sql = ("SELECT COALESCE(SUM(COALESCE(credited_troops, troops_reported)), 0) AS s "
            "FROM reports WHERE user_id = ? AND status = 'approved' "
-           f"AND {_report_day('created_at')} = {_TODAY_MSK}")
-    params = [user_id]
+           f"AND {_report_day('created_at')} = {day_sql}")
     if exclude_id:
         sql += " AND id != ?"
         params.append(exclude_id)
@@ -3518,31 +3555,50 @@ async def report_day_credited_total(user_id: int, exclude_id: int = None) -> int
     return row['s'] if row else 0
 
 
-async def get_report_notify_tier(user_id: int) -> int:
-    """Максимальный уровень похвалы, уже отправленный за текущие МСК-сутки (0 — не было)."""
+async def get_report_notify_tier(user_id: int, day: str = None) -> int:
+    """Максимальный уровень похвалы, уже отправленный за отчётные сутки (0 — не было).
+
+    day — сутки 'YYYY-MM-DD' (по умолчанию текущие).
+    """
     conn = await get_db()
-    row = await (await conn.execute(
-        f"SELECT tier FROM report_notify_tiers WHERE user_id = ? AND day = {_TODAY_MSK}",
-        (user_id,)
-    )).fetchone()
+    if day is not None:
+        row = await (await conn.execute(
+            "SELECT tier FROM report_notify_tiers WHERE user_id = ? AND day = ?",
+            (user_id, day)
+        )).fetchone()
+    else:
+        row = await (await conn.execute(
+            f"SELECT tier FROM report_notify_tiers WHERE user_id = ? AND day = {_TODAY_MSK}",
+            (user_id,)
+        )).fetchone()
     return row['tier'] if row else 0
 
 
-async def bump_report_notify_tier(user_id: int, tier: int) -> int:
+async def bump_report_notify_tier(user_id: int, tier: int, day: str = None) -> int:
     """Запомнить отправленный уровень похвалы за сутки. Возвращает уровень после записи.
 
     Уровень только растёт: повторное оповещение того же уровня за сутки невозможно,
     но переход на следующий (например, 160 → 350 за день) проходит.
+
+    day — сутки 'YYYY-MM-DD' (по умолчанию текущие).
     """
     conn = await get_db()
-    await conn.execute(
-        f"INSERT INTO report_notify_tiers (user_id, day, tier) VALUES (?, {_TODAY_MSK}, ?) "
-        "ON CONFLICT(user_id, day) DO UPDATE SET tier = MAX(tier, excluded.tier), "
-        "updated_at = CURRENT_TIMESTAMP",
-        (user_id, tier)
-    )
+    if day is not None:
+        await conn.execute(
+            "INSERT INTO report_notify_tiers (user_id, day, tier) VALUES (?, ?, ?) "
+            "ON CONFLICT(user_id, day) DO UPDATE SET tier = MAX(tier, excluded.tier), "
+            "updated_at = CURRENT_TIMESTAMP",
+            (user_id, day, tier)
+        )
+    else:
+        await conn.execute(
+            f"INSERT INTO report_notify_tiers (user_id, day, tier) VALUES (?, {_TODAY_MSK}, ?) "
+            "ON CONFLICT(user_id, day) DO UPDATE SET tier = MAX(tier, excluded.tier), "
+            "updated_at = CURRENT_TIMESTAMP",
+            (user_id, tier)
+        )
     await conn.commit()
-    return await get_report_notify_tier(user_id)
+    return await get_report_notify_tier(user_id, day=day)
 
 
 async def report_payout_context(user_id: int, daily_claim: int, total_claim: int = 0,
@@ -3807,6 +3863,29 @@ async def get_pending_reports():
            WHERE r.status = 'pending' ORDER BY r.created_at"""
     )
     return await cursor.fetchall()
+
+
+async def get_approved_reports(limit: int = 20) -> list:
+    """Последние принятые (approved) отчёты — для вкладки «Принятые отчёты»."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        """SELECT r.*, u.first_name, u.username FROM reports r
+           JOIN users u ON r.user_id = u.user_id
+           WHERE r.status = 'approved'
+           ORDER BY r.created_at DESC, r.id DESC LIMIT ?""",
+        (limit,)
+    )
+    return await cursor.fetchall()
+
+
+async def count_approved_reports(unpaid_only: bool = False) -> int:
+    """Сколько принятых отчётов (unpaid_only=True — среди них ещё не оплаченных)."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT COUNT(*) AS n FROM reports WHERE status = 'approved' "
+        + ("AND paid = 0" if unpaid_only else ""))
+    row = await cur.fetchone()
+    return row['n'] if row else 0
 
 
 async def get_user_reports(user_id: int):
