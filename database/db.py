@@ -4905,7 +4905,9 @@ async def get_user_awards(user_id: int):
     conn = await get_db()
     cursor = await conn.execute("""
         SELECT ua.id as grant_id, ua.comment, ua.created_at AS granted_at,
-               a.id AS award_id, a.name, a.description, a.emoji
+               a.id AS award_id, a.name, a.description, a.emoji,
+               a.bonus_attack, a.bonus_defense, a.bonus_dodge, a.bonus_fishing,
+               a.bonus_hp, a.bonus_shop_discount, a.bonus_report_tax
         FROM user_awards ua
         JOIN awards a ON ua.award_id = a.id
         WHERE ua.user_id = ?
