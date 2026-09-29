@@ -382,8 +382,29 @@ async def pilot_card(callback: CallbackQuery):
     await callback.message.answer(card, reply_markup=profile_keyboard())
 
 
+def _award_perks(a) -> list:
+    """Человеческий список бонусов награды (строки «⚔️ +10%» и т.п.)."""
+    perks = []
+    if a['bonus_attack']:
+        perks.append(f"⚔️ +{a['bonus_attack']}% атака")
+    if a['bonus_defense']:
+        perks.append(f"🛡 +{a['bonus_defense']}% защита")
+    if a['bonus_dodge']:
+        perks.append(f"💨 +{a['bonus_dodge']}% уклонение")
+    if a['bonus_fishing']:
+        perks.append(f"🎣 +{a['bonus_fishing']}% рыбалка")
+    if a['bonus_hp']:
+        perks.append(f"❤️ +{a['bonus_hp']} HP")
+    if a['bonus_shop_discount']:
+        perks.append(f"💰 −{a['bonus_shop_discount']}% в магазине")
+    if a['bonus_report_tax']:
+        perks.append(f"🧾 налог −{a['bonus_report_tax']} п.п.")
+    return perks
+
+
 @router.callback_query(F.data == "profile:awards")
 async def profile_awards(callback: CallbackQuery):
+    """Список наград пилота: по каждой — кнопка перехода к карточке награды."""
     await callback.answer()
     awards = await get_user_awards(callback.from_user.id)
     if not awards:
@@ -394,34 +415,64 @@ async def profile_awards(callback: CallbackQuery):
         )
         return
 
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     lines = ["🎖️ ТВОИ НАГРАДЫ:\n"]
+    rows = []
     for a in awards:
         emoji = a['emoji'] or '🏅'
-        perks = []
-        if a['bonus_attack']:
-            perks.append(f"⚔️ +{a['bonus_attack']}%")
-        if a['bonus_defense']:
-            perks.append(f"🛡 +{a['bonus_defense']}%")
-        if a['bonus_dodge']:
-            perks.append(f"💨 +{a['bonus_dodge']}%")
-        if a['bonus_fishing']:
-            perks.append(f"🎣 +{a['bonus_fishing']}%")
-        if a['bonus_hp']:
-            perks.append(f"❤️ +{a['bonus_hp']}")
-        if a['bonus_shop_discount']:
-            perks.append(f"💰 −{a['bonus_shop_discount']}% в магазине")
-        if a['bonus_report_tax']:
-            perks.append(f"🧾 налог −{a['bonus_report_tax']} п.п.")
         lines.append(f"{emoji} {a['name']}")
-        if a['description']:
-            lines.append(f"   — {a['description']}")
-        if perks:
-            lines.append("   " + ", ".join(perks))
-        lines.append(f"   📅 {a['granted_at']}")
-        if a['comment']:
-            lines.append(f"   💬 {a['comment']}")
-        lines.append("")
+        rows.append([InlineKeyboardButton(
+            text=f"{emoji} {a['name']}",
+            callback_data=f"profile:award:{a['grant_id']}")])
+    lines.append("\nНажми на награду, чтобы открыть её.")
+    rows.append([InlineKeyboardButton(text="🏠 В профиль", callback_data="profile:open")])
     await callback.message.answer(
         "\n".join(lines),
-        reply_markup=profile_keyboard()
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
+
+
+@router.callback_query(F.data.startswith("profile:award:"))
+async def profile_award_detail(callback: CallbackQuery):
+    """Карточка награды: описание, бонусы, дата получения, картинка."""
+    await callback.answer()
+    try:
+        grant_id = int(callback.data.split(":", 2)[2])
+    except (ValueError, IndexError):
+        return
+    awards = await get_user_awards(callback.from_user.id)
+    a = next((x for x in awards if x['grant_id'] == grant_id), None)
+    if not a:
+        await callback.message.answer("❌ Награда не найдена.")
+        return
+
+    emoji = a['emoji'] or '🏅'
+    text = f"{emoji} {a['name']}\n────────────────\n"
+    perks = _award_perks(a)
+    if a['description']:
+        text += f"\n{a['description']}\n"
+    if perks:
+        text += f"\nБонусы: {'; '.join(perks)}\n"
+    text += f"\n📅 Получена: {a['granted_at']}"
+    if a['comment']:
+        text += f"\n💬 {a['comment']}"
+
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 К списку наград", callback_data="profile:awards")],
+        [InlineKeyboardButton(text="🏠 В профиль", callback_data="profile:open")],
+    ])
+    if a['image']:
+        try:
+            await callback.message.answer_photo(a['image'], caption=text, reply_markup=markup)
+            return
+        except Exception:
+            pass
+    await callback.message.answer(text, reply_markup=markup)
+
+
+@router.callback_query(F.data == "profile:open")
+async def profile_open_cb(callback: CallbackQuery):
+    """Возврат в профиль из вложенных меню."""
+    await callback.answer()
+    await render_profile(callback, callback.from_user.id)
