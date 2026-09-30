@@ -205,6 +205,82 @@ async def main():
           me and me["region_troops"] == 5900)
     check("сумма за прошлые сутки по крылу не пустая", me and me['prev_farm'] >= 0)
 
+    # ── 8. Листание очереди отчётов («Следующий ▶️») ───────────────────────
+    print("\n= Листание очереди отчётов =")
+    from bot.handlers.admin import show_pending_reports, _queue_index_of
+
+    class _FakeChat:
+        id = 1
+
+    class _FakeMessage:
+        chat = _FakeChat()
+        sent = []
+
+        async def answer(self, text, reply_markup=None, **kw):
+            self.sent.append({"kind": "text", "text": text, "kb": reply_markup})
+
+        async def answer_photo(self, photo=None, caption=None, reply_markup=None, **kw):
+            self.sent.append({"kind": "photo", "photo": photo,
+                              "text": caption, "kb": reply_markup})
+
+    q_ids = []
+    for i in range(3):
+        uid = UA + 10 + i
+        await add_user(uid, f"pilot{i}", f"Пилот{i}", "Пилот")
+        r_id, _ = await add_report(uid, "shot", 100 + i, 1000 + i, "7")
+        q_ids.append(r_id)
+    queue = [r["id"] for r in await db.get_pending_reports()]
+    check(f"в очереди {len(queue)} отчёта", len(queue) == 3)
+
+    async def card(start):
+        msg = _FakeMessage()
+        await show_pending_reports(msg, start=start)
+        return msg.sent[-1]
+
+    def buttons_of(card_data):
+        kb = card_data["kb"]
+        return [b.callback_data for row in kb.inline_keyboard for b in row]
+
+    def shown_id(card_data):
+        for cb in buttons_of(card_data):
+            if cb.startswith("rep_ok:"):
+                return int(cb.split(":")[1])
+        # у тестового юзера может не быть прав can_approve_reports — тогда id
+        # берём из заголовка карточки («📋 ОТЧЁТ #N»).
+        import re as _re
+        m = _re.search(r"ОТЧЁТ #(\d+)", card_data["text"] or "")
+        return int(m.group(1)) if m else None
+
+    c0, c1, c2 = await card(0), await card(1), await card(2)
+    check("стартовая карточка — первый отчёт очереди", shown_id(c0) == queue[0])
+    check("«Следующий» ведёт на второй отчёт, а не на тот же",
+          shown_id(c1) == queue[1] and shown_id(c1) != shown_id(c0))
+    check("второй «Следующий» — третий отчёт", shown_id(c2) == queue[2])
+    check(f"счётчик позиции в карточке: 1..3 ({c0['text'].splitlines()[0][:60]})",
+          "1 из 3" in c0["text"] and "2 из 3" in c1["text"] and "3 из 3" in c2["text"])
+    check("в кнопках назад/вперёд — соседние позиции",
+          "rep:nav:1" in buttons_of(c0) and "rep:nav:2" in buttons_of(c0))
+    check("со второй карточки «Назад» возвращает на первую",
+          "rep:nav:0" in buttons_of(c1))
+    check("с последней карточки «Следующий» заворачивает на первую",
+          "rep:nav:0" in buttons_of(c2) and "rep:nav:1" in buttons_of(c2))
+    check("кнопки решения смотрят на показанный отчёт",
+          shown_id(c2) == queue[2]
+          and (f"rep_no:{queue[2]}" in buttons_of(c2)
+               or not any(cb.startswith("rep_no:") for cb in buttons_of(c2))))
+    c_wrap = await card(7)
+    check("позиция больше длины очереди заворачивается по модулю",
+          shown_id(c_wrap) == queue[1])
+    check("_queue_index_of находит позицию отчёта",
+          await _queue_index_of(queue[2]) == 2 and await _queue_index_of(999999) == 0)
+
+    # Когда отчёт принят, на его позицию встаёт следующий — ревьюер идёт дальше.
+    pos_before = await _queue_index_of(queue[0])
+    await approve_report(queue[0], 1)
+    after = await card(pos_before)
+    check("после «Принять» показан следующий отчёт, а не начало очереди",
+          shown_id(after) == queue[1])
+
     await close_db()
     for suffix in ("", "-wal", "-shm"):
         try:

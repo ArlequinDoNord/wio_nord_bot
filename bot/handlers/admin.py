@@ -3803,7 +3803,13 @@ async def _report_payout_block(report) -> str:
     return "\n".join(lines)
 
 
-async def show_pending_reports(message):
+async def show_pending_reports(message, start: int = 0):
+    """Карточка отчёта на проверке.
+
+    start — позиция в очереди (0-based). Раньше кнопка «Следующий» просто
+    перерисовывала ту же карточку первого отчёта, поэтому листать очередь было
+    нельзя. Теперь позиция едет в callback_data («rep:nav:<N>»), а счётчик
+    «📌 2 из 5» виден в тексте карточки."""
     reports = await get_pending_reports()
     if not reports:
         text = "✅ В очереди нет отчётов на проверку."
@@ -3834,14 +3840,19 @@ async def show_pending_reports(message):
         return
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    report = reports[0]
+    idx = start % len(reports) if reports else 0
+    report = reports[idx]
     buttons = []
     if await has_permission(message.chat.id, "can_approve_reports"):
         buttons.append([
             InlineKeyboardButton(text="✅ Принять", callback_data=f"rep_ok:{report['id']}"),
             InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rep_no:{report['id']}"),
         ])
-    buttons.append([InlineKeyboardButton(text="Следующий ▶️", callback_data="rep:next")])
+    if len(reports) > 1:
+        buttons.append([
+            InlineKeyboardButton(text="◀️ Назад", callback_data=f"rep:nav:{(idx - 1) % len(reports)}"),
+            InlineKeyboardButton(text="Следующий ▶️", callback_data=f"rep:nav:{(idx + 1) % len(reports)}"),
+        ])
     buttons.append([InlineKeyboardButton(text="📋 К списку отчётов", callback_data="admin:reports")])
     # Супер-админ: исправить цифры отчёта (пилоты путают «за сутки» и «всего»).
     is_super = 'super_admin' in await get_user_role(message.chat.id)
@@ -3861,7 +3872,9 @@ async def show_pending_reports(message):
         ])
 
     caption = (
-        f"📋 ОТЧЁТ #{report['id']}\n\n"
+        f"📋 ОТЧЁТ #{report['id']}"
+        + (f"  ·  📌 {idx + 1} из {len(reports)} в очереди\n" if len(reports) > 1 else "\n")
+        + f"\n"
         f"Пилот: {report['first_name']} (@{report['username']})\n"
         f"Войск за сутки (заявка): {report['troops_reported']}\n"
         f"Всего войск (на счётчике пилота): {report['total_troops'] if 'total_troops' in report.keys() else '—'}\n"
@@ -3995,6 +4008,7 @@ async def report_fix_total(message: Message, state: FSMContext):
         note = f"\n\n🚦 Обрезано суточным лимитом ({ctx['cap']} войск)"
 
     await state.clear()
+    back_pos = await _queue_index_of(report_id)
     await message.answer(
         f"✏️ Цифры отчёта #{report_id} исправлены\n\n"
         f"было: за сутки {old_daily}, всего {old_total}\n"
@@ -4005,7 +4019,7 @@ async def report_fix_total(message: Message, state: FSMContext):
                 InlineKeyboardButton(text="✅ Принять", callback_data=f"rep_ok:{report_id}"),
                 InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rep_no:{report_id}"),
             ],
-            [InlineKeyboardButton(text="🔙 К отчётам", callback_data="rep:next")],
+            [InlineKeyboardButton(text="🔙 К отчётам", callback_data=f"rep:nav:{back_pos}")],
         ])
     )
 
@@ -4018,6 +4032,7 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
         await callback.message.answer("❌ Нет прав.")
         return
     report = await get_report_safe(report_id)
+    queue_pos = await _queue_index_of(report_id)
     # Сумма пересчитывается в approve_report по текущему остатку суточного лимита
     # (отчёт мог провисеть, пока пилот сдавал другие за эти же сутки).
     pilot = await get_user(report['user_id'])
@@ -4061,7 +4076,7 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
             f"(выплата в 10:00 МСК — в начале новых суток)."
             + ("" if amount > 0 else "\nℹ️ Суточный лимит уже выбран — оплата не начислена.")
         )
-    await show_pending_reports(callback.message)
+    await show_pending_reports(callback.message, start=queue_pos)
 
     # В общий чат — только похвала по накопленной сумме за сутки, без точных цифр.
     # День фиксируем по САМОМУ отчёту: его одобряют часто на следующих сутках
@@ -4082,16 +4097,39 @@ async def report_reject(callback: CallbackQuery):
         await callback.message.answer("❌ Нет прав.")
         return
     report = await get_report_safe(report_id)
+    queue_pos = await _queue_index_of(report_id)
     await reject_report(report_id, callback.from_user.id)
     await log_action(callback.from_user.id, 'reject_report', report['user_id'], f"report={report_id}")
     await callback.message.answer("❌ Отчёт отклонён.")
-    await show_pending_reports(callback.message)
+    await show_pending_reports(callback.message, start=queue_pos)
+
+
+@router.callback_query(F.data.startswith("rep:nav:"))
+async def report_nav(callback: CallbackQuery):
+    """Листание очереди: «◀️ Назад» / «Следующий ▶️» с позицией в callback_data."""
+    await callback.answer()
+    try:
+        start = int(callback.data.split(":")[2])
+    except (ValueError, IndexError):
+        start = 0
+    await show_pending_reports(callback.message, start=start)
 
 
 @router.callback_query(F.data == "rep:next")
 async def report_next(callback: CallbackQuery):
     await callback.answer()
     await show_pending_reports(callback.message)
+
+
+async def _queue_index_of(report_id: int) -> int:
+    """Позиция отчёта в очереди на проверке (0-based); 0, если не найден.
+
+    После «Принять»/«Отклонить» отчёт уходит из очереди, и на его месте
+    оказывается следующий — поэтому показываем отчёт по той же позиции."""
+    for i, r in enumerate(await get_pending_reports()):
+        if r['id'] == report_id:
+            return i
+    return 0
 
 
 async def get_report_safe(report_id: int):

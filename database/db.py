@@ -4101,10 +4101,13 @@ async def reject_report(report_id: int, reviewed_by: int):
 
 async def get_pending_reports():
     conn = await get_db()
+    # Второй ключ обязателен: у отчётов, сданных в одну секунду, created_at совпадает,
+    # и без r.id SQLite возвращал их в произвольном порядке — «Следующий ▶️» в админке
+    # показывал тот же отчёт снова (очередь «перемешивалась» между запросами).
     cursor = await conn.execute(
         """SELECT r.*, u.first_name, u.username FROM reports r
            JOIN users u ON r.user_id = u.user_id
-           WHERE r.status = 'pending' ORDER BY r.created_at"""
+           WHERE r.status = 'pending' ORDER BY r.created_at, r.id"""
     )
     return await cursor.fetchall()
 
