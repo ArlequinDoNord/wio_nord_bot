@@ -1035,6 +1035,16 @@ async def init_db():
         await conn.execute(
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('mig_rank_statuses', '1')")
         await conn.commit()
+    # v0.18.14: кумулятивная выдача статусов по званию — догонка. Раньше выдавался
+    # статус только за текущее звание, и игроки, перешагнувшие закреплённую ступень
+    # (Ефрейтор → «Пилот 2 класса») до задней следующей, теряли статус безвозвратно.
+    mig_statuses_v2 = await (await conn.execute(
+        "SELECT value FROM settings WHERE key = 'mig_rank_statuses_v2'")).fetchone()
+    if not mig_statuses_v2:
+        await backfill_rank_statuses()
+        await conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('mig_rank_statuses_v2', '1')")
+        await conn.commit()
     # v0.15.17: единая шкала статусов — «Пилот» → «Пилот 2 класса», «VIP» → «Ас».
     # Старые теги удаляются, игроки и товары переводятся на новые.
     for old_tag, new_tag in (("pilot", "pilot2"), ("vip", "ace"), ("WHR", "keeper")):
@@ -3921,7 +3931,7 @@ async def _apply_report_payout(conn, user_id: int, report_ids: list, troops_tota
     u = await cur.fetchone()
     if u:
         rank = get_effective_rank(u['troops'], u['promoted_rank'])
-        await grant_status_for_rank(user_id, rank)
+        await grant_all_rank_statuses(user_id, rank)
     return {
         'user_id': user_id,
         'troops': troops_total,
@@ -4135,6 +4145,33 @@ async def grant_status_for_rank(user_id: int, rank_name: str, granted_by: int = 
     return status
 
 
+async def grant_all_rank_statuses(user_id: int, rank_name: str, granted_by: int = 0) -> int:
+    """Выдать статусы за текущее звание и все пройденные ступени (кумулятивно).
+
+    Статус за звание закреплён только за частью шкалы (RANK_STATUS_TAGS); без
+    кумулятивности игрок, перешагнувший закреплённую ступень (например Ефрейтор →
+    «Пилот 2 класса») и остановившийся перед следующей закреплённой (Ст. Сержант),
+    навсегда терял бы статус. Здесь выдаётся всё, что положено за текущее звание
+    и ниже по шкале. Возвращает число впервые выданных статусов.
+    """
+    from config import RANKS, RANK_STATUS_TAGS
+    rank_req = None
+    for rname, req in RANKS:
+        if rname == rank_name:
+            rank_req = req
+            break
+    if rank_req is None:
+        return 0
+    granted = 0
+    for rname, req in RANKS:
+        if req > rank_req:
+            break
+        if RANK_STATUS_TAGS.get(rname):
+            if await grant_status_for_rank(user_id, rname, granted_by):
+                granted += 1
+    return granted
+
+
 async def ensure_rank_statuses_for_troops(user_id: int):
     """Выдать статус по текущему званию игрока (по войскам или админ-назначению)."""
     user = await get_user(user_id)
@@ -4150,7 +4187,9 @@ async def ensure_rank_statuses_for_troops(user_id: int):
 async def backfill_rank_statuses():
     """Разово выдать статусы по текущим званиям всех пилотов (войска и админ-звания).
 
-    Возвращает число статусов, выданных заново. Идемпотентна.
+    Выдача кумулятивная: статусы за текущее звание и все пройденные ступени.
+    Возвращает число игроков, которым выдано хотя бы по одному статусу.
+    Идемпотентна.
     """
     conn = await get_db()
     cursor = await conn.execute("SELECT user_id, troops, promoted_rank FROM users")
@@ -4158,7 +4197,7 @@ async def backfill_rank_statuses():
     granted = 0
     for row in rows:
         rank = get_effective_rank(row['troops'], row['promoted_rank'])
-        if await grant_status_for_rank(row['user_id'], rank):
+        if await grant_all_rank_statuses(row['user_id'], rank) > 0:
             granted += 1
     return granted
 
@@ -4176,7 +4215,7 @@ async def promote_user_rank(user_id: int, rank_name: str, promoted_by: int):
     await conn.commit()
     from utils.permissions import log_action
     await log_action(promoted_by, 'promote_rank', user_id, f"rank={rank_name}")
-    await grant_status_for_rank(user_id, rank_name, promoted_by)
+    await grant_all_rank_statuses(user_id, rank_name, promoted_by)
 
 
 async def add_building(name: str, description: str, price: int, category: str,

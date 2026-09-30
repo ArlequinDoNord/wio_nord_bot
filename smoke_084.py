@@ -4,7 +4,8 @@
 «Старший Лейтенант» (4040), выше — только назначением админа (свободный выбор
 без порога очков); статусы (pilot2/pilot1/veteran/master_pilot/ace) выдаются
 автоматически вместе со званием — при начислении войск (payout_reports), при
-админ-назначении (promote_user_rank) и разовым бэкфиллом.
+админ-назначении (promote_user_rank) и разовым бэкфиллом. С v0.18.14 выдача
+кумулятивная: положены статусы за текущее звание и за все пройденные ступени.
 
 Запуск: .venv\\Scripts\\python.exe smoke_084.py
 """
@@ -107,6 +108,16 @@ async def run():
     check("100 → званий-статусов НЕТ", not await has_tag(u_none, "pilot2")
           and not await has_tag(u_none, "pilot1") and not await has_tag(u_none, "veteran"))
     check("бэкфилл идемпотентен (повтор = 0)", await backfill_rank_statuses() == 0)
+
+    # ── 3b. Кумулятивная выдача: пройденные ступени не теряются ──
+    u_cum = await mk(34010, 900)    # Сержант: прошёл Ефрейтора, до Ст.Сержанта далеко
+    u_cum2 = await mk(34011, 1700)  # Ст.Сержант: положены обе пилотские ступени
+    granted = await backfill_rank_statuses()
+    check("Сержант (900) → Пилот 2 класса (pilot2)", await has_tag(u_cum, "pilot2"))
+    check("Сержант (900) НЕ Пилот 1 класса", not await has_tag(u_cum, "pilot1"))
+    check("Ст.Сержант (1700) → pilot2 и pilot1",
+          await has_tag(u_cum2, "pilot2") and await has_tag(u_cum2, "pilot1"))
+    check("кумулятивный бэкфилл: выбрано 2 игрока", granted == 2)
 
     # ── 4. Свободное назначение звания админом (без порога очков) ──
     await promote_user_rank(u_none, "Майор", 1)
