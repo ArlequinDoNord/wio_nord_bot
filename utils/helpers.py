@@ -136,6 +136,49 @@ def resolve_image(base_key: str, now: datetime | None = None) -> str:
     return candidates[0]
 
 
+# Сезоны для картинок, которые меняются по времени года (например, опушка леса):
+# зимой — зимняя, летом — летняя. Месяцы заданы по московскому времени.
+SEASON_MONTHS = (
+    ((12, 1, 2), "winter"),
+    ((3, 4, 5), "spring"),
+    ((6, 7, 8), "summer"),
+    ((9, 10, 11), "autumn"),
+)
+
+
+def season_key(now: datetime | None = None) -> str:
+    """Ключ сезона по московскому времени: winter / spring / summer / autumn."""
+    now = (now or datetime.now()).astimezone(MOSCOW_TZ)
+    for months, key in SEASON_MONTHS:
+        if now.month in months:
+            return key
+    return "summer"
+
+
+def resolve_image_seasonal(base_key: str, now: datetime | None = None) -> str:
+    """Картинка с учётом сезона и времени суток.
+
+    Приоритет файлов (первый существующий и используется):
+      <key>_<сезон>_<время>.jpg → <key>_<сезон>.jpg → <key>_<время>.jpg
+      → <key>_day.jpg → <key>.jpg
+
+    Пример: "city/forest_glade" зимой днём -> assets/img/city/forest_glade_winter_day.jpg
+    """
+    tod = time_of_day_key(now)
+    season = season_key(now)
+    candidates = [
+        f"assets/img/{base_key}_{season}_{tod}.jpg",
+        f"assets/img/{base_key}_{season}.jpg",
+        f"assets/img/{base_key}_{tod}.jpg",
+        f"assets/img/{base_key}_day.jpg",
+        f"assets/img/{base_key}.jpg",
+    ]
+    for path in candidates:
+        if os.path.isfile(path):
+            return path
+    return candidates[0]
+
+
 # Локальные картинки товаров (когда у товара нет Telegram photo_file_id).
 # Кладут в assets/img/<категория>/<имя>.jpg; ключ — точное название товара.
 ITEM_LOCAL_PHOTOS = {

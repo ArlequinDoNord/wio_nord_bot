@@ -19,6 +19,8 @@ from database.db import (
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award,
     ensure_tourist_booklet,
     ensure_water_fish, migrate_legacy_junk,
+    ensure_forest_items, ensure_forest_mushrooms,
+    ensure_forest_enemies, ensure_fishing_enemies, ensure_mollusk_items,
     ensure_recipe_shop_items, ensure_user_recipes_backfill,
     log_activity, prune_activity_log, prune_location_visits, recompute_region_stats,
     maybe_archive_wall_weekly,
@@ -40,6 +42,7 @@ from bot.handlers.library import router as library_router
 from bot.handlers.locations import router as locations_router
 from bot.handlers.park import router as park_router
 from bot.handlers.fishing import router as fishing_router
+from bot.handlers.forest import router as forest_router
 from bot.handlers.housing import router as housing_router
 from bot.handlers.news import router as news_router
 from bot.handlers.kvp import router as kvp_router
@@ -78,9 +81,11 @@ class MainMenuFSMReset(BaseMiddleware):
     async def __call__(self, handler, event, data):
         if isinstance(event, Message) and event.text:
             from bot.handlers.fishing import deactivate_fishing
+            from bot.handlers.forest import deactivate_forest
             if is_main_menu_text(event.text) or event.text.startswith("/"):
                 try:
                     await deactivate_fishing(event.from_user.id)
+                    await deactivate_forest(event.from_user.id)
                 except Exception:
                     pass
             if is_main_menu_text(event.text):
@@ -102,29 +107,52 @@ class FishingActiveLock(BaseMiddleware):
 
     Иначе уход в другое меню приводит к инвалидации окна рыбалки (токен
     сгорает), и кнопка «Ещё раз» после результата перестаёт работать.
+
+    Аналогично для леса: пока идёт поиск грибов (ложится результат через
+    5–10 секунд), другие меню блокируются.
     """
 
     async def __call__(self, handler, event, data):
         from bot.handlers.fishing import FISHING_CASTING
+        from bot.handlers.forest import FOREST_CASTING
+        from bot.handlers.dungeon import MOLLUSK_BATTLE, purge_mollusk_battle
 
+        purge_mollusk_battle()
         uid = getattr(event, "from_user", None)
         uid = uid.id if uid else None
-        if uid and uid in FISHING_CASTING:
-            # Свои рыболовные кнопки пропускаем, остальное — блокируем.
+        if uid and uid in MOLLUSK_BATTLE:
+            # Идёт бой с моллюском в водохранилище: доступны только его кнопки.
+            tip = "🦪 Ты в бою с моллюском — ударь или сбеги!"
             if isinstance(event, CallbackQuery):
-                cb_data = event.data or ""
-                if cb_data.startswith("fish:"):
+                if (event.data or "").startswith("mollusk:"):
                     return await handler(event, data)
-                await event.answer(
-                    "🎣 Ты ещё ждёшь улов — дождись результата, а потом продолжим!",
-                    show_alert=True,
-                )
+                await event.answer(tip, show_alert=True)
                 return
             if isinstance(event, Message):
                 if (event.text and (is_main_menu_text(event.text) or event.text.startswith("/"))) \
                         or not event.text:
                     try:
-                        await event.answer("🎣 Ты ещё ждёшь улов — дождись результата!")
+                        await event.answer(tip)
+                    except Exception:
+                        pass
+                    return
+            return await handler(event, data)
+        if uid and (uid in FISHING_CASTING or uid in FOREST_CASTING):
+            own_prefix = "fish:" if uid in FISHING_CASTING else "forest:"
+            tip = ("🎣 Ты ещё ждёшь улов — дождись результата, а потом продолжим!"
+                   if uid in FISHING_CASTING else
+                   "🌲 Ты ещё ищешь грибы — дождись результата, а потом продолжим!")
+            if isinstance(event, CallbackQuery):
+                cb_data = event.data or ""
+                if cb_data.startswith(own_prefix):
+                    return await handler(event, data)
+                await event.answer(tip, show_alert=True)
+                return
+            if isinstance(event, Message):
+                if (event.text and (is_main_menu_text(event.text) or event.text.startswith("/"))) \
+                        or not event.text:
+                    try:
+                        await event.answer(tip)
                     except Exception:
                         pass
                     return
@@ -317,6 +345,27 @@ async def main():
     if wf_seeded:
         logger.info("Пулы рыбалки по водоёмам (water_fish) приведены к дефолтам")
 
+    forest_items_seeded = await ensure_forest_items()
+    if forest_items_seeded:
+        logger.info("Предметы леса (грибы, кабан, жареные блюда, яд) добавлены")
+
+    forest_seeded = await ensure_forest_mushrooms()
+    if forest_seeded:
+        logger.info("Пул грибов леса (forest_mushrooms) приведён к дефолтам")
+
+    # Враги леса и рыбалки (единый админ-редактор «⚔️ Враги»).
+    forest_enemy_seeded = await ensure_forest_enemies()
+    if forest_enemy_seeded:
+        logger.info("Враг леса (кабан) добавлен в forest_enemies")
+
+    mollusk_items_seeded = await ensure_mollusk_items()
+    if mollusk_items_seeded:
+        logger.info("Предметы моллюска (мясо, жемчужина, жареное мясо) добавлены")
+
+    fishing_enemy_seeded = await ensure_fishing_enemies()
+    if fishing_enemy_seeded:
+        logger.info("Враг рыбалки (мутировавший моллюск) добавлен в fishing_enemies")
+
     license_seeded = await ensure_market_license_item()
     if license_seeded:
         logger.info("Торговая лицензия добавлена в магазин")
@@ -387,6 +436,7 @@ async def main():
     dp.include_router(locations_router)
     dp.include_router(park_router)
     dp.include_router(fishing_router)
+    dp.include_router(forest_router)
     dp.include_router(housing_router)
     dp.include_router(news_router)
     dp.include_router(kvp_router)
@@ -399,7 +449,7 @@ async def main():
     for r in (start_router, profile_router, bank_router, admin_router, shop_router,
               inventory_router, reports_router, dungeon_router, pilots_router,
               polls_router, library_router, locations_router, park_router,
-              fishing_router, housing_router, news_router, kvp_router,
+              fishing_router, forest_router, housing_router, news_router, kvp_router,
               wall_router, hq_router, clans_router, nii_router):
         r.message.middleware(ChatGuard())
         r.message.middleware(FishingActiveLock())

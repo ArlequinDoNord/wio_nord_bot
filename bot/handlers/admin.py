@@ -16,6 +16,7 @@ from database.db import (
     get_item, get_all_users, get_pending_reports, approve_report, correct_report_numbers,
     reject_report, add_nordmarks, remove_nordmarks,
     get_approved_reports, count_approved_reports, report_day_value_of, report_tax_percent_for,
+    report_day_label_for, created_at_msk,
     create_status, delete_status, get_all_statuses, get_status,
     grant_status, revoke_status, get_user_statuses, citizen_user_ids,
     get_users_for_rank_promotion, promote_user_rank, get_user,
@@ -33,8 +34,11 @@ from database.db import (
     get_all_locations, get_location, create_location, update_location_access,
     update_location_content, update_location_photos, location_access_label,
     get_all_dungeons, get_dungeon, update_dungeon_photos, DUNGEON_PHOTO_KEYS,
-    get_dungeon_enemies, get_enemy, update_enemy_fields,
+    get_dungeon_enemies, get_enemy, update_enemy_fields, get_floor_enemies,
     get_enemy_drops, set_enemy_drops, add_enemy_drop, remove_enemy_drop,
+    get_source_enemies, get_source_enemy, update_source_enemy, delete_source_enemy,
+    get_source_enemy_drops, set_source_enemy_drops, add_source_enemy_drop,
+    remove_source_enemy_drop, add_source_enemy, get_fishing_spots,
     get_item_by_name,
     create_award, get_all_awards, get_award, delete_award, grant_award,
     update_award, get_user_awards, revoke_award,
@@ -43,6 +47,9 @@ from database.db import (
     create_water_fish,
     get_water_fish_candidates, WATER_LABELS, set_callsign, set_wing,
     get_water_junk_rows, update_water_junk, JUNK_EMOJI,
+    get_forest_mushroom_rows, get_forest_mushroom_row, update_forest_mushroom_field,
+    set_forest_mushroom_sell_price, add_forest_mushroom, remove_forest_mushroom,
+    create_forest_mushroom, get_forest_mushroom_candidates,
     log_activity, get_user_activity, clear_user_photo,
     get_recent_activity, get_activity_like,
     get_location_visit_stats, get_location_visit_totals,
@@ -179,6 +186,33 @@ class AdminFishing(StatesGroup):
     c_day_weight = State()    # вес днём
     c_night_weight = State()  # вес ночью
     c_photo = State()         # фото
+
+
+class AdminForest(StatesGroup):
+    """Редактор грибов леса (шанс, тип, фото, цена продажи)."""
+    f_id = State()
+    field = State()
+    value = State()
+    c_name = State()          # мастер создания гриба: название
+    c_desc = State()          # описание (опционально)
+    c_sell_price = State()    # цена продажи скупщику
+    c_chance = State()        # шанс выпадения в пуле %
+    c_kind = State()          # тип: съедобный / ядовитый
+    c_photo = State()         # фото
+
+
+class AdminEnemy(StatesGroup):
+    """Единый редактор врагов (лес, рыбалка): правка полей, дропы, создание."""
+    field = State()          # ввод значения поля карточки
+    photo = State()          # загрузка фото врага
+    drop_chance = State()    # шанс дропа, %
+    drop_qty = State()       # количество дропа
+    c_name = State()         # мастер: название
+    c_hp = State()           # мастер: HP
+    c_dmg = State()          # мастер: урон мин-макс
+    c_dodge = State()        # мастер: уклонение %
+    c_chance = State()       # мастер: шанс встречи %
+    c_loss_ap = State()      # мастер: потеря ОД при поражении
 
 
 class AdminCallsign(StatesGroup):
@@ -3745,22 +3779,27 @@ async def report_pay_cap_edit_value(message: Message, state: FSMContext):
 
 async def _report_payout_block(report) -> str:
     """Блок оплаты для карточки отчёта: платим заявку «за сутки» в пределах суточного
-    лимита. «Всего» и регион — справочные данные для статистики, на оплату не влияют."""
-    from database.db import report_payout_context
+    лимита. «Всего» и регион — справочные данные для статистики, на оплату не влияют.
+
+    Сутки и остаток лимита берём по САМОМУ отчёту (его created_at), а не по текущим:
+    отчёт, сданный до 10:00 МСК, относится к ПРЕДЫДУЩИМ суткам, и надпись про
+    текущие сутки сбивала с толку при проверке."""
+    from database.db import report_payout_context, _report_cycle_day_of
     total_claim = report['total_troops'] if 'total_troops' in report.keys() else 0
     ctx = await report_payout_context(
-        report['user_id'], report['troops_reported'], total_claim, exclude_id=report['id'])
+        report['user_id'], report['troops_reported'], total_claim, exclude_id=report['id'],
+        cycle_day=_report_cycle_day_of(report.get('created_at')))
     lines = [
         f"⚔️ Заявка за сутки: {ctx['claim']}",
         f"💰 К выдаче: {ctx['payable']}",
-        f"🗓 Сутки: {ctx['day_label']}",
+        f"🗓 Сутки отчёта: {ctx['day_label']}",
     ]
     if total_claim:
         lines.append(f"🗺 В регионе накоплено (статистика): {total_claim}")
     if ctx.get("capped_by_limit"):
         lines.append(f"🚦 Обрезано суточным лимитом ({ctx['cap']})")
     if ctx["assigned_today"]:
-        lines.append(f"📋 Уже засчитано за сутки: {ctx['assigned_today']}")
+        lines.append(f"📋 Уже засчитано за эти сутки: {ctx['assigned_today']}")
     return "\n".join(lines)
 
 
@@ -3828,7 +3867,7 @@ async def show_pending_reports(message):
         f"Всего войск (на счётчике пилота): {report['total_troops'] if 'total_troops' in report.keys() else '—'}\n"
         f"{await _report_payout_block(report)}\n"
         f"Регион: {report['region'] or '—'} (для статистики сил)\n"
-        f"Время: {report['created_at'][:16] if report['created_at'] else '—'}\n\n"
+        f"Сдано: {created_at_msk(report['created_at']) if report['created_at'] else '—'} МСК\n\n"
         f"Проверьте скриншот и примите решение:"
     )
 
@@ -3988,6 +4027,10 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
     # Мгновенная оплата: отчёт был за прошлые сутки, его 10:00 уже прошло → деньги
     # ушли сразу при одобрении (видно по paid=1 уже после approve_report).
     report_after = await get_report_safe(report_id)
+    # Сутки САМОГО отчёта: у отчёта, сданного до 10:00, они прошлые, даже если
+    # админ смотрит очередь уже после утреннего цикла.
+    own_day = report_day_value_of(report.get('created_at'))
+    own_label = report_day_label_for(own_day) if own_day else "—"
     if amount > 0 and report_after.get('paid'):
         tax_percent = await report_tax_percent_for(pilot['user_id'])
         tax = int(amount * tax_percent / 100)
@@ -3997,6 +4040,7 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
                 pilot['user_id'],
                 "💰 ОПЛАТА ЗА ОТЧЁТЫ\n\n"
                 f"Отчёт #{report_id} (за прошлые сутки) одобрен после утреннего цикла и оплачен сразу.\n"
+                f"🗓 Сутки отчёта: {own_label}\n"
                 f"⚔️ Войска: +{amount}\n✨ Опыт (накопительный): +{amount} "
                 f"(всего {u['xp_balance']}, без налога)\n"
                 f"💰 Нордмарки: +{amount - tax} (налог {tax} НМ в казну)\n"
@@ -4006,11 +4050,13 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
             pass
         await callback.message.answer(
             f"✅ Отчёт #{report_id} принят и оплачен сразу (отчёт за прошлые сутки).\n"
+            f"🗓 Сутки отчёта: {own_label}\n"
             f"⚔️ Начислено: {amount} войск — пилот уведомлён в личке."
         )
     else:
         await callback.message.answer(
             f"✅ Отчёт #{report_id} принят.\n"
+            f"🗓 Сутки отчёта: {own_label}\n"
             f"⚔️ К начислению: {amount} войск и столько же опыта "
             f"(выплата в 10:00 МСК — в начале новых суток)."
             + ("" if amount > 0 else "\nℹ️ Суточный лимит уже выбран — оплата не начислена.")
@@ -6411,6 +6457,455 @@ async def admin_fishing_value(message: Message, state: FSMContext):
     )
 
 
+# ============ ГРИБЫ ЛЕСА (админ-редактор) ============
+
+FOREST_FIELD_LABELS = {
+    "chance": "🎲 Вес в пуле",
+    "photo": "🖼 Фото гриба",
+    "sell_price": "💰 Цена продажи (НМ)",
+}
+
+FOREST_INPUT_PROMPTS = {
+    "chance": ("Введи вес гриба в пуле леса (целое число 0–100). Это не процент: "
+               "все веса делят между собой 90% находки, 0 = гриб не выпадает:"),
+    "photo": "Отправь фото гриба (Telegram-фото). Или отправь «-», чтобы убрать фото:",
+    "sell_price": "Введи цену продажи гриба скупщику, Нордмарок (целое число ≥ 0):",
+}
+
+
+async def _admin_forest_card(source, f_id: int, prefix: str = ""):
+    """Карточка гриба леса с кнопками правки."""
+    shroom = await get_forest_mushroom_row(f_id)
+    if not shroom:
+        await source.answer("❌ Гриб не найден.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    photo_state = "есть" if shroom.get('photo_file_id') else "нет"
+    kind = shroom.get('kind') or 'edible'
+    kind_label = "🍄 Съедобный" if kind == "edible" else "☠ Ядовитый"
+    market_label = "✅ Можно" if shroom.get('market_ok') else "🔒 Только скупщику"
+    heal_line = f"❤️ Лечение сырым: {shroom['heal']}" if shroom.get('heal') else "❤️ Сырым не лечит"
+    text = (
+        f"{prefix}🍄 {shroom['name']}\n"
+        f"──────────────\n"
+        f"{kind_label}\n"
+        f"🎲 Вес в пуле: {shroom['chance']} (веса делят 90% находки)\n"
+        f"🖼 Фото: {photo_state}\n"
+        f"💰 Продажа: {shroom['sell_price']} НМ\n"
+        f"🏪 Рынок: {market_label}\n"
+        f"{heal_line}\n\n"
+        f"⚠️ После правки стартовая синхронизация больше не перезапишет "
+        f"настройки этого гриба.\nЧто изменить?"
+    )
+    rows = [
+        [InlineKeyboardButton(
+            text=f"🧬 Тип: {'Съедобный' if kind == 'edible' else 'Ядовитый'} →",
+            callback_data=f"forest:kind:{f_id}"),
+         InlineKeyboardButton(
+            text=f"🏪 Рынок: {'✅' if shroom.get('market_ok') else '🔒'} →",
+            callback_data=f"forest:market:{f_id}")],
+        [InlineKeyboardButton(text="🎲 Шанс выпадения", callback_data="forest_field:chance")],
+        [InlineKeyboardButton(text="🖼 Фото гриба", callback_data="forest_field:photo")],
+        [InlineKeyboardButton(text="💰 Цена продажи", callback_data="forest_field:sell_price")],
+        [InlineKeyboardButton(text="🗑 Убрать из леса", callback_data=f"forest:del:{f_id}")],
+        [InlineKeyboardButton(text="🔙 К списку грибов", callback_data="admin:forest")],
+    ]
+    markup = InlineKeyboardMarkup(inline_keyboard=rows)
+    if hasattr(source, 'message') and source.message is not None:
+        await source.message.edit_text(text, reply_markup=markup)
+    else:
+        await source.answer(text, reply_markup=markup)
+
+
+@router.callback_query(F.data == "admin:forest")
+async def admin_forest_menu(callback: CallbackQuery, state: FSMContext):
+    """Меню редактора грибов леса: список грибов."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    await state.clear()
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    shrooms = await get_forest_mushroom_rows()
+    lines = ["🍄 ГРИБЫ ЛЕСА\n"]
+    rows = []
+    if shrooms:
+        lines.append("Пул опушки: числа ниже — ВЕСА (делятся между собой на 90%), "
+                     "а 10% занимает «пусто». Меняй вес — находка всегда 90%.\n")
+        for s in shrooms:
+            kind_mark = "🍄" if (s.get('kind') or 'edible') == "edible" else "☠"
+            lines.append(f"• {kind_mark} {s['name']} — вес {s['chance']}, "
+                         f"продажа {s['sell_price']} НМ")
+            rows.append([InlineKeyboardButton(text=f"{kind_mark} {s['name']}",
+                                              callback_data=f"forest:card:{s['id']}")])
+    else:
+        lines.append("Грибов в пуле леса пока нет.")
+    rows.append([InlineKeyboardButton(text="➕ Добавить из списка", callback_data="forest:addlist")])
+    rows.append([InlineKeyboardButton(text="✨ Создать новый гриб", callback_data="forest:new")])
+    rows.append([InlineKeyboardButton(text="🔙 В админ-панель", callback_data="admin:menu")])
+    await callback.message.edit_text(
+        "\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("forest:card:"))
+async def admin_forest_card(callback: CallbackQuery, state: FSMContext):
+    """Карточка гриба с кнопками правки."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        f_id = int(callback.data.split(":", 2)[2])
+    except (ValueError, IndexError):
+        return
+    await state.update_data(f_id=f_id)
+    await _admin_forest_card(callback, f_id)
+
+
+@router.callback_query(F.data.startswith("forest:kind:"))
+async def admin_forest_kind(callback: CallbackQuery, state: FSMContext):
+    """Переключает тип гриба: съедобный ⇄ ядовитый."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        f_id = int(callback.data.split(":", 2)[2])
+    except (ValueError, IndexError):
+        return
+    shroom = await get_forest_mushroom_row(f_id)
+    if not shroom:
+        await callback.message.answer("❌ Гриб не найден.")
+        return
+    new_kind = "toxic" if (shroom.get('kind') or 'edible') == "edible" else "edible"
+    await update_forest_mushroom_field(f_id, "kind", new_kind)
+    await log_action(callback.from_user.id, 'edit_forest', None,
+                     f"f_id={f_id} kind={new_kind}")
+    note = ("☠ Гриб стал ядовитым: его нельзя есть (категория «ресурс»)."
+            if new_kind == "toxic" else
+            "🍄 Гриб стал съедобным (категория «расходник»).")
+    await state.update_data(f_id=f_id)
+    await _admin_forest_card(callback, f_id, prefix=f"✅ {note}\n\n")
+
+
+@router.callback_query(F.data.startswith("forest:market:"))
+async def admin_forest_market(callback: CallbackQuery, state: FSMContext):
+    """Переключает, можно ли этот гриб выставлять на рынок (items.market_ok)."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        f_id = int(callback.data.split(":", 2)[2])
+    except (ValueError, IndexError):
+        return
+    shroom = await get_forest_mushroom_row(f_id)
+    if not shroom:
+        await callback.message.answer("❌ Гриб не найден.")
+        return
+    new_val = 0 if shroom.get('market_ok') else 1
+    await update_item(shroom['item_id'], market_ok=new_val)
+    await log_action(callback.from_user.id, 'edit_forest', None,
+                     f"f_id={f_id} market_ok={new_val}")
+    await state.update_data(f_id=f_id)
+    await _admin_forest_card(callback, f_id)
+
+
+@router.callback_query(F.data == "forest:addlist")
+async def admin_forest_add_list(callback: CallbackQuery, state: FSMContext):
+    """Выбор расходника/ресурса для добавления в пул леса."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    await state.update_data(add_forest_active=True)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    candidates = await get_forest_mushroom_candidates()
+    lines = ["➕ Добавление гриба\n🍄 Пусть лес будет богаче!\n"]
+    rows = []
+    if candidates:
+        for c in candidates:
+            rows.append([InlineKeyboardButton(
+                text=f"{c['name']} (продажа {c['sell_price']} НМ)",
+                callback_data=f"forest:add:{c['id']}",
+            )])
+    else:
+        lines.append("Все подходящие расходники/ресурсы уже в пуле леса.")
+    lines.append("\nДобавится в пул с весом 10 — потом настроишь вес, фото, цену и тип.")
+    rows.append([InlineKeyboardButton(text="🔙 К списку грибов", callback_data="admin:forest")])
+    await callback.message.edit_text(
+        "\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("forest:add:"))
+async def admin_forest_add(callback: CallbackQuery, state: FSMContext):
+    """Добавляет расходник/ресурс в пул леса и открывает его карточку."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        item_id = int(callback.data.split(":", 2)[2])
+    except (ValueError, IndexError):
+        return
+    f_id = await add_forest_mushroom(item_id, 10)
+    shroom = await get_forest_mushroom_row(f_id) if f_id else None
+    if not shroom:
+        await callback.message.answer("❌ Не удалось добавить гриб.")
+        return
+    await state.update_data(f_id=f_id)
+    await _admin_forest_card(callback, f_id, prefix=f"✅ «{shroom['name']}» добавлен в пул леса.\n\n")
+
+
+@router.callback_query(F.data.startswith("forest:del:"))
+async def admin_forest_del(callback: CallbackQuery, state: FSMContext):
+    """Убирает гриб из пула леса и возвращает в список."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        f_id = int(callback.data.split(":", 2)[2])
+    except (ValueError, IndexError):
+        return
+    shroom = await get_forest_mushroom_row(f_id)
+    if not shroom:
+        await callback.message.answer("❌ Гриб не найден.")
+        return
+    removed = await remove_forest_mushroom(f_id)
+    await log_action(callback.from_user.id, 'edit_forest', None,
+                     f"f_id={f_id} removed={removed}")
+    await state.clear()
+    await admin_forest_menu(callback, state)
+
+
+@router.callback_query(F.data.startswith("forest_field:"))
+async def admin_forest_field_pick(callback: CallbackQuery, state: FSMContext):
+    """Выбор поля гриба для правки: шанс / фото / цена."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    field = callback.data.split(":")[1]
+    if field not in FOREST_FIELD_LABELS:
+        return
+    data = await state.get_data()
+    if not data.get('f_id'):
+        await callback.message.answer("❌ Гриб не выбран. Открой карточку гриба заново.")
+        return
+    await state.update_data(field=field)
+    await state.set_state(AdminForest.value)
+    shroom = await get_forest_mushroom_row(data.get('f_id')) if data.get('f_id') else None
+    prompt = FOREST_INPUT_PROMPTS[field]
+    if shroom:
+        cur = shroom.get({
+            "chance": "chance",
+            "sell_price": "sell_price",
+            "photo": "photo_file_id",
+        }.get(field, field))
+        if field == "photo":
+            cur_text = f"{'есть картинка' if cur else 'нет картинки'}"
+        else:
+            cur_text = ("—" if cur is None else str(cur))
+        prompt = (f"{FOREST_FIELD_LABELS[field]} гриба «{shroom['name']}».\n"
+                  f"Сейчас: {cur_text}.\n\n{prompt}")
+    if field == "photo" and shroom and shroom.get('photo_file_id'):
+        try:
+            await callback.message.answer_photo(
+                shroom['photo_file_id'], caption=prompt, reply_markup=cancel_keyboard())
+            return
+        except Exception:
+            pass
+    await callback.message.answer(prompt, reply_markup=cancel_keyboard())
+
+
+@router.message(AdminForest.value)
+async def admin_forest_value(message: Message, state: FSMContext):
+    """Значение поля гриба: шанс % / цена / фото."""
+    data = await state.get_data()
+    f_id = data.get('f_id')
+    field = data.get('field')
+    shroom = await get_forest_mushroom_row(f_id) if f_id else None
+    if not shroom or field not in FOREST_FIELD_LABELS:
+        await state.clear()
+        await message.answer("❌ Гриб/поле не распознаны. Начни заново: админ → Грибы леса.")
+        return
+
+    if field in ("chance", "sell_price"):
+        text = (message.text or "").strip()
+        parsed = int(text) if text.isdigit() else None
+        if parsed is None or parsed < 0:
+            await message.answer(f"❌ Ожидаю целое число ≥ 0.\n{FOREST_INPUT_PROMPTS[field]}",
+                                 reply_markup=cancel_keyboard())
+            return
+        if field == "chance":
+            if parsed > 100:
+                await message.answer("❌ Вес — от 0 до 100.",
+                                     reply_markup=cancel_keyboard())
+                return
+            await update_forest_mushroom_field(f_id, "chance", parsed)
+        else:
+            await set_forest_mushroom_sell_price(f_id, parsed)
+        label = f"{parsed} НМ" if field == "sell_price" else (f"вес {parsed}" if parsed > 0 else "не выпадает")
+    else:  # photo
+        if (message.text or "").strip() == "-":
+            parsed = None
+        elif message.photo:
+            parsed = message.photo[-1].file_id
+        else:
+            await message.answer("❌ Отправь именно фото (или «-» для очистки).",
+                                 reply_markup=cancel_keyboard())
+            return
+        await update_forest_mushroom_field(f_id, "photo_file_id", parsed)
+        label = "убрано" if parsed is None else "обновлено"
+
+    await log_action(message.from_user.id, 'edit_forest', None,
+                     f"f_id={f_id} {field}={parsed}")
+    await state.clear()
+    await _admin_forest_card(
+        message, f_id,
+        prefix=f"✅ «{shroom['name']}»: {FOREST_FIELD_LABELS[field]} = {label}.\n\n",
+    )
+
+
+@router.callback_query(F.data == "forest:new")
+async def admin_forest_new(callback: CallbackQuery, state: FSMContext):
+    """Мастер создания нового гриба: название → описание → цена → вес →
+    тип → фото."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    await state.clear()
+    await state.set_state(AdminForest.c_name)
+    await callback.message.answer(
+        "✨ Создание гриба леса\n🍄 Пул леса пополнится новым грибом.\n\n"
+        "Шаг 1/6 — Название гриба (например «Сыроежка»):",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminForest.c_name)
+async def admin_forest_new_name(message: Message, state: FSMContext):
+    name = (message.text or "").strip()
+    if not name:
+        await message.answer("❌ Введи название гриба.", reply_markup=cancel_keyboard())
+        return
+    if len(name) > 60:
+        await message.answer("❌ Слишком длинное название — максимум 60 символов.",
+                             reply_markup=cancel_keyboard())
+        return
+    await state.update_data(c_name=name)
+    await state.set_state(AdminForest.c_desc)
+    await message.answer("Шаг 2/6 — Описание гриба (или «-» если нет):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminForest.c_desc)
+async def admin_forest_new_desc(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    await state.update_data(c_desc=None if text in ("-", "—") else text[:300])
+    await state.set_state(AdminForest.c_sell_price)
+    await message.answer("Шаг 3/6 — Цена продажи скупщику, Нордмарок (целое число ≥ 0):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminForest.c_sell_price)
+async def admin_forest_new_sell_price(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    parsed = int(text) if text.isdigit() else None
+    if parsed is None or parsed < 0:
+        await message.answer("❌ Введи целое число ≥ 0.", reply_markup=cancel_keyboard())
+        return
+    await state.update_data(c_sell_price=parsed)
+    await state.set_state(AdminForest.c_chance)
+    await message.answer(
+        "Шаг 4/6 — Вес гриба в пуле леса (целое число 0–100; 0 = не выпадает).\n"
+        "Это не процент: все веса делят между собой 90% находки.",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminForest.c_chance)
+async def admin_forest_new_chance(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    parsed = int(text) if text.isdigit() else None
+    if parsed is None or parsed < 0 or parsed > 100:
+        await message.answer("❌ Введи целое число от 0 до 100.",
+                             reply_markup=cancel_keyboard())
+        return
+    await state.update_data(c_chance=parsed)
+    await state.set_state(AdminForest.c_kind)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await message.answer(
+        "Шаг 5/6 — Тип гриба:\n"
+        "🍄 Съедобный — распяется расходником (сырым лечит в бою).\n"
+        "☠ Ядовитый — ресурс (есть нельзя).",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🍄 Съедобный", callback_data="forest:new_kind:edible")],
+            [InlineKeyboardButton(text="☠ Ядовитый", callback_data="forest:new_kind:toxic")],
+            [InlineKeyboardButton(text="✖️ Отмена", callback_data="back:to_main")],
+        ])
+    )
+
+
+@router.callback_query(F.data.startswith("forest:new_kind:"))
+async def admin_forest_new_kind(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    kind = callback.data.split(":", 2)[2]
+    if kind not in ("edible", "toxic"):
+        return
+    await state.update_data(c_kind=kind)
+    await state.set_state(AdminForest.c_photo)
+    await callback.message.answer(
+        "Шаг 6/6 — Пришли фото гриба (Telegram-фото) или «-», если фото нет:",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminForest.c_photo)
+async def admin_forest_new_photo(message: Message, state: FSMContext):
+    photo_file_id = None
+    if message.photo:
+        photo_file_id = message.photo[-1].file_id
+    else:
+        text = (message.text or "").strip()
+        if text not in ("-", "—"):
+            await message.answer("❌ Отправь именно фото (или «-» без фото).",
+                                 reply_markup=cancel_keyboard())
+            return
+    data = await state.get_data()
+    sell_price = int(data.get('c_sell_price', 0))
+    chance = int(data.get('c_chance', 10))
+    kind = data.get('c_kind', 'edible')
+    ok, res = await create_forest_mushroom(
+        name=data['c_name'],
+        description=data.get('c_desc'),
+        sell_price=sell_price,
+        chance=chance,
+        kind=kind,
+        photo_file_id=photo_file_id,
+        added_by=message.from_user.id,
+    )
+    if not ok:
+        await message.answer(f"❌ {res}", reply_markup=cancel_keyboard())
+        return
+    f_id = res['f_id']
+    await log_action(message.from_user.id, 'edit_forest', None,
+                     f"created item_id={res['item_id']} f_id={f_id} sell={sell_price} "
+                     f"chance={chance} kind={kind} photo={'yes' if photo_file_id else 'no'}")
+    await state.clear()
+    await state.update_data(f_id=f_id)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    if photo_file_id:
+        try:
+            await message.answer_photo(
+                photo_file_id,
+                caption=f"✅ Гриб «{data['c_name']}» создан в пуле леса.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="Открыть карточку", callback_data=f"forest:card:{f_id}")],
+                ]))
+            return
+        except Exception:
+            pass
+    await _admin_forest_card(
+        message, f_id,
+        prefix=f"✅ Гриб «{data['c_name']}» создан в пуле леса.\n\n")
+
+
 @router.callback_query(F.data == "loc:create")
 async def loc_create(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -6924,3 +7419,642 @@ async def loc_step_photo(message: Message, state: FSMContext):
                      f"preview_photo={'file_id' if file_id else 'cleared'}")
     await state.clear()
     await message.answer("✅ Картинка локации обновлена.")
+
+
+# ============================================================================
+# ВРАГИ: ЕДИНЫЙ РЕДАКТОР (данж + лес + рыбалка)
+# ============================================================================
+# Все враги игры собраны в одном разделе админки. Список источников и этажей
+# строится динамически: новый данж или новый этаж появляются сами (floors_count),
+# ничего дописывать в коде не нужно.
+#
+#   src = 'dn' — подземелье (loc = d-<dungeon_id>-<floor>), правится существующим
+#          редактором врагов данжа (dungeon:enemy:<id> + enemy_field:*);
+#   src = 'fo' — лес      (loc = forest);
+#   src = 'fi' — рыбалка  (loc = <водоём>, напр. reservoir).
+# Для леса и рыбалки — своя карточка на общих функциях forest_enemies /
+# fishing_enemies (см. database/db.py), с полями и дропами в одном формате.
+
+ENEMY_SRC_FOREST = 'fo'
+ENEMY_SRC_FISHING = 'fi'
+ENEMY_SRC_DUNGEON = 'dn'
+
+# Человеческие названия источников.
+ENEMY_SOURCE_TITLES = {
+    ENEMY_SRC_DUNGEON: "🏰 Подземелье",
+    ENEMY_SRC_FOREST: "🌲 Лес на окраине",
+    ENEMY_SRC_FISHING: "🎣 Рыбалка",
+}
+
+# Названия водоёмов рыбалки для меню.
+FISHING_SPOT_TITLES = {
+    "lake": "🏞 Озеро",
+    "reservoir": "🌊 Подземное водохранилище",
+}
+
+# Поля карточки врага леса/рыбалки: ключ → (подпись, промпт, тип).
+#   int — целое ≥ 0, percent — 0–100, float1 — число с одним знаком (шанс),
+#   text — строка, dash — можно «-» чтобы очистить.
+ENEMY_FIELDS = {
+    "hp": ("❤️ HP", "Введи HP врага (целое число ≥ 1):", "int"),
+    "dmg_min": ("🗡 Урон (мин)", "Введи минимальный урон врага (целое ≥ 0):", "int"),
+    "dmg_max": ("🗡 Урон (макс)", "Введи максимальный урон врага (целое ≥ 0):", "int"),
+    "player_dmg_min": ("💥 Твой урон (мин)", "Введи минимальный урон игрока по врагу (целое ≥ 1):", "int"),
+    "player_dmg_max": ("💥 Твой урон (макс)", "Введи максимальный урон игрока по врагу (целое ≥ 1):", "int"),
+    "dodge": ("💨 Уклонение", "Введи шанс уклонения врага, % (0–100):", "percent"),
+    "chance": ("🎲 Шанс встречи", "Введи шанс встречи с врагом на одну попытку, % (0–100; 0 = выключить):", "percent"),
+    "pity_target": ("🧿 Гарантия", "Введи, через сколько попыток встреча гарантирована (0 = без гарантии):", "int"),
+    "loss_ap": ("⚡ Потеря ОД", "Введи, сколько ОД теряет игрок при поражении (целое ≥ 0):", "int"),
+    "reward_nm": ("💰 Награда НМ", "Введи награду за победу, Нордмарок (целое ≥ 0):", "int"),
+    "description": ("📝 Описание", "Введи описание врага (текст, до 400 символов). Или «-» чтобы очистить:", "dash"),
+    "photo_key": ("🖼 Ключ картинки", "Введи локальный ключ картинки врага, например city/mollusk "
+                                      "(файлы city/mollusk_day.jpg / _night.jpg). Или «-» чтобы убрать:", "dash"),
+}
+
+
+def _enemy_loc_title(src: str, loc: str) -> str:
+    """Заголовок локации врага для карточек и меню."""
+    if src == ENEMY_SRC_DUNGEON:
+        parts = loc.split("-")  # d-<dungeon_id>-<floor>
+        if len(parts) == 3:
+            return f"{ENEMY_SOURCE_TITLES[ENEMY_SRC_DUNGEON]}, этаж {parts[2]}"
+        return ENEMY_SOURCE_TITLES[ENEMY_SRC_DUNGEON]
+    if src == ENEMY_SRC_FOREST:
+        return ENEMY_SOURCE_TITLES[ENEMY_SRC_FOREST]
+    return FISHING_SPOT_TITLES.get(loc, f"🎣 Рыбалка: {loc}")
+
+
+def _enemy_list_cb(src: str, loc: str) -> str:
+    return f"enemy:list:{src}:{loc}"
+
+
+async def _admin_enemies_root(callback: CallbackQuery):
+    """Корень единого редактора врагов: данжи + лес + рыбалка."""
+    lines = [
+        "⚔️ ВРАГИ\n\n",
+        "Все враги игры в одном месте. Список данжей, их этажей и водоёмов "
+        "собирается автоматически — новые появятся сами.",
+    ]
+    rows = []
+    dungeons = await get_all_dungeons(training=False)
+    for d in dungeons:
+        floors = int(d.get('floors_count') or 1)
+        lines.append(f"\n🏰 {d['name']} — этажей: {floors}")
+        rows.append([InlineKeyboardButton(
+            text=f"🏰 {d['name']}",
+            callback_data=f"enemy:dn:{d['id']}")])
+    forest_enemies = await get_source_enemies(ENEMY_SRC_FOREST)
+    lines.append(f"\n🌲 Лес на окраине — врагов: {len(forest_enemies)}")
+    rows.append([InlineKeyboardButton(
+        text="🌲 Лес на окраине",
+        callback_data=_enemy_list_cb(ENEMY_SRC_FOREST, 'forest'))])
+    spots = await get_fishing_spots()
+    lines.append(f"\n🎣 Рыбалка — водоёмов с врагами: {len(spots)}")
+    rows.append([InlineKeyboardButton(
+        text="🎣 Рыбалка",
+        callback_data=f"enemy:fi")])
+    rows.append([InlineKeyboardButton(text="🔙 В админ-панель", callback_data="admin:menu")])
+    await callback.message.edit_text("".join(lines),
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data == "admin:enemies")
+async def admin_enemies_menu(callback: CallbackQuery, state: FSMContext):
+    """Вход в единый редактор врагов."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    await state.clear()
+    await _admin_enemies_root(callback)
+
+
+@router.callback_query(F.data.regexp(r"^enemy:dn:\d+$"))
+async def admin_enemies_dungeon_floors(callback: CallbackQuery, state: FSMContext):
+    """Этажи данжа — список строится по floors_count, новые этажи появятся сами."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        dungeon_id = int(callback.data.split(":")[2])
+    except (ValueError, IndexError):
+        return
+    dng = await get_dungeon(dungeon_id)
+    if not dng:
+        await callback.message.answer("❌ Подземелье не найдено.")
+        return
+    floors = int(dng.get('floors_count') or 1)
+    lines = [f"🏰 {dng['name']}\n\nЭтажи: {floors}. Выбери этаж — увидишь его врагов.\n"]
+    rows = []
+    for floor in range(1, floors + 1):
+        enemies = await get_floor_enemies(dungeon_id, floor)
+        lines.append(f"• Этаж {floor} — врагов: {len(enemies)}")
+        rows.append([InlineKeyboardButton(
+            text=f"Этаж {floor} — врагов: {len(enemies)}",
+            callback_data=_enemy_list_cb(ENEMY_SRC_DUNGEON, f"d-{dungeon_id}-{floor}"))])
+    rows.append([InlineKeyboardButton(text="🔙 К врагам", callback_data="admin:enemies")])
+    await callback.message.edit_text("\n".join(lines),
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data == "enemy:fi")
+async def admin_enemies_fishing_spots(callback: CallbackQuery, state: FSMContext):
+    """Водоёмы рыбалки, где есть враги."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    spots = await get_fishing_spots()
+    lines = ["🎣 РЫБАЛКА\n\nВодоёмы, в которых ловится не только рыба:\n"]
+    rows = []
+    for spot in spots:
+        title = FISHING_SPOT_TITLES.get(spot['spot'], spot['spot'])
+        lines.append(f"• {title} — врагов: {spot['c']}")
+        rows.append([InlineKeyboardButton(
+            text=f"{title} — {spot['c']}",
+            callback_data=_enemy_list_cb(ENEMY_SRC_FISHING, spot['spot']))])
+    rows.append([InlineKeyboardButton(text="🔙 К врагам", callback_data="admin:enemies")])
+    await callback.message.edit_text("\n".join(lines),
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.regexp(r"^enemy:list:[a-z]{2}:[\w-]+$"))
+async def admin_enemies_list(callback: CallbackQuery, state: FSMContext):
+    """Список врагов источника/локации."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, src, loc = callback.data.split(":", 3)
+    rows = []
+    lines = [f"⚔️ {_enemy_loc_title(src, loc)}\n"]
+    if src == ENEMY_SRC_DUNGEON:
+        parts = loc.split("-")
+        dungeon_id, floor = int(parts[1]), int(parts[2])
+        enemies = await get_floor_enemies(dungeon_id, floor)
+        for e in enemies:
+            boss = "👑 " if e.get('is_boss') else ""
+            lines.append(f"• {boss}{e['name']} — HP {e['hp']}, АТК {e['attack']}, "
+                         f"УКЛ {e.get('dodge', 0)}%")
+            rows.append([InlineKeyboardButton(
+                text=f"{boss}{e['name']}",
+                callback_data=f"enemy:dcard:{src}:{loc}:{e['id']}")])
+    else:
+        enemies = await get_source_enemies(src, spot=(None if src == ENEMY_SRC_FOREST else loc))
+        for e in enemies:
+            mark = "" if e.get('enabled', 1) else "⛔ "
+            lines.append(f"• {mark}{e['name']} — HP {e['hp']}, урон {e['dmg_min']}–{e['dmg_max']}, "
+                         f"встреча {e['chance']}%")
+            rows.append([InlineKeyboardButton(
+                text=f"{mark}{e['name']}",
+                callback_data=f"enemy:card:{src}:{loc}:{e['id']}")])
+    if not enemies:
+        lines.append("\nВрагов пока нет. Можно добавить.")
+    lines.append("\nНажми на врага, чтобы настроить его.")
+    rows.append([InlineKeyboardButton(text="➕ Добавить врага",
+                                      callback_data=f"enemy:new:{src}:{loc}")])
+    back = ("enemy:fi" if src == ENEMY_SRC_FISHING
+            else f"enemy:dn:{loc.split('-')[1]}" if src == ENEMY_SRC_DUNGEON
+            else "admin:enemies")
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=back)])
+    await callback.message.edit_text("\n".join(lines),
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.regexp(r"^enemy:dcard:"))
+async def admin_enemies_dungeon_card(callback: CallbackQuery, state: FSMContext):
+    """Карточка врага данжа — открываем существующий редактор (он и так полный)."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, src, loc, enemy_id = callback.data.split(":", 4)
+    await state.update_data(enemy_id=int(enemy_id))
+    await _enemy_card_send(callback, int(enemy_id))
+
+
+async def _source_enemy_send(target, src: str, loc: str, enemy_id: int, edit: bool = True):
+    """Карточка врага леса/рыбалки с кнопками правки."""
+    from aiogram.types import InlineKeyboardMarkup as _KB, InlineKeyboardButton as _B
+    enemy = await get_source_enemy(src, enemy_id)
+    if not enemy:
+        await target.answer("❌ Враг не найден.")
+        return
+    drops = await get_source_enemy_drops(src, enemy_id)
+    enabled = enemy.get('enabled', 1)
+    text = (
+        f"⚔️ {enemy['name']}\n"
+        f"📍 {_enemy_loc_title(src, loc)}\n"
+        f"──────────────\n"
+        f"{'✅ Встречается' if enabled else '⛔ Выключен (не встречается)'}\n"
+        f"❤️ HP: {enemy['hp']}\n"
+        f"🗡 Урон: {enemy['dmg_min']}–{enemy['dmg_max']}\n"
+        f"💨 Уклонение: {enemy['dodge']}%\n"
+        f"💥 Твой урон: {enemy['player_dmg_min']}–{enemy['player_dmg_max']}\n"
+        f"🎲 Шанс встречи: {enemy['chance']}% (за попытку)\n"
+        f"🧿 Гарантия: раз в {enemy['pity_target'] or '—'} попыток\n"
+        f"⚡ Потеря ОД при поражении: {enemy['loss_ap']}\n"
+        f"💰 Награда: {enemy['reward_nm']} НМ\n"
+        f"💼 Дропы: {len(drops)}\n"
+        f"🖼 Фото: {'есть' if enemy.get('image') else (enemy.get('photo_key') or 'нет')}\n\n"
+        f"{enemy.get('description') or ''}\n\n"
+        f"Что изменить?"
+    )
+    base = f"enemy:card:{src}:{loc}:{enemy_id}"
+    rows = [
+        [_B(text="❤️ HP", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:hp"),
+         _B(text="🗡 Урон", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:dmg_min")],
+        [_B(text="💥 Твой урон", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:player_dmg_min"),
+         _B(text="💨 Уклонение", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:dodge")],
+        [_B(text="🎲 Шанс встречи", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:chance"),
+         _B(text="🧿 Гарантия", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:pity_target")],
+        [_B(text="⚡ Потеря ОД", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:loss_ap"),
+         _B(text="💰 Награда НМ", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:reward_nm")],
+        [_B(text="💼 Дропы", callback_data=f"enemy:drops:{src}:{loc}:{enemy_id}")],
+        [_B(text="🖼 Фото", callback_data=f"enemy:photo:{src}:{loc}:{enemy_id}"),
+         _B(text="🔑 Ключ картинки", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:photo_key")],
+        [_B(text="📝 Описание", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:description")],
+        [_B(text="⛔ Включить/выключить" if enabled else "✅ Включить",
+              callback_data=f"enemy:tog:{src}:{loc}:{enemy_id}")],
+        [_B(text="🗑 Удалить врага", callback_data=f"enemy:del:{src}:{loc}:{enemy_id}")],
+        [_B(text="🔙 К списку", callback_data=_enemy_list_cb(src, loc))],
+    ]
+    kb = _KB(inline_keyboard=rows)
+    if edit and hasattr(target, 'message') and target.message is not None:
+        await target.message.edit_text(text, reply_markup=kb)
+    else:
+        await target.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data.regexp(r"^enemy:card:"))
+async def admin_enemies_card(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, src, loc, enemy_id = callback.data.split(":", 4)
+    await state.update_data(enemy_src=src, enemy_loc=loc, enemy_id=int(enemy_id))
+    await _source_enemy_send(callback, src, loc, int(enemy_id))
+
+
+@router.callback_query(F.data.regexp(r"^enemy:fld:"))
+async def admin_enemies_field_pick(callback: CallbackQuery, state: FSMContext):
+    """Запрос нового значения поля карточки."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, src, loc, enemy_id, field = callback.data.split(":", 5)
+    if field not in ENEMY_FIELDS:
+        return
+    await state.update_data(enemy_src=src, enemy_loc=loc, enemy_id=int(enemy_id),
+                            enemy_field=field)
+    await state.set_state(AdminEnemy.field)
+    await callback.message.answer(f"{ENEMY_FIELDS[field][0]} — {ENEMY_FIELDS[field][1]}",
+                                  reply_markup=cancel_keyboard())
+
+
+@router.message(AdminEnemy.field)
+async def admin_enemies_field_value(message: Message, state: FSMContext):
+    """Применяем введённое значение к полю врага."""
+    data = await state.get_data()
+    src, loc, enemy_id, field = (data.get('enemy_src'), data.get('enemy_loc'),
+                                 data.get('enemy_id'), data.get('enemy_field'))
+    enemy = await get_source_enemy(src, enemy_id) if src and enemy_id else None
+    if not enemy:
+        await state.clear()
+        await message.answer("❌ Враг не найден. Открой карточку заново.")
+        return
+    if field not in ENEMY_FIELDS:
+        await state.clear()
+        await message.answer("❌ Поле не распознано. Открой карточку заново.")
+        return
+    kind = ENEMY_FIELDS[field][2]
+    text = (message.text or "").strip()
+
+    parsed = None
+    if kind == "int":
+        if text.isdigit():
+            parsed = int(text)
+    elif kind == "percent":
+        if text.isdigit():
+            parsed = int(text)
+    elif kind == "dash":
+        parsed = None if text in ("-", "—") else text[:400]
+
+    valid = parsed is not None and (kind != "percent" or parsed <= 100)
+    if valid and field in ("hp", "player_dmg_min", "player_dmg_max") and parsed < 1:
+        valid = False
+    if not valid:
+        await message.answer(f"❌ Неверный формат.\n{ENEMY_FIELDS[field][1]}",
+                             reply_markup=cancel_keyboard())
+        return
+
+    await update_source_enemy(src, enemy_id, **{field: parsed})
+    await log_action(message.from_user.id, 'edit_enemy', None,
+                     f"src={src} id={enemy_id} {field}={parsed}")
+    await state.clear()
+    await message.answer(f"✅ {enemy['name']}: {ENEMY_FIELDS[field][0]} = {parsed}.")
+    await _source_enemy_send(message, src, loc, enemy_id, edit=False)
+
+
+@router.callback_query(F.data.regexp(r"^enemy:photo:"))
+async def admin_enemies_photo_pick(callback: CallbackQuery, state: FSMContext):
+    """Загрузка фото врага (или «-» чтобы убрать)."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, src, loc, enemy_id = callback.data.split(":", 4)
+    await state.update_data(enemy_src=src, enemy_loc=loc, enemy_id=int(enemy_id))
+    await state.set_state(AdminEnemy.photo)
+    await callback.message.answer("Отправь фото врага (Telegram-фото). Или «-», чтобы убрать фото.",
+                                  reply_markup=cancel_keyboard())
+
+
+@router.message(AdminEnemy.photo)
+async def admin_enemies_photo_value(message: Message, state: FSMContext):
+    data = await state.get_data()
+    src, loc, enemy_id = data.get('enemy_src'), data.get('enemy_loc'), data.get('enemy_id')
+    enemy = await get_source_enemy(src, enemy_id) if src and enemy_id else None
+    if not enemy:
+        await state.clear()
+        await message.answer("❌ Враг не найден.")
+        return
+    if message.photo:
+        file_id = message.photo[-1].file_id
+    elif (message.text or "").strip() in ("-", "—"):
+        file_id = None
+    else:
+        await message.answer("❌ Пришли фото или «-».")
+        return
+    await update_source_enemy(src, enemy_id, image=file_id)
+    await log_action(message.from_user.id, 'edit_enemy', None,
+                     f"src={src} id={enemy_id} image={'file_id' if file_id else 'cleared'}")
+    await state.clear()
+    await message.answer(f"✅ «{enemy['name']}»: фото {'обновлено' if file_id else 'убрано'}.")
+    await _source_enemy_send(message, src, loc, enemy_id, edit=False)
+
+
+@router.callback_query(F.data.regexp(r"^enemy:tog:"))
+async def admin_enemies_toggle(callback: CallbackQuery, state: FSMContext):
+    """Включить/выключить врага (выключенный не встречается в игре)."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, src, loc, enemy_id = callback.data.split(":", 4)
+    enemy_id = int(enemy_id)
+    enemy = await get_source_enemy(src, enemy_id)
+    if not enemy:
+        await callback.message.answer("❌ Враг не найден.")
+        return
+    new_enabled = 0 if enemy.get('enabled', 1) else 1
+    await update_source_enemy(src, enemy_id, enabled=new_enabled)
+    await log_action(callback.from_user.id, 'edit_enemy', None,
+                     f"src={src} id={enemy_id} enabled={new_enabled}")
+    await _source_enemy_send(callback, src, loc, enemy_id)
+
+
+@router.callback_query(F.data.regexp(r"^enemy:del:"))
+async def admin_enemies_delete(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, src, loc, enemy_id = callback.data.split(":", 4)
+    enemy_id = int(enemy_id)
+    enemy = await get_source_enemy(src, enemy_id)
+    if not enemy:
+        await callback.message.answer("❌ Враг не найден.")
+        return
+    await delete_source_enemy(src, enemy_id)
+    await log_action(callback.from_user.id, 'edit_enemy', None,
+                     f"src={src} id={enemy_id} deleted={enemy['name']}")
+    lines = [f"🗑 Враг «{enemy['name']}» удалён из {_enemy_loc_title(src, loc)}."]
+    rows = [[InlineKeyboardButton(text="🔙 К списку", callback_data=_enemy_list_cb(src, loc))]]
+    await callback.message.edit_text("\n".join(lines),
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+# ---------- дропы врага леса/рыбалки ----------
+
+@router.callback_query(F.data.regexp(r"^enemy:drops:"))
+async def admin_enemies_drops(callback: CallbackQuery, state: FSMContext):
+    """Экран дропов врага леса/рыбалки."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, src, loc, enemy_id = callback.data.split(":", 4)
+    enemy_id = int(enemy_id)
+    enemy = await get_source_enemy(src, enemy_id)
+    if not enemy:
+        await callback.message.answer("❌ Враг не найден.")
+        return
+    drops = await get_source_enemy_drops(src, enemy_id)
+    lines = [f"💼 ДРОПЫ «{enemy['name']}»\n"]
+    rows = []
+    for idx, d in enumerate(drops):
+        item = await get_item(d['item_id']) if d.get('item_id') else None
+        name = item['name'] if item else (d.get('item') or '?')
+        ch = d.get('chance', 0)
+        ch_pct = f"{int(ch * 100)}%" if ch <= 1 else f"{int(ch)}%"
+        qty = d.get('qty', 1)
+        label = f"{name} — {ch_pct}" + (f" ×{qty}" if qty != 1 else "")
+        lines.append(f"{idx + 1}. {label}")
+        rows.append([InlineKeyboardButton(text=f"🗑 {idx + 1}. {label}",
+                                          callback_data=f"enemy:dropdel:{src}:{loc}:{enemy_id}:{idx}")])
+    if not drops:
+        lines.append("Дропов пока нет.")
+    lines.append("\nШансы независимые: каждый предмет проверяется отдельно, поэтому "
+                 "за одну победу может выпасть сразу несколько. Пусто — когда не выпал ни один.")
+    rows.append([InlineKeyboardButton(text="➕ Добавить предмет",
+                                      callback_data=f"enemy:dropitem:{src}:{loc}:{enemy_id}:0")])
+    rows.append([InlineKeyboardButton(text="🔙 В карточку врага",
+                                      callback_data=f"enemy:card:{src}:{loc}:{enemy_id}")])
+    await callback.message.edit_text("\n".join(lines),
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.regexp(r"^enemy:dropdel:"))
+async def admin_enemies_drop_del(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, src, loc, enemy_id, idx = callback.data.split(":", 5)
+    await remove_source_enemy_drop(src, int(enemy_id), int(idx))
+    await log_action(callback.from_user.id, 'edit_enemy', None,
+                     f"src={src} id={enemy_id} drop_removed={idx}")
+    await admin_enemies_drops(callback, state)
+
+
+@router.callback_query(F.data.regexp(r"^enemy:dropitem:"))
+async def admin_enemies_drop_pick(callback: CallbackQuery, state: FSMContext):
+    """Постраничный выбор предмета из игры для дропа."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, src, loc, enemy_id, page = callback.data.split(":", 5)
+    page = int(page)
+    enemy_id = int(enemy_id)
+    all_items = await get_all_items()
+    pages = max(1, (len(all_items) + DROPS_PER_PAGE - 1) // DROPS_PER_PAGE)
+    page = max(0, min(page, pages - 1))
+    chunk = all_items[page * DROPS_PER_PAGE:(page + 1) * DROPS_PER_PAGE]
+    rows = []
+    for it in chunk:
+        emoji = RARITY_EMOJI.get(it['rarity'], "❔")
+        cat = ITEM_CATEGORIES.get(it['category'], it['category'])
+        rows.append([InlineKeyboardButton(
+            text=f"{emoji} {it['name']} — {cat}",
+            callback_data=f"enemy:dropadd:{src}:{loc}:{enemy_id}:{it['id']}")])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️",
+                                        callback_data=f"enemy:dropitem:{src}:{loc}:{enemy_id}:{page - 1}"))
+    nav.append(InlineKeyboardButton(text=f"{page + 1}/{pages}", callback_data="noop"))
+    if page < pages - 1:
+        nav.append(InlineKeyboardButton(text="▶️",
+                                        callback_data=f"enemy:dropitem:{src}:{loc}:{enemy_id}:{page + 1}"))
+    rows.append(nav)
+    rows.append([InlineKeyboardButton(text="🔙 К дропам",
+                                      callback_data=f"enemy:drops:{src}:{loc}:{enemy_id}")])
+    await callback.message.edit_text("Выбери предмет из игры для дропа:",
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.regexp(r"^enemy:dropadd:"))
+async def admin_enemies_drop_add_pick(callback: CallbackQuery, state: FSMContext):
+    """Выбран предмет — спрашиваем шанс."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, src, loc, enemy_id, item_id = callback.data.split(":", 5)
+    await state.update_data(enemy_src=src, enemy_loc=loc, enemy_id=int(enemy_id),
+                            drop_item_id=int(item_id))
+    await state.set_state(AdminEnemy.drop_chance)
+    await callback.message.answer("Введи шанс выпадения, % (1–100):",
+                                  reply_markup=cancel_keyboard())
+
+
+@router.message(AdminEnemy.drop_chance)
+async def admin_enemies_drop_chance_value(message: Message, state: FSMContext):
+    data = await state.get_data()
+    src, loc, enemy_id = data.get('enemy_src'), data.get('enemy_loc'), data.get('enemy_id')
+    item_id = data.get('drop_item_id')
+    text = (message.text or "").strip()
+    if not text.isdigit() or not 1 <= int(text) <= 100:
+        await message.answer("❌ Нужно целое число 1–100.", reply_markup=cancel_keyboard())
+        return
+    await state.update_data(drop_chance=int(text))
+    await state.set_state(AdminEnemy.drop_qty)
+    await message.answer("Сколько выпадает? (целое ≥ 1, по умолчанию 1 — пришли 1):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminEnemy.drop_qty)
+async def admin_enemies_drop_qty_value(message: Message, state: FSMContext):
+    data = await state.get_data()
+    src, loc, enemy_id = data.get('enemy_src'), data.get('enemy_loc'), data.get('enemy_id')
+    item_id, chance = data.get('drop_item_id'), int(data.get('drop_chance') or 100)
+    text = (message.text or "").strip()
+    qty = int(text) if text.isdigit() and int(text) >= 1 else 1
+    await add_source_enemy_drop(src, enemy_id, item_id, chance / 100.0, qty)
+    await log_action(message.from_user.id, 'edit_enemy', None,
+                     f"src={src} id={enemy_id} drop_item={item_id} chance={chance}% qty={qty}")
+    await state.clear()
+    item = await get_item(item_id)
+    await message.answer(f"✅ Добавлен дроп: {item['name'] if item else item_id} — {chance}%"
+                         + (f" ×{qty}" if qty != 1 else "") + ".")
+    rows = [[InlineKeyboardButton(text="🔙 К дропам", callback_data=f"enemy:drops:{src}:{loc}:{enemy_id}")]]
+    await message.answer("Что дальше?", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+# ---------- создание врага (лес/рыбалка) ----------
+
+@router.callback_query(F.data.regexp(r"^enemy:new:"))
+async def admin_enemies_new(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, src, loc = callback.data.split(":", 3)
+    await state.update_data(enemy_src=src, enemy_loc=loc)
+    await state.set_state(AdminEnemy.c_name)
+    await callback.message.answer("Введи название нового врага:", reply_markup=cancel_keyboard())
+
+
+@router.message(AdminEnemy.c_name)
+async def admin_enemies_new_name(message: Message, state: FSMContext):
+    name = (message.text or "").strip()
+    if not name:
+        await message.answer("❌ Название не может быть пустым.")
+        return
+    await state.update_data(new_name=name[:64])
+    await state.set_state(AdminEnemy.c_hp)
+    await message.answer("Введи HP врага (целое ≥ 1):", reply_markup=cancel_keyboard())
+
+
+@router.message(AdminEnemy.c_hp)
+async def admin_enemies_new_hp(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    if not text.isdigit() or int(text) < 1:
+        await message.answer("❌ Нужно целое число ≥ 1.")
+        return
+    await state.update_data(new_hp=int(text))
+    await state.set_state(AdminEnemy.c_dmg)
+    await message.answer("Введи урон врага в виде «мин-макс», например 5-9:", reply_markup=cancel_keyboard())
+
+
+@router.message(AdminEnemy.c_dmg)
+async def admin_enemies_new_dmg(message: Message, state: FSMContext):
+    text = (message.text or "").replace("–", "-").replace("—", "-").strip()
+    parts = text.split("-")
+    try:
+        dmg_min = int(parts[0])
+        dmg_max = int(parts[1]) if len(parts) > 1 else dmg_min
+    except (ValueError, IndexError):
+        await message.answer("❌ Формат: «5-9» (два числа через дефис).")
+        return
+    if dmg_min < 0 or dmg_max < dmg_min:
+        await message.answer("❌ Максимум должен быть не меньше минимума.")
+        return
+    await state.update_data(new_dmg_min=dmg_min, new_dmg_max=dmg_max)
+    await state.set_state(AdminEnemy.c_dodge)
+    await message.answer("Введи шанс уклонения, % (0–100):", reply_markup=cancel_keyboard())
+
+
+@router.message(AdminEnemy.c_dodge)
+async def admin_enemies_new_dodge(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    if not text.isdigit() or int(text) > 100:
+        await message.answer("❌ Нужно целое 0–100.")
+        return
+    await state.update_data(new_dodge=int(text))
+    await state.set_state(AdminEnemy.c_chance)
+    await message.answer("Введи шанс встречи с врагом на попытку, % (например 5):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminEnemy.c_chance)
+async def admin_enemies_new_chance(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    if not text.isdigit() or int(text) > 100:
+        await message.answer("❌ Нужно целое 0–100.")
+        return
+    await state.update_data(new_chance=int(text))
+    await state.set_state(AdminEnemy.c_loss_ap)
+    await message.answer("Введи, сколько ОД теряет игрок при поражении (целое ≥ 0):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminEnemy.c_loss_ap)
+async def admin_enemies_new_done(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    if not text.isdigit():
+        await message.answer("❌ Нужно целое ≥ 0.")
+        return
+    data = await state.get_data()
+    src, loc = data.get('enemy_src'), data.get('enemy_loc')
+    enemy_id = await add_source_enemy(
+        src, spot=(loc if src == ENEMY_SRC_FISHING else 'forest'),
+        name=data.get('new_name'), hp=data.get('new_hp'),
+        dmg_min=data.get('new_dmg_min'), dmg_max=data.get('new_dmg_max'),
+        dodge=data.get('new_dodge'), player_dmg_min=5, player_dmg_max=10,
+        loss_ap=int(text), chance=float(data.get('new_chance') or 0),
+        pity_target=0, reward_nm=0, drops=[], description=None,
+        photo_key=None, enabled=1)
+    await log_action(message.from_user.id, 'add_enemy', None, f"src={src} id={enemy_id}")
+    await state.clear()
+    await message.answer(f"✅ Враг «{data.get('new_name')}» добавлен. Настрой его дропы и фото.")
+    await _source_enemy_send(message, src, loc, enemy_id, edit=False)

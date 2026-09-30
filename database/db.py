@@ -1,10 +1,12 @@
 import json
 import logging
+import random
 import time
 import aiosqlite
 import config
 from config import (DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MINUTES,
-                    DUNGEON_RUN_STALE_SEC)
+                    DUNGEON_RUN_STALE_SEC, FOREST_BOAR_SEED, MOLLUSK_SEED,
+                    MOLLUSK_ITEM_SEEDS, MOLLUSK_ENEMY_DROPS)
 from config import get_effective_rank
 
 logger = logging.getLogger(__name__)
@@ -668,6 +670,66 @@ async def init_db():
             UNIQUE(water, name)
         );
 
+        CREATE TABLE IF NOT EXISTS forest_mushrooms (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            item_id INTEGER NOT NULL UNIQUE,
+            chance INTEGER DEFAULT 10,
+            kind TEXT DEFAULT 'edible',
+            photo_file_id TEXT,
+            admin_tuned INTEGER DEFAULT 0,
+            excluded INTEGER DEFAULT 0
+        );
+
+        -- Враги вне подземелья (лес, рыбалка). Набор колонок одинаковый у обеих
+        -- таблиц, чтобы единый админ-редактор работал с ними одинаково.
+        -- key — технический идентификатор ('boar', 'mollusk'), spot — место
+        -- встречи внутри источника ('forest', 'reservoir').
+        CREATE TABLE IF NOT EXISTS forest_enemies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT,
+            spot TEXT DEFAULT 'forest',
+            name TEXT NOT NULL,
+            hp INTEGER DEFAULT 30,
+            dmg_min INTEGER DEFAULT 4,
+            dmg_max INTEGER DEFAULT 7,
+            dodge INTEGER DEFAULT 0,
+            player_dmg_min INTEGER DEFAULT 5,
+            player_dmg_max INTEGER DEFAULT 9,
+            loss_ap INTEGER DEFAULT 0,
+            chance REAL DEFAULT 0,
+            pity_target INTEGER DEFAULT 0,
+            reward_nm INTEGER DEFAULT 0,
+            drops TEXT DEFAULT '[]',
+            description TEXT,
+            image TEXT,
+            photo_key TEXT,
+            enabled INTEGER DEFAULT 1,
+            admin_tuned INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS fishing_enemies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT,
+            spot TEXT DEFAULT 'reservoir',
+            name TEXT NOT NULL,
+            hp INTEGER DEFAULT 30,
+            dmg_min INTEGER DEFAULT 4,
+            dmg_max INTEGER DEFAULT 7,
+            dodge INTEGER DEFAULT 0,
+            player_dmg_min INTEGER DEFAULT 5,
+            player_dmg_max INTEGER DEFAULT 9,
+            loss_ap INTEGER DEFAULT 0,
+            chance REAL DEFAULT 0,
+            pity_target INTEGER DEFAULT 0,
+            reward_nm INTEGER DEFAULT 0,
+            drops TEXT DEFAULT '[]',
+            description TEXT,
+            image TEXT,
+            photo_key TEXT,
+            enabled INTEGER DEFAULT 1,
+            admin_tuned INTEGER DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS wall_posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -958,6 +1020,8 @@ async def init_db():
     # Выкуп рыбы казной: суточный лимит НМ на игрока (FISH_TREASURY_DAILY_LIMIT)
     await _ensure_column(conn, "users", "fish_sold_day", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "users", "fish_sold_today", "INTEGER DEFAULT 0")
+    # v0.18.15: счётчик попыток сбора грибов с момента последней встречи кабана.
+    await _ensure_column(conn, "users", "forest_attempts_since_boar", "INTEGER DEFAULT 0")
     # Встроенные расширения жилья (например, кухня в студии): embedded=1 — не возвращается
     # в инвентарь при переезде и не может быть снята вручную.
     await _ensure_column(conn, "housing_slots", "embedded", "INTEGER DEFAULT 0")
@@ -1115,6 +1179,8 @@ async def seed_locations(conn):
          "all", None, ["пьян"], "city/contracts"),
         ("nii", "НИИ Северной Кибернетики и кремниевых систем", "НИИ Северной Кибернетики и кремниевых систем: здесь пилоты оставляют жалобы и запросы на доработку бота.",
          "all", None, ["пьян"], "city/nii"),
+        ("forest", "Лес на окраине", "Тёмный еловый лес на окраине Аркхольма. Здесь водятся грибы и не только: говорят, по опушкам бродит злобный кабан.",
+         "all", None, ["пьян"], "city/forest"),
     ]
     for key, name, desc, mode, req_status, blocking, preview in base:
         await conn.execute(
@@ -3560,14 +3626,52 @@ def report_day_bounds() -> tuple:
     return start, start + timedelta(days=1)
 
 
-def report_day_label(offset_days: int = 0) -> str:
-    """Заголовок отчётных суток для интерфейса: «28.09 10:00 — 29.09 10:00»."""
-    start, end = report_day_bounds()
-    if offset_days:
-        start += timedelta(days=offset_days)
-        end += timedelta(days=offset_days)
+def report_day_label_for(day: str) -> str:
+    """Заголовок отчётных СУТОК конкретного отчёта по его дню 'YYYY-MM-DD'.
+
+    Нужно там, где показывают сутки конкретного отчёта (карточка на проверке,
+    «принять», «поправить цифры»): у отчёта, сданного до 10:00 МСК, сутки
+    ПРЕДЫДУЩИЕ, и надпись про текущие сутки вводила в заблуждение — админ видел
+    «30.09 — 01.10» для отчёта за 29-е число. Метка берётся из дня самого
+    отчёта, поэтому совпадает с решением об оплате в approve_report.
+    """
+    from config import REPORT_DAY_START_HOUR, REPORT_DAY_START_MINUTE
+    try:
+        d = datetime.strptime(str(day)[:10], "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return report_day_label()
+    start = d.replace(hour=REPORT_DAY_START_HOUR, minute=REPORT_DAY_START_MINUTE)
+    end = start + timedelta(days=1)
     fmt = "%d.%m %H:%M"
     return f"{start.strftime(fmt)} — {end.strftime(fmt)}"
+
+
+def shift_report_day(day: str, delta_days: int) -> str:
+    """Сдвинуть день отчётных суток 'YYYY-MM-DD' на N суток."""
+    try:
+        d = datetime.strptime(str(day)[:10], "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return day
+    return (d + timedelta(days=delta_days)).strftime("%Y-%m-%d")
+
+
+def report_day_label(offset_days: int = 0) -> str:
+    """Заголовок ТЕКУЩИХ отчётных суток (со сдвигом): «28.09 10:00 — 29.09 10:00»."""
+    return report_day_label_for(shift_report_day(today_report_day(), offset_days))
+
+
+def created_at_msk(created_at: str) -> str:
+    """Время сдачи отчёта по МСК для интерфейса: «30.09 08:40».
+
+    created_at в базе — UTC (SQLite CURRENT_TIMESTAMP), поэтому без пересчёта
+    админ видел сдачу в 05:40 вместо 08:40.
+    """
+    try:
+        dt = datetime.strptime(str(created_at)[:19], "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return "—"
+    msk = timezone(timedelta(hours=3))
+    return dt.replace(tzinfo=timezone.utc).astimezone(msk).strftime("%d.%m %H:%M")
 
 
 async def _report_base_total(conn, user_id: int, exclude_id: int = None):
@@ -3717,7 +3821,8 @@ async def report_payout_context(user_id: int, daily_claim: int, total_claim: int
 
     cycle_day — конкретные отчётные сутки 'YYYY-MM-DD' вместо текущих. Нужно при
     одобрении отчёта из прошлых суток: лимит считается по суткам САМОГО отчёта,
-    иначе сегодняшние отчёты съедают лимит и вчерашний фарм урезается.
+    иначе сегодняшние отчёты съедают лимит и вчерашний фарм урезается. Заодно
+    day_label показывает именно эти сутки, а не текущие.
 
     Возвращает: payable (к оплате), claim (заявка), assigned_today (уже засчитано за
     сутки), cap, capped_by_limit, room_today, total_claim (справочно), base (справочно),
@@ -3746,7 +3851,8 @@ async def report_payout_context(user_id: int, daily_claim: int, total_claim: int
         "base": await _report_base_total(conn, user_id, exclude_id),
         "base_known": True,
         "prev_day_total": await report_prev_day_total(user_id),
-        "day_label": report_day_label(),
+        "cycle_day": cycle_day or today_report_day(),
+        "day_label": report_day_label_for(cycle_day) if cycle_day else report_day_label(),
     }
 
 
@@ -3778,10 +3884,13 @@ async def correct_report_numbers(report_id: int, troops_reported: int, total_tro
     Править можно только отчёты в статусе pending: одобренные и выплаченные не трогаем.
     Возвращает контекст оплаты после правки (claim/payable/assigned_today) либо
     {'error': ...}.
+
+    Счёт идёт по суткам САМОГО отчёта (по его created_at): висящий отчёт за прошлые
+    сутки не должен показывать лимит и «уже засчитано» сегодняшнего дня.
     """
     conn = await get_db()
     cursor = await conn.execute(
-        "SELECT user_id, troops_reported, total_troops, status FROM reports WHERE id = ?",
+        "SELECT user_id, troops_reported, total_troops, status, created_at FROM reports WHERE id = ?",
         (report_id,)
     )
     row = await cursor.fetchone()
@@ -3792,7 +3901,8 @@ async def correct_report_numbers(report_id: int, troops_reported: int, total_tro
                          f"(статус: {row['status']}) — править нельзя."}
 
     ctx = await report_payout_context(row['user_id'], troops_reported, total_troops,
-                                      exclude_id=report_id)
+                                      exclude_id=report_id,
+                                      cycle_day=_report_cycle_day_of(row['created_at']))
     await conn.execute(
         "UPDATE reports SET troops_reported = ?, total_troops = ?, credited_troops = ? "
         "WHERE id = ?",
@@ -5056,8 +5166,8 @@ async def wing_members_report_farms(wing: str) -> list:
     # Регион: последний принятый отчёт пилота (регион не пуст). Та же раскладка,
     # что в recompute_region_stats: ORDER BY created_at DESC, id DESC, rn = 1.
     cur = await conn.execute("""
-        SELECT user_id, region FROM (
-            SELECT r.user_id, r.region,
+        SELECT user_id, region, total_troops FROM (
+            SELECT r.user_id, r.region, COALESCE(r.total_troops, 0) AS total_troops,
                    ROW_NUMBER() OVER (
                        PARTITION BY r.user_id
                        ORDER BY r.created_at DESC, r.id DESC
@@ -5069,7 +5179,8 @@ async def wing_members_report_farms(wing: str) -> list:
         WHERE rn = 1
           AND user_id IN (SELECT user_id FROM users WHERE wing = ?)
     """, (wing,))
-    regions = {row['user_id']: row['region'] for row in await cur.fetchall()}
+    regions = {row['user_id']: (row['region'], row['total_troops'] or 0)
+               for row in await cur.fetchall()}
 
     members = await get_wing_member_rows(wing)
     result = []
@@ -5077,7 +5188,11 @@ async def wing_members_report_farms(wing: str) -> list:
         d = dict(u)
         d['prev_farm'] = farms.get(u['user_id'], {}).get(prev_day, 0) or 0
         d['today_farm'] = farms.get(u['user_id'], {}).get(today, 0) or 0
-        d['region'] = regions.get(u['user_id'], None)
+        region_info = regions.get(u['user_id'])
+        d['region'] = region_info[0] if region_info else None
+        # Сколько сил пилот заявил в регионе («всего» его последнего принятого отчёта) —
+        # именно эта цифра складывается в силы региона в recompute_region_stats.
+        d['region_troops'] = region_info[1] if region_info else None
         result.append(d)
     return result
 
@@ -6188,6 +6303,651 @@ async def get_water_fish_candidates(water: str):
         ORDER BY i.name
     """, (water,))
     return await cursor.fetchall()
+
+
+# ──────────────── Лес на окраине: грибы (v0.18.15) ────────────────
+
+# Пул грибов леса: имя → (вес в пуле, тип). Сумма весов 96 — это НЕ проценты:
+# находка гриба задаётся константой FOREST_EMPTY_CHANCE в bot/handlers/forest.py
+# (10% «ничего не нашёл»), а оставшиеся 90% делятся между грибами по их весам.
+# Крайняя редкость — у Ежовика гребенчатого, самая частая — Опёнок.
+FOREST_DEFAULTS = [
+    ("Опёнок", 25, "edible"),
+    ("Подберёзовик", 18, "edible"),
+    ("Лисичка", 15, "edible"),
+    ("Белый гриб", 12, "edible"),
+    ("Гиропор", 8, "edible"),
+    ("Ежовик гребенчатый", 4, "edible"),
+    ("Мухомор", 9, "toxic"),
+    ("Бледная поганка", 5, "toxic"),
+]
+
+# Параметры сырых грибов: имя → (цена, продажа, редкость, heal, тип).
+# heal > 0 у съедобных — можно съесть сырым (в бою подземелья, как зелья);
+# ядовитые — ресурс (есть нельзя).
+FOREST_RAW_MUSHROOMS = {
+    "Опёнок": (20, 3, 1, 4, "edible"),
+    "Подберёзовик": (30, 5, 1, 6, "edible"),
+    "Лисичка": (45, 8, 2, 8, "edible"),
+    "Белый гриб": (60, 12, 2, 10, "edible"),
+    "Гиропор": (120, 20, 3, 14, "edible"),
+    "Ежовик гребенчатый": (200, 35, 4, 18, "edible"),
+    "Мухомор": (15, 3, 1, 0, "toxic"),
+    "Бледная поганка": (20, 4, 2, 0, "toxic"),
+}
+
+# Остальные предметы леса: имя → (описание, цена, продажа, редкость, категория, heal, market_ok).
+# Все вне магазина (is_available=0): добываются только в лесу/через крафт.
+FOREST_ITEM_SEEDS = [
+    ("Мясо кабана",
+     "Свежее мясо кабана с лесной охоты. В сыром виде есть нельзя — прожарь на кухне.",
+     40, 10, 2, "resource", 0, 1),
+    ("Шкура кабана",
+     "Сырая и тяжёлая шкура старого кабана. Битва была не зря — пригодится для крафта.",
+     60, 15, 3, "resource", 0, 1),
+    ("Клык кабана",
+     "Опасный изогнутый клык старого кабана. Редкая добыча — набитые мастера возьмут такой в работу.",
+     100, 40, 4, "resource", 0, 1),
+    ("Жареный опёнок",
+     "Поджаренные на углях опята: +12 HP в бою. Срок годности 4 суток.",
+     35, 17, 1, "consumable", 12, 1),
+    ("Жареный подберёзовик",
+     "Поджаренный на углях подберёзовик: +18 HP в бою. Срок годности 4 суток.",
+     55, 27, 1, "consumable", 18, 1),
+    ("Жареные лисички",
+     "Ароматные жареные лисички: +26 HP в бою. Срок годности 4 суток.",
+     90, 45, 2, "consumable", 26, 1),
+    ("Жареный белый гриб",
+     "Жареный белый гриб — гордость охотника: +34 HP в бою. Срок годности 4 суток.",
+     130, 65, 2, "consumable", 34, 1),
+    ("Жареный гиропор",
+     "Редкий жареный гиропор: +48 HP в бою. Срок годности 4 суток.",
+     260, 130, 3, "consumable", 48, 1),
+    ("Жареный ежовик гребенчатый",
+     "Деликатес из самого редкого гриба леса: +70 HP в бою. Срок годности 4 суток.",
+     420, 210, 4, "consumable", 70, 1),
+    ("Жареное мясо кабана",
+     "Жаренное на костре мясо кабана: +30 HP в бою. Срок годности 4 суток.",
+     90, 45, 2, "consumable", 30, 1),
+    ("Бутылочка с ядом",
+     "Мутное зелье, сваренное из ядовитых лесных грибов. На рынок выставлять нельзя — "
+     "пригодится кузнецу для улучшения оружия (например, ножа).",
+     150, 75, 2, "resource", 0, 0),
+]
+
+# Прямая добыча с врагов — только с них и ниоткуда: вне магазина (is_available=0),
+# вне рынка игроков (market_ok=0) и помечена loot_only, чтобы админ видел пометку
+# «Только лут с врагов» и случайно не вернул её в продажу. Продать в казну за
+# деньги по-прежнему можно, крафт и выдача с врагов работают как раньше.
+FOREST_ENEMY_DROPS = ("Мясо кабана", "Шкура кабана", "Клык кабана")
+
+
+async def ensure_forest_items():
+    """Идемпотентно создаёт предметы леса (грибы, добыча кабана, жареные блюда, яд).
+
+    Все предметы вне магазина (is_available=0): добываются только в лесу или
+    через рецепты. Съедобные грибы можно выставлять на рынок (market_ok=1).
+    """
+    conn = await get_db()
+    added = False
+
+    # Сырые грибы: категория по типу (съедобный — расходник с лечением в бою).
+    for name, (price, sell, rare, heal, kind) in FOREST_RAW_MUSHROOMS.items():
+        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (name,))
+        if (await cursor.fetchone())['c'] == 0:
+            category = "consumable" if kind == "edible" else "resource"
+            desc = (
+                "Лесной гриб: можно съесть сырым (+%d HP в бою подземелья). Лучше пожарить на кухне."
+                % heal if heal else
+                "Ядовитый лесной гриб: есть нельзя. Понадобится, чтобы сварить «Бутылочку с ядом»."
+            )
+            await add_item(name=name, description=desc, price=price, sell_price=sell,
+                           rarity=rare, category=category, stock=-1, added_by=0,
+                           ap_cost=0, damage=0, heal=heal, market_ok=1)
+            added = True
+    # Синхронизация сырых грибов у существующих БД: лечение (как жареная рыба)
+    # и скрытие из магазина (is_available=0) — грибы только из леса.
+    for name, (price, sell, rare, heal, kind) in FOREST_RAW_MUSHROOMS.items():
+        cursor = await conn.execute(
+            "SELECT id FROM items WHERE name = ? AND (heal != ? OR is_available != 0)",
+            (name, heal if kind == "edible" else 0)
+        )
+        rows = await cursor.fetchall()
+        for r in rows:
+            await conn.execute(
+                "UPDATE items SET is_available = 0, heal = ? WHERE id = ?",
+                (heal if kind == "edible" else 0, r['id'])
+            )
+            added = True
+
+    # Мясо/шкура/клык кабана, жареные блюда, бутылочка с ядом.
+    for (name, desc, price, sell, rare, category, heal, market_ok) in FOREST_ITEM_SEEDS:
+        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (name,))
+        if (await cursor.fetchone())['c'] == 0:
+            item_id = await add_item(name=name, description=desc, price=price, sell_price=sell,
+                                     rarity=rare, category=category, stock=-1, added_by=0,
+                                     ap_cost=0, damage=0, heal=heal, market_ok=market_ok)
+            await update_item(item_id, is_available=0)
+            added = True
+
+    # Добыча кабана — строго loot-only: не в магазине и не на рынке игроков.
+    # Идемпотентно, поэтому уже созданные строки тоже чинятся (флаг ставится при каждом
+    # старте, независимо от того, создан предмет сейчас или давно).
+    for name in FOREST_ENEMY_DROPS:
+        await conn.execute(
+            "UPDATE items SET is_available = 0, market_ok = 0, loot_only = 1 WHERE name = ?",
+            (name,))
+
+    if added:
+        await conn.commit()
+    return added
+
+
+async def ensure_forest_mushrooms():
+    """Идемпотентно засевает пул грибов леса из FOREST_DEFAULTS.
+
+    Правившие админом строки (admin_tuned=1) и удалённые (excluded=1)
+    не перезаписываются — как water_fish.
+    """
+    conn = await get_db()
+    changed = False
+    for name, chance, kind in FOREST_DEFAULTS:
+        item = await get_item_by_name(name)
+        if not item:
+            continue
+        cursor = await conn.execute(
+            "SELECT id, admin_tuned, chance, excluded FROM forest_mushrooms WHERE item_id = ?",
+            (item['id'],)
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            await conn.execute(
+                "INSERT INTO forest_mushrooms (item_id, chance, kind) VALUES (?, ?, ?)",
+                (item['id'], chance, kind)
+            )
+            changed = True
+        elif not row['excluded'] and not row['admin_tuned'] and row['chance'] != chance:
+            await conn.execute(
+                "UPDATE forest_mushrooms SET chance = ? WHERE id = ?", (chance, row['id'])
+            )
+            changed = True
+    if changed:
+        await conn.commit()
+    return changed
+
+
+async def get_forest_mushroom_pool():
+    """Грибы леса для сбора: с шансом, фото, ценой и лечением предмета."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT fm.id, fm.item_id, fm.chance, fm.photo_file_id, fm.kind,
+               i.name, i.sell_price, i.rarity, i.heal
+        FROM forest_mushrooms fm
+        JOIN items i ON i.id = fm.item_id
+        WHERE fm.excluded = 0 AND fm.chance > 0
+        ORDER BY fm.id
+    """)
+    return await cursor.fetchall()
+
+
+async def get_forest_mushroom_rows():
+    """Все грибы леса для админ-редактора (с данными предмета)."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT fm.id, fm.item_id, fm.chance, fm.photo_file_id, fm.admin_tuned, fm.kind,
+               i.name, i.sell_price, i.rarity, i.price, i.market_ok, i.heal
+        FROM forest_mushrooms fm
+        JOIN items i ON i.id = fm.item_id
+        WHERE fm.excluded = 0
+        ORDER BY fm.id
+    """)
+    return await cursor.fetchall()
+
+
+async def get_forest_mushroom_row(f_id: int):
+    """Один гриб леса с данными предмета (для карточки админа)."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT fm.id, fm.item_id, fm.chance, fm.photo_file_id, fm.admin_tuned, fm.kind,
+               i.name, i.sell_price, i.rarity, i.price, i.market_ok, i.heal
+        FROM forest_mushrooms fm
+        JOIN items i ON i.id = fm.item_id
+        WHERE fm.id = ?
+    """, (f_id,))
+    return await cursor.fetchone()
+
+
+async def update_forest_mushroom_field(f_id: int, field: str, value) -> bool:
+    """Правка гриба леса (chance/kind/photo_file_id). Помечает admin_tuned.
+
+    Переключение типа edible ⇄ toxic меняет и категорию предмета: съедобный —
+    расходник с лечением, ядовитый — ресурс (есть нельзя).
+    """
+    conn = await get_db()
+    if field == "chance":
+        await conn.execute(
+            "UPDATE forest_mushrooms SET chance = ?, admin_tuned = 1 WHERE id = ?",
+            (int(value), f_id)
+        )
+    elif field == "kind":
+        kind = "toxic" if str(value) == "toxic" else "edible"
+        await conn.execute(
+            "UPDATE forest_mushrooms SET kind = ?, admin_tuned = 1 WHERE id = ?",
+            (kind, f_id)
+        )
+        cursor = await conn.execute("SELECT item_id FROM forest_mushrooms WHERE id = ?", (f_id,))
+        row = await cursor.fetchone()
+        if row:
+            await conn.execute(
+                "UPDATE items SET category = ?, heal = 0 WHERE id = ?",
+                ("resource" if kind == "toxic" else "consumable", row['item_id'])
+            )
+    elif field == "photo_file_id":
+        await conn.execute(
+            "UPDATE forest_mushrooms SET photo_file_id = ?, admin_tuned = 1 WHERE id = ?",
+            (value or None, f_id)
+        )
+    else:
+        return False
+    await conn.commit()
+    return True
+
+
+async def set_forest_mushroom_sell_price(f_id: int, sell_price: int) -> bool:
+    """Цена продажи гриба (обновляет items.sell_price). Помечает admin_tuned."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT item_id FROM forest_mushrooms WHERE id = ?", (f_id,))
+    row = await cursor.fetchone()
+    if not row:
+        return False
+    await conn.execute("UPDATE items SET sell_price = ? WHERE id = ?", (int(sell_price), row['item_id']))
+    await conn.execute("UPDATE forest_mushrooms SET admin_tuned = 1 WHERE id = ?", (f_id,))
+    await conn.commit()
+    return True
+
+
+async def add_forest_mushroom(item_id: int, chance: int = 10) -> int | None:
+    """Добавляет гриб в пул леса (или возвращает удалённый). Помечает admin_tuned."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id FROM forest_mushrooms WHERE item_id = ?", (item_id,)
+    )
+    row = await cursor.fetchone()
+    if row:
+        f_id = row['id']
+        await conn.execute(
+            "UPDATE forest_mushrooms SET excluded = 0, chance = ?, admin_tuned = 1 WHERE id = ?",
+            (int(chance), f_id)
+        )
+    else:
+        cursor = await conn.execute(
+            "INSERT INTO forest_mushrooms (item_id, chance, admin_tuned) VALUES (?, ?, 1)",
+            (item_id, int(chance))
+        )
+        f_id = cursor.lastrowid
+    await conn.commit()
+    return f_id
+
+
+async def remove_forest_mushroom(f_id: int) -> bool:
+    """Убирает гриб из пула леса (мягкое удаление: excluded=1)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "UPDATE forest_mushrooms SET excluded = 1, admin_tuned = 1 WHERE id = ?", (f_id,)
+    )
+    await conn.commit()
+    return cursor.rowcount > 0
+
+
+async def create_forest_mushroom(name: str, description: str, sell_price: int,
+                                 chance: int = 10, kind: str = "edible",
+                                 photo_file_id: str = None,
+                                 added_by: int = None) -> tuple:
+    """Создаёт новый гриб леса: предмет (вне магазина) + запись пула.
+
+    Возвращает (ok, result): True, {item_id, f_id} либо False, текст ошибки."""
+    conn = await get_db()
+    try:
+        category = "consumable" if kind == "edible" else "resource"
+        heal = 0
+        cursor = await conn.execute(
+            """INSERT INTO items (name, description, photo_file_id, price,
+               sell_price, rarity, category, stock, added_by, market_ok)
+               VALUES (?, ?, ?, ?, ?, 1, ?, -1, ?, 1)""",
+            (name, description, photo_file_id, int(sell_price) * 2, int(sell_price),
+             category, added_by)
+        )
+        item_id = cursor.lastrowid
+        await conn.execute(
+            "UPDATE items SET is_available = 0, heal = ? WHERE id = ?", (heal, item_id))
+        cursor = await conn.execute(
+            """INSERT INTO forest_mushrooms (item_id, chance, kind, photo_file_id, admin_tuned)
+               VALUES (?, ?, ?, ?, 1)""",
+            (item_id, int(chance), kind, photo_file_id)
+        )
+        f_id = cursor.lastrowid
+        await conn.commit()
+        return True, {"item_id": item_id, "f_id": f_id}
+    except Exception:
+        await conn.rollback()
+        return False, "Не удалось создать гриб — проверь параметры."
+
+
+async def get_forest_mushroom_candidates():
+    """Расходники/ресурсы (вне магазина), которых ещё нет в пуле леса, —
+    для кнопки «➕ Добавить гриб»."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT i.id, i.name, i.sell_price, i.rarity, i.category
+        FROM items i
+        WHERE i.category IN ('resource', 'consumable')
+          AND i.is_available = 0
+          AND i.id NOT IN (SELECT item_id FROM forest_mushrooms WHERE excluded = 0)
+        ORDER BY i.name
+    """)
+    return await cursor.fetchall()
+
+
+# ============ ВРАГИ ЛЕСА И РЫБАЛКИ (единый админ-редактор) ============
+# Набор колонок у forest_enemies и fishing_enemies одинаковый, поэтому все
+# запросы идут через общие функции с ключом источника ('forest' / 'fishing').
+# Враги подземелья остаются в dungeon_enemies — их боевой код не трогаем.
+
+ENEMY_SOURCE_TABLES = {"forest": "forest_enemies", "fishing": "fishing_enemies"}
+
+# Поля врага, которые админ правит через бота.
+SOURCE_ENEMY_FIELDS = ("name", "hp", "dmg_min", "dmg_max", "dodge",
+                       "player_dmg_min", "player_dmg_max", "loss_ap", "chance",
+                       "pity_target", "reward_nm", "description", "image",
+                       "photo_key", "enabled", "spot")
+
+ENEMY_SEED_FIELDS = ("key", "spot", "name", "hp", "dmg_min", "dmg_max", "dodge",
+                     "player_dmg_min", "player_dmg_max", "loss_ap", "chance",
+                     "pity_target", "reward_nm", "description", "photo_key")
+
+
+def _enemy_source_table(source: str) -> str:
+    table = ENEMY_SOURCE_TABLES.get(source)
+    if not table:
+        raise ValueError(f"Неизвестный источник врагов: {source}")
+    return table
+
+
+async def ensure_forest_enemies():
+    """Идемпотентно засевает врагов леса (кабан) из FOREST_BOAR_SEED.
+
+    Правившие админом строки (admin_tuned=1) не перезаписываются.
+    """
+    await ensure_forest_items()
+    return await _ensure_source_enemies("forest", FOREST_BOAR_SEED)
+
+
+async def ensure_fishing_enemies():
+    """Идемпотентно засевает врагов рыбалки (мутировавший моллюск) из MOLLUSK_SEED."""
+    await ensure_mollusk_items()
+    return await _ensure_source_enemies("fishing", MOLLUSK_SEED)
+
+
+async def ensure_mollusk_items():
+    """Идемпотентно создаёт предметы моллюска (из его добычи и готового блюда).
+
+    Мясо и жемчужина — прямой лут с врага, поэтому строго loot-only: вне магазина,
+    вне рынка игроков (market_ok=0), с пометкой loot_only. Жареное мясо — крафт,
+    оно остаётся торгуемым.
+    """
+    conn = await get_db()
+    added = False
+    for (name, desc, price, sell, rare, category, heal) in MOLLUSK_ITEM_SEEDS:
+        cursor = await conn.execute("SELECT id FROM items WHERE name = ?", (name,))
+        row = await cursor.fetchone()
+        if row is None:
+            item_id = await add_item(name=name, description=desc, price=price, sell_price=sell,
+                                     rarity=rare, category=category, stock=-1, added_by=0,
+                                     ap_cost=0, damage=0, heal=heal,
+                                     market_ok=0 if name in MOLLUSK_ENEMY_DROPS else 1)
+            await update_item(item_id, is_available=0,
+                              loot_only=1 if name in MOLLUSK_ENEMY_DROPS else 0)
+            added = True
+        else:
+            is_drop = name in MOLLUSK_ENEMY_DROPS
+            await conn.execute(
+                "UPDATE items SET is_available = 0, heal = ?, market_ok = ?, loot_only = ? "
+                "WHERE id = ?",
+                (heal, 0 if is_drop else 1, 1 if is_drop else 0, row['id']))
+    if added:
+        await conn.commit()
+    return added
+
+
+async def _ensure_source_enemies(source: str, seed: dict) -> bool:
+    """Создаёт строку врага по сиду, если её ещё нет (по ключу key)."""
+    conn = await get_db()
+    table = _enemy_source_table(source)
+    cursor = await conn.execute(
+        f"SELECT id FROM {table} WHERE key = ?", (seed.get("key"),))
+    if await cursor.fetchone():
+        return False
+    values = {k: seed.get(k) for k in ENEMY_SEED_FIELDS}
+    # Дропы сида: имена предметов → item_id (часть может отсутствовать в БД).
+    drops = []
+    for item_name, chance in seed.get("loot") or ():
+        item = await get_item_by_name(item_name)
+        if item:
+            drops.append({"item_id": item['id'], "chance": round(float(chance) / 100, 4), "qty": 1})
+    cols = list(ENEMY_SEED_FIELDS) + ["drops"]
+    vals = [values[k] for k in ENEMY_SEED_FIELDS] + [json.dumps(drops, ensure_ascii=False)]
+    await conn.execute(
+        f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({','.join(['?'] * len(cols))})",
+        vals)
+    await conn.commit()
+    return True
+
+
+async def get_source_enemies(source: str, spot: str = None, enabled_only: bool = False):
+    """Враги источника (лес/рыбалка) для игрового кода и админ-редактора."""
+    conn = await get_db()
+    table = _enemy_source_table(source)
+    sql = f"SELECT * FROM {table} WHERE 1=1"
+    params = []
+    if spot is not None:
+        sql += " AND spot = ?"
+        params.append(spot)
+    if enabled_only:
+        sql += " AND enabled = 1"
+    sql += " ORDER BY id"
+    cursor = await conn.execute(sql, params)
+    return await cursor.fetchall()
+
+
+async def get_source_enemy(source: str, enemy_id: int):
+    conn = await get_db()
+    table = _enemy_source_table(source)
+    cursor = await conn.execute(f"SELECT * FROM {table} WHERE id = ?", (enemy_id,))
+    return await cursor.fetchone()
+
+
+async def get_source_enemy_by_key(source: str, key: str, spot: str = None):
+    """Враг по техническому ключу ('boar', 'mollusk') — используется игровым кодом."""
+    conn = await get_db()
+    table = _enemy_source_table(source)
+    sql = f"SELECT * FROM {table} WHERE key = ?"
+    params = [key]
+    if spot is not None:
+        sql += " AND spot = ?"
+        params.append(spot)
+    cursor = await conn.execute(sql, params)
+    return await cursor.fetchone()
+
+
+async def get_source_enemy_drops(source: str, enemy_id: int) -> list:
+    """Дропы врага как список dict (формат как у dungeon_enemies)."""
+    enemy = await get_source_enemy(source, enemy_id)
+    if not enemy or not enemy.get('drops'):
+        return []
+    try:
+        drops = json.loads(enemy['drops'])
+    except (json.JSONDecodeError, TypeError):
+        return []
+    return drops if isinstance(drops, list) else []
+
+
+async def set_source_enemy_drops(source: str, enemy_id: int, drops: list):
+    conn = await get_db()
+    table = _enemy_source_table(source)
+    await conn.execute(
+        f"UPDATE {table} SET drops = ?, admin_tuned = 1 WHERE id = ?",
+        (json.dumps(drops, ensure_ascii=False), enemy_id))
+    await conn.commit()
+
+
+async def add_source_enemy_drop(source: str, enemy_id: int, item_id: int, chance: float, qty: int = 1):
+    """Добавляет дроп врагу (item_id + шанс 0–1 + кол-во); тот же предмет — заменяется."""
+    drops = await get_source_enemy_drops(source, enemy_id)
+    entry = {"item_id": item_id, "chance": max(0.0, min(1.0, float(chance))), "qty": max(1, int(qty))}
+    for d in drops:
+        if d.get('item_id') == item_id:
+            d.update(entry)
+            await set_source_enemy_drops(source, enemy_id, drops)
+            return
+    drops.append(entry)
+    await set_source_enemy_drops(source, enemy_id, drops)
+
+
+async def remove_source_enemy_drop(source: str, enemy_id: int, index: int) -> bool:
+    drops = await get_source_enemy_drops(source, enemy_id)
+    if not 0 <= index < len(drops):
+        return False
+    del drops[index]
+    await set_source_enemy_drops(source, enemy_id, drops)
+    return True
+
+
+async def update_source_enemy(source: str, enemy_id: int, **fields) -> bool:
+    """Правка врага через админ-бота; помечает admin_tuned=1."""
+    conn = await get_db()
+    table = _enemy_source_table(source)
+    sets, vals = [], []
+    for key, val in fields.items():
+        if key not in SOURCE_ENEMY_FIELDS:
+            continue
+        sets.append(f"{key} = ?")
+        vals.append(val)
+    if not sets:
+        return False
+    sets.append("admin_tuned = 1")
+    vals.append(enemy_id)
+    await conn.execute(f"UPDATE {table} SET {', '.join(sets)} WHERE id = ?", vals)
+    await conn.commit()
+    return True
+
+
+async def add_source_enemy(source: str, **fields) -> int:
+    """Создаёт врага в источнике (админ-редактор). Возвращает id."""
+    conn = await get_db()
+    table = _enemy_source_table(source)
+    cols, vals = [], []
+    for key in ENEMY_SEED_FIELDS + ("drops", "enabled"):
+        if key not in fields:
+            continue
+        val = fields[key]
+        if key == "drops" and isinstance(val, list):
+            val = json.dumps(val, ensure_ascii=False)
+        cols.append(key)
+        vals.append(val)
+    cursor = await conn.execute(
+        f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({','.join(['?'] * len(cols))})", vals)
+    await conn.commit()
+    return cursor.lastrowid
+
+
+async def delete_source_enemy(source: str, enemy_id: int) -> bool:
+    conn = await get_db()
+    table = _enemy_source_table(source)
+    cursor = await conn.execute(f"DELETE FROM {table} WHERE id = ?", (enemy_id,))
+    await conn.commit()
+    return cursor.rowcount > 0
+
+
+async def get_fishing_spots() -> list:
+    """Водоёмы с врагами рыбалки: список (spot, число врагов)."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT spot, COUNT(*) AS c FROM fishing_enemies
+        WHERE enabled = 1 GROUP BY spot ORDER BY spot
+    """)
+    return await cursor.fetchall()
+
+
+def enemy_encounter_hit(chance: float, roll: float, attempts: int = 0, pity: int = 0) -> bool:
+    """Встреча с врагом: шанс в процентах + бросок (0–100) + гарантия.
+
+    attempts — число спокойных попыток подряд, pity — встреча гарантирована
+    на pity-й попытке (0 = без гарантии, только шанс)."""
+    if pity > 0 and attempts + 1 >= pity:
+        return True
+    return roll < float(chance)
+
+
+def roll_enemy_drops(drops: list, rolls: list = None) -> list:
+    """Бросок дропов врага: возвращает список выпавших [{item_id, chance, qty}].
+
+    Каждый дроп бросается НЕЗАВИСИМО (как в данжах), поэтому редкий предмет
+    остаётся достижимым: мясо 70% и жемчужина 2% — разные броски.
+    rolls — готовые значения бросков (для тестов), иначе random.random().
+    Пустой список = выпало несколько предметов; [] = ничего не выпало.
+    """
+    picked = []
+    for i, d in enumerate(drops or ()):
+        if not isinstance(d, dict):
+            continue
+        roll = rolls[i] if rolls is not None and i < len(rolls) else random.random()
+        if roll < float(d.get('chance') or 0):
+            picked.append(d)
+    return picked
+
+
+# ─── Лес: счётчик попыток с момента последней встречи кабана ───
+
+async def get_forest_boar_attempts(user_id: int) -> int:
+    """Число попыток сбора грибов с последней встречи кабана (для гарантии 1/12)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT forest_attempts_since_boar FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    return int(row['forest_attempts_since_boar']) if row and row['forest_attempts_since_boar'] else 0
+
+
+async def set_forest_boar_attempts(user_id: int, attempts: int):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET forest_attempts_since_boar = ? WHERE user_id = ?",
+        (max(0, int(attempts)), user_id)
+    )
+    await conn.commit()
+
+
+async def reset_forest_boar_counter(user_id: int):
+    """Сброс счётчика после встречи кабана (начало боя)."""
+    await set_forest_boar_attempts(user_id, 0)
+
+
+async def remove_ap_or_floor(user_id: int, amount: int) -> int:
+    """Списывает ОД, но не ниже нуля (для штрафа за проигрыш кабану).
+
+    Возвращает фактически списанное количество ОД."""
+    amount = max(0, int(amount))
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT ap FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    if not row:
+        return 0
+    had = int(row['ap'] or 0)
+    removed = min(had, amount)
+    await conn.execute(
+        "UPDATE users SET ap = MAX(ap - ?, 0) WHERE user_id = ?", (amount, user_id))
+    await conn.commit()
+    return removed
 
 
 # ──────────────── Рынок: слоты продажи + лицензия ────────────────
@@ -8140,6 +8900,33 @@ RECIPES_DEF = [
     {"name": "Пожарить форель", "desc": "Светящаяся форель, пожаренная до золотой корочки: +140 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный форель", "qty": 1, "exp": "kitchen", "lvl": 3,
      "ingredients": [("Светящаяся форель", 1), ("Соль", 1), ("Кусочек водорослей", 1)], "ap": 16, "time": 50, "rarity": 4},
+    {"name": "Пожарить опёнка", "desc": "Жареные опята со специями: +12 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареный опёнок", "qty": 1, "exp": "kitchen", "lvl": 1,
+     "ingredients": [("Опёнок", 1), ("Соль", 1)], "ap": 5, "time": 20, "rarity": 1},
+    {"name": "Пожарить подберёзовик", "desc": "Жареный подберёзовик со специями: +18 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареный подберёзовик", "qty": 1, "exp": "kitchen", "lvl": 1,
+     "ingredients": [("Подберёзовик", 1), ("Соль", 1)], "ap": 5, "time": 20, "rarity": 1},
+    {"name": "Пожарить лисички", "desc": "Ароматные жареные лисички: +26 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареные лисички", "qty": 1, "exp": "kitchen", "lvl": 1,
+     "ingredients": [("Лисичка", 2), ("Соль", 1)], "ap": 7, "time": 25, "rarity": 1},
+    {"name": "Пожарить белый гриб", "desc": "Жареный белый гриб: +34 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареный белый гриб", "qty": 1, "exp": "kitchen", "lvl": 2,
+     "ingredients": [("Белый гриб", 1), ("Соль", 1)], "ap": 8, "time": 30, "rarity": 2},
+    {"name": "Пожарить гиропор", "desc": "Редкий жареный гиропор: +48 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареный гиропор", "qty": 1, "exp": "kitchen", "lvl": 2,
+     "ingredients": [("Гиропор", 1), ("Соль", 1)], "ap": 12, "time": 40, "rarity": 2},
+    {"name": "Пожарить ежовик гребенчатый", "desc": "Деликатес из самого редкого гриба леса: +70 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареный ежовик гребенчатый", "qty": 1, "exp": "kitchen", "lvl": 3,
+     "ingredients": [("Ежовик гребенчатый", 1), ("Соль", 1)], "ap": 16, "time": 50, "rarity": 4},
+    {"name": "Пожарить мясо кабана", "desc": "Жаренное на костре мясо кабана: +30 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареное мясо кабана", "qty": 1, "exp": "kitchen", "lvl": 1,
+     "ingredients": [("Мясо кабана", 1), ("Соль", 1)], "ap": 6, "time": 25, "rarity": 2},
+    {"name": "Пожарить мясо моллюска", "desc": "Жареное мясо мутировавшего моллюска: +26 HP в бою подземелья. Срок годности: 4 суток.",
+     "result": "Жареное мясо моллюска", "qty": 1, "exp": "kitchen", "lvl": 2,
+     "ingredients": [("Мясо моллюска", 1), ("Соль", 1)], "ap": 8, "time": 25, "rarity": 3},
+    {"name": "Сварить яд", "desc": "Мутное зелье из ядовитых лесных грибов: основа для улучшения оружия кузнецом.",
+     "result": "Бутылочка с ядом", "qty": 1, "exp": "kitchen", "lvl": 2,
+     "ingredients": [("Мухомор", 2), ("Бледная поганка", 1), ("Бутылка чистой воды", 1)], "ap": 10, "time": 30, "rarity": 2},
     {"name": "Комбинированная наживка", "desc": "Собирается на верстаке. +30% к шансу улова.",
      "result": "Комбинированная наживка", "qty": 1, "exp": "workbench", "lvl": 1,
      "ingredients": [("Лапка паука", 1), ("Черви", 1)], "ap": 5, "time": 20, "rarity": 1},
@@ -8851,6 +9638,14 @@ RECIPE_ITEM_PRICES = {
     "Пожарить сома": 90,
     "Пожарить угря": 220,
     "Пожарить форель": 750,
+    "Пожарить опёнка": 60,
+    "Пожарить подберёзовик": 60,
+    "Пожарить лисички": 90,
+    "Пожарить белый гриб": 120,
+    "Пожарить гиропор": 220,
+    "Пожарить ежовик гребенчатый": 750,
+    "Пожарить мясо кабана": 90,
+    "Сварить яд": 400,
     "Комбинированная наживка": 90,
     "Пара сапог": 320,
     "Малая настойка здоровья": 150,

@@ -124,6 +124,8 @@ async def _abandon_active_run_if_left(user_id: int, state: FSMContext) -> str | 
 @router.callback_query(F.data == "city:menu")
 async def city_menu_cb(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    from bot.handlers.forest import deactivate_forest
+    await deactivate_forest(callback.from_user.id)
     left_note = await _abandon_active_run_if_left(callback.from_user.id, state)
     city_view = resolve_image("city/arkholm")
     is_here_pilot = not await user_is_tourist(callback.from_user.id)

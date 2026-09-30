@@ -395,13 +395,19 @@ async def hq_wing_farm_cb(callback: CallbackQuery):
         "",
         f"Всего по крылу: {wing_prev} прошлые • {wing_today} сегодня",
         "",
-        "Пилот — регион • войска — прошлые / сегодня (только принятое):",
+        "Пилот — регион • в регионе • войска — прошлые / сегодня (только принятое):",
     ]
     for m in chunk:
         today_s = str(m['today_farm']) if m['today_farm'] else "—"
         region = m.get('region') or "—"
         troops = m.get('troops') or 0
-        lines.append(f"{await player_display(m)} — {region} • {troops} — {m['prev_farm']} / {today_s}")
+        # Силы, заявленные пилотом в регионе («всего» его последнего принятого
+        # отчёта) — именно эта цифра складывается в силы региона.
+        region_troops = m.get('region_troops')
+        region_s = f"{region_troops}" if region_troops else "—"
+        lines.append(
+            f"{await player_display(m)} — {region} • {region_s} • {troops}"
+            f" — {m['prev_farm']} / {today_s}")
 
     nav = []
     if page > 0:

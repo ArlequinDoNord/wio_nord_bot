@@ -184,6 +184,9 @@ async def location_enter(callback: CallbackQuery, state: FSMContext):
     elif key == "contracts":
         from bot.handlers.dungeon import show_contracts
         await show_contracts(callback.message, callback.from_user.id, state)
+    elif key == "forest":
+        from bot.handlers.forest import forest_menu_cb
+        await forest_menu_cb(callback)
     elif key == "nii":
         from bot.handlers.nii import nii_menu
         await nii_menu(callback)
