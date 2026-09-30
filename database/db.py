@@ -1026,6 +1026,9 @@ async def init_db():
     # (FOREST_SOLD_DAILY_LIMIT). Счётчик сбрасывается при смене суток МСК.
     await _ensure_column(conn, "users", "forest_sold_day", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "users", "forest_sold_today", "INTEGER DEFAULT 0")
+    # v0.18.17: сезонные картинки локаций (JSON {сезон: {время суток: file_id}}).
+    # Задаются в админ-редакторе локаций, показываются по календарю (см. utils.helpers).
+    await _ensure_column(conn, "locations", "season_photos", "TEXT DEFAULT NULL")
     # Встроенные расширения жилья (например, кухня в студии): embedded=1 — не возвращается
     # в инвентарь при переезде и не может быть снята вручную.
     await _ensure_column(conn, "housing_slots", "embedded", "INTEGER DEFAULT 0")
@@ -5522,6 +5525,96 @@ async def update_location_photos(location_id: int, photos: dict):
     )
     await conn.commit()
     return True
+
+
+# Сезоны картинок локаций (совпадают с SEASON_MONTHS в utils/helpers.py).
+LOCATION_SEASONS = ("winter", "spring", "summer", "autumn")
+
+
+def location_season_photos_raw(loc) -> dict:
+    """Сезонные фото локации: {сезон: {время суток: file_id}} из season_photos."""
+    try:
+        data = json.loads(loc.get("season_photos") or "{}")
+        if isinstance(data, dict):
+            return {s: (d if isinstance(d, dict) else {}) for s, d in data.items()}
+    except (ValueError, TypeError):
+        pass
+    return {}
+
+
+async def update_location_season_photo(location_id: int, season: str, tod: str, file_id):
+    """Задать (или убрать при None) картинку локации на сезон + время суток.
+
+    Убирает запись, когда в сезоне не остаётся ни одного слота ('—').
+    """
+    if season not in LOCATION_SEASONS or tod not in LOCATION_PHOTO_KEYS:
+        return False
+    conn = await get_db()
+    loc = await get_location(location_id)
+    if not loc:
+        return False
+    photos = location_season_photos_raw(loc)
+    slot = dict(photos.get(season) or {})
+    if file_id is None:
+        slot.pop(tod, None)
+        if slot:
+            photos[season] = slot
+        else:
+            photos.pop(season, None)
+    else:
+        slot[tod] = file_id
+        photos[season] = slot
+    await conn.execute(
+        "UPDATE locations SET season_photos = ? WHERE id = ?",
+        (json.dumps(photos, ensure_ascii=False), location_id)
+    )
+    await conn.commit()
+    return True
+
+
+async def clear_location_season_photos(location_id: int) -> bool:
+    """Сбросить все сезонные картинки локации."""
+    conn = await get_db()
+    if not await get_location(location_id):
+        return False
+    await conn.execute("UPDATE locations SET season_photos = NULL WHERE id = ?", (location_id,))
+    await conn.commit()
+    return True
+
+
+async def clear_location_season(location_id: int, season: str) -> bool:
+    """Сбросить картинки одного сезона локации."""
+    if season not in LOCATION_SEASONS:
+        return False
+    conn = await get_db()
+    loc = await get_location(location_id)
+    if not loc:
+        return False
+    photos = location_season_photos_raw(loc)
+    if season in photos:
+        photos.pop(season, None)
+        await conn.execute(
+            "UPDATE locations SET season_photos = ? WHERE id = ?",
+            (json.dumps(photos, ensure_ascii=False), location_id)
+        )
+        await conn.commit()
+    return True
+
+
+def location_photo_for_tod(loc, season: str, tod: str):
+    """file_id фото локации на момент показа.
+
+    Приоритет: слот «сезон × время суток» (с фолбэком по суткам внутри сезона) →
+    обычные слоты photo_<tod> (ввод, без сезона) → None.
+    """
+    slots = location_season_photos_raw(loc).get(season) or {}
+    for key in (tod, "dawn", "day", "sunset", "night"):
+        if slots.get(key):
+            return slots[key]
+    for key in (f"photo_{tod}", "photo_dawn", "photo_day", "photo_sunset", "photo_night"):
+        if loc.get(key):
+            return loc[key]
+    return None
 
 
 async def user_has_exact_status(user_id: int, tag: str) -> bool:

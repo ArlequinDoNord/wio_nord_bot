@@ -28,9 +28,10 @@ from database.db import (
     remove_ap_or_floor, user_is_tourist, log_activity,
     get_source_enemy_by_key, get_source_enemy_drops, roll_enemy_drops,
     enemy_encounter_hit,
+    get_location_by_key, location_photo_for_tod,
 )
 from utils.helpers import (
-    resolve_image, resolve_image_seasonal,
+    resolve_image, resolve_image_seasonal, season_key, time_of_day_key,
     plural_nordmark, item_local_photo,
 )
 from config import (
@@ -101,12 +102,17 @@ def _glade_path() -> str:
 async def _glade_media() -> tuple:
     """Картинка опушки: (photo_id, media_path).
 
-    Опушка намеренно НЕ берёт фото локации «Лес на окраине»: то фото —
-    это вход в лес, и по требованию игрока опушка должна быть отдельной
-    картинкой. Здесь всегда локальный сезонный файл
-    assets/img/city/forest_glade_<сезон>_<время>.jpg → forest_glade_<сезон>
-    → forest_glade_<время> → forest_glade_day → forest (запасной вариант).
+    Сначала фото ЛОКАЦИИ «Лес на окраине» из сезонного редактора картинок (админка):
+    season_photos[сезон][время] → обычные photo_<tod>. Если их нет — локальный
+    сезонный файл assets/img/city/forest_glade_<сезон>_<время>.jpg →
+    forest_glade_<сезон> → forest_glade_<время> → forest_glade_day → forest
+    (запасной вариант).
     """
+    loc = await get_location_by_key("forest")
+    if loc:
+        photo_id = location_photo_for_tod(loc, season_key(), time_of_day_key())
+        if photo_id:
+            return photo_id, None
     return None, _glade_path()
 
 

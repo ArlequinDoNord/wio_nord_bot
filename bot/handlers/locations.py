@@ -15,8 +15,9 @@ from aiogram.fsm.context import FSMContext
 from database.db import (
     get_location_by_key, can_enter_location, location_access_label,
     user_has_status_tag, log_location_visit, mark_booklet_visit,
+    location_photo_for_tod,
 )
-from utils.helpers import resolve_image, time_of_day_key
+from utils.helpers import resolve_image, resolve_image_seasonal, time_of_day_key, season_key
 from utils.permissions import has_permission, is_admin
 
 router = Router()
@@ -60,8 +61,10 @@ async def location_preview(callback: CallbackQuery):
     ])
 
     photo = None
-    # Приоритет: file_id по текущему времени суток → asset-ключ (resolve_image) → единый file_id
+    # Приоритет: К.В.П. → сезон + время суток (сезонные картинки из админки) →
+    # обычные слоты photo_<tod> → asset-ключ (resolve_image_seasonal) → единый file_id
     tod = time_of_day_key()
+    season = season_key()
     keys = loc.keys()
     # К.В.П.: админ задаёт фото данжа через менеджер подземелий — они же показываются
     # и в превью города, и на меню курса, и внутри курса (одна и та же картинка).
@@ -71,12 +74,9 @@ async def location_preview(callback: CallbackQuery):
         if kvp_photo:
             photo = kvp_photo
     if not photo:
-        for slot in (f"photo_{tod}", "photo_dawn", "photo_day", "photo_sunset", "photo_night"):
-            if slot in keys and loc[slot]:
-                photo = loc[slot]
-                break
+        photo = location_photo_for_tod(loc, season, tod)
     if not photo and 'preview_photo' in keys and loc['preview_photo']:
-        candidate = resolve_image(loc['preview_photo'])
+        candidate = resolve_image_seasonal(loc['preview_photo'])
         if os.path.isfile(candidate):
             photo = FSInputFile(candidate)
         elif not loc['preview_photo'].startswith("city/"):

@@ -33,6 +33,8 @@ from database.db import (
     get_treasury_debts,
     get_all_locations, get_location, create_location, update_location_access,
     update_location_content, update_location_photos, location_access_label,
+    update_location_season_photo, clear_location_season_photos, clear_location_season,
+    location_season_photos_raw, LOCATION_SEASONS,
     get_all_dungeons, get_dungeon, update_dungeon_photos, DUNGEON_PHOTO_KEYS,
     get_dungeon_enemies, get_enemy, update_enemy_fields, get_floor_enemies,
     get_enemy_drops, set_enemy_drops, add_enemy_drop, remove_enemy_drop,
@@ -7300,6 +7302,10 @@ DUNGEON_PHOTO_LABEL = {
     "dawn": "🌅 Рассвет", "day": "☀️ День", "sunset": "🌇 Закат", "night": "🌙 Ночь",
     "water": "🌊 Вода", "rope": "🪢 Верёвка",
 }
+# Сезоны картинок локаций (совпадают с LOCATION_SEASONS в database/db.py).
+LOCATION_SEASON_LABEL = {
+    "winter": "❄️ Зима", "spring": "🌱 Весна", "summer": "☀️ Лето", "autumn": "🍂 Осень",
+}
 
 
 def _loc_photo_slots_text(loc):
@@ -7319,6 +7325,7 @@ async def _loc_photos_pick_send(source, loc_id: int):
             await source.answer("❌ Локация не найдена.")
         return
     filled = _loc_photo_slots_text(loc)
+    seasons = location_season_photos_raw(loc)
     keys = loc.keys()
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     rows = []
@@ -7328,12 +7335,58 @@ async def _loc_photos_pick_send(source, loc_id: int):
             text=f"{mark} {TOD_LABEL[k]}",
             callback_data=f"loc:photo_set:{k}"
         )])
-    rows.append([InlineKeyboardButton(text="🚫 Убрать все", callback_data="loc:photos:clear")])
+    for season in LOCATION_SEASONS:
+        count = len([v for v in (seasons.get(season) or {}).values() if v])
+        rows.append([InlineKeyboardButton(
+            text=f"{count}/4 {LOCATION_SEASON_LABEL[season]}" if count else f"— {LOCATION_SEASON_LABEL[season]}",
+            callback_data=f"loc:season:{season}"
+        )])
+    rows.append([InlineKeyboardButton(text="🚫 Убрать все (без сезона)", callback_data="loc:photos:clear")])
+    rows.append([InlineKeyboardButton(text="🍂 Убрать все сезонные", callback_data="loc:photos:clear_seasons")])
     rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="loc:building_pick")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    season_line = " | ".join(
+        f"{LOCATION_SEASON_LABEL[s]}: {len([v for v in (seasons.get(s) or {}).values() if v])}"
+        for s in LOCATION_SEASONS)
     text = (
         f"🖼 Картинки «{loc['name']}».\n"
-        f"Задано: {', '.join(filled)}\n\n"
+        f"Без сезона: {', '.join(filled)}\n"
+        f"По сезонам: {season_line}\n\n"
+        f"🌄 Без сезона — показывается всегда.\n"
+        f"🍂 По сезонам — сменяются сами по календарю (зима/весна/лето/осень), "
+        f"внутри сезона — по времени суток.\n"
+        f"Нажми слот и отправь фото (или «-» чтобы убрать):"
+    )
+    if isinstance(source, CallbackQuery):
+        await source.message.edit_text(text, reply_markup=kb)
+    else:
+        await source.answer(text, reply_markup=kb)
+
+
+async def _loc_season_photos_pick_send(source, loc_id: int, season: str):
+    """Пикер картинок времени суток для конкретного сезона локации."""
+    loc = await get_location(loc_id)
+    if not loc:
+        if isinstance(source, CallbackQuery):
+            await source.message.edit_text("❌ Локация не найдена.")
+        else:
+            await source.answer("❌ Локация не найдена.")
+        return
+    slots = location_season_photos_raw(loc).get(season) or {}
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = []
+    for k in TOD_KEYS:
+        mark = "✅" if slots.get(k) else "—"
+        rows.append([InlineKeyboardButton(
+            text=f"{mark} {TOD_LABEL[k]}",
+            callback_data=f"loc:season_photo_set:{season}:{k}"
+        )])
+    rows.append([InlineKeyboardButton(text="🚫 Убрать сезон", callback_data=f"loc:season_clear:{season}")])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="loc:photos")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    text = (
+        f"🍂 {LOCATION_SEASON_LABEL[season]} «{loc['name']}».\n"
+        f"Эти картинки включатся сами, когда наступит время года.\n\n"
         f"Нажми время суток и отправь фото (или «-» чтобы убрать):"
     )
     if isinstance(source, CallbackQuery):
@@ -7349,6 +7402,47 @@ async def loc_photos_pick(callback: CallbackQuery, state: FSMContext):
         return
     data = await state.get_data()
     await _loc_photos_pick_send(callback, data['target_id'])
+    await state.update_data(photo_season=None)
+
+
+@router.callback_query(F.data.regexp(r"^loc:season:(winter|spring|summer|autumn)$"))
+async def loc_season_photos_pick(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    season = callback.data.split(":")[2]
+    await _loc_season_photos_pick_send(callback, loc_id, season)
+
+
+@router.callback_query(F.data == "loc:photos:clear_seasons")
+async def loc_photos_clear_seasons(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    await clear_location_season_photos(loc_id)
+    await _loc_photos_pick_send(callback, loc_id)
+
+
+@router.callback_query(F.data.regexp(r"^loc:season_clear:(winter|spring|summer|autumn)$"))
+async def loc_season_clear(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    season = callback.data.split(":")[2]
+    await clear_location_season(loc_id, season)
+    await _loc_season_photos_pick_send(callback, loc_id, season)
 
 
 @router.message(AdminLocation.description)
@@ -7388,7 +7482,7 @@ async def loc_photo_set(callback: CallbackQuery, state: FSMContext):
     if not loc_id:
         return
     await state.set_state(AdminLocation.preview)
-    await state.update_data(photo_tod=tod)
+    await state.update_data(photo_tod=tod, photo_season=None)
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     loc = await get_location(loc_id)
     has_photo = bool(loc and loc.get(f"photo_{tod}"))
@@ -7406,6 +7500,47 @@ async def loc_photo_set(callback: CallbackQuery, state: FSMContext):
             pass
     await callback.message.edit_text(
         f"🖼 {TOD_LABEL[tod]} локации «{loc['name'] if loc else ''}» "
+        f"(сейчас: {'есть картинка' if has_photo else 'нет'}).\n"
+        f"Отправь фото (или «-» чтобы убрать для этого времени):",
+        reply_markup=kb
+    )
+
+
+@router.callback_query(F.data.regexp(
+    r"^loc:season_photo_set:(winter|spring|summer|autumn):(dawn|day|sunset|night)$"
+))
+async def loc_season_photo_set(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    parts = callback.data.split(":")
+    season, tod = parts[2], parts[3]
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    await state.set_state(AdminLocation.preview)
+    await state.update_data(photo_season=season, photo_tod=tod)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    loc = await get_location(loc_id)
+    slots = (location_season_photos_raw(loc) or {}).get(season) or {}
+    has_photo = bool(slots.get(tod))
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data=f"loc:season:{season}")]
+    ])
+    caption = (f"🖼 {LOCATION_SEASON_LABEL[season]} · {TOD_LABEL[tod]} "
+               f"локации «{loc['name'] if loc else ''}» — сейчас есть картинка.\n"
+               f"Отправь новую фото (или «-» чтобы убрать для этого времени):")
+    if has_photo:
+        try:
+            await callback.message.answer_photo(
+                slots[tod], caption=caption, reply_markup=kb)
+            return
+        except Exception:
+            pass
+    await callback.message.edit_text(
+        f"🖼 {LOCATION_SEASON_LABEL[season]} · {TOD_LABEL[tod]} локации "
+        f"«{loc['name'] if loc else ''}» "
         f"(сейчас: {'есть картинка' if has_photo else 'нет'}).\n"
         f"Отправь фото (или «-» чтобы убрать для этого времени):",
         reply_markup=kb
@@ -7445,7 +7580,15 @@ async def loc_step_photo(message: Message, state: FSMContext):
     else:
         await message.answer("❌ Отправь именно фото (или «-» для очистки).")
         return
+    photo_season = data.get('photo_season')
     photo_tod = data.get('photo_tod')
+    if photo_season in LOCATION_SEASONS and photo_tod and photo_tod in TOD_KEYS:
+        await update_location_season_photo(loc_id, photo_season, photo_tod, file_id)
+        await log_action(message.from_user.id, 'edit_location', loc_id,
+                         f"season_{photo_season}_photo_{photo_tod}="
+                         f"{'file_id' if file_id else 'cleared'}")
+        await _loc_season_photos_pick_send(message, loc_id, photo_season)
+        return
     if photo_tod and photo_tod in TOD_KEYS:
         await update_location_photos(loc_id, {photo_tod: file_id})
         await log_action(message.from_user.id, 'edit_location', loc_id,
@@ -7468,13 +7611,14 @@ async def loc_step_photo(message: Message, state: FSMContext):
 #
 #   src = 'dn' — подземелье (loc = d-<dungeon_id>-<floor>), правится существующим
 #          редактором врагов данжа (dungeon:enemy:<id> + enemy_field:*);
-#   src = 'fo' — лес      (loc = forest);
-#   src = 'fi' — рыбалка  (loc = <водоём>, напр. reservoir).
+#   src = 'forest'  — лес      (loc = forest);
+#   src = 'fishing' — рыбалка  (loc = <водоём>, напр. reservoir).
 # Для леса и рыбалки — своя карточка на общих функциях forest_enemies /
 # fishing_enemies (см. database/db.py), с полями и дропами в одном формате.
+# Значения src для леса/рыбалки совпадают с ключами ENEMY_SOURCE_TABLES в db.py.
 
-ENEMY_SRC_FOREST = 'fo'
-ENEMY_SRC_FISHING = 'fi'
+ENEMY_SRC_FOREST = 'forest'
+ENEMY_SRC_FISHING = 'fishing'
 ENEMY_SRC_DUNGEON = 'dn'
 
 # Человеческие названия источников.
@@ -7614,7 +7758,7 @@ async def admin_enemies_fishing_spots(callback: CallbackQuery, state: FSMContext
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
-@router.callback_query(F.data.regexp(r"^enemy:list:[a-z]{2}:[\w-]+$"))
+@router.callback_query(F.data.regexp(r"^enemy:list:[a-z]+:[\w-]+$"))
 async def admin_enemies_list(callback: CallbackQuery, state: FSMContext):
     """Список врагов источника/локации."""
     await callback.answer()
