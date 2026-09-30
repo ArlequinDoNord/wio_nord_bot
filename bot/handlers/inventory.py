@@ -16,6 +16,7 @@ from database.db import (
     process_food_expiry, add_fish_offer, add_fish_catch, RAW_FISH_SHELF_SEC,
     place_item_offer,
     fish_sale_daily_left, add_fish_sale_amount, fish_sold_today,
+    is_forest_mushroom, forest_sale_daily_left, add_forest_sale_amount,
     get_market_slots_info,
     item_fits_slot, ARMOR_SLOTS, EQUIPMENT_SLOT_LABELS, EQUIPMENT_LOCKED_SLOTS,
     get_award_bonus, get_player_weapon_damage, get_player_armor,
@@ -643,6 +644,17 @@ async def _render_item_card(message, user_id: int, item_id: int, note: str = "")
 
     text += f"💵 Продажа: {item['sell_price']} {plural_nordmark(item['sell_price'])}"
 
+    # Суточный лимит выкупа грибов казной (v0.18.16) — как у рыбы, только свои 250 НМ.
+    if await is_forest_mushroom(item):
+        from config import FOREST_SOLD_DAILY_LIMIT
+        left = await forest_sale_daily_left(user_id)
+        if left > 0:
+            text += (f"\n💵 Казна покупает грибы: {left}/{FOREST_SOLD_DAILY_LIMIT} НМ "
+                     f"доступно сегодня")
+        else:
+            text += (f"\n🚫 Суточный лимит выкупа грибов исчерпан "
+                     f"({FOREST_SOLD_DAILY_LIMIT} НМ/день) — продажа завтра или на рынок")
+
     # Определяем слот снаряжения и статус экипировки
     equip_slot = None
     if item['category'] == 'weapon':
@@ -910,6 +922,29 @@ async def _sell_confirm(callback: CallbackQuery, item_id: int, qty: int):
         await callback.answer(f"❌ У тебя меньше {qty} шт. этого предмета.", show_alert=True)
         return
 
+    # Суточный лимит выкупа грибов казной (v0.18.16): продажа ужимается по остатку
+    # лимита, а не отменяется — игрок может продать часть грибов и прийти завтра.
+    cap_note = ""
+    if await is_forest_mushroom(item):
+        from config import FOREST_SOLD_DAILY_LIMIT
+        left = await forest_sale_daily_left(user_id)
+        if left <= 0:
+            await callback.answer(
+                f"🚫 Суточный лимит выкупа грибов ({FOREST_SOLD_DAILY_LIMIT} НМ) "
+                f"исчерпан. Продажа возобновится завтра.", show_alert=True)
+            return
+        max_by_cap = left // item['sell_price'] if item['sell_price'] > 0 else 0
+        if qty > max_by_cap:
+            if max_by_cap <= 0:
+                await callback.answer(
+                    f"🚫 Остаток лимита {left} НМ не хватает даже на 1 шт. "
+                    f"Продажа грибов возобновится завтра.", show_alert=True)
+                return
+            qty = max_by_cap
+            cap_note = (f"\n\n🚫 Сегодня казна покупает грибы до "
+                        f"{FOREST_SOLD_DAILY_LIMIT} НМ в сутки — продать можно "
+                        f"не больше {qty} шт. Остальное — завтра или на рынок.")
+
     # Занятые слотом экземпляры продать нельзя (иначе останется «призрачный слот»);
     # продаются только лишние, сверх надетых/занятых.
     eq = await get_equipment(user_id)
@@ -917,7 +952,7 @@ async def _sell_confirm(callback: CallbackQuery, item_id: int, qty: int):
     if used_slots:
         max_sellable = max(0, inv['quantity'] - len(used_slots))
         if qty > max_sellable:
-            used = [EQUIPMENT_SLOT_LABELS[s].lower() for s in used_slots]
+            used = [s.lower() for s in used_slots]
             extra = "" if max_sellable > 0 else " Сначала сними его."
             await callback.answer(
                 f"❌ «{item['name']}» сейчас используется ({', '.join(used)}). "
@@ -935,7 +970,7 @@ async def _sell_confirm(callback: CallbackQuery, item_id: int, qty: int):
     await edit_or_replace(
         callback.message,
         f"💵 Продать «{item['name']}» x{qty} за {total} {plural_nordmark(total)}?\n\n"
-        f"Предмет будет списан сразу.",
+        f"Предмет будет списан сразу.{cap_note}",
         markup
     )
 
@@ -970,11 +1005,37 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
             )
             return
 
-    await callback.answer()
+# Кап грибов проверяем ещё раз на самой сделке: между подтверждением и
+    # продажей лимит мог быть выбран другим товаром (или кнопка устарела).
+    cap_note = ""
+    if await is_forest_mushroom(item):
+        from config import FOREST_SOLD_DAILY_LIMIT
+        left = await forest_sale_daily_left(user_id)
+        if left <= 0:
+            await callback.answer(
+                f"🚫 Суточный лимит выкупа грибов ({FOREST_SOLD_DAILY_LIMIT} НМ) исчерпан.",
+                show_alert=True)
+            return
+        max_by_cap = left // item['sell_price'] if item['sell_price'] > 0 else 0
+        if max_by_cap <= 0:
+            await callback.answer(
+                f"🚫 Остаток лимита {left} НМ не хватает даже на 1 шт.", show_alert=True)
+            return
+        if qty > max_by_cap:
+            qty = max_by_cap
+            cap_note = f"\n\n🚫 Уложились в остаток суточного лимита грибов."
+    # Отвечаем ровно один раз: с текстом, если продажа ужалась по лимиту.
+    if cap_note:
+        await callback.answer(cap_note.strip(), show_alert=True)
+    else:
+        await callback.answer()
+
     await remove_inventory_item(user_id, item_id, qty)
     total = item['sell_price'] * qty
     await add_nordmarks(user_id, total, "shop_sale", f"Продажа: {item['name']} x{qty}")
     await log_activity(user_id, "shop_sale", f"Продал «{item['name']}» x{qty} за {total} НМ")
+    if await is_forest_mushroom(item):
+        await add_forest_sale_amount(user_id, total)
 
     # Маркетплейс: товар с ограниченным остатком (не -1 «безлимит») после продажи игроком
     # возвращается в магазин — сколько продали, столько и появилось к покупке.

@@ -1,13 +1,16 @@
-"""Smoke 109 — отчётные сутки отчёта, loot-only добыча врагов, силы пилота в регионе.
+"""Smoke 109 — отчётные сутки отчёта, loot-only добыча врагов, силы пилота в регионе,
+суточный кап выкупа грибов.
 
 Проверяет:
-  1. report_day_label_for: подпись суток КОНКРЕТНОГО отчёта (отчёт до 10:00 МСК
-     относится к прошлым суткам, а не к текущим).
-  2. created_at_msk: время сдачи в МСК, а не сырой UTC.
-  3. report_payout_context(cycle_day=...) считает лимит и подписывает сутки отчёта.
-  4. correct_report_numbers и approve_report считают по суткам самого отчёта.
-  5. Лут кабана и моллюска: is_available=0, market_ok=0, loot_only=1.
-  6. wing_members_report_farms отдаёт region_troops — «всего» пилота в регионе.
+   1. report_day_label_for: подпись суток КОНКРЕТНОГО отчёта (отчёт до 10:00 МСК
+      относится к прошлым суткам, а не к текущим).
+   2. created_at_msk: время сдачи в МСК, не сырой UTC.
+   3. report_payout_context(cycle_day=...) считает лимит и подписывает сутки отчёта.
+   4. correct_report_numbers и approve_report считают по суткам самого отчёта.
+   5. Лут кабана и моллюска: is_available=0, market_ok=0, loot_only=1.
+   6. wing_members_report_farms отдаёт region_troops — «всего» пилота в регионе.
+   7. Листание очереди отчётов (позиция, «Назад»/«Следующий», заворот, продолжение).
+   8. Кап выкупа грибов казной: 250 НМ/сутки, сброс по суткам МСК, грибы vs не грибы.
 """
 import asyncio
 import os
@@ -280,6 +283,66 @@ async def main():
     after = await card(pos_before)
     check("после «Принять» показан следующий отчёт, а не начало очереди",
           shown_id(after) == queue[1])
+
+    # ── 9. v0.18.16: суточный кап выкупа грибов ───────────────────────────
+    print("\n= Кап продажи грибов (250 НМ/сутки) =")
+    from config import FOREST_SOLD_DAILY_LIMIT
+    from database.db import (
+        add_forest_sale_amount, forest_sale_daily_left, forest_sold_today,
+        is_forest_mushroom, is_forest_mushroom_name,
+        get_item_by_name, add_inventory_item, remove_inventory_item,
+        get_inventory_item, get_user,
+    )
+    check("FOREST_SOLD_DAILY_LIMIT = 250", FOREST_SOLD_DAILY_LIMIT == 250)
+    UB = 500002
+    await add_user(UB, "beta", "Beta", "Пилот")
+    check("у нового пилота лимит полный", await forest_sale_daily_left(UB) == 250)
+    check("счётчик пуст", await forest_sold_today(UB) == 0)
+
+    await add_forest_sale_amount(UB, 200)
+    check("после продажи на 200 НМ осталось 50", await forest_sale_daily_left(UB) == 50)
+    await add_forest_sale_amount(UB, 100)
+    check("перебор выше лимита обнуляет остаток (не минус)",
+          await forest_sale_daily_left(UB) == 0)
+    check("перебор не уходит в минус", await forest_sold_today(UB) == 300)
+
+    # Смена суток МСК обнуляет счётчик.
+    await conn.execute("UPDATE users SET forest_sold_day = '2000-01-01' WHERE user_id = ?", (UB,))
+    await conn.commit()
+    check("после смены суток лимит снова полный", await forest_sale_daily_left(UB) == 250)
+    check("счётчик сбросился", await forest_sold_today(UB) == 0)
+
+    # Кап распространяется и на сырые грибы, и на жареные, но не на прочее.
+    check("сырой гриб — гриб", is_forest_mushroom_name("Опёнок"))
+    check("ядовитый гриб тоже под капом", is_forest_mushroom_name("Мухомор"))
+    check("жареный гриб под капом", is_forest_mushroom_name("Жареный ежовик гребенчатый"))
+    check("мясо кабана — не гриб", not is_forest_mushroom_name("Мясо кабана"))
+    check("пустое имя — не гриб", not is_forest_mushroom_name(""))
+    opt = await get_item_by_name("Опёнок")
+    fried_opt = await get_item_by_name("Жареный опёнок")
+    meat = await get_item_by_name("Мясо кабана")
+    check("is_forest_mushroom по БД: Опёнок — да", await is_forest_mushroom(opt))
+    check("is_forest_mushroom по БД: жареный — да", await is_forest_mushroom(fried_opt))
+    check("is_forest_mushroom по БД: мясо — нет", not await is_forest_mushroom(meat))
+    check("is_forest_mushroom(None) не падает", not await is_forest_mushroom(None))
+
+    # Сколько грибов влезает в остаток лимита.
+    check("в полный лимит 250 НМ влезает 27 жареных опёнков",
+          250 // fried_opt['sell_price'] == 27)
+    check("в полный лимит 250 НМ влезает 83 сырых Опёнка",
+          250 // opt['sell_price'] == 83)
+
+    # Продажа 100 жареных опёнков (900 НМ) должна урезаться до 27 шт. (243 НМ).
+    await add_forest_sale_amount(UB, 243)
+    check("остаток лимита 7 НМ", await forest_sale_daily_left(UB) == 7)
+    check("7 НМ не хватает даже на 1 жареный опёнок (9 НМ)", 7 // fried_opt['sell_price'] == 0)
+    await add_inventory_item(UB, fried_opt['id'], 1)
+    check("инвентарь: 1 жареный опёнок на месте",
+          (await get_inventory_item(UB, fried_opt['id']))['quantity'] == 1)
+
+    # Лим��т не трогает обычные товары: мясо кабана продаётся без ограничений.
+    await add_inventory_item(UB, meat['id'], 2)
+    check("мясо кабана не под грибным капом", not await is_forest_mushroom(meat))
 
     await close_db()
     for suffix in ("", "-wal", "-shm"):

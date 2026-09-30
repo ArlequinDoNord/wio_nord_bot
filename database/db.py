@@ -1022,6 +1022,10 @@ async def init_db():
     await _ensure_column(conn, "users", "fish_sold_today", "INTEGER DEFAULT 0")
     # v0.18.15: счётчик попыток сбора грибов с момента последней встречи кабана.
     await _ensure_column(conn, "users", "forest_attempts_since_boar", "INTEGER DEFAULT 0")
+    # v0.18.16: выкуп грибов казной — суточный лимит НМ на игрока
+    # (FOREST_SOLD_DAILY_LIMIT). Счётчик сбрасывается при смене суток МСК.
+    await _ensure_column(conn, "users", "forest_sold_day", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "users", "forest_sold_today", "INTEGER DEFAULT 0")
     # Встроенные расширения жилья (например, кухня в студии): embedded=1 — не возвращается
     # в инвентарь при переезде и не может быть снята вручную.
     await _ensure_column(conn, "housing_slots", "embedded", "INTEGER DEFAULT 0")
@@ -5860,6 +5864,89 @@ async def add_fish_sale_amount(user_id: int, amount: int):
     await conn.commit()
 
 
+# ──────────────── Выкуп грибов казной: суточный лимит (v0.18.16) ────────────────
+# Лес — единственный источник грибов, и без потолка он перебивал рыбалку: выручка
+# за сутки не ограничена. Казна покупает грибы (сырые и жареные) не больше
+# FOREST_SOLD_DAILY_LIMIT НМ в сутки на игрока — по аналогии с рыбой. Счётчик
+# сбрасывается при смене суток МСК. Рынок игроков лимит не затрагивает.
+
+
+def is_forest_mushroom_name(name: str) -> bool:
+    """Гриб ли это по названию — сырой из пула леса или жареный."""
+    if not name:
+        return False
+    if name in FOREST_RAW_MUSHROOMS:
+        return True
+    return any(name == fried for fried, _price, _sell in FOREST_FRIED_PRICES)
+
+
+async def is_forest_mushroom(item: dict) -> bool:
+    """Гриб ли предмет — с учётом грибов, добавленных админом в пул леса."""
+    if not item:
+        return False
+    if is_forest_mushroom_name(item['name']):
+        return True
+    conn = await get_db()
+    row = await (await conn.execute(
+        "SELECT 1 FROM forest_mushrooms WHERE item_id = ? AND excluded = 0",
+        (item['id'],)
+    )).fetchone()
+    return row is not None
+
+
+async def forest_sold_today(user_id: int) -> int:
+    """Сколько НМ игрок уже выручил за грибы сегодня (МСК)."""
+    conn = await get_db()
+    row = await (await conn.execute(
+        "SELECT forest_sold_today FROM users WHERE user_id = ?", (user_id,)
+    )).fetchone()
+    if not row:
+        return 0
+    return row['forest_sold_today'] or 0
+
+
+async def forest_sale_daily_left(user_id: int) -> int:
+    """Сколько НМ ещё можно выручить за грибы сегодня (0 — лимит выбран)."""
+    from config import FOREST_SOLD_DAILY_LIMIT
+    conn = await get_db()
+    user = await (await conn.execute(
+        "SELECT forest_sold_today, forest_sold_day FROM users WHERE user_id = ?", (user_id,)
+    )).fetchone()
+    if not user:
+        return FOREST_SOLD_DAILY_LIMIT
+    day = fish_sold_day_key()
+    if user['forest_sold_day'] != day:
+        await conn.execute(
+            "UPDATE users SET forest_sold_today = 0, forest_sold_day = ? WHERE user_id = ?",
+            (day, user_id)
+        )
+        await conn.commit()
+        return FOREST_SOLD_DAILY_LIMIT
+    return max(0, FOREST_SOLD_DAILY_LIMIT - (user['forest_sold_today'] or 0))
+
+
+async def add_forest_sale_amount(user_id: int, amount: int):
+    """Учитывает вырученные НМ за грибы в суточном лимите выкупа."""
+    conn = await get_db()
+    day = fish_sold_day_key()
+    user = await (await conn.execute(
+        "SELECT forest_sold_day FROM users WHERE user_id = ?", (user_id,)
+    )).fetchone()
+    if not user:
+        return
+    if user['forest_sold_day'] != day:
+        await conn.execute(
+            "UPDATE users SET forest_sold_today = ?, forest_sold_day = ? WHERE user_id = ?",
+            (amount, day, user_id)
+        )
+    else:
+        await conn.execute(
+            "UPDATE users SET forest_sold_today = forest_sold_today + ? WHERE user_id = ?",
+            (amount, user_id)
+        )
+    await conn.commit()
+
+
 async def migrate_legacy_junk():
     """Переносит старые копии мусора (сапог, водоросли) из инвентаря в улов.
 
@@ -6353,22 +6440,22 @@ FOREST_ITEM_SEEDS = [
      100, 40, 4, "resource", 0, 1),
     ("Жареный опёнок",
      "Поджаренные на углях опята: +12 HP в бою. Срок годности 4 суток.",
-     35, 17, 1, "consumable", 12, 1),
+     18, 9, 1, "consumable", 12, 1),
     ("Жареный подберёзовик",
      "Поджаренный на углях подберёзовик: +18 HP в бою. Срок годности 4 суток.",
-     55, 27, 1, "consumable", 18, 1),
+     28, 14, 1, "consumable", 18, 1),
     ("Жареные лисички",
      "Ароматные жареные лисички: +26 HP в бою. Срок годности 4 суток.",
-     90, 45, 2, "consumable", 26, 1),
+     44, 22, 2, "consumable", 26, 1),
     ("Жареный белый гриб",
      "Жареный белый гриб — гордость охотника: +34 HP в бою. Срок годности 4 суток.",
-     130, 65, 2, "consumable", 34, 1),
+     64, 32, 2, "consumable", 34, 1),
     ("Жареный гиропор",
      "Редкий жареный гиропор: +48 HP в бою. Срок годности 4 суток.",
-     260, 130, 3, "consumable", 48, 1),
+     120, 60, 3, "consumable", 48, 1),
     ("Жареный ежовик гребенчатый",
      "Деликатес из самого редкого гриба леса: +70 HP в бою. Срок годности 4 суток.",
-     420, 210, 4, "consumable", 70, 1),
+     200, 100, 4, "consumable", 70, 1),
     ("Жареное мясо кабана",
      "Жаренное на костре мясо кабана: +30 HP в бою. Срок годности 4 суток.",
      90, 45, 2, "consumable", 30, 1),
@@ -6383,6 +6470,17 @@ FOREST_ITEM_SEEDS = [
 # «Только лут с врагов» и случайно не вернул её в продажу. Продать в казну за
 # деньги по-прежнему можно, крафт и выдача с врагов работают как раньше.
 FOREST_ENEMY_DROPS = ("Мясо кабана", "Шкура кабана", "Клык кабана")
+
+# Цены продажи жареных грибов (v0.18.16, были вдвое выше): имя → (цена, продажа).
+# Синхронизируются при каждом старте, поэтому пересчёт задевает и прод-БД.
+FOREST_FRIED_PRICES = (
+    ("Жареный опёнок", 18, 9),
+    ("Жареный подберёзовик", 28, 14),
+    ("Жареные лисички", 44, 22),
+    ("Жареный белый гриб", 64, 32),
+    ("Жареный гиропор", 120, 60),
+    ("Жареный ежовик гребенчатый", 200, 100),
+)
 
 
 async def ensure_forest_items():
@@ -6432,6 +6530,15 @@ async def ensure_forest_items():
                                      ap_cost=0, damage=0, heal=heal, market_ok=market_ok)
             await update_item(item_id, is_available=0)
             added = True
+
+    # v0.18.16: цены продажи жареных грибов снижены примерно вдвое — иначе кухня
+    # давала 5–6x цены сырья (у жареной рыбы ровно 2x) и лес обгонял рыбалку.
+    # Идемпотентная синхронизация: на проде блюда уже созданы со старыми ценами.
+    for name, price, sell in FOREST_FRIED_PRICES:
+        await conn.execute(
+            "UPDATE items SET sell_price = ?, price = ? WHERE name = ? AND sell_price != ?",
+            (sell, price, name, sell)
+        )
 
     # Добыча кабана — строго loot-only: не в магазине и не на рынке игроков.
     # Идемпотентно, поэтому уже созданные строки тоже чинятся (флаг ставится при каждом

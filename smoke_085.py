@@ -22,6 +22,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 async def run():
     from config import (
         FOREST_AP_COST, FOREST_RESULT_DELAY, FOREST_ALLOW_TOURISTS,
+        FOREST_SOLD_DAILY_LIMIT,
         FOREST_BOAR_PITY_TARGET, FOREST_BOAR_HP, FOREST_BOAR_DMG,
         FOREST_BOAR_DODGE, FOREST_BOAR_LOSS_AP, FOREST_BOAR_LOOT,
     )
@@ -41,6 +42,7 @@ async def run():
         get_forest_boar_attempts, set_forest_boar_attempts, reset_forest_boar_counter,
         remove_ap_or_floor, get_location_by_key,
         FOREST_RAW_MUSHROOMS, FOREST_ITEM_SEEDS, FOREST_DEFAULTS, RECIPES_DEF,
+        FOREST_FRIED_PRICES,
     )
 
     await init_db()
@@ -61,7 +63,9 @@ async def run():
             print(f"  FAIL: {name}")
 
     # ── 1. Константы леса в config ──
-    check("FOREST_AP_COST = 3", FOREST_AP_COST == 3)
+    check("FOREST_AP_COST = 4 (v0.18.16)", FOREST_AP_COST == 4)
+    check("FOREST_SOLD_DAILY_LIMIT = 250 (кап выкупа грибов)",
+          FOREST_SOLD_DAILY_LIMIT == 250)
     check("FOREST_RESULT_DELAY = (5,10)", FOREST_RESULT_DELAY == (5, 10))
     check("FOREST_ALLOW_TOURISTS = False", FOREST_ALLOW_TOURISTS is False)
     check("FOREST_BOAR_PITY_TARGET = 12", FOREST_BOAR_PITY_TARGET == 12)
@@ -201,6 +205,28 @@ async def run():
     fried = await get_item_by_name("Жареный белый гриб")
     check("Жареный белый гриб — расходник +34 HP",
           fried and fried['category'] == "consumable" and fried['heal'] == 34)
+
+    # ── 5b. v0.18.16: цены жареных грибов снижены примерно вдвое ──
+    fried_expected = {"Жареный опёнок": 9, "Жареный подберёзовик": 14,
+                      "Жареные лисички": 22, "Жареный белый гриб": 32,
+                      "Жареный гиропор": 60, "Жареный ежовик гребенчатый": 100}
+    check("цены жареных грибов из FOREST_FRIED_PRICES",
+          {n: s for n, _p, s in FOREST_FRIED_PRICES} == fried_expected)
+    db_fried_prices = {}
+    for n in fried_expected:
+        row = await get_item_by_name(n)
+        db_fried_prices[n] = row['sell_price'] if row else None
+    check("в БД цены жареных грибов обновлены (синхронизация)",
+          db_fried_prices == fried_expected)
+    check("обновление цен идемпотентно (повторный ensure_forest_items — False)",
+          await ensure_forest_items() is False)
+    check("цены жареных грибов не поехали после повторного старта",
+          {n: (await get_item_by_name(n))['sell_price'] for n in fried_expected}
+          == fried_expected)
+    check("сырой гриб стоит втрое дешевле жареного (2.5–3x, как рыба)",
+          all(2.5 <= fried_sell / raw_sell <= 3.01
+              for raw_sell, fried_sell in [(3, 9), (5, 14), (8, 22), (12, 32),
+                                           (20, 60), (35, 100)]))
 
     # ── 6. Пул грибов: 8 строк, шансы дефолтов, идемпотентность ──
     pool_rows = await get_forest_mushroom_pool()

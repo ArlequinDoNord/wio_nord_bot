@@ -1,11 +1,12 @@
 """Лес на окраине: сбор грибов и кабан.
 
 Механика: пилот входит в лес (локация city «Лес на окраине»), на опушке
-выбирает «🌲 Искать грибы» (3 ОД). Результат приходит через 5–10 секунд.
-Из пула грибов (forest_mushrooms, шансы правит админ в редакторе грибов)
-выпадает один из 8 грибов или ничего. Не чаще одного раза на 12 попыток
+выбирает «🌲 Искать грибы» (FOREST_AP_COST = 4 ОД, v0.18.16). Результат приходит
+через 5–10 секунд. Из пула грибов (forest_mushrooms, шансы правит админ в редакторе
+грибов) выпадает один из 8 грибов или ничего. Не чаще одного раза на 12 попыток
 встречается кабан — интерактивный мини-бой с кнопками; за победу — добыча
 (мясо/шкура/клык), за проигрыш — −10 ОД (до нуля).
+Продажа грибов казне ограничена FOREST_SOLD_DAILY_LIMIT НМ в сутки на игрока.
 
 Туристы пока не собирают грибы (FOREST_ALLOW_TOURISTS = False): они гуляют
 по опушке и ждут, когда лес откроют и для них.
@@ -33,7 +34,7 @@ from utils.helpers import (
     plural_nordmark, item_local_photo,
 )
 from config import (
-    FOREST_AP_COST, FOREST_RESULT_DELAY, FOREST_ALLOW_TOURISTS,
+    FOREST_AP_COST, FOREST_RESULT_DELAY, FOREST_ALLOW_TOURISTS, FOREST_SOLD_DAILY_LIMIT,
     FOREST_BOAR_PITY_TARGET, FOREST_BOAR_HP, FOREST_BOAR_DMG,
     FOREST_BOAR_DODGE, FOREST_BOAR_LOSS_AP, FOREST_BOAR_LOOT,
 )
@@ -263,7 +264,9 @@ async def _show_glade(callback: CallbackQuery, prefix: str = ""):
         f"{ap_line}\n\n"
         f"Поиск стоит {FOREST_AP_COST} ОД, результат через 5–10 секунд.\n"
         "Не чаще одного раза на 12 попыток тебя ждёт встреча со зверем. "
-        "За победу — добыча, за поражение — потеря 10 ОД."
+        "За победу — добыча, за поражение — потеря 10 ОД.\n\n"
+        f"🧺 Казна покупает грибы не больше {FOREST_SOLD_DAILY_LIMIT} НМ в сутки — "
+        "остальное можно продать на рынке игроков."
     )
     await _glade_paint(callback, text=text, kb=_glade_markup(token))
 
