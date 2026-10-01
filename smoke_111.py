@@ -95,17 +95,22 @@ class Msg:
 
 
 class State:
-    def __init__(self, **kw):
-        self.d = dict(kw)
+        def __init__(self, **kw):
+            self.d = dict(kw)
+            self._state = None
 
-    async def get_data(self):
-        return self.d
+        async def get_data(self):
+            return self.d
 
-    async def update_data(self, **kw):
-        self.d.update(kw)
+        async def update_data(self, **kw):
+            self.d.update(kw)
 
-    async def clear(self):
-        self.d = {}
+        async def set_state(self, s):
+            self._state = s
+
+        async def clear(self):
+            self.d = {}
+            self._state = None
 
 
 async def main():

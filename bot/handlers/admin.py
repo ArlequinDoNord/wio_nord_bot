@@ -207,6 +207,7 @@ class AdminForest(StatesGroup):
     c_chance = State()        # шанс выпадения в пуле %
     c_kind = State()          # тип: съедобный / ядовитый
     c_photo = State()         # фото
+    zone_value = State()      # ввод числа в настройках зоны / веса гриба в зоне
 
 
 class AdminEnemy(StatesGroup):
@@ -6653,6 +6654,7 @@ async def admin_forest_zone_chance(callback: CallbackQuery, state: FSMContext):
         return
     _, _, area, f_id = callback.data.split(":")
     await state.update_data(forest_zone_chance=(area, int(f_id)))
+    await state.set_state(AdminForest.zone_value)
     await callback.message.answer(
         f"⚖️ Новый ВЕС гриба в зоне (числа — веса, «пусто» остаётся 10%).\n"
         f"0 = убрать гриба из этой зоны.\n\nВведи число:"
@@ -6727,6 +6729,7 @@ async def admin_forest_zone_set_pick(callback: CallbackQuery, state: FSMContext)
         "boar_every": "Гарантия: кабан не чаще раза на N попыток (0 = как у кабана):",
     }.get(field, "Новое значение:")
     await state.update_data(forest_zone_field=(area, field))
+    await state.set_state(AdminForest.zone_value)
     await callback.message.answer(
         f"⚙️ {hint}\n\nТекущее значение: {zone.get(field)}\nВведи новое:")
 
@@ -6739,18 +6742,28 @@ async def admin_forest_limit_set(callback: CallbackQuery, state: FSMContext):
         return
     current = await get_forest_setting("sold_daily_limit", "250")
     await state.update_data(forest_zone_field=("__settings__", "sold_daily_limit"))
+    await state.set_state(AdminForest.zone_value)
     await callback.message.answer(
         f"🧺 Сколько НМ казна выкупает грибов за сутки на игрока?\n"
         f"Текущее значение: {current}\n\nВведи число:")
 
 
-@router.message(F.text.regexp(r"^\d+$"))
+@router.message(AdminForest.zone_value, F.text.regexp(r"^\d+$"))
 async def admin_forest_zone_value(message: Message, state: FSMContext):
-    """Приём значения настройки зоны / веса гриба в зоне."""
+    """Приём значения настройки зоны / веса гриба в зоне.
+
+    Обработчик обязательно привязан к состоянию AdminForest.zone_value.
+    Раньше он висел на голом «сообщение из цифр» без состояния, а роутер
+    админа зарегистрирован раньше роутера отчётов: любая цифра, которую
+    пилот вводил в сдаче отчёта, уходила сюда и тихо проглатывалась —
+    отчёт зависал после фото. Роутер админа без фильтра по правам, поэтому
+    страдали все, не только админы.
+    """
     data = await state.get_data()
     zone_field = data.get("forest_zone_field")
     zone_chance = data.get("forest_zone_chance")
     if not zone_field and not zone_chance:
+        await state.clear()
         return
     try:
         value = int(message.text.strip())
@@ -6766,7 +6779,7 @@ async def admin_forest_zone_value(message: Message, state: FSMContext):
         else:
             await set_forest_zone_chance(area, f_id, value)
             answer = f"✅ Вес гриба в зоне: {value}."
-        await state.update_data(forest_zone_chance=None)
+        await state.clear()
         await message.answer(answer)
         text, markup = await _forest_zone_view(message, area)
         await message.answer(text, reply_markup=markup)
@@ -6775,12 +6788,12 @@ async def admin_forest_zone_value(message: Message, state: FSMContext):
     area, field = zone_field
     if area == "__settings__":
         await set_forest_setting("sold_daily_limit", value)
-        await state.update_data(forest_zone_field=None)
+        await state.clear()
         await message.answer(f"✅ Казна будет выкупать грибы до {value} НМ в сутки.")
         await _admin_forest_zones_view(message)
         return
     await update_forest_zone(area, **{field: value})
-    await state.update_data(forest_zone_field=None)
+    await state.clear()
     label = FOREST_ZONE_FIELDS_LABELS.get(field, field)
     await message.answer(f"✅ {label}: {value}")
     text, markup = await _forest_zone_view(message, area)

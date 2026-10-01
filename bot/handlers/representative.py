@@ -15,7 +15,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from config import REP_SPEECH_MAX_LEN, REP_SPEECH_PER_DAY
 from database.db import (
-    add_rep_speech, update_rep_speech, get_latest_rep_speech, get_rep_speech,
+    add_rep_speech, delete_rep_speech, get_latest_rep_speech, get_rep_speech,
     count_rep_speeches_today, log_activity,
 )
 from utils.helpers import is_main_menu_text, edit_message_safe
@@ -43,10 +43,9 @@ def speech_caption(speech, count_today: int = 0, is_speaker: bool = False) -> st
     if not speech:
         base = "📢 РЕЧЬ ПРЕДСТАВИТЕЛЯ\n\nПредставитель ещё не обращался к городу."
     else:
-        edited = " · ✏️ правлено" if speech['edited'] else ""
         when = (speech['created_at'] or '')[:10]
         base = (f"📢 РЕЧЬ ПРЕДСТАВИТЕЛЯ\n\n{speech['text']}\n\n"
-                f"— Представитель · {when}{edited}")
+                f"— Представитель · {when}")
     if is_speaker:
         base += f"\n\n{_footer(count_today)}"
     return base
@@ -56,8 +55,11 @@ async def _render_speech(callback: CallbackQuery, state: FSMContext, speech, is_
                          cnt: int):
     buttons = []
     if is_speaker:
-        buttons.append([InlineKeyboardButton(
-            text="✏️ Изменить обращение", callback_data="rep:speech:edit")])
+        # Правки обращения нет: любое изменение — это новое обращение,
+        # оно тратит суточный лимит. Текущее можно только удалить.
+        if speech:
+            buttons.append([InlineKeyboardButton(
+                text="🗑 Удалить обращение", callback_data="rep:speech:delete")])
         buttons.append([InlineKeyboardButton(
             text="📢 Новое обращение", callback_data="rep:speech:write")])
     buttons.append([InlineKeyboardButton(text="🔙 В Ратушу", callback_data="city:pilots")])
@@ -95,6 +97,7 @@ async def rep_speech_write(callback: CallbackQuery, state: FSMContext):
     if cnt >= REP_SPEECH_PER_DAY:
         await callback.message.answer(f"❌ {_footer(cnt)}")
         return
+    # Любое изменение текста — только новое обращение, оно тратит лимит.
     await state.set_state(RepSpeech.waiting_text)
     await callback.message.answer(
         f"📢 Напиши обращение к городу (до {REP_SPEECH_MAX_LEN} символов).\n"
@@ -103,10 +106,10 @@ async def rep_speech_write(callback: CallbackQuery, state: FSMContext):
     )
 
 
-@router.callback_query(F.data == "rep:speech:edit")
-async def rep_speech_edit(callback: CallbackQuery, state: FSMContext):
-    """Правка текущего обращения. Не тратит суточный лимит: правится уже
-    опубликованное, а новое обращение не создаётся."""
+@router.callback_query(F.data == "rep:speech:delete")
+async def rep_speech_delete(callback: CallbackQuery, state: FSMContext):
+    """Удаление текущего обращения. Это именно удаление, а не правка: новое
+    обращение публикуется отдельно и тратит суточный лимит."""
     await callback.answer()
     uid = callback.from_user.id
     if not await has_permission(uid, "can_address_city"):
@@ -114,18 +117,28 @@ async def rep_speech_edit(callback: CallbackQuery, state: FSMContext):
         return
     speech = await get_latest_rep_speech()
     if not speech:
-        await callback.message.answer("❌ Пока нечего править — опубликуй обращение.")
+        await callback.message.answer("❌ Обращения и так нет — нечего удалять.")
         return
     if speech['user_id'] != uid:
-        await callback.message.answer("⛔ Править можно только своё обращение.")
+        await callback.message.answer("⛔ Удалять можно только своё обращение.")
         return
-    await state.update_data(rep_edit_id=speech['id'])
-    await state.set_state(RepSpeech.waiting_text)
-    await callback.message.answer(
-        f"✏️ Пришли исправленный текст обращения (до {REP_SPEECH_MAX_LEN} символов).\n"
-        f"Сейчас:\n\n{speech['text']}",
-        reply_markup=cancel_keyboard()
+    await delete_rep_speech(speech['id'])
+    await state.clear()
+    try:
+        await state.set_state(RepSpeech.waiting_text)
+    except Exception:
+        pass
+    remaining = await count_rep_speeches_today(uid)
+    await edit_message_safe(
+        callback.message,
+        f"🗑 Обращение удалено.\n\n"
+        f"Новое обращение можно опубликовать сейчас — {_footer(remaining)}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📢 Новое обращение", callback_data="rep:speech:write")],
+            [InlineKeyboardButton(text="🔙 В Ратушу", callback_data="city:pilots")],
+        ])
     )
+    await log_activity(uid, "rep_speech_delete", (speech['text'] or "")[:60])
 
 
 def _validate(text: str) -> str | None:
@@ -148,7 +161,7 @@ async def _publish(bot: Bot, message: Message, state: FSMContext, text: str):
         f"✅ Обращение опубликовано!\n\n{speech_caption(await get_rep_speech(speech_id), cnt, True)}\n\n"
         f"Оно на заглавной картинке города и в общем чате.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✏️ Изменить обращение", callback_data="rep:speech:edit")],
+            [InlineKeyboardButton(text="🗑 Удалить обращение", callback_data="rep:speech:delete")],
             [InlineKeyboardButton(text="🔙 В Ратушу", callback_data="city:pilots")],
         ])
     )
@@ -161,29 +174,18 @@ async def _publish(bot: Bot, message: Message, state: FSMContext, text: str):
 
 @router.message(RepSpeech.waiting_text, F.text, ~F.text.func(is_main_menu_text))
 async def rep_speech_text(message: Message, state: FSMContext, bot: Bot):
+    """Приём текста обращения. Правки нет: любое изменение — новое обращение,
+    и оно тратит суточный лимит (проверяем ещё раз, лимит мог кончиться,
+    пока текст печатали)."""
     uid = message.from_user.id
     text = message.text.strip()
     err = _validate(text)
     if err:
         await message.answer(err)
         return
-    data = await state.get_data()
-    edit_id = data.get('rep_edit_id')
-    if edit_id:
-        speech = await get_rep_speech(edit_id)
-        if not speech or speech['user_id'] != uid:
-            await state.clear()
-            await message.answer("❌ Нечего править. Опубликуй новое обращение.")
-            return
-        await update_rep_speech(edit_id, text)
+    cnt = await count_rep_speeches_today(uid)
+    if cnt >= REP_SPEECH_PER_DAY:
         await state.clear()
-        await message.answer(
-            f"✏️ Обращение исправлено.\n\n{speech_caption(await get_rep_speech(edit_id), 0, True)}",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 В Ратушу", callback_data="city:pilots")],
-            ])
-        )
-        await notify(message.bot, f"📢 РЕЧЬ ПРЕДСТАВИТЕЛЯ (исправлено)\n\n{text}")
-        await log_activity(uid, "rep_speech_edit", text[:60])
+        await message.answer(f"❌ {_footer(cnt)}")
         return
     await _publish(message.bot, message, state, text)

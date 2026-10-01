@@ -2329,11 +2329,22 @@ async def add_rep_speech(user_id: int, text: str) -> int:
 
 
 async def update_rep_speech(speech_id: int, text: str) -> bool:
-    """Правка опубликованного обращения (не считается новым обращением: правка
-    не тратит суточный лимит, но помечается edited=1)."""
+    """Правка опубликованного обращения (не используется: правки обращения
+    нет, любое изменение — новое обращение; оставлено для истории БД)."""
     conn = await get_db()
     cursor = await conn.execute(
         "UPDATE rep_speeches SET text = ?, edited = 1 WHERE id = ?", (text, speech_id)
+    )
+    await conn.commit()
+    return cursor.rowcount > 0
+
+
+async def delete_rep_speech(speech_id: int) -> bool:
+    """Удаление обращения. Запись уходит совсем, поэтому суточный счётчик
+    обращений представителя уменьшается — удаление ничего не стоит."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "DELETE FROM rep_speeches WHERE id = ?", (speech_id,)
     )
     await conn.commit()
     return cursor.rowcount > 0

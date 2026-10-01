@@ -9,8 +9,10 @@
    2. Библиотека: раздел «Опросы» — группировка по датам, заголовки дней,
       пагинация по дням, доступ по читательскому билету.
    3. Речь представителя: право can_address_city, лимит REP_SPEECH_MAX_LEN символов
-      и REP_SPEECH_PER_DAY обращений в сутки, правка без траты лимита, обращение
-      висит в подписи города, новое обращение уходит в общий чат (notify).
+      и REP_SPEECH_PER_DAY обращений в сутки, правки обращения нет (любое
+      изменение — новое обращение, оно тратит лимит), удаление обращения лимит
+      не тратит, обращение висит в подписи города, новое обращение уходит
+      в общий чат (notify).
    4. Меню голосования: 🔒 у закрытого опроса в топ-4, кнопки «Закрытые опросы»
       в боте больше нет.
 """
@@ -401,34 +403,45 @@ async def main():
     check("в подписи города есть «Речь представителя»", "Речь представителя" in caption)
     check("в подписи города сам текст обращения", speech_text in caption)
 
-    # Правка: не тратит суточный лимит, помечается edited.
+    # Правки обращения нет: любое изменение — новое обращение (тратит лимит).
+    # Текущее можно только удалить, и удаление лимит не тратит.
     sent.clear()
     cb_edit = CB("rep:speech:edit", REP)
-    await rep_mod.rep_speech_edit(cb_edit, _FakeState())
-    check("правка открывает ввод", "исправленный текст" in (cb_edit.message.last or ""))
-    check("правка просит показать текущий текст", speech_text in (cb_edit.message.last or ""))
+    await rep_mod.rep_speech_open(cb_edit, _FakeState())
+    check("в меню обращения больше нет кнопки правки",
+          not any("Изменить обращение" in t for t in texts(cb_edit.message.markup)))
+    check("в меню обращения есть удаление",
+          any("Удалить обращение" in t for t in texts(cb_edit.message.markup)))
+
+    # Любое изменение — новое обращение, оно тратит лимит.
+    st_new = _FakeState()
+    st_new.data = {}
     m = Msg("Город, держимся вместе и не сдаёмся!", REP)
     m.bot = fake_bot
-    st = _FakeState()
-    st.data = {"rep_edit_id": latest['id']}
-    await rep_mod.rep_speech_text(m, st, fake_bot)
-    edited = await get_latest_rep_speech()
-    check("текст обновлён", edited['text'] == "Город, держимся вместе и не сдаёмся!")
-    check("запись помечена как правлена", edited['edited'] == 1)
-    check("правка не тратит суточный лимит", await count_rep_speeches_today(REP) == 1)
-    check("правка тоже ушла в общий чат",
-          any("не сдаёмся" in s for s in sent))
-    cur_s = await conn.execute("SELECT COUNT(*) AS n FROM rep_speeches")
-    check("правка не создала новой записи обращения",
-          (await cur_s.fetchone())['n'] == 1)
+    await rep_mod.rep_speech_text(m, st_new, fake_bot)
+    after_change = await get_latest_rep_speech()
+    check("изменение стало новым обращением",
+          after_change['text'] == "Город, держимся вместе и не сдаёмся!")
+    check("новое обращение за трату лимита", await count_rep_speeches_today(REP) == 2)
+    check("изменение ушло в общий чат", any("не сдаёмся" in s for s in sent))
 
-    # Чужое обращение править нельзя.
+    # Удаление обращения: запись исчезает, лимит не тратится.
+    st_del = _FakeState()
+    st_del.data = {}
+    await db.delete_rep_speech(after_change['id'])
+    gone = await get_latest_rep_speech()
+    check("после удаления осталось предыдущее обращение", gone['id'] == latest['id'])
+    check("удаление не тратит суточный лимит",
+          await count_rep_speeches_today(REP) == 1)
+
+    # Кнопка удаления: чужое обращение удалить нельзя.
     await conn.execute("UPDATE rep_speeches SET user_id = ? WHERE id = ?",
                        (PILOT, latest['id']))
     await conn.commit()
-    cb_own = CB("rep:speech:edit", REP)
-    await rep_mod.rep_speech_edit(cb_own, _FakeState())
-    check("чужое обращение править нельзя", "только своё" in (cb_own.message.last or ""))
+    cb_own = CB("rep:speech:delete", REP)
+    await rep_mod.rep_speech_delete(cb_own, _FakeState())
+    check("чужое обращение удалить нельзя", "только своё" in (cb_own.message.last or ""))
+    check("чужое обращение на месте", (await get_latest_rep_speech())['id'] == latest['id'])
     await conn.execute("UPDATE rep_speeches SET user_id = ? WHERE id = ?",
                        (REP, latest['id']))
     await conn.commit()

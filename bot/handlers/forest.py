@@ -92,11 +92,27 @@ async def deactivate_forest(user_id: int):
     FOREST_BATTLE.pop(user_id, None)
 
 
+def _callback_token(data: str) -> str:
+    """Токен окна леса из callback_data.
+
+    Форматы: forest:area:TOKEN:ЗОНА, forest:cast:TOKEN[:ЗОНА],
+    forest:battle:hit:TOKEN, forest:battle:flee:TOKEN.
+
+    Раньше токен брали как последний сегмент — это работало только для
+    forest:cast:TOKEN. После разделения леса на зоны (v0.18.18) у «поиска»
+    и «перехода» появился хвост с названием зоны, токен перестал быть
+    последним, и step-guard рубил живые кнопки («окно устарело»).
+    Берём последний сегмент из цифр: команды и зоны — словами.
+    """
+    for part in reversed(data.split(":")[1:]):
+        if part.isdigit():
+            return part
+    return ""
+
+
 async def _forest_ok(callback) -> bool:
     """Step-guard: callback должен приходить из текущего окна леса."""
-    rest = callback.data[len("forest:"):]
-    # cast:TOKEN | battle:hit:TOKEN | battle:flee:TOKEN
-    token = rest.split(":")[-1]
+    token = _callback_token(callback.data)
     if FOREST_TOKEN.get(callback.from_user.id) != token:
         try:
             await log_activity(callback.from_user.id, "stale_button", "лес: устаревшее окно")
@@ -387,9 +403,17 @@ async def _treasury_limit() -> int:
 @router.callback_query(F.data.regexp(r"^forest:area:\d+:(glade|clearing)$"))
 async def forest_area_switch(callback: CallbackQuery):
     """Переход между зонами леса: опушка ⇄ лесная поляна."""
-    parts = callback.data.split(":")
-    area = parts[3]
-    await _forest_ok(callback)
+    await callback.answer()
+    if not await _forest_ok(callback):
+        return
+    area = callback.data.split(":")[3]
+    if not await _area_allowed(area, callback.from_user.id):
+        zone = await get_forest_zone(area)
+        if not zone.get("enabled"):
+            await callback.answer("Сюда пока не пускают.", show_alert=True)
+        else:
+            await callback.answer("🌲 Сюда туристов не пускают.", show_alert=True)
+        return
     await _show_area(callback, area)
 
 
