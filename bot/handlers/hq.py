@@ -26,7 +26,7 @@ from database.db import (
     create_wing, update_wing, delete_wing, get_wing_rows, get_wing_row,
 )
 from utils.permissions import has_permission, log_action
-from utils.wings import WINGS, WINGS_SHORT, wing_display
+from utils.wings import wing_label, wing_short, wing_display, all_wings
 from utils.notify import player_display
 from keyboards.keyboards import cancel_keyboard
 
@@ -82,7 +82,7 @@ def hq_menu_markup(roster_ok: bool = False, can_order: bool = True,
 
 def hq_target_markup():
     rows = [[InlineKeyboardButton(text="🌍 Всем авиакрыльям", callback_data="hq:order:all")]]
-    for key, label in WINGS.items():
+    for key, label in all_wings().items():
         rows.append([InlineKeyboardButton(text=label, callback_data=f"hq:order:{key}")])
     rows.append([InlineKeyboardButton(text="🔙 Назад в штаб", callback_data="hq:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -143,7 +143,7 @@ async def hq_order_start(callback: CallbackQuery, state: FSMContext):
     _, _, target = callback.data.split(":", 2)
     await state.update_data(hq_target=target)
     await state.set_state(HqOrder.target)
-    scope = "все авиакрылья" if target == "all" else WINGS.get(target, "крыло")
+    scope = "все авиакрылья" if target == "all" else wing_label(target) or "крыло"
     await callback.message.answer(
         f"📢 Приказ для: {scope}\n\nВведи текст приказа:",
         reply_markup=cancel_keyboard()
@@ -171,11 +171,11 @@ async def hq_order_text(message: Message, state: FSMContext):
     if (staff_wing and target != "all" and staff_wing == target and can_cmd):
         role = await get_wing_staff_role(message.from_user.id)
         if role == 'deputy':
-            header = f"🪖 ПРИКАЗ ЗАМЕСТИТЕЛЯ КОМАНДИРА {WINGS[target]}"
-            signature = f"\n📝 — Заместитель командира {WINGS_SHORT[target]}"
+            header = f"🪖 ПРИКАЗ ЗАМЕСТИТЕЛЯ КОМАНДИРА {wing_label(target)}"
+            signature = f"\n📝 — Заместитель командира {wing_short(target)}"
         else:
-            header = f"🪖 ПРИКАЗ КОМАНДИРА {WINGS[target]}"
-            signature = f"\n📝 — Командир {WINGS[target]}"
+            header = f"🪖 ПРИКАЗ КОМАНДИРА {wing_label(target)}"
+            signature = f"\n📝 — Командир {wing_label(target)}"
     else:
         header = "🎖️ ПРИКАЗ ШТАБА ВВС"
         signature = "\n📝 — Главнокомандующий ВВС"
@@ -190,7 +190,7 @@ async def hq_order_text(message: Message, state: FSMContext):
         except Exception:
             pass
 
-    scope = "все авиакрылья" if target == "all" else WINGS.get(target, "крыло")
+    scope = "все авиакрылья" if target == "all" else wing_label(target) or "крыло"
     await log_action(message.from_user.id, 'hq_order', details=f"target={target}, sent={sent}")
     await state.clear()
     noun = "пилот" if sent == 1 else ("пилота" if 2 <= sent <= 4 else "пилотов")
@@ -209,7 +209,7 @@ async def hq_wing_cb(callback: CallbackQuery):
         await callback.message.answer("❌ Нет доступа к составу ВВС.")
         return
     users = await get_all_users(citizens_only=True)
-    grouped = {key: 0 for key in WINGS}
+    grouped = {key: 0 for key in all_wings()}
     grouped[""] = 0
     for u in users:
         wing = u['wing'] if 'wing' in u.keys() and u['wing'] else ""
@@ -217,28 +217,28 @@ async def hq_wing_cb(callback: CallbackQuery):
     commanders = await get_wing_commanders()
     deputies = await get_wing_deputies()
     lines = ["🪽 СОСТАВ ВВС\n"]
-    for key, label in WINGS.items():
+    for key, label in all_wings().items():
         lines.append(f"{label}: {grouped.get(key, 0)}")
     lines.append(f"Без крыла: {grouped.get('', 0)}")
     lines.append(f"\nВсего пилотов: {len(users)}\n")
     lines.append("🛡 Командиры формирований:")
-    for key, label in WINGS.items():
+    for key, label in all_wings().items():
         uid = commanders.get(key)
         if uid:
             u = await get_user(uid)
             name = await player_display(u) if u else f"#{uid}"
         else:
             name = "— не назначен"
-        lines.append(f"{WINGS_SHORT[key]}: {name}")
+        lines.append(f"{wing_short(key)}: {name}")
     lines.append("\n🎖️ Заместители:")
-    for key, label in WINGS.items():
+    for key, label in all_wings().items():
         uid = deputies.get(key)
         if uid:
             u = await get_user(uid)
             name = await player_display(u) if u else f"#{uid}"
         else:
             name = "— не назначен"
-        lines.append(f"{WINGS_SHORT[key]}: {name}")
+        lines.append(f"{wing_short(key)}: {name}")
     await callback.message.answer(
         "\n".join(lines),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -319,7 +319,7 @@ async def hq_pilot_cb(callback: CallbackQuery):
         await callback.message.answer("❌ Пилот не найден.")
         return
     rows = []
-    for key, label in WINGS.items():
+    for key, label in all_wings().items():
         rows.append([InlineKeyboardButton(text=label, callback_data=f"hq:wing:set:{uid}:{key}")])
     rows.append([InlineKeyboardButton(text="➖ Снять крыло", callback_data=f"hq:wing:set:{uid}:none")])
     rows.append([InlineKeyboardButton(text="🔙 К списку", callback_data="hq:roster:0")])
@@ -346,7 +346,7 @@ async def hq_wingset(callback: CallbackQuery):
     except ValueError:
         return
     wing = None if wing == "none" else wing
-    if wing is not None and wing not in WINGS:
+    if wing is not None and wing not in all_wings():
         return
     await set_wing(uid, wing)
     await log_action(callback.from_user.id, 'hq_set_wing', details=f"pilot={uid}, wing={wing}")
@@ -388,7 +388,7 @@ async def hq_wing_farm_cb(callback: CallbackQuery):
     wing_prev = sum(m['prev_farm'] for m in members)
     wing_today = sum(m['today_farm'] for m in members)
     lines = [
-        f"🪽 СОСТАВ БОЕВОГО ФОРМИРОВАНИЯ\n{WINGS[wing]}",
+        f"🪽 СОСТАВ БОЕВОГО ФОРМИРОВАНИЯ\n{wing_label(wing)}",
         "",
         f"Прошлые сутки: {report_day_label(-1)}",
         f"Текущие сутки: {report_day_label(0)}",
@@ -441,14 +441,14 @@ async def hq_wingcmd_cb(callback: CallbackQuery):
     deputies = await get_wing_deputies()
     lines = ["🛡 КОМАНДИРЫ И ЗАМЕСТИТЕЛИ ФОРМИРОВАНИЙ\n"]
     rows = []
-    for key in WINGS:
+    for key in all_wings():
         uid = commanders.get(key)
         if uid:
             u = await get_user(uid)
             name = await player_display(u) if u else f"#{uid}"
         else:
             name = "— не назначен"
-        lines.append(f"{WINGS_SHORT[key]}: {name}")
+        lines.append(f"{wing_short(key)}: {name}")
         dep_uid = deputies.get(key)
         if dep_uid:
             du = await get_user(dep_uid)
@@ -457,13 +457,13 @@ async def hq_wingcmd_cb(callback: CallbackQuery):
             dep_name = "— не назначен"
         lines.append(f"   заместитель: {dep_name}")
         rows.append([InlineKeyboardButton(
-            text=f"👨‍✈️ {WINGS_SHORT[key]} — командир", callback_data=f"hq:wingcmd:pick:{key}:0"
+            text=f"👨‍✈️ {wing_short(key)} — командир", callback_data=f"hq:wingcmd:pick:{key}:0"
         ),
             InlineKeyboardButton(
             text="➖ Снять", callback_data=f"hq:wingcmd:unset:{key}"
         )])
         rows.append([InlineKeyboardButton(
-            text=f"🎖️ {WINGS_SHORT[key]} — заместитель", callback_data=f"hq:wingdep:{key}"
+            text=f"🎖️ {wing_short(key)} — заместитель", callback_data=f"hq:wingdep:{key}"
         )])
     rows.append([InlineKeyboardButton(text="🔙 В состав ВВС", callback_data="hq:wing")])
     await callback.message.answer(
@@ -480,7 +480,7 @@ async def hq_wingcmd_pick(callback: CallbackQuery):
         return
     parts = callback.data.split(":")
     wing = parts[3] if len(parts) >= 4 else ""
-    if wing not in WINGS:
+    if wing not in all_wings():
         return
     try:
         page = int(parts[4]) if len(parts) >= 5 else 0
@@ -491,7 +491,7 @@ async def hq_wingcmd_pick(callback: CallbackQuery):
         page_base=f"hq:wingcmd:pick:{wing}:",
         assign_prefix=f"hq:wingcmd:assign:{wing}",
         back="hq:wingcmd",
-        caption=f"👨‍✈️ Командир для {WINGS_SHORT[wing]}",
+        caption=f"👨‍✈️ Командир для {wing_short(wing)}",
     )
 
 
@@ -505,7 +505,7 @@ async def hq_wingcmd_assign(callback: CallbackQuery):
     if len(parts) < 5:
         return
     wing, uid_s = parts[3], parts[4]
-    if wing not in WINGS:
+    if wing not in all_wings():
         return
     try:
         uid = int(uid_s)
@@ -531,7 +531,7 @@ async def hq_wingcmd_assign(callback: CallbackQuery):
         if not await get_wing_staff_wing(old_uid):
             await remove_user_role(old_uid, 'wing_commander')
     await callback.message.answer(
-        f"✅ Командир {WINGS_SHORT[wing]}: {await player_display(u)}"
+        f"✅ Командир {wing_short(wing)}: {await player_display(u)}"
     )
 
 
@@ -543,7 +543,7 @@ async def hq_wingcmd_unset(callback: CallbackQuery):
         return
     parts = callback.data.split(":")
     wing = parts[3] if len(parts) >= 4 else ""
-    if wing not in WINGS:
+    if wing not in all_wings():
         return
     old_uid = await get_wing_commander(wing)
     if not old_uid:
@@ -556,7 +556,7 @@ async def hq_wingcmd_unset(callback: CallbackQuery):
     if not await get_wing_staff_wing(old_uid):
         await remove_user_role(old_uid, 'wing_commander')
     await callback.message.answer(
-        f"✅ Командир снят с {WINGS_SHORT[wing]}."
+        f"✅ Командир снят с {wing_short(wing)}."
         + ("" if await get_wing_deputy(wing) == old_uid
            else f" {await player_display(await get_user(old_uid))} остаётся в составе крыла.")
     )
@@ -575,7 +575,7 @@ async def hq_wingcmd_send_cb(callback: CallbackQuery, state: FSMContext):
     await state.update_data(hq_target=wing)
     await state.set_state(HqOrder.target)
     await callback.message.answer(
-        f"📢 Приказ для крыла: {WINGS[wing]}\n\nВведи текст приказа:",
+        f"📢 Приказ для крыла: {wing_label(wing)}\n\nВведи текст приказа:",
         reply_markup=cancel_keyboard()
     )
 # ----- Состав своего крыла: командир берёт и убирает пилотов -----
@@ -648,7 +648,7 @@ async def hq_wing_take_cb(callback: CallbackQuery):
         await log_action(callback.from_user.id, 'hq_wing_take_pilot',
                          details=f"pilot={uid}, wing={wing}")
         await callback.message.answer(
-            f"✅ {await player_display(u)} принят в {WINGS[wing]}.\n"
+            f"✅ {await player_display(u)} принят в {wing_label(wing)}.\n"
             f"Теперь он получает приказы твоего крыла.",
             reply_markup=_hq_back_rows(
                 [InlineKeyboardButton(text="➕ Взять ещё", callback_data="hq:wingtake:0")],
@@ -665,7 +665,7 @@ async def hq_wing_take_cb(callback: CallbackQuery):
     if not free:
         await callback.message.answer(
             f"✅ Свободных пилотов нет — все уже в крыльях.\n"
-            f"Состав {WINGS_SHORT[wing]}: {await count_wing_members(wing)}",
+            f"Состав {wing_short(wing)}: {await count_wing_members(wing)}",
             reply_markup=_hq_back_rows(
                 [InlineKeyboardButton(text="➖ Убрать из крыла", callback_data="hq:wingdrop:0")],
                 [InlineKeyboardButton(text="🔙 В штаб", callback_data="hq:menu")],
@@ -677,7 +677,7 @@ async def hq_wing_take_cb(callback: CallbackQuery):
         page_base="hq:wingtake:",
         assign_prefix=f"hq:wingtake:do:{wing}",
         back="hq:menu",
-        caption=f"➕ Кого взять в {WINGS[wing]}?",
+        caption=f"➕ Кого взять в {wing_label(wing)}?",
         users=free,
     )
 
@@ -722,7 +722,7 @@ async def hq_wing_drop_cb(callback: CallbackQuery):
         await log_action(callback.from_user.id, 'hq_wing_drop_pilot',
                          details=f"pilot={uid}, wing={wing}")
         await callback.message.answer(
-            f"✅ {await player_display(u)} убран из {WINGS[wing]}. Пилот снова свободен.",
+            f"✅ {await player_display(u)} убран из {wing_label(wing)}. Пилот снова свободен.",
             reply_markup=_hq_back_rows(
                 [InlineKeyboardButton(text="➕ Взять пилота", callback_data="hq:wingtake:0")],
                 [InlineKeyboardButton(text="🔙 В штаб", callback_data="hq:menu")],
@@ -737,7 +737,7 @@ async def hq_wing_drop_cb(callback: CallbackQuery):
     members = await get_wing_member_rows(wing)
     if not members:
         await callback.message.answer(
-            f"В {WINGS[wing]} пока нет пилотов. Возьми кого-нибудь командой ниже.",
+            f"В {wing_label(wing)} пока нет пилотов. Возьми кого-нибудь командой ниже.",
             reply_markup=_hq_back_rows(
                 [InlineKeyboardButton(text="➕ Взять пилота", callback_data="hq:wingtake:0")],
                 [InlineKeyboardButton(text="🔙 В штаб", callback_data="hq:menu")],
@@ -749,7 +749,7 @@ async def hq_wing_drop_cb(callback: CallbackQuery):
         page_base="hq:wingdrop:",
         assign_prefix=f"hq:wingdrop:do:{wing}",
         back="hq:menu",
-        caption=f"➖ Кого убрать из {WINGS[wing]}?",
+        caption=f"➖ Кого убрать из {wing_label(wing)}?",
         users=members,
     )
 
@@ -771,7 +771,7 @@ async def hq_wing_deputy_cb(callback: CallbackQuery):
     await callback.answer()
     parts = callback.data.split(":")
     wing = parts[2] if len(parts) >= 3 else ""
-    if wing not in WINGS:
+    if wing not in all_wings():
         return
     if not await _may_manage_deputy(callback.from_user.id, wing):
         await callback.message.answer("❌ Заместителя назначает только командир крыла.")
@@ -792,7 +792,7 @@ async def hq_wing_deputy_cb(callback: CallbackQuery):
         members = await get_wing_member_rows(wing)
         if not members:
             await callback.message.answer(
-                f"В {WINGS[wing]} нет пилотов — заместителем быть некому."
+                f"В {wing_label(wing)} нет пилотов — заместителем быть некому."
             )
             return
         await _pilot_picker(
@@ -800,7 +800,7 @@ async def hq_wing_deputy_cb(callback: CallbackQuery):
             page_base=f"hq:wingdep:{wing}:list:",
             assign_prefix=f"hq:wingdep:{wing}:set",
             back=f"hq:wingdep:{wing}",
-            caption=f"🎖️ Заместитель из состава {WINGS_SHORT[wing]}",
+            caption=f"🎖️ Заместитель из состава {wing_short(wing)}",
             users=members,
         )
         return
@@ -836,7 +836,7 @@ async def hq_wing_deputy_cb(callback: CallbackQuery):
         if dep_uid and not await get_wing_staff_wing(dep_uid):
             await remove_user_role(dep_uid, 'wing_deputy')
         await callback.message.answer(
-            f"✅ Заместитель {WINGS_SHORT[wing]}: {await player_display(u)}\n"
+            f"✅ Заместитель {wing_short(wing)}: {await player_display(u)}\n"
             f"Теперь он отдаёт приказы своему крылу.",
             reply_markup=_hq_back_rows(
                 [InlineKeyboardButton(text="🔙 В штаб", callback_data="hq:menu")],
@@ -853,7 +853,7 @@ async def hq_wing_deputy_cb(callback: CallbackQuery):
                          details=f"wing={wing}, deputy={dep_uid}")
         if not await get_wing_staff_wing(dep_uid):
             await remove_user_role(dep_uid, 'wing_deputy')
-        await callback.message.answer(f"✅ Заместитель {WINGS_SHORT[wing]} снят: {dep_name}.")
+        await callback.message.answer(f"✅ Заместитель {wing_short(wing)} снят: {dep_name}.")
         return
 
     rows = [[InlineKeyboardButton(text="🎖️ Назначить заместителя",
@@ -863,7 +863,7 @@ async def hq_wing_deputy_cb(callback: CallbackQuery):
                                           callback_data=f"hq:wingdep:{wing}:unset")])
     rows.append([InlineKeyboardButton(text="🔙 В штаб", callback_data="hq:menu")])
     await callback.message.answer(
-        f"🎖️ ЗАМЕСТИТЕЛЬ: {WINGS[wing]}\n\n"
+        f"🎖️ ЗАМЕСТИТЕЛЬ: {wing_label(wing)}\n\n"
         f"Заместитель: {dep_name}\n"
         f"Пилотов в крыле: {await count_wing_members(wing)}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)

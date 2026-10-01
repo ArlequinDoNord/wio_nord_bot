@@ -1005,7 +1005,7 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
             )
             return
 
-# Кап грибов проверяем ещё раз на самой сделке: между подтверждением и
+    # Кап грибов проверяем ещё раз на самой сделке: между подтверждением и
     # продажей лимит мог быть выбран другим товаром (или кнопка устарела).
     cap_note = ""
     if await is_forest_mushroom(item):
@@ -1045,14 +1045,45 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
         await db.execute("UPDATE items SET stock = stock + ? WHERE id = ?", (qty, item_id))
         await db.commit()
 
-    # Чек операции + возврат к карточке предмета с обновлённым количеством,
-    # чтобы можно было сразу продать ещё, не заходя в инвентарь заново.
+    # Чек операции + две кнопки: «Продать ещё» (если предмет ещё есть) и
+    # «Вернуться в инвентарь» — не нужно заходить в инвентарь заново.
     receipt = f"💵 Ты продал {item['name']} x{qty} за {total} {plural_nordmark(total)}!"
-    after = await get_inventory_item(user_id, item_id)
-    if after and after['quantity'] > 0:
-        await _render_item_card(callback.message, user_id, item_id, note=receipt)
-    else:
-        await edit_or_replace(callback.message, receipt)
+    await _render_sell_result(callback.message, user_id, item_id, receipt)
+
+
+async def _render_sell_result(message, user_id: int, item_id: int, receipt: str):
+    """Экран чека продажи: «Продать ещё» + «Вернуться в инвентарь»."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    inv = await get_inventory_item(user_id, item_id)
+    total_left = (inv['quantity'] or 0) if inv else 0
+    left = await _sellable_left(user_id, item_id)
+    text = receipt
+    if total_left > 0:
+        text += f"\n\n📦 Осталось в инвентаре: {total_left} шт."
+    rows = []
+    if left > 0:
+        rows.append([InlineKeyboardButton(
+            text="💵 Продать ещё", callback_data=f"inv_sellmore:{item_id}")])
+    rows.append([InlineKeyboardButton(
+        text="🔙 Вернуться в инвентарь", callback_data="inventory:list")])
+    await edit_or_replace(message, text, InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+async def _sellable_left(user_id: int, item_id: int) -> int:
+    """Сколько экземпляров предмета ещё можно продать (минус занятые слоты)."""
+    inv = await get_inventory_item(user_id, item_id)
+    left = (inv['quantity'] or 0) if inv else 0
+    if left <= 0:
+        return 0
+    eq = await get_equipment(user_id)
+    used = [s for s in EQUIPMENT_SLOT_LABELS if eq.get(s) == item_id]
+    return max(0, left - len(used))
+
+
+@router.callback_query(F.data.startswith("inv_sellmore:"))
+async def inv_sellmore(callback: CallbackQuery):
+    """Кнопка «Продать ещё» из чека: продаёт ровно 1 шт. и остаётся в этом же экране."""
+    await _sell_item(callback, int(callback.data.split(":")[1]), 1)
 
 
 # ── Рынок: выкладка обычного предмета (±30% от sell_price) ──

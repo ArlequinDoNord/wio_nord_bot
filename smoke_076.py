@@ -77,7 +77,7 @@ async def run():
           "3000 символов" in src)
 
     # ── 2. Снежинка спец отряда ──
-    check("wing_label(4) = снежинка", wing_label("4") == "❄️ 4 СО «Буран» (спец отряд)")
+    check("wing_label(4) = снежинка", wing_label("4") == "❄️ 4 СО «Polaris» (спец отряд)")
     check("WINGS_SHORT[4] = снежинка", WINGS_SHORT["4"] == "❄️ 4 СО")
     check("в других крыльях метки целы",
           wing_label("1") == "🐺 1 АК «Небесные Волки»"

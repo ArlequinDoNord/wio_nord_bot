@@ -168,6 +168,8 @@ async def main():
     c_zone = await get_forest_zone("clearing")
     check("опушка дешевле поляны",
           g_zone["ap_cost"] < c_zone["ap_cost"])
+    check("поиск на опушке = 4 ОД", g_zone["ap_cost"] == 4)
+    check("поиск на поляне = 5 ОД", c_zone["ap_cost"] == 5)
     check("опушка пускает туристов", g_zone["allow_tourists"] == 1)
     check("поляна туристов не пускает", c_zone["allow_tourists"] == 0)
     check("на опушке кабана нет", g_zone["boar_enabled"] == 0)
@@ -191,6 +193,16 @@ async def main():
     check("туристы закрыты", g_zone["allow_tourists"] == 0)
     check("зона закрыта", g_zone["enabled"] == 0)
     await update_forest_zone("glade", enabled=1, allow_tourists=1, ap_cost=3)
+    # v0.18.19: повторный ensure_forest_zones поднимает цену со старых дефолтов
+    # (3→4 опушка, 4→5 поляна), но не трогает цену, выставленную админом.
+    await ensure_forest_mushrooms()
+    check("старая цена опушки поднята до 4 ОД",
+          (await get_forest_zone("glade"))["ap_cost"] == 4)
+    await update_forest_zone("clearing", ap_cost=9)
+    await ensure_forest_mushrooms()
+    check("цена админа (поляна 9 ОД) пережила сид",
+          (await get_forest_zone("clearing"))["ap_cost"] == 9)
+    await update_forest_zone("clearing", ap_cost=5)
 
     check("лимит выкупа по умолчанию есть",
           await get_forest_setting("sold_daily_limit", "250") is not None)

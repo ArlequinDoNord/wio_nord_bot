@@ -430,7 +430,7 @@ async def init_db():
             ('1', '1', 'АК', 'Авиакрыло', 'Небесные Волки', '🐺', 1),
             ('2', '2', 'АК', 'Авиакрыло', 'Полярные Совы', '🦉', 2),
             ('3', '3', 'АК', 'Авиакрыло', 'Тени Нордхама', '🌑', 3),
-            ('4', '4', 'СО', 'Спец отряд', 'Буран', '❄️', 4);
+            ('4', '4', 'СО', 'Спец отряд', 'Polaris', '❄️', 4);
 
     CREATE TABLE IF NOT EXISTS admin_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -6780,11 +6780,11 @@ async def get_forest_mushroom_pool(area: str = "clearing"):
 FOREST_AREAS = ("glade", "clearing")
 
 # Значения по умолчанию (используются, пока строки в forest_zones не созданы):
-# опушка — 3 ОД и туристы допущены; поляна — 4 ОД, только пилоты, кабан.
+# опушка — 4 ОД и туристы допущены; поляна — 5 ОД, только пилоты, кабан.
 FOREST_AREA_DEFAULTS = {
     "glade": {
         "title": "Опушка леса",
-        "ap_cost": 3,
+        "ap_cost": 4,
         "allow_tourists": 1,
         "boar_enabled": 0,
         "boar_chance": 0,
@@ -6793,7 +6793,7 @@ FOREST_AREA_DEFAULTS = {
     },
     "clearing": {
         "title": "Лесная поляна",
-        "ap_cost": 4,
+        "ap_cost": 5,
         "allow_tourists": 0,
         "boar_enabled": 1,
         # 0 = брать шанс и гарантию из карточки врага («⚔️ Враги» → лес).
@@ -6965,6 +6965,12 @@ async def ensure_forest_zones():
     запуск ничего не перетирает: веса админа в forest_zone_pool остаются.
     """
     conn = await get_db()
+    # v0.18.19: цена ОД опушки 3→4, поляны 4→5. Правим только строки, оставшиеся
+    # на старых дефолтах, — чтобы не затереть цену, которую поменял админ.
+    for area, old_cost, new_cost in (("glade", 3, 4), ("clearing", 4, 5)):
+        await conn.execute(
+            "UPDATE forest_zones SET ap_cost = ? WHERE key = ? AND ap_cost = ?",
+            (new_cost, area, old_cost))
     await conn.execute(
         "INSERT OR IGNORE INTO forest_zone_pool (area, mushroom_id, chance) "
         "SELECT 'clearing', id, chance FROM forest_mushrooms WHERE excluded = 0")
