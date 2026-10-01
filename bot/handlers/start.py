@@ -17,6 +17,28 @@ WELCOME_PHOTO = "assets/img/ui/boot.jpg"
 BOT_START_URL = "https://t.me/Nord_Wio_bot?start=nord"
 
 
+def _version_teaser(text: str, limit: int = 120) -> str:
+    """Короткая идея релиза для приветствия: первая фраза, не длиннее limit символов.
+
+    Зачем: в приветствии нужна интрига, а не перечень правок — полное описание
+    версии живёт в CHANGELOG.md. Поэтому берём только первую фразу заметок.
+    """
+    flat = " ".join(str(text).split())
+    if not flat:
+        return "…"
+    cut = flat.find(". ")
+    teaser = flat[:cut + 1] if cut > 0 else flat
+    if not teaser.endswith((".", "!", "?")):
+        teaser += "."
+    if len(teaser) > limit:
+        head = teaser[:limit].rsplit(" ", 1)[0].rstrip(" ,;—-")
+        # Не обрываем фразу посреди скобок: «... (Опёнок» читается как мусор.
+        if head.count("(") > head.count(")"):
+            head = head[:head.rindex("(")].rstrip(" ,;—-")
+        teaser = head + "…"
+    return teaser
+
+
 @router.message(CommandStart())
 async def cmd_start(message: Message):
     user = message.from_user
@@ -38,9 +60,9 @@ async def cmd_start(message: Message):
         "Версия сборки: "
         f"{VERSION}\n\n"
         ">> Что нового:\n"
-        f"{VERSION_NOTES}\n"
+        f"{_version_teaser(VERSION_NOTES)}\n"
         f">> Сборка {PREV_VERSION}:\n"
-        f"{PREV_VERSION_NOTES}\n"
+        f"{_version_teaser(PREV_VERSION_NOTES)}\n"
         "```"
     )
 

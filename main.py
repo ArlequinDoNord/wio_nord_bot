@@ -19,7 +19,7 @@ from database.db import (
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award,
     ensure_tourist_booklet,
     ensure_water_fish, migrate_legacy_junk,
-    ensure_forest_items, ensure_forest_mushrooms,
+    ensure_forest_items, ensure_forest_mushrooms, ensure_forest_zones,
     ensure_forest_enemies, ensure_fishing_enemies, ensure_mollusk_items,
     ensure_recipe_shop_items, ensure_user_recipes_backfill,
     log_activity, prune_activity_log, prune_location_visits, recompute_region_stats,
@@ -352,6 +352,11 @@ async def main():
     forest_seeded = await ensure_forest_mushrooms()
     if forest_seeded:
         logger.info("Пул грибов леса (forest_mushrooms) приведён к дефолтам")
+
+    # v0.18.18: лес разделён на опушку и лесную поляну — перенос старого пула
+    # в поляну и засев пула опушки (4 простых гриба + Бледная поганка).
+    await ensure_forest_zones()
+    logger.info("Зоны леса: опушка и лесная поляна настроены")
 
     # Враги леса и рыбалки (единый админ-редактор «⚔️ Враги»).
     forest_enemy_seeded = await ensure_forest_enemies()

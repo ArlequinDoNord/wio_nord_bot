@@ -35,6 +35,7 @@ from database.db import (
     update_location_content, update_location_photos, location_access_label,
     update_location_season_photo, clear_location_season_photos, clear_location_season,
     location_season_photos_raw, LOCATION_SEASONS,
+    location_glade_photo, update_location_glade_photo,
     get_all_dungeons, get_dungeon, update_dungeon_photos, DUNGEON_PHOTO_KEYS,
     get_dungeon_enemies, get_enemy, update_enemy_fields, get_floor_enemies,
     get_enemy_drops, set_enemy_drops, add_enemy_drop, remove_enemy_drop,
@@ -52,6 +53,11 @@ from database.db import (
     get_forest_mushroom_rows, get_forest_mushroom_row, update_forest_mushroom_field,
     set_forest_mushroom_sell_price, add_forest_mushroom, remove_forest_mushroom,
     create_forest_mushroom, get_forest_mushroom_candidates,
+    get_forest_zones, get_forest_zone, update_forest_zone,
+    get_forest_setting, set_forest_setting,
+    get_forest_zone_pool, get_forest_zone_candidates,
+    add_forest_mushroom_to_zone, remove_forest_mushroom_from_zone,
+    set_forest_zone_chance, FOREST_AREAS,
     log_activity, get_user_activity, clear_user_photo,
     get_recent_activity, get_activity_like,
     get_location_visit_stats, get_location_visit_totals,
@@ -6559,31 +6565,260 @@ async def _admin_forest_card(source, f_id: int, prefix: str = ""):
 
 @router.callback_query(F.data == "admin:forest")
 async def admin_forest_menu(callback: CallbackQuery, state: FSMContext):
-    """Меню редактора грибов леса: список грибов."""
+    """Меню редактора леса: выбор зоны (опушка / лесная поляна)."""
     await callback.answer()
     if not await has_permission(callback.from_user.id, "can_manage_locations"):
         return
     await state.clear()
+    text, markup = await _admin_forest_zones_view(callback.message)
+    await callback.message.edit_text(text, reply_markup=markup)
+
+@router.callback_query(F.data.regexp(r"^forest:zone:(glade|clearing)$"))
+async def admin_forest_zone(callback: CallbackQuery, state: FSMContext):
+    """Зона леса: её грибы и настройки."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    await state.clear()
+    text, markup = await _forest_zone_view(callback.message, callback.data.split(":")[2])
+    await callback.message.edit_text(text, reply_markup=markup)
+
+
+async def _forest_zone_view(message, area: str) -> tuple:
+    """Текст и клавиатура зоны леса (общий вид для меню и перерисовок)."""
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    shrooms = await get_forest_mushroom_rows()
-    lines = ["🍄 ГРИБЫ ЛЕСА\n"]
+    zone = await get_forest_zone(area)
+    pool = await get_forest_zone_pool(area)
+    emoji = "🌿" if area == "glade" else "🌲"
+    title = zone.get("title") or area
+    lines = [f"{emoji} {title.upper()}\n"]
+    lines.append(
+        f"Открыта: {'да' if zone.get('enabled') else 'нет'} · "
+        f"поиск: {zone.get('ap_cost')} ОД · "
+        f"туристы: {'да' if zone.get('allow_tourists') else 'нет'}"
+    )
+    if zone.get("boar_enabled"):
+        lines.append(
+            f"Кабан: вкл · шанс {zone.get('boar_chance') or '— как у кабана'}% · "
+            f"гарантия раз в {zone.get('boar_every') or '— как у кабана'} попыток"
+        )
+    else:
+        lines.append("Кабан: выключен")
     rows = []
-    if shrooms:
-        lines.append("Пул опушки: числа ниже — ВЕСА (делятся между собой на 90%), "
-                     "а 10% занимает «пусто». Меняй вес — находка всегда 90%.\n")
-        for s in shrooms:
+    if pool:
+        lines.append("\nГрибы зоны: числа — ВЕСА (делятся между собой, 10% — «пусто»).\n")
+        for s in pool:
             kind_mark = "🍄" if (s.get('kind') or 'edible') == "edible" else "☠"
             lines.append(f"• {kind_mark} {s['name']} — вес {s['chance']}, "
                          f"продажа {s['sell_price']} НМ")
-            rows.append([InlineKeyboardButton(text=f"{kind_mark} {s['name']}",
-                                              callback_data=f"forest:card:{s['id']}")])
+            rows.append([
+                InlineKeyboardButton(
+                    text=f"{kind_mark} {s['name']}",
+                    callback_data=f"forest:card:{s['id']}"),
+                InlineKeyboardButton(
+                    text=f"⚖️ {s['chance']}",
+                    callback_data=f"forest:zchance:{area}:{s['mushroom_id']}"),
+                InlineKeyboardButton(
+                    text="➖", callback_data=f"forest:zdel:{area}:{s['mushroom_id']}"),
+            ])
     else:
-        lines.append("Грибов в пуле леса пока нет.")
-    rows.append([InlineKeyboardButton(text="➕ Добавить из списка", callback_data="forest:addlist")])
-    rows.append([InlineKeyboardButton(text="✨ Создать новый гриб", callback_data="forest:new")])
+        lines.append("\nВ этой зоне пока нет грибов.")
+
+    rows.append([InlineKeyboardButton(
+        text="➕ Добавить гриб в зону", callback_data=f"forest:zaddlist:{area}")])
+    rows.append([InlineKeyboardButton(
+        text="✨ Создать новый гриб", callback_data="forest:new")])
+    rows.append([
+        InlineKeyboardButton(text="🔄 Открытость", callback_data=f"forest:zset:{area}:enabled"),
+        InlineKeyboardButton(text="⚡ Цена поиска", callback_data=f"forest:zset:{area}:ap_cost"),
+    ])
+    rows.append([
+        InlineKeyboardButton(text="🧳 Туристы", callback_data=f"forest:zset:{area}:allow_tourists"),
+        InlineKeyboardButton(text="🐗 Кабан", callback_data=f"forest:zset:{area}:boar_enabled"),
+    ])
+    if zone.get("boar_enabled"):
+        rows.append([
+            InlineKeyboardButton(text="🎲 Шанс кабана", callback_data=f"forest:zset:{area}:boar_chance"),
+            InlineKeyboardButton(text="🔁 Гарантия", callback_data=f"forest:zset:{area}:boar_every"),
+        ])
+    rows.append([InlineKeyboardButton(text="⬅️ К зонам леса", callback_data="admin:forest")])
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.regexp(r"^forest:zchance:(glade|clearing):\d+$"))
+async def admin_forest_zone_chance(callback: CallbackQuery, state: FSMContext):
+    """Ввод веса гриба в зоне."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, area, f_id = callback.data.split(":")
+    await state.update_data(forest_zone_chance=(area, int(f_id)))
+    await callback.message.answer(
+        f"⚖️ Новый ВЕС гриба в зоне (числа — веса, «пусто» остаётся 10%).\n"
+        f"0 = убрать гриба из этой зоны.\n\nВведи число:"
+    )
+
+
+@router.callback_query(F.data.regexp(r"^forest:zdel:(glade|clearing):\d+$"))
+async def admin_forest_zone_del(callback: CallbackQuery, state: FSMContext):
+    """Убрать гриба из зоны (сам гриб остаётся в каталоге)."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, area, f_id = callback.data.split(":")
+    await remove_forest_mushroom_from_zone(area, int(f_id))
+    text, markup = await _forest_zone_view(callback.message, area)
+    await callback.message.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(F.data.regexp(r"^forest:zaddlist:(glade|clearing)$"))
+async def admin_forest_zone_add_list(callback: CallbackQuery, state: FSMContext):
+    """Список грибов каталога, которых ещё нет в этой зоне."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    area = callback.data.split(":")[2]
+    await state.clear()
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    candidates = await get_forest_zone_candidates(area)
+    if not candidates:
+        await callback.message.answer(
+            "➕ Все грибы каталога уже в этой зоне.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 К зоне", callback_data=f"forest:zone:{area}")]]))
+        return
+    rows = []
+    for c in candidates:
+        kind_mark = "🍄" if (c.get('kind') or 'edible') == "edible" else "☠"
+        rows.append([InlineKeyboardButton(
+            text=f"{kind_mark} {c['name']} ({c['sell_price']} НМ)",
+            callback_data=f"forest:zadd:{area}:{c['mushroom_id']}")])
+    rows.append([InlineKeyboardButton(text="🔙 К зоне", callback_data=f"forest:zone:{area}")])
+    await callback.message.answer(
+        "➕ Выбери гриб для зоны:", reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.regexp(r"^forest:zadd:(glade|clearing):\d+$"))
+async def admin_forest_zone_add(callback: CallbackQuery, state: FSMContext):
+    """Добавить гриба в зону с дефолтным весом."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, area, f_id = callback.data.split(":")
+    await add_forest_mushroom_to_zone(area, int(f_id))
+    text, markup = await _forest_zone_view(callback.message, area)
+    await callback.message.edit_text(text, reply_markup=markup)
+
+
+@router.callback_query(F.data.regexp(r"^forest:zset:(glade|clearing):(\w+)$"))
+async def admin_forest_zone_set_pick(callback: CallbackQuery, state: FSMContext):
+    """Ввод настройки зоны (число или 0/1 для переключателя)."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, area, field = callback.data.split(":")
+    zone = await get_forest_zone(area)
+    hint = {
+        "enabled": "1 — зона открыта, 0 — закрыта:",
+        "ap_cost": "Сколько ОД стоит поиск в зоне:",
+        "allow_tourists": "Пускать ли туристов в зону? 1 — да, 0 — нет:",
+        "boar_enabled": "Включить ли кабана в зоне? 1 — да, 0 — нет:",
+        "boar_chance": "Шанс встречи с кабаном в % (0 = как у кабана в «⚔️ Враги»):",
+        "boar_every": "Гарантия: кабан не чаще раза на N попыток (0 = как у кабана):",
+    }.get(field, "Новое значение:")
+    await state.update_data(forest_zone_field=(area, field))
+    await callback.message.answer(
+        f"⚙️ {hint}\n\nТекущее значение: {zone.get(field)}\nВведи новое:")
+
+
+@router.callback_query(F.data == "forest:zset:sold_daily_limit")
+async def admin_forest_limit_set(callback: CallbackQuery, state: FSMContext):
+    """Ввод суточного лимита выкупа грибов казной."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    current = await get_forest_setting("sold_daily_limit", "250")
+    await state.update_data(forest_zone_field=("__settings__", "sold_daily_limit"))
+    await callback.message.answer(
+        f"🧺 Сколько НМ казна выкупает грибов за сутки на игрока?\n"
+        f"Текущее значение: {current}\n\nВведи число:")
+
+
+@router.message(F.text.regexp(r"^\d+$"))
+async def admin_forest_zone_value(message: Message, state: FSMContext):
+    """Приём значения настройки зоны / веса гриба в зоне."""
+    data = await state.get_data()
+    zone_field = data.get("forest_zone_field")
+    zone_chance = data.get("forest_zone_chance")
+    if not zone_field and not zone_chance:
+        return
+    try:
+        value = int(message.text.strip())
+    except (TypeError, ValueError):
+        await message.answer("Нужно целое число. Попробуй ещё раз.")
+        return
+
+    if zone_chance:
+        area, f_id = zone_chance
+        if value <= 0:
+            await remove_forest_mushroom_from_zone(area, f_id)
+            answer = "➖ Гриб убран из зоны."
+        else:
+            await set_forest_zone_chance(area, f_id, value)
+            answer = f"✅ Вес гриба в зоне: {value}."
+        await state.update_data(forest_zone_chance=None)
+        await message.answer(answer)
+        text, markup = await _forest_zone_view(message, area)
+        await message.answer(text, reply_markup=markup)
+        return
+
+    area, field = zone_field
+    if area == "__settings__":
+        await set_forest_setting("sold_daily_limit", value)
+        await state.update_data(forest_zone_field=None)
+        await message.answer(f"✅ Казна будет выкупать грибы до {value} НМ в сутки.")
+        await _admin_forest_zones_view(message)
+        return
+    await update_forest_zone(area, **{field: value})
+    await state.update_data(forest_zone_field=None)
+    label = FOREST_ZONE_FIELDS_LABELS.get(field, field)
+    await message.answer(f"✅ {label}: {value}")
+    text, markup = await _forest_zone_view(message, area)
+    await message.answer(text, reply_markup=markup)
+
+
+async def _admin_forest_zones_view(message) -> tuple:
+    """Текст и клавиатура списка зон леса (общий вид для меню и перерисовок)."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    zones = await get_forest_zones()
+    lines = ["🌲 ЛЕС: ЗОНЫ И ГРИБЫ\n"]
+    rows = []
+    for area in FOREST_AREAS:
+        zone = zones.get(area) or {}
+        emoji = "🌿" if area == "glade" else "🌲"
+        title = zone.get("title") or area
+        mark = "✅" if zone.get("enabled") else "⛔"
+        boar = "🐗 кабан" if zone.get("boar_enabled") else "без кабана"
+        tour = "туристы ✅" if zone.get("allow_tourists") else "туристы ⛔"
+        lines.append(f"{mark} {emoji} {title} — поиск {zone.get('ap_cost')} ОД, {boar}, {tour}")
+        rows.append([InlineKeyboardButton(
+            text=f"{emoji} {title}", callback_data=f"forest:zone:{area}")])
+    limit = await get_forest_setting("sold_daily_limit", "250")
+    lines.append(f"\n🧺 Казна выкупает грибы до {limit} НМ в сутки (на игрока).")
+    rows.append([InlineKeyboardButton(
+        text="🧺 Лимит выкупа казны", callback_data="forest:zset:sold_daily_limit")])
     rows.append([InlineKeyboardButton(text="🔙 В админ-панель", callback_data="admin:menu")])
-    await callback.message.edit_text(
-        "\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+FOREST_ZONE_FIELDS_LABELS = {
+    "enabled": "Зона открыта",
+    "ap_cost": "Цена поиска, ОД",
+    "allow_tourists": "Туристы допущены",
+    "boar_enabled": "Кабан",
+    "boar_chance": "Шанс кабана, %",
+    "boar_every": "Гарантия кабана",
+}
 
 
 @router.callback_query(F.data.startswith("forest:card:"))
@@ -7343,6 +7578,15 @@ async def _loc_photos_pick_send(source, loc_id: int):
         )])
     rows.append([InlineKeyboardButton(text="🚫 Убрать все (без сезона)", callback_data="loc:photos:clear")])
     rows.append([InlineKeyboardButton(text="🍂 Убрать все сезонные", callback_data="loc:photos:clear_seasons")])
+    # Опушка леса — самостоятельная картинка (место сбора грибов), намеренно
+    # не картинка входа: задаётся отдельной кнопкой.
+    glade_line = ""
+    if loc.get("key") == "forest":
+        has_glade = bool(location_glade_photo(loc))
+        rows.append([InlineKeyboardButton(
+            text=f"{'✅' if has_glade else '—'} 🌲 Опушка (сбор грибов)",
+            callback_data="loc:glade_set")])
+        glade_line = f"Опушка: {'своя картинка' if has_glade else 'локальный файл по сезону'}\n"
     rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="loc:building_pick")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     season_line = " | ".join(
@@ -7351,7 +7595,9 @@ async def _loc_photos_pick_send(source, loc_id: int):
     text = (
         f"🖼 Картинки «{loc['name']}».\n"
         f"Без сезона: {', '.join(filled)}\n"
-        f"По сезонам: {season_line}\n\n"
+        f"По сезонам: {season_line}\n"
+        f"{glade_line}"
+        f"\n"
         f"🌄 Без сезона — показывается всегда.\n"
         f"🍂 По сезонам — сменяются сами по календарю (зима/весна/лето/осень), "
         f"внутри сезона — по времени суток.\n"
@@ -7402,7 +7648,7 @@ async def loc_photos_pick(callback: CallbackQuery, state: FSMContext):
         return
     data = await state.get_data()
     await _loc_photos_pick_send(callback, data['target_id'])
-    await state.update_data(photo_season=None)
+    await state.update_data(photo_season=None, photo_kind=None)
 
 
 @router.callback_query(F.data.regexp(r"^loc:season:(winter|spring|summer|autumn)$"))
@@ -7469,6 +7715,57 @@ async def loc_step_desc(message: Message, state: FSMContext):
     )
 
 
+@router.callback_query(F.data == "loc:glade_set")
+async def loc_glade_set(callback: CallbackQuery, state: FSMContext):
+    """Запрос картинки опушки леса — отдельной от картинки входа."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    loc = await get_location(loc_id)
+    if not loc or loc.get("key") != "forest":
+        await callback.message.edit_text("❌ Опушка есть только у локации «Лес на окраине».")
+        return
+    await state.set_state(AdminLocation.preview)
+    await state.update_data(photo_kind="glade", photo_tod=None, photo_season=None)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="loc:photos")]
+    ])
+    has_photo = bool(location_glade_photo(loc))
+    caption = (f"🌲 Опушка «Лес на окраине» — сейчас есть картинка.\n"
+               f"Отправь новую (или «-» чтобы убрать и вернуть локальный файл по сезону):")
+    if has_photo:
+        try:
+            await callback.message.answer_photo(
+                location_glade_photo(loc), caption=caption, reply_markup=kb)
+            return
+        except Exception:
+            pass
+    await callback.message.edit_text(
+        f"🌲 Опушка «{loc['name']}» "
+        f"(сейчас: {'своя картинка' if has_photo else 'локальный файл по сезону'}).\n"
+        f"Отправь фото (или «-» чтобы убрать):",
+        reply_markup=kb
+    )
+
+
+@router.callback_query(F.data == "loc:glade_clear")
+async def loc_glade_clear(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    await update_location_glade_photo(loc_id, None)
+    await _loc_photos_pick_send(callback, loc_id)
+
+
 @router.callback_query(F.data.startswith("loc:photo_set:"))
 async def loc_photo_set(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -7482,7 +7779,7 @@ async def loc_photo_set(callback: CallbackQuery, state: FSMContext):
     if not loc_id:
         return
     await state.set_state(AdminLocation.preview)
-    await state.update_data(photo_tod=tod, photo_season=None)
+    await state.update_data(photo_tod=tod, photo_season=None, photo_kind=None)
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     loc = await get_location(loc_id)
     has_photo = bool(loc and loc.get(f"photo_{tod}"))
@@ -7582,6 +7879,14 @@ async def loc_step_photo(message: Message, state: FSMContext):
         return
     photo_season = data.get('photo_season')
     photo_tod = data.get('photo_tod')
+    # v0.18.18: слот «Опушка» — своя картинка, сезон/время тут не участвуют.
+    if data.get('photo_kind') == 'glade':
+        await update_location_glade_photo(loc_id, file_id)
+        await log_action(message.from_user.id, 'edit_location', loc_id,
+                         f"glade_photo={'file_id' if file_id else 'cleared'}")
+        await state.clear()
+        await _loc_photos_pick_send(message, loc_id)
+        return
     if photo_season in LOCATION_SEASONS and photo_tod and photo_tod in TOD_KEYS:
         await update_location_season_photo(loc_id, photo_season, photo_tod, file_id)
         await log_action(message.from_user.id, 'edit_location', loc_id,

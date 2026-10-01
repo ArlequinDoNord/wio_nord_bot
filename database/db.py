@@ -677,7 +677,8 @@ async def init_db():
             kind TEXT DEFAULT 'edible',
             photo_file_id TEXT,
             admin_tuned INTEGER DEFAULT 0,
-            excluded INTEGER DEFAULT 0
+            excluded INTEGER DEFAULT 0,
+            zone TEXT DEFAULT 'clearing'
         );
 
         -- Враги вне подземелья (лес, рыбалка). Набор колонок одинаковый у обеих
@@ -1029,6 +1030,42 @@ async def init_db():
     # v0.18.17: сезонные картинки локаций (JSON {сезон: {время суток: file_id}}).
     # Задаются в админ-редакторе локаций, показываются по календарю (см. utils.helpers).
     await _ensure_column(conn, "locations", "season_photos", "TEXT DEFAULT NULL")
+    # v0.18.18: отдельная картинка опушки леса (грибы). Намеренно не картинка
+    # входа в лес: опушка — самостоятельная картинка, задаётся админом отдельно.
+    await _ensure_column(conn, "locations", "glade_photo", "TEXT DEFAULT NULL")
+    # v0.18.18: лес разделён на две зоны — опушка (glade) и лесная поляна
+    # (clearing). Пул грибов каждой зоны — в forest_zone_pool, сам каталог грибов
+    # (forest_mushrooms) остаётся общим: один и тот же гриб может попадать и на
+    # опушку, и на поляну, но со своим весом в каждой зоне.
+    await _ensure_column(conn, "forest_mushrooms", "zone", "TEXT DEFAULT 'clearing'")
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS forest_zone_pool (
+            area TEXT NOT NULL DEFAULT 'clearing',
+            mushroom_id INTEGER NOT NULL,
+            chance INTEGER DEFAULT 10,
+            PRIMARY KEY (area, mushroom_id)
+        )
+    """)
+    # Настройки зон леса: цена поиска в ОД, допуск туристов, кабан, открытость.
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS forest_zones (
+            key TEXT PRIMARY KEY,
+            title TEXT,
+            ap_cost INTEGER DEFAULT 4,
+            allow_tourists INTEGER DEFAULT 0,
+            boar_enabled INTEGER DEFAULT 0,
+            boar_chance INTEGER DEFAULT 8,
+            boar_every INTEGER DEFAULT 12,
+            enabled INTEGER DEFAULT 1
+        )
+    """)
+    # Общие настройки леса (выкуп казной) — key/value, чтобы не плодить колонки.
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS forest_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    """)
     # Встроенные расширения жилья (например, кухня в студии): embedded=1 — не возвращается
     # в инвентарь при переезде и не может быть снята вручную.
     await _ensure_column(conn, "housing_slots", "embedded", "INTEGER DEFAULT 0")
@@ -5617,6 +5654,28 @@ def location_photo_for_tod(loc, season: str, tod: str):
     return None
 
 
+def location_glade_photo(loc):
+    """file_id отдельной картинки опушки леса (None → показываем локальный файл).
+
+    Опушка намеренно не наследует фото входа в лес: это самостоятельная картинка
+    (место сбора грибов), задаётся админом отдельной кнопкой в редакторе.
+    """
+    if not loc:
+        return None
+    return loc.get("glade_photo") or None
+
+
+async def update_location_glade_photo(location_id: int, file_id):
+    """Задать (file_id) или убрать (None) картинку опушки леса."""
+    conn = await get_db()
+    if not await get_location(location_id):
+        return False
+    await conn.execute("UPDATE locations SET glade_photo = ? WHERE id = ?",
+                       (file_id, location_id))
+    await conn.commit()
+    return True
+
+
 async def user_has_exact_status(user_id: int, tag: str) -> bool:
     """Игрок имеет ровно этот статус в списке своих статусов (по access_tag)."""
     if not tag:
@@ -5999,14 +6058,23 @@ async def forest_sold_today(user_id: int) -> int:
 
 
 async def forest_sale_daily_left(user_id: int) -> int:
-    """Сколько НМ ещё можно выручить за грибы сегодня (0 — лимит выбран)."""
+    """Сколько НМ ещё можно выручить за грибы сегодня (0 — лимит выбран).
+
+    Лимит берётся из настроек леса (forest_settings 'sold_daily_limit'), поэтому
+    правится из админки без правки кода; при отсутствии записи — из конфига.
+    """
     from config import FOREST_SOLD_DAILY_LIMIT
+    stored = await get_forest_setting("sold_daily_limit", FOREST_SOLD_DAILY_LIMIT)
+    try:
+        limit = max(0, int(stored))
+    except (TypeError, ValueError):
+        limit = FOREST_SOLD_DAILY_LIMIT
     conn = await get_db()
     user = await (await conn.execute(
         "SELECT forest_sold_today, forest_sold_day FROM users WHERE user_id = ?", (user_id,)
     )).fetchone()
     if not user:
-        return FOREST_SOLD_DAILY_LIMIT
+        return limit
     day = fish_sold_day_key()
     if user['forest_sold_day'] != day:
         await conn.execute(
@@ -6014,8 +6082,8 @@ async def forest_sale_daily_left(user_id: int) -> int:
             (day, user_id)
         )
         await conn.commit()
-        return FOREST_SOLD_DAILY_LIMIT
-    return max(0, FOREST_SOLD_DAILY_LIMIT - (user['forest_sold_today'] or 0))
+        return limit
+    return max(0, limit - (user['forest_sold_today'] or 0))
 
 
 async def add_forest_sale_amount(user_id: int, amount: int):
@@ -6676,22 +6744,261 @@ async def ensure_forest_mushrooms():
             changed = True
     if changed:
         await conn.commit()
+    # v0.18.18: после сида каталога разложить его по зонам (поляна + опушка).
+    # Здесь, а не только в main.py, чтобы любой вход — и тесты — видел готовые пулы.
+    await ensure_forest_zones()
     return changed
 
 
-async def get_forest_mushroom_pool():
-    """Грибы леса для сбора: с шансом, фото, ценой и лечением предмета."""
+async def get_forest_mushroom_pool(area: str = "clearing"):
+    """Грибы зоны леса для сбора: с шансом зоны, фото, ценой и лечением предмета.
+
+    Шансы берутся из forest_zone_pool — свой вес у гриба в каждой зоне (на опушке
+    и на поляне один и тот же гриб может стоить по-разному). 'chance' в
+    forest_mushrooms — вес гриба в зоне 'clearing' (историческое поле).
+    """
+    if area not in FOREST_AREAS:
+        area = "clearing"
     conn = await get_db()
     cursor = await conn.execute("""
-        SELECT fm.id, fm.item_id, fm.chance, fm.photo_file_id, fm.kind,
+        SELECT fm.id, fm.item_id, zp.mushroom_id, zp.chance, fm.photo_file_id, fm.kind,
                i.name, i.sell_price, i.rarity, i.heal
-        FROM forest_mushrooms fm
+        FROM forest_zone_pool zp
+        JOIN forest_mushrooms fm ON fm.id = zp.mushroom_id
         JOIN items i ON i.id = fm.item_id
-        WHERE fm.excluded = 0 AND fm.chance > 0
+        WHERE zp.area = ? AND fm.excluded = 0 AND zp.chance > 0
         ORDER BY fm.id
-    """)
+    """, (area,))
     return await cursor.fetchall()
 
+
+# ──────────────── Зоны леса: опушка и лесная поляна (v0.18.18) ────────────────
+# Лес разделён на две зоны. Опушка — простое начало: только четыре первых
+# съедобных гриба и Бледная поганка, кабана нет, туристов пускаем. Лесная поляна
+# — «второй уровень»: весь пул грибов и кабан, туристам закрыта (не местные,
+# легко заблудиться). Всё содержимое зон правится в админ-редакторе леса.
+FOREST_AREAS = ("glade", "clearing")
+
+# Значения по умолчанию (используются, пока строки в forest_zones не созданы):
+# опушка — 3 ОД и туристы допущены; поляна — 4 ОД, только пилоты, кабан.
+FOREST_AREA_DEFAULTS = {
+    "glade": {
+        "title": "Опушка леса",
+        "ap_cost": 3,
+        "allow_tourists": 1,
+        "boar_enabled": 0,
+        "boar_chance": 0,
+        "boar_every": 0,
+        "enabled": 1,
+    },
+    "clearing": {
+        "title": "Лесная поляна",
+        "ap_cost": 4,
+        "allow_tourists": 0,
+        "boar_enabled": 1,
+        # 0 = брать шанс и гарантию из карточки врага («⚔️ Враги» → лес).
+        # Ненулевое значение перекрывает карточку — удобно, если поляна опаснее.
+        "boar_chance": 0,
+        "boar_every": 0,
+        "enabled": 1,
+    },
+}
+
+# Пул опушки по умолчанию: четыре первых простых гриба + Бледная поганка.
+FOREST_GLADE_DEFAULTS = [
+    ("Опёнок", 40),
+    ("Подберёзовик", 30),
+    ("Лисичка", 18),
+    ("Белый гриб", 8),
+    ("Бледная поганка", 4),
+]
+
+FOREST_ZONE_FIELDS = ("title", "ap_cost", "allow_tourists", "boar_enabled",
+                      "boar_chance", "boar_every", "enabled")
+_FOREST_ZONE_INT = ("ap_cost", "allow_tourists", "boar_enabled",
+                    "boar_chance", "boar_every", "enabled")
+
+
+async def get_forest_zones() -> dict:
+    """Настройки всех зон леса: {area: {...}}. Дефолты подставляются за строку из БД."""
+    zones = {}
+    for area, defaults in FOREST_AREA_DEFAULTS.items():
+        row = dict(defaults)
+        row["key"] = area
+        zones[area] = row
+    conn = await get_db()
+    for row in await (await conn.execute("SELECT * FROM forest_zones")).fetchall():
+        if row["key"] in zones:
+            for field in FOREST_ZONE_FIELDS:
+                if row[field] is not None:
+                    zones[row["key"]][field] = row[field]
+    return zones
+
+
+async def get_forest_zone(area: str) -> dict:
+    """Настройки одной зоны леса (с дефолтами)."""
+    return (await get_forest_zones()).get(area) or dict(
+        FOREST_AREA_DEFAULTS.get(area) or FOREST_AREA_DEFAULTS["clearing"], key=area)
+
+
+async def update_forest_zone(area: str, **fields) -> bool:
+    """Правка настроек зоны: цена ОД, туристы, кабан, открытость, название."""
+    if area not in FOREST_AREAS:
+        return False
+    data = {k: v for k, v in fields.items() if k in FOREST_ZONE_FIELDS}
+    if not data:
+        return False
+    for k in _FOREST_ZONE_INT:
+        if k in data:
+            data[k] = max(0 if k != "ap_cost" else 1, int(data[k] or 0))
+    sets = ", ".join(f"{k} = ?" for k in data)
+    conn = await get_db()
+    await conn.execute(
+        f"INSERT INTO forest_zones (key, {', '.join(data)}) VALUES (?, "
+        f"{', '.join('?' * len(data))}) "
+        f"ON CONFLICT(key) DO UPDATE SET {', '.join(f'{k} = excluded.{k}' for k in data)}",
+        (area, *data.values()),
+    )
+    await conn.commit()
+    return True
+
+
+async def get_forest_setting(key: str, default=None):
+    """Общая настройка леса (например, выкуп казной 'sold_daily_limit')."""
+    conn = await get_db()
+    row = await (await conn.execute(
+        "SELECT value FROM forest_settings WHERE key = ?", (key,))).fetchone()
+    if not row or row["value"] is None:
+        return default
+    return row["value"]
+
+
+async def set_forest_setting(key: str, value):
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO forest_settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (key, str(value)))
+    await conn.commit()
+    return True
+
+
+async def get_forest_zone_pool(area: str) -> list:
+    """Грибы зоны для админ-редактора (вес зоны + данные предмета)."""
+    if area not in FOREST_AREAS:
+        area = "clearing"
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT fm.id, fm.item_id, zp.mushroom_id, zp.chance, fm.photo_file_id,
+               fm.admin_tuned, fm.kind, i.name, i.sell_price, i.rarity, i.price,
+               i.market_ok, i.heal
+        FROM forest_zone_pool zp
+        JOIN forest_mushrooms fm ON fm.id = zp.mushroom_id
+        JOIN items i ON i.id = fm.item_id
+        WHERE zp.area = ?
+        ORDER BY fm.id
+    """, (area,))
+    return await cursor.fetchall()
+
+
+async def get_forest_zone_candidates(area: str) -> list:
+    """Грибы каталога, которых ещё нет в зоне (для добавления)."""
+    if area not in FOREST_AREAS:
+        area = "clearing"
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT fm.id AS mushroom_id, fm.item_id, fm.kind, i.name, i.sell_price
+        FROM forest_mushrooms fm
+        JOIN items i ON i.id = fm.item_id
+        WHERE fm.excluded = 0
+          AND fm.id NOT IN (SELECT mushroom_id FROM forest_zone_pool WHERE area = ?)
+        ORDER BY fm.id
+    """, (area,))
+    return await cursor.fetchall()
+
+
+async def add_forest_mushroom_to_zone(area: str, mushroom_id: int, chance: int = 10) -> bool:
+    """Добавить гриб каталога в зону с весом (chance=0 — не выпадает)."""
+    if area not in FOREST_AREAS:
+        return False
+    conn = await get_db()
+    row = await (await conn.execute(
+        "SELECT id FROM forest_mushrooms WHERE id = ?", (mushroom_id,))).fetchone()
+    if not row:
+        return False
+    await conn.execute(
+        "INSERT INTO forest_zone_pool (area, mushroom_id, chance) VALUES (?, ?, ?) "
+        "ON CONFLICT(area, mushroom_id) DO UPDATE SET chance = excluded.chance",
+        (area, mushroom_id, max(0, int(chance or 0))))
+    await conn.commit()
+    return True
+
+
+async def remove_forest_mushroom_from_zone(area: str, mushroom_id: int) -> bool:
+    """Убрать гриб из зоны (в каталоге он остаётся)."""
+    if area not in FOREST_AREAS:
+        return False
+    conn = await get_db()
+    await conn.execute(
+        "DELETE FROM forest_zone_pool WHERE area = ? AND mushroom_id = ?",
+        (area, mushroom_id))
+    await conn.commit()
+    return True
+
+
+async def set_forest_zone_chance(area: str, mushroom_id: int, chance: int) -> bool:
+    """Задать вес гриба в зоне (0 — не выпадает, но остаётся в списке)."""
+    if area not in FOREST_AREAS:
+        return False
+    conn = await get_db()
+    cur = await conn.execute(
+        "UPDATE forest_zone_pool SET chance = ? WHERE area = ? AND mushroom_id = ?",
+        (max(0, int(chance or 0)), area, mushroom_id))
+    await conn.commit()
+    return cur.rowcount > 0
+
+
+async def ensure_forest_zones():
+    """Разовый перенос старого пула леса в зону поляны и засев пула опушки.
+
+    До v0.18.18 пул был один и общий. Теперь «поляна» повторяет его как есть, а
+    опушка получает четыре первых съедобных гриба + Бледную поганку. Повторный
+    запуск ничего не перетирает: веса админа в forest_zone_pool остаются.
+    """
+    conn = await get_db()
+    await conn.execute(
+        "INSERT OR IGNORE INTO forest_zone_pool (area, mushroom_id, chance) "
+        "SELECT 'clearing', id, chance FROM forest_mushrooms WHERE excluded = 0")
+    has_glade = await (await conn.execute(
+        "SELECT 1 FROM forest_zone_pool WHERE area = 'glade' LIMIT 1")).fetchone()
+    if not has_glade:
+        for name, chance in FOREST_GLADE_DEFAULTS:
+            item = await get_item_by_name(name)
+            if not item:
+                continue
+            row = await (await conn.execute(
+                "SELECT id FROM forest_mushrooms WHERE item_id = ? AND excluded = 0",
+                (item['id'],))).fetchone()
+            if not row:
+                continue
+            await conn.execute(
+                "INSERT OR IGNORE INTO forest_zone_pool (area, mushroom_id, chance) "
+                "VALUES ('glade', ?, ?)", (row['id'], chance))
+    for area, defaults in FOREST_AREA_DEFAULTS.items():
+        await conn.execute(
+            "INSERT OR IGNORE INTO forest_zones (key, title, ap_cost, allow_tourists, "
+            "boar_enabled, boar_chance, boar_every, enabled) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (area, defaults['title'], defaults['ap_cost'], defaults['allow_tourists'],
+             defaults['boar_enabled'], defaults['boar_chance'], defaults['boar_every'],
+             defaults['enabled']))
+    limit = await (await conn.execute(
+        "SELECT 1 FROM forest_settings WHERE key = 'sold_daily_limit'")).fetchone()
+    if not limit:
+        from config import FOREST_SOLD_DAILY_LIMIT
+        await conn.execute(
+            "INSERT OR IGNORE INTO forest_settings (key, value) VALUES ('sold_daily_limit', ?)",
+            (str(FOREST_SOLD_DAILY_LIMIT),))
+    await conn.commit()
+    return True
 
 async def get_forest_mushroom_rows():
     """Все грибы леса для админ-редактора (с данными предмета)."""
@@ -6829,6 +7136,11 @@ async def create_forest_mushroom(name: str, description: str, sell_price: int,
             (item_id, int(chance), kind, photo_file_id)
         )
         f_id = cursor.lastrowid
+        # v0.18.18: новый гриб сразу попадает в пул поляны (там полный набор).
+        # На опушку его добавит админ кнопкой в редакторе зоны.
+        await conn.execute(
+            "INSERT OR IGNORE INTO forest_zone_pool (area, mushroom_id, chance) "
+            "VALUES ('clearing', ?, ?)", (f_id, int(chance)))
         await conn.commit()
         return True, {"item_id": item_id, "f_id": f_id}
     except Exception:
