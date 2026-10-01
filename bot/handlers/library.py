@@ -1,4 +1,4 @@
-"""Библиотека Нордхайма: разделы, чтение книг, управление книгами."""
+"""Библиотека Нордхайма: разделы, чтение книг, управление книгами, архив опросов."""
 
 import os
 
@@ -58,6 +58,7 @@ def sections_markup(open_sections: list, is_manager: bool = False):
         rows.append([InlineKeyboardButton(text="🛠 Управление книгами", callback_data="libadmin:menu")])
     rows.append([InlineKeyboardButton(text="🧱 Архив стены изречений", callback_data="wall:archive")])
     rows.append([InlineKeyboardButton(text="🗞 Архив новостей ГосСМИ", callback_data="news:archive")])
+    rows.append([InlineKeyboardButton(text="🗳 Архив опросов Ратуши", callback_data="pollarch:list")])
     rows.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 

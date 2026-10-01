@@ -9,5 +9,12 @@ database/nordmark.db-wal
 bot.log
 _test_smoke*.db
 _test_*.py
+# временные БД проверок миграций
+_mig*.db
+_oldmig*.db
+_t.db
+_*.db
+_*.db-shm
+_*.db-wal
 smoke_out.txt
 _smoke_result.txt

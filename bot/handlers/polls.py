@@ -6,18 +6,33 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
-    get_active_polls, get_poll, get_poll_results, get_poll_vote_option,
+    get_poll, get_poll_results, get_poll_vote_option,
     user_voted, vote_poll, create_poll, close_poll, user_is_tourist,
-    get_polls_created_today, get_closed_polls,
+    get_polls_created_today, get_visible_polls, maintain_polls,
 )
-from config import ADMIN_IDS
+from config import ADMIN_IDS, POLL_MAX_DAYS, POLL_VISIBLE
 from utils.permissions import has_permission
-from utils.helpers import is_main_menu_text, edit_message_safe
+from utils.helpers import is_main_menu_text, edit_message_safe, MOSCOW_TZ
+from datetime import datetime
 
 router = Router()
 
 # Лимит создания опросов у «Представителя» в сутки
 REPRESENTATIVE_POLLS_PER_DAY = 2
+
+
+def _poll_closes_label(poll) -> str:
+    """Человеческая дата автозакрытия опроса — «11.10.2026» по МСК."""
+    raw = (poll['closes_at'] or '').strip() if 'closes_at' in poll.keys() else ''
+    if not raw:
+        return "через 10 суток"
+    try:
+        dt = datetime.strptime(raw[:19], "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return "через 10 суток"
+    from datetime import timezone
+    dt = dt.replace(tzinfo=timezone.utc).astimezone(MOSCOW_TZ)
+    return dt.strftime("%d.%m.%Y")
 
 
 async def _can_create_polls(callback: CallbackQuery) -> bool:
@@ -28,6 +43,11 @@ async def _polls_left_today(telegram_id: int) -> int:
     if telegram_id in ADMIN_IDS:
         return float("inf")
     return max(0, REPRESENTATIVE_POLLS_PER_DAY - await get_polls_created_today(telegram_id))
+
+
+def _short(question: str, limit: int = 40) -> str:
+    """Обрезка вопроса под ширину кнопки."""
+    return question if len(question) <= limit else question[:limit - 3] + "…"
 
 
 class PollCreate(StatesGroup):
@@ -47,26 +67,33 @@ async def vote_menu(callback: CallbackQuery):
     await callback.answer()
     if not await _require_pilot(callback):
         return
-    polls = await get_active_polls()
+    # Ленивое обслуживание: истёкшие (10 суток) закрываются, лишние уходят в архив.
+    # Так истёкший опрос не висит открытым до утра, а меню всегда ≤ POLL_VISIBLE.
+    await maintain_polls()
+    polls = await get_visible_polls()
 
     buttons = []
     for p in polls:
-        question = p['question']
-        short = question if len(question) <= 40 else question[:37] + "…"
-        buttons.append([InlineKeyboardButton(text=f"🗳️ {short}", callback_data=f"vote:show:{p['id']}")])
+        # Закрытый опрос остаётся в меню (он в числе новейших), но под знаком 🔒.
+        mark = "" if p['is_active'] else "🔒 "
+        buttons.append([InlineKeyboardButton(
+            text=f"{mark}🗳️ {_short(p['question'])}", callback_data=f"vote:show:{p['id']}")])
 
     if await has_permission(callback.from_user.id, "can_create_polls"):
         buttons.append([InlineKeyboardButton(text="➕ Создать опрос", callback_data="vote:create")])
 
-    if await get_closed_polls():
-        buttons.append([InlineKeyboardButton(text="📋 Закрытые опросы", callback_data="vote:archive")])
-
     buttons.append([InlineKeyboardButton(text="🔙 В Ратушу", callback_data="city:pilots")])
 
     if polls:
-        text = "🗳️ ГОЛОСОВАНИЕ (Ратуша)\n\nАктивные опросы — выбери, чтобы проголосовать:"
+        active = sum(1 for p in polls if p['is_active'])
+        closed = len(polls) - active
+        counts = f"открытых: {active}" + (f", закрытых: {closed}" if closed else "")
+        text = (f"🗳️ ГОЛОСОВАНИЕ (Ратуша)\n\n"
+                f"{counts}. Выбери, чтобы проголосовать или посмотреть итоги.\n\n"
+                f"В меню держим {POLL_VISIBLE} новейших опросов, остальные "
+                f"уходят в архив библиотеки.")
     else:
-        text = "🗳️ ГОЛОСОВАНИЕ (Ратуша)\n\nСейчас нет активных опросов."
+        text = ("🗳️ ГОЛОСОВАНИЕ (Ратуша)\n\nСейчас нет активных опросов.")
 
     if callback.message.photo:
         await callback.message.edit_caption(caption=text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
@@ -85,8 +112,16 @@ async def vote_show(callback: CallbackQuery):
         await callback.message.answer("❌ Опрос не найден.")
         return
     if not poll['is_active']:
-        text = "🔒 Опрос закрыт.\n\n" + await _poll_results_text(poll)
-        buttons = [[InlineKeyboardButton(text="📋 К закрытым опросам", callback_data="vote:archive")]]
+        # Закрытый опрос: смотрим итоги. Кнопки архива в меню голосования больше нет —
+        # попавшие в меню закрытые опросы и есть «закрытые опросы».
+        # closed_by пуст только при закрытии по сроку: close_poll() пишет автора.
+        by_term = not (poll['closed_by'] if 'closed_by' in poll.keys() else None)
+        head = f"🔒 Опрос закрыт по сроку ({POLL_MAX_DAYS} суток)." if by_term else "🔒 Опрос закрыт."
+        text = head + "\n\n" + await _poll_results_text(poll)
+        buttons = [
+            [InlineKeyboardButton(text="🔙 К опросам", callback_data="city:vote")],
+            [InlineKeyboardButton(text="🗂 Архив опросов в библиотеке", callback_data="pollarch:list")],
+        ]
         await edit_message_safe(callback.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
         return
 
@@ -152,12 +187,11 @@ async def vote_results(callback: CallbackQuery):
         return
 
     text = await _poll_results_text(poll)
-    buttons = []
-    if poll['is_active']:
-        buttons.append([InlineKeyboardButton(text="🔙 К опросам", callback_data="city:vote")])
-    else:
-        buttons.append([InlineKeyboardButton(text="📋 К закрытым опросам", callback_data="vote:archive")])
-        buttons.append([InlineKeyboardButton(text="🔙 К опросам", callback_data="city:vote")])
+    buttons = [[InlineKeyboardButton(text="🔙 К опросам", callback_data="city:vote")]]
+    if not poll['is_active'] and 'is_archived' in poll.keys() and poll['is_archived']:
+        # Архивный опрос: в меню голосования его уже нет — возвращаем в архив.
+        buttons.append([InlineKeyboardButton(
+            text="🗂 К архиву опросов", callback_data="pollarch:list")])
     await edit_message_safe(callback.message, text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
 
 
@@ -197,8 +231,10 @@ async def vote_create(callback: CallbackQuery, state: FSMContext):
     left = await _polls_left_today(callback.from_user.id)
     limit_note = f"\nОсталось созданий сегодня: {left if left < float('inf') else '∞'}." if left != float("inf") else ""
     await callback.message.answer(
-        "📝 Введи вопрос для опроса (например: «Какой новый данж хотите?»)\n"
-        "Отмена — /cancel" + limit_note
+        f"📝 Введи вопрос для опроса (например: «Какой новый данж хотите?»)\n"
+        f"Отмена — /cancel{limit_note}\n\n"
+        f"⏳ Опрос живёт максимум {POLL_MAX_DAYS} суток: если ты его не закроешь, "
+        f"он закроется сам. Старые опросы уходят в архив библиотеки."
     )
 
 
@@ -227,9 +263,20 @@ async def poll_options_handler(message, state: FSMContext):
         return
     poll_id = await create_poll(message.from_user.id, data['question'], "\n".join(options))
     await state.clear()
-    await message.answer(
-        f"✅ Опрос создан!\n\n🗳️ {data['question']}\n\n{chr(10).join(f'{i+1}. {o}' for i, o in enumerate(options))}"
+    # Новый опрос — самый новый, поэтому в меню он точно в числе POLL_VISIBLE.
+    # Но если лишние уже копились (например, пока бот лежал), архивируем их сейчас.
+    archived = await maintain_polls()
+    poll = await get_poll(poll_id)
+    lines = "\n".join(f"{i + 1}. {o}" for i, o in enumerate(options))
+    text = (
+        f"✅ Опрос создан!\n\n🗳️ {data['question']}\n\n{lines}\n\n"
+        f"⏳ Живёт {POLL_MAX_DAYS} суток: сам закроется {_poll_closes_label(poll)}."
     )
+    if archived['archived']:
+        text += (f"\n📦 В архив ушёл {archived['archived']} опрос"
+                 f"{'ов' if archived['archived'] > 1 else ''} — "
+                 f"в меню голосования остаётся только {POLL_VISIBLE} новейших.")
+    await message.answer(text)
 
 
 @router.callback_query(F.data.startswith("vote:close:"))
@@ -272,7 +319,6 @@ async def vote_close_confirm(callback: CallbackQuery):
     await callback.message.answer(
         "🔒 Опрос закрыт!\n\n" + await _poll_results_text(poll),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="📋 К закрытым опросам", callback_data="vote:archive")],
             [InlineKeyboardButton(text="🔙 К опросам", callback_data="city:vote")],
         ])
     )
@@ -281,30 +327,3 @@ async def vote_close_confirm(callback: CallbackQuery):
 @router.callback_query(F.data == "vote:close_cancel")
 async def vote_close_cancel(callback: CallbackQuery):
     await callback.answer("Отменено.")
-
-
-@router.callback_query(F.data == "vote:archive")
-async def vote_archive(callback: CallbackQuery):
-    await callback.answer()
-    closed = await get_closed_polls()
-    if not closed:
-        await callback.message.answer(
-            "📋 Закрытых опросов пока нет.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 В Ратушу", callback_data="city:pilots")]
-            ])
-        )
-        return
-
-    buttons = []
-    for p in closed:
-        question = p['question']
-        short = question if len(question) <= 40 else question[:37] + "…"
-        buttons.append([InlineKeyboardButton(text=f"🔒 {short}", callback_data=f"vote:results:{p['id']}")])
-    buttons.append([InlineKeyboardButton(text="🔙 К опросам", callback_data="city:vote")])
-
-    await edit_message_safe(
-        callback.message,
-        "📋 ЗАКРЫТЫЕ ОПРОСЫ\n\nВыбери, чтобы посмотреть итоги:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )

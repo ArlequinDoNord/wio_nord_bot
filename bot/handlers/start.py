@@ -5,7 +5,8 @@ from aiogram.types import Message, CallbackQuery, FSInputFile, InlineKeyboardMar
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from database.db import (add_user, get_user, ensure_base_status, user_is_tourist,
-                         get_all_locations, get_active_run, finalize_run_for)
+                         get_all_locations, get_active_run, finalize_run_for,
+                         get_latest_rep_speech)
 from keyboards.keyboards import main_menu_keyboard, city_keyboard
 from utils.permissions import is_admin
 from utils.helpers import resolve_image
@@ -104,6 +105,19 @@ async def cmd_help(message: Message):
     )
 
 
+async def _city_caption() -> str:
+    """Подпись заглавной картинки города: «Город Аркхольм» + «Речь представителя».
+
+    Речь — последнее обращение представителя (до REP_SPEECH_MAX_LEN символов),
+    поэтому в подпись она помещается целиком вместе с заголовком.
+    """
+    caption = "🏰 Город Аркхольм:"
+    speech = await get_latest_rep_speech()
+    if not speech:
+        return caption + "\n\n📢 Речь представителя: пока не произнесена."
+    return (f"{caption}\n\n📢 Речь представителя\n{speech['text']}")
+
+
 @router.message(F.text == "Город")
 async def show_city(message: Message, state: FSMContext):
     left_note = await _abandon_active_run_if_left(message.from_user.id, state)
@@ -114,7 +128,7 @@ async def show_city(message: Message, state: FSMContext):
         await message.answer(left_note)
     await message.answer_photo(
         photo=FSInputFile(city_view),
-        caption="🏰 Город Аркхольм:",
+        caption=await _city_caption(),
         reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations)
     )
 
@@ -154,15 +168,16 @@ async def city_menu_cb(callback: CallbackQuery, state: FSMContext):
     locations = await get_all_locations()
     if left_note:
         await callback.message.answer(left_note)
+    caption = await _city_caption()
     if callback.message.photo:
         from aiogram.types import InputMediaPhoto
         await callback.message.edit_media(
-            media=InputMediaPhoto(media=FSInputFile(city_view), caption="🏰 Город Аркхольм:"),
+            media=InputMediaPhoto(media=FSInputFile(city_view), caption=caption),
             reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations)
         )
     else:
         await callback.message.answer_photo(
             photo=FSInputFile(city_view),
-            caption="🏰 Город Аркхольм:",
+            caption=caption,
             reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations)
         )

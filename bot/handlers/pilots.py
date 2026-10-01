@@ -1,4 +1,4 @@
-"""Ратуша: общественный центр города — разделы «Голосование» и «Пилоты города»."""
+"""Ратуша: общественный центр города — голосование, пилоты, партии, речь представителя."""
 
 import os
 
@@ -7,7 +7,8 @@ from datetime import datetime
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
-from database.db import (get_all_users, get_user, can_enter_location, get_active_polls,
+from database.db import (get_all_users, get_user, can_enter_location, count_visible_active_polls,
+                         maintain_polls,
                          get_user_voted_polls_count, log_location_visit,
                          user_is_tourist, users_with_top_status_tag)
 from config import get_effective_rank
@@ -17,11 +18,14 @@ router = Router()
 
 
 def town_hall_markup(voted: int = 0, active: int = 0) -> InlineKeyboardMarkup:
-    """Главное меню Ратуши: разделы. voted/active — счётчик «Голосования и опросы» (участие/активные)."""
+    """Главное меню Ратуши: разделы. voted/active — счётчик «Голосования и опросы»
+    (участие/активные). «Обращение Представителя» видно всем: прочитать обращение
+    может любой гость Ратуши, а писать и править — только представитель."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"🗳️ Голосование и опросы {voted}/{active}", callback_data="city:vote")],
         [InlineKeyboardButton(text="🪖 Пилоты города", callback_data="city:pilots:list")],
         [InlineKeyboardButton(text="⚜️ Партии и кланы", callback_data="city:clans")],
+        [InlineKeyboardButton(text="📢 Обращение Представителя", callback_data="rep:speech")],
         [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
     ])
 
@@ -72,7 +76,10 @@ async def _show_hall(callback: CallbackQuery):
         f"🕰 На башенных часах сейчас {clock}."
     )
     voted = await get_user_voted_polls_count(callback.from_user.id)
-    active = len(await get_active_polls())
+    # Счётчик на кнопке голосования должен совпадать с меню (там максимум
+    # POLL_VISIBLE новейших), поэтому обслуживаем опросы и здесь лениво.
+    await maintain_polls()
+    active = await count_visible_active_polls()
     if os.path.isfile(hall_view):
         if callback.message.photo:
             from aiogram.types import InputMediaPhoto

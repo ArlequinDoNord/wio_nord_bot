@@ -1071,6 +1071,36 @@ async def init_db():
     await _ensure_column(conn, "housing_slots", "embedded", "INTEGER DEFAULT 0")
     # Счётчик установок расширений: первая в доме — бесплатно, далее перепланировка платная.
     await _ensure_column(conn, "player_housing", "expansions_installed", "INTEGER DEFAULT 0")
+    # v0.19.0: жизнь опроса ограничена POLL_MAX_DAYS суток. closes_at проставляется
+    # при создании опроса (create_poll), поэтому уже созданные опросы получают срок
+    # от своего created_at, а не от даты деплоя. created_at в polls кладётся
+    # CURRENT_TIMESTAMP (UTC, 'YYYY-MM-DD HH:MM:SS') — прибавляем к нему сутки.
+    await _ensure_column(conn, "polls", "closes_at", "TIMESTAMP")
+    await conn.execute(
+        "UPDATE polls SET closes_at = datetime(created_at, ?) "
+        "WHERE is_active = 1 AND (closes_at IS NULL OR closes_at = '')",
+        (f"+{config.POLL_MAX_DAYS} days",)
+    )
+    # Архив опросов библиотеки: попадает всё, что вытеснено из меню голосования
+    # (старше POLL_VISIBLE новейших). is_archived — флаг «в архиве», archived_day —
+    # дата (МСК, 'YYYY-MM-DD') ухода в архив: по ней раздел «Опросы» в библиотеке
+    # группирует записи по дням.
+    await _ensure_column(conn, "polls", "is_archived", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "polls", "archived_day", "TEXT DEFAULT ''")
+    # Речь представителя: обращения к городу (лимит REP_SPEECH_PER_DAY в сутки).
+    # created_day — ключ суток МСК для суточного лимита, edited — правил ли
+    # представитель уже опубликованное обращение.
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS rep_speeches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            text TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_day TEXT NOT NULL DEFAULT '',
+            edited INTEGER DEFAULT 0,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        )
+    """)
     # Убраны из магазина товары без функционала (вернуть можно через админ-добавление товаров)
     await conn.execute("UPDATE items SET is_available = 0 WHERE name IN "
                        "('Ангар-бокс','Металл','Кристаллы','Медаль «Крыло»','Топливо','Ремкомплект')")
@@ -2099,10 +2129,17 @@ async def get_trade(trade_id: int):
 
 
 async def create_poll(admin_id: int, question: str, options: str):
+    """Создать опрос. Срок закрытия (closes_at) — POLL_MAX_DAYS суток от сейчас (UTC,
+    как created_at). Опрос не закрыл автор — закроется сам, см. close_expired_polls."""
+    from datetime import datetime, timedelta, timezone
+    from config import POLL_MAX_DAYS
     conn = await get_db()
+    now_utc = datetime.now(timezone.utc)
+    closes_at = (now_utc + timedelta(days=POLL_MAX_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
     cursor = await conn.execute(
-        "INSERT INTO polls (admin_id, question, options) VALUES (?, ?, ?)",
-        (admin_id, question, options)
+        "INSERT INTO polls (admin_id, question, options, created_at, closes_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (admin_id, question, options, now_utc.strftime("%Y-%m-%d %H:%M:%S"), closes_at)
     )
     await conn.commit()
     return cursor.lastrowid
@@ -2114,6 +2151,221 @@ async def get_polls_created_today(admin_id: int) -> int:
         "SELECT COUNT(*) AS cnt FROM polls WHERE admin_id = ? "
         "AND created_at >= datetime('now', 'start of day')",
         (admin_id,)
+    )
+    row = await cursor.fetchone()
+    return row['cnt'] if row else 0
+
+
+# ============ АРХИВ ОПРОСОВ И АВТОЗАКРЫТИЕ ============
+
+def _poll_today_key() -> str:
+    """Ключ текущих суток по МСК (YYYY-MM-DD) — день ухода опроса в архив."""
+    from datetime import datetime
+    from utils.helpers import MOSCOW_TZ
+    return datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d")
+
+
+async def get_visible_polls(limit: int = None):
+    """Опросы, которые висят в меню голосования: новейшие POLL_VISIBLE из неархивных.
+
+    Закрытые среди них тоже возвращаются — в меню они помечены 🔒, чтобы ушедший
+    из голосования опрос не исчезал из поля зрения сразу.
+    """
+    from config import POLL_VISIBLE
+    conn = await get_db()
+    n = limit if limit is not None else POLL_VISIBLE
+    cursor = await conn.execute(
+        "SELECT * FROM polls WHERE COALESCE(is_archived, 0) = 0 "
+        "ORDER BY id DESC LIMIT ?", (n,)
+    )
+    return await cursor.fetchall()
+
+
+async def count_visible_active_polls() -> int:
+    """Сколько активных (открытых) опросов сейчас в меню — счётчик в Ратуше."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT COUNT(*) AS cnt FROM polls WHERE is_active = 1 AND COALESCE(is_archived, 0) = 0"
+    )
+    row = await cursor.fetchone()
+    return row['cnt'] if row else 0
+
+
+async def close_expired_polls() -> int:
+    """Автозакрытие опросов, у которых вышел срок POLL_MAX_DAYS.
+
+    Закрытие по сроку — обычное закрытие: closed_at проставляется, автор не пишется
+    (closed_by остаётся NULL), голоса сохраняются, опрос остаётся в меню (если он
+    в числе новейших) под знаком 🔒. Возвращает число закрытых.
+    """
+    from datetime import datetime, timezone
+    conn = await get_db()
+    now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    cursor = await conn.execute(
+        "UPDATE polls SET is_active = 0, closed_at = ? "
+        "WHERE is_active = 1 AND closes_at IS NOT NULL AND closes_at != '' "
+        "AND closes_at <= ?", (now_utc, now_utc)
+    )
+    await conn.commit()
+    return cursor.rowcount
+
+
+def datetime_now_utc_str() -> str:
+    """Текущее время UTC строкой 'YYYY-MM-DD HH:MM:SS' — формат колонок polls."""
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+async def archive_old_polls(keep: int = None) -> int:
+    """Увести в архив всё, что не влезло в меню голосования.
+
+    В меню остаются keep (= POLL_VISIBLE) новейших неархивных опросов; всё, что
+    старше — is_archived = 1, archived_day = сегодняшние сутки МСК. По archived_day
+    раздел «Опросы» в библиотеке собирает записи по дням.
+
+    Голоса и результаты не трогаем: архивный опрос остаётся доступен по ссылке.
+    Возвращает число отправленных в архив.
+    """
+    from config import POLL_VISIBLE
+    conn = await get_db()
+    n = keep if keep is not None else POLL_VISIBLE
+    cursor = await conn.execute(
+        "UPDATE polls SET is_archived = 1, archived_day = ?, "
+        "is_active = 0, closed_at = COALESCE(closed_at, ?) "
+        "WHERE COALESCE(is_archived, 0) = 0 AND id NOT IN "
+        "(SELECT id FROM polls WHERE COALESCE(is_archived, 0) = 0 ORDER BY id DESC LIMIT ?)",
+        (_poll_today_key(), datetime_now_utc_str(), n)
+    )
+    await conn.commit()
+    return cursor.rowcount
+
+
+async def maintain_polls() -> dict:
+    """Обслуживание опросов: сначала закрыть истёкшие, потом увести лишние в архив.
+
+    Порядок важен: истёкший опрос сначала закрывается (событие с отметкой времени),
+    и только потом может попасть в архив. Вызывается из меню голосования (лениво,
+    перед показом) и из суточного планировщика — чтобы истёкшее не висело до утра.
+    """
+    closed = await close_expired_polls()
+    archived = await archive_old_polls()
+    return {"closed": closed, "archived": archived}
+
+
+async def get_archived_poll_days(page: int = 0, per_page: int = 5) -> list:
+    """Дни архива опросов (новые сверху) с числом опросов в каждом — раздел
+    «Опросы» библиотеки. Страница = страница дней, не опросов."""
+    conn = await get_db()
+    offset = max(0, page) * per_page
+    cursor = await conn.execute(
+        "SELECT archived_day, COUNT(*) AS cnt FROM polls "
+        "WHERE COALESCE(is_archived, 0) = 1 AND archived_day != '' "
+        "GROUP BY archived_day ORDER BY archived_day DESC LIMIT ? OFFSET ?",
+        (per_page, offset)
+    )
+    return await cursor.fetchall()
+
+
+async def count_archived_poll_days() -> int:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT COUNT(DISTINCT archived_day) AS n FROM polls "
+        "WHERE COALESCE(is_archived, 0) = 1 AND archived_day != ''"
+    )
+    row = await cursor.fetchone()
+    return row['n'] if row else 0
+
+
+async def count_archived_polls() -> int:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT COUNT(*) AS n FROM polls WHERE COALESCE(is_archived, 0) = 1"
+    )
+    row = await cursor.fetchone()
+    return row['n'] if row else 0
+
+
+async def get_archived_polls_by_day(day: str, page: int = 0, per_page: int = 6) -> list:
+    """Опросы одного дня архива (новые сверху) — то, что под заголовком-днём."""
+    conn = await get_db()
+    offset = max(0, page) * per_page
+    cursor = await conn.execute(
+        "SELECT * FROM polls WHERE COALESCE(is_archived, 0) = 1 AND archived_day = ? "
+        "ORDER BY id DESC LIMIT ? OFFSET ?",
+        (day, per_page, offset)
+    )
+    return await cursor.fetchall()
+
+
+async def count_archived_polls_by_day(day: str) -> int:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT COUNT(*) AS n FROM polls "
+        "WHERE COALESCE(is_archived, 0) = 1 AND archived_day = ?", (day,)
+    )
+    row = await cursor.fetchone()
+    return row['n'] if row else 0
+
+
+# ============ РЕЧЬ ПРЕДСТАВИТЕЛЯ ============
+
+def _rep_speech_today_key() -> str:
+    """Ключ суток МСК (YYYY-MM-DD) — суточный лимит обращений представителя."""
+    from datetime import datetime
+    from utils.helpers import MOSCOW_TZ
+    return datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d")
+
+
+async def add_rep_speech(user_id: int, text: str) -> int:
+    """Опубликовать обращение представителя. Возвращает id записи."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "INSERT INTO rep_speeches (user_id, text, created_at, created_day) "
+        "VALUES (?, ?, ?, ?)",
+        (user_id, text, datetime_now_utc_str(), _rep_speech_today_key())
+    )
+    await conn.commit()
+    return cursor.lastrowid
+
+
+async def update_rep_speech(speech_id: int, text: str) -> bool:
+    """Правка опубликованного обращения (не считается новым обращением: правка
+    не тратит суточный лимит, но помечается edited=1)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "UPDATE rep_speeches SET text = ?, edited = 1 WHERE id = ?", (text, speech_id)
+    )
+    await conn.commit()
+    return cursor.rowcount > 0
+
+
+async def get_latest_rep_speech() -> dict | None:
+    """Последнее обращение представителя — то, что висит «Голосом» на заголовке города."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT s.*, u.username, u.callsign, u.first_name, u.last_name "
+        "FROM rep_speeches s LEFT JOIN users u ON u.user_id = s.user_id "
+        "ORDER BY s.id DESC LIMIT 1"
+    )
+    return await cursor.fetchone()
+
+
+async def get_rep_speech(speech_id: int) -> dict | None:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT s.*, u.username, u.callsign, u.first_name, u.last_name "
+        "FROM rep_speeches s LEFT JOIN users u ON u.user_id = s.user_id "
+        "WHERE s.id = ?", (speech_id,)
+    )
+    return await cursor.fetchone()
+
+
+async def count_rep_speeches_today(user_id: int) -> int:
+    """Сколько обращений представитель уже опубликовал сегодня (суточный лимит)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT COUNT(*) AS cnt FROM rep_speeches WHERE user_id = ? AND created_day = ?",
+        (user_id, _rep_speech_today_key())
     )
     row = await cursor.fetchone()
     return row['cnt'] if row else 0

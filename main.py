@@ -23,7 +23,7 @@ from database.db import (
     ensure_forest_enemies, ensure_fishing_enemies, ensure_mollusk_items,
     ensure_recipe_shop_items, ensure_user_recipes_backfill,
     log_activity, prune_activity_log, prune_location_visits, recompute_region_stats,
-    maybe_archive_wall_weekly,
+    maybe_archive_wall_weekly, maintain_polls,
 )
 from utils.notify import notify_treasury_shortage
 from utils.chat_guard import ChatGuard
@@ -38,6 +38,8 @@ from bot.handlers.reports import router as reports_router
 from bot.handlers.dungeon import router as dungeon_router
 from bot.handlers.pilots import router as pilots_router
 from bot.handlers.polls import router as polls_router
+from bot.handlers.poll_archive import router as poll_archive_router
+from bot.handlers.representative import router as representative_router
 from bot.handlers.library import router as library_router
 from bot.handlers.locations import router as locations_router
 from bot.handlers.park import router as park_router
@@ -299,6 +301,19 @@ async def scheduled_jobs(bot: Bot):
                     )
         except Exception as e:
             logger.error(f"Ошибка недельной архивации стены: {e}", exc_info=True)
+        # Опросы Ратуши: истёкшие (10 суток) закрываются, лишние уходят в архив
+        # библиотеки. В меню голосования остаётся POLL_VISIBLE новейших. То же
+        # выполняется лениво при открытии меню голосования — суточный проход
+        # нужен, чтобы счётчик и архив были в порядке, даже если в меню не заходят.
+        try:
+            poll_res = await maintain_polls()
+            if poll_res['closed'] or poll_res['archived']:
+                logger.info(
+                    f"Опросы: закрыто по сроку {poll_res['closed']}, "
+                    f"в архив ушло {poll_res['archived']}"
+                )
+        except Exception as e:
+            logger.error(f"Ошибка обслуживания опросов: {e}", exc_info=True)
 
 
 async def main():
@@ -437,6 +452,8 @@ async def main():
     dp.include_router(dungeon_router)
     dp.include_router(pilots_router)
     dp.include_router(polls_router)
+    dp.include_router(poll_archive_router)
+    dp.include_router(representative_router)
     dp.include_router(library_router)
     dp.include_router(locations_router)
     dp.include_router(park_router)
@@ -453,7 +470,8 @@ async def main():
 
     for r in (start_router, profile_router, bank_router, admin_router, shop_router,
               inventory_router, reports_router, dungeon_router, pilots_router,
-              polls_router, library_router, locations_router, park_router,
+              polls_router, poll_archive_router, representative_router, library_router,
+              locations_router, park_router,
               fishing_router, forest_router, housing_router, news_router, kvp_router,
               wall_router, hq_router, clans_router, nii_router):
         r.message.middleware(ChatGuard())

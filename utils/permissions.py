@@ -18,6 +18,7 @@ ROLES = {
         'can_grant_troops': True,
         'can_manage_library': True,
         'can_create_polls': True,
+        'can_address_city': True,
         'can_manage_states': True,
         'can_manage_salaries': True,
         'can_manage_locations': True,
@@ -74,8 +75,9 @@ ROLES = {
         'can_manage_library': True,
         'level': 40
     },
-    'representative': {  # Представитель — создаёт опросы (лимит 2 в сутки)
+    'representative': {  # Представитель — опросы (2 в сутки) и речь городу (4 в сутки)
         'can_create_polls': True,
+        'can_address_city': True,
         'level': 15
     },
     'journalist': {  # Журналист ГосСМИ — пишет новости (лимит 2 в сутки)
