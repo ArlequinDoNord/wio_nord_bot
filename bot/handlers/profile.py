@@ -489,7 +489,7 @@ async def profile_open_cb(callback: CallbackQuery):
 async def profile_callsign(callback: CallbackQuery):
     user_id = callback.from_user.id
     user = await get_user(user_id)
-    has_callsign = bool(user and user.get('callsign'))
+    has_callsign = bool(user and user.get('callsign') and str(user.get('callsign')).strip())
     free_used = await get_callsign_free_used(user_id)
     super_admin = await user_has_status_tag(user_id, "super_admin")
 
@@ -561,7 +561,7 @@ async def profile_callsign_input(message: Message, state: FSMContext):
         return
 
     user = await get_user(user_id)
-    has_callsign = bool(user and user.get('callsign'))
+    has_callsign = bool(user and user.get('callsign') and str(user.get('callsign')).strip())
     free_used = await get_callsign_free_used(user_id)
     super_admin = await user_has_status_tag(user_id, "super_admin")
 
