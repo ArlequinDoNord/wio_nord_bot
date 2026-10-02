@@ -72,18 +72,21 @@ def admin_panel_keyboard(permissions: dict):
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def profile_keyboard(notify_enabled: bool = True, profile_public: bool = True, can_toggle_visibility: bool = False):
+def profile_keyboard(notify_enabled: bool = True, profile_public: bool = True, can_toggle_visibility: bool = False, has_callsign: bool = False):
     rows = [
         [InlineKeyboardButton(text="Изменить фото", callback_data="profile:set_photo")],
         [InlineKeyboardButton(text="Выбрать статус", callback_data="profile:choose_status")],
         [InlineKeyboardButton(text="📖 О себе", callback_data="profile:edit_about")],
-        [InlineKeyboardButton(text="🎖️ Награды", callback_data="profile:awards")],
-        [InlineKeyboardButton(text="Карточка пилота", callback_data="profile:pilot_card")],
-        [InlineKeyboardButton(
-            text="🔔 Оповещения: вкл" if notify_enabled else "🔕 Оповещения: выкл",
-            callback_data="profile:notify_toggle"
-        )],
     ]
+    # Позывной: бесплатно 1 раз, потом смена 500 НМ
+    callsign_text = "📡 Сменить позывной" if has_callsign else "📡 Установить позывной"
+    rows.append([InlineKeyboardButton(text=callsign_text, callback_data="profile:callsign")])
+    rows.append([InlineKeyboardButton(text="🎖️ Награды", callback_data="profile:awards")])
+    rows.append([InlineKeyboardButton(text="Карточка пилота", callback_data="profile:pilot_card")])
+    rows.append([InlineKeyboardButton(
+        text="🔔 Оповещения: вкл" if notify_enabled else "🔕 Оповещения: выкл",
+        callback_data="profile:notify_toggle"
+    )])
     if can_toggle_visibility:
         rows.append([InlineKeyboardButton(
             text="👁 Профиль виден: всем" if profile_public else "🔒 Профиль скрыт",

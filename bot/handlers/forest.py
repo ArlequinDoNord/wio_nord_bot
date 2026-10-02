@@ -33,7 +33,7 @@ from database.db import (
     remove_ap_or_floor, user_is_tourist, log_activity,
     get_source_enemy_by_key, get_source_enemy_drops, roll_enemy_drops,
     enemy_encounter_hit,
-    get_location_by_key, location_glade_photo, location_photo_for_tod,
+    get_location_by_key, location_glade_photo, location_clearing_photo, location_photo_for_tod,
 )
 from utils.helpers import (
     resolve_image, resolve_image_seasonal, season_key, time_of_day_key,
@@ -52,7 +52,7 @@ FOREST_HOME_AREA = "glade"
 
 # Эмблемы зон для текстов и кнопок.
 FOREST_AREA_EMOJI = {"glade": "🌿", "clearing": "🌲"}
-FOREST_AREA_NAME = {"glade": "ОПУШКА ЛЕСА", "clearing": "ЛЕСНАЯ ПОЛЯНА"}
+FOREST_AREA_NAME = {"glade": "ОПУШКА ЛЕСА", "clearing": "ПРОГАЛИНА"}
 
 # Почему туристам закрыта поляна: не местные, легко заблудиться.
 AREA_DENY_TEXT = {
@@ -169,6 +169,9 @@ async def _clearing_media() -> tuple:
     """
     loc = await get_location_by_key("forest")
     if loc:
+        photo_id = location_clearing_photo(loc)
+        if photo_id:
+            return photo_id, None
         photo_id = location_photo_for_tod(loc, season_key(), time_of_day_key())
         if photo_id:
             return photo_id, None

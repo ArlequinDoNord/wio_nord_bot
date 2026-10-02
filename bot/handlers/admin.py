@@ -36,6 +36,7 @@ from database.db import (
     update_location_season_photo, clear_location_season_photos, clear_location_season,
     location_season_photos_raw, LOCATION_SEASONS,
     location_glade_photo, update_location_glade_photo,
+    location_clearing_photo, update_location_clearing_photo,
     get_all_dungeons, get_dungeon, update_dungeon_photos, DUNGEON_PHOTO_KEYS,
     get_dungeon_enemies, get_enemy, update_enemy_fields, get_floor_enemies,
     get_enemy_drops, set_enemy_drops, add_enemy_drop, remove_enemy_drop,
@@ -3991,17 +3992,23 @@ async def show_pending_reports(message, start: int = 0):
                                  callback_data="rep:pay_cap_edit"),
         ])
 
+    pilot_line = f"Пилот: {report['first_name']} (@{report['username']})"
+    callsign = report.get('callsign') if isinstance(report, dict) else None
+    if not callsign and hasattr(report, 'keys'):
+        callsign = report['callsign'] if 'callsign' in report.keys() else None
+    if callsign:
+        pilot_line += f" · Позывной: {callsign}"
     caption = (
         f"📋 ОТЧЁТ #{report['id']}"
         + (f"  ·  📌 {idx + 1} из {len(reports)} в очереди\n" if len(reports) > 1 else "\n")
         + f"\n"
-        f"Пилот: {report['first_name']} (@{report['username']})\n"
-        f"Войск за сутки (заявка): {report['troops_reported']}\n"
-        f"Всего войск (на счётчике пилота): {report['total_troops'] if 'total_troops' in report.keys() else '—'}\n"
-        f"{await _report_payout_block(report)}\n"
-        f"Регион: {report['region'] or '—'} (для статистики сил)\n"
-        f"Сдано: {created_at_msk(report['created_at']) if report['created_at'] else '—'} МСК\n\n"
-        f"Проверьте скриншот и примите решение:"
+        + pilot_line + "\n"
+        + f"Войск за сутки (заявка): {report['troops_reported']}\n"
+        + f"Всего войск (на счётчике пилота): {report['total_troops'] if 'total_troops' in report.keys() else '—'}\n"
+        + f"{await _report_payout_block(report)}\n"
+        + f"Регион: {report['region'] or '—'} (для статистики сил)\n"
+        + f"Сдано: {created_at_msk(report['created_at']) if report['created_at'] else '—'} МСК\n\n"
+        + f"Проверьте скриншот и примите решение:"
     )
 
     if 'screenshot_file_id' in report.keys() and report['screenshot_file_id']:
@@ -7707,10 +7714,17 @@ async def _loc_photos_pick_send(source, loc_id: int):
     glade_line = ""
     if loc.get("key") == "forest":
         has_glade = bool(location_glade_photo(loc))
+        has_clearing = bool(location_clearing_photo(loc))
         rows.append([InlineKeyboardButton(
-            text=f"{'✅' if has_glade else '—'} 🌲 Опушка (сбор грибов)",
+            text=f"{'✅' if has_glade else '—'} 🌿 Опушка (сбор грибов)",
             callback_data="loc:glade_set")])
-        glade_line = f"Опушка: {'своя картинка' if has_glade else 'локальный файл по сезону'}\n"
+        rows.append([InlineKeyboardButton(
+            text=f"{'✅' if has_clearing else '—'} 🌲 Прогалина (вглубь леса)",
+            callback_data="loc:clearing_set")])
+        glade_line = (
+            f"Опушка: {'своя картинка' if has_glade else 'локальный файл по сезону'}\n"
+            f"Прогалина: {'своя картинка' if has_clearing else 'локальный файл по сезону'}\n"
+        )
     rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="loc:building_pick")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     season_line = " | ".join(
@@ -7887,6 +7901,56 @@ async def loc_glade_clear(callback: CallbackQuery, state: FSMContext):
     if not loc_id:
         return
     await update_location_glade_photo(loc_id, None)
+    await _loc_photos_pick_send(callback, loc_id)
+
+
+@router.callback_query(F.data == "loc:clearing_set")
+async def loc_clearing_set(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    loc = await get_location(loc_id)
+    if not loc or loc.get("key") != "forest":
+        await callback.message.edit_text("❌ Прогалина есть только у локации «Лес на окраине».")
+        return
+    await state.set_state(AdminLocation.preview)
+    await state.update_data(photo_kind="clearing", photo_tod=None, photo_season=None)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="loc:photos")]
+    ])
+    has_photo = bool(location_clearing_photo(loc))
+    caption = (f"🌲 Прогалина (лес на окраине) — сейчас есть картинка.\n"
+               f"Отправь новую (или «-» чтобы убрать и вернуть локальный файл по сезону):")
+    if has_photo:
+        try:
+            await callback.message.answer_photo(
+                location_clearing_photo(loc), caption=caption, reply_markup=kb)
+            return
+        except Exception:
+            pass
+    await callback.message.edit_text(
+        f"🌲 Прогалина «{loc['name']}» "
+        f"(сейчас: {'своя картинка' if has_photo else 'локальный файл по сезону'}).\n"
+        f"Отправь фото (или «-» чтобы убрать):",
+        reply_markup=kb
+    )
+
+
+@router.callback_query(F.data == "loc:clearing_clear")
+async def loc_clearing_clear(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    await update_location_clearing_photo(loc_id, None)
     await _loc_photos_pick_send(callback, loc_id)
 
 

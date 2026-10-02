@@ -3,6 +3,9 @@ import logging
 import random
 import time
 import aiosqlite
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config
 from config import (DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MINUTES,
                     DUNGEON_RUN_STALE_SEC, FOREST_BOAR_SEED, MOLLUSK_SEED,
@@ -1033,6 +1036,7 @@ async def init_db():
     # v0.18.18: отдельная картинка опушки леса (грибы). Намеренно не картинка
     # входа в лес: опушка — самостоятельная картинка, задаётся админом отдельно.
     await _ensure_column(conn, "locations", "glade_photo", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "locations", "clearing_photo", "TEXT DEFAULT NULL")
     # v0.18.18: лес разделён на две зоны — опушка (glade) и лесная поляна
     # (clearing). Пул грибов каждой зоны — в forest_zone_pool, сам каталог грибов
     # (forest_mushrooms) остаётся общим: один и тот же гриб может попадать и на
@@ -1116,6 +1120,7 @@ async def init_db():
     # v0.10.0: рынок (слоты продажи + лицензия) и налог на жильё
     await _ensure_column(conn, "dungeons", "is_training", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "market_license_expires", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "users", "callsign_free_used", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "market_fish", "base_price", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "player_housing", "tax_last_check", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "player_housing", "tax_unpaid_months", "INTEGER DEFAULT 0")
@@ -4412,7 +4417,7 @@ async def get_pending_reports():
     # и без r.id SQLite возвращал их в произвольном порядке — «Следующий ▶️» в админке
     # показывал тот же отчёт снова (очередь «перемешивалась» между запросами).
     cursor = await conn.execute(
-        """SELECT r.*, u.first_name, u.username FROM reports r
+        """SELECT r.*, u.first_name, u.username, u.callsign FROM reports r
            JOIN users u ON r.user_id = u.user_id
            WHERE r.status = 'pending' ORDER BY r.created_at, r.id"""
     )
@@ -4423,7 +4428,7 @@ async def get_approved_reports(limit: int = 20) -> list:
     """Последние принятые (approved) отчёты — для вкладки «Принятые отчёты»."""
     conn = await get_db()
     cursor = await conn.execute(
-        """SELECT r.*, u.first_name, u.username FROM reports r
+        """SELECT r.*, u.first_name, u.username, u.callsign FROM reports r
            JOIN users u ON r.user_id = u.user_id
            WHERE r.status = 'approved'
            ORDER BY r.created_at DESC, r.id DESC LIMIT ?""",
@@ -5143,6 +5148,30 @@ async def set_callsign(user_id: int, callsign: str):
     await conn.execute("UPDATE users SET callsign = ? WHERE user_id = ?",
                        (callsign or None, user_id))
     await conn.commit()
+
+
+async def set_callsign_free_used(user_id: int, used: int = 1):
+    """Отмечает, что бесплатная смена/установка позывного использована (1 раз)."""
+    conn = await get_db()
+    await conn.execute("UPDATE users SET callsign_free_used = ? WHERE user_id = ?",
+                       (1 if used else 0, user_id))
+    await conn.commit()
+
+
+async def get_callsign_free_used(user_id: int) -> bool:
+    """Проверяет, использовалась ли бесплатная установка позывного."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT callsign_free_used FROM users WHERE user_id = ?",
+        (user_id,))
+    row = await cursor.fetchone()
+    if not row:
+        return False
+    val = row['callsign_free_used'] if isinstance(row, dict) or hasattr(row, 'keys') else (row[0] if row else 0)
+    try:
+        return int(val or 0) == 1
+    except (ValueError, TypeError):
+        return False
 
 
 async def set_wing(user_id: int, wing: str = None):
@@ -5934,6 +5963,17 @@ async def update_location_glade_photo(location_id: int, file_id):
     if not await get_location(location_id):
         return False
     await conn.execute("UPDATE locations SET glade_photo = ? WHERE id = ?",
+                       (file_id, location_id))
+    await conn.commit()
+    return True
+
+
+async def update_location_clearing_photo(location_id: int, file_id):
+    """Задать (file_id) или убрать (None) картинку прогалины."""
+    conn = await get_db()
+    if not await get_location(location_id):
+        return False
+    await conn.execute("UPDATE locations SET clearing_photo = ? WHERE id = ?",
                        (file_id, location_id))
     await conn.commit()
     return True
@@ -10528,3 +10568,31 @@ async def ensure_user_recipes_backfill():
         "INSERT OR IGNORE INTO user_recipes (user_id, recipe_id) VALUES (?, ?)", pairs)
     await conn.commit()
     return True
+
+
+def location_glade_photo(loc):
+    if not loc:
+        return None
+    if isinstance(loc, dict):
+        return loc.get('glade_photo') or None
+    try:
+        return loc['glade_photo']
+    except Exception:
+        try:
+            return dict(loc).get('glade_photo')
+        except Exception:
+            return None
+
+
+def location_clearing_photo(loc):
+    if not loc:
+        return None
+    if isinstance(loc, dict):
+        return loc.get('clearing_photo') or None
+    try:
+        return loc['clearing_photo']
+    except Exception:
+        try:
+            return dict(loc).get('clearing_photo')
+        except Exception:
+            return None
