@@ -8075,6 +8075,13 @@ async def loc_step_photo(message: Message, state: FSMContext):
         await state.clear()
         await _loc_photos_pick_send(message, loc_id)
         return
+    if data.get('photo_kind') == 'clearing':
+        await update_location_clearing_photo(loc_id, file_id)
+        await log_action(message.from_user.id, 'edit_location', loc_id,
+                         f"clearing_photo={'file_id' if file_id else 'cleared'}")
+        await state.clear()
+        await _loc_photos_pick_send(message, loc_id)
+        return
     if photo_season in LOCATION_SEASONS and photo_tod and photo_tod in TOD_KEYS:
         await update_location_season_photo(loc_id, photo_season, photo_tod, file_id)
         await log_action(message.from_user.id, 'edit_location', loc_id,
