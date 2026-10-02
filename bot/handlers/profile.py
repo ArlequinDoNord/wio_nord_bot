@@ -154,10 +154,10 @@ async def render_profile(where, user_id: int):
         await out.answer_photo(
             photo=photo,
             caption=caption,
-            reply_markup=profile_keyboard(notify, public, can_toggle, has_callsign=bool(user.get('callsign')))
+            reply_markup=profile_keyboard(notify, public, can_toggle, has_callsign=bool(user.get('callsign') and str(user.get('callsign')).strip()))
         )
     else:
-        await out.answer(caption, reply_markup=profile_keyboard(notify, public, can_toggle, has_callsign=bool(user.get('callsign'))))
+        await out.answer(caption, reply_markup=profile_keyboard(notify, public, can_toggle, has_callsign=bool(user.get('callsign') and str(user.get('callsign')).strip())))
 
 
 async def render_other_profile(where, user_id: int):
@@ -385,7 +385,7 @@ async def pilot_card(callback: CallbackQuery):
         notify_enabled=bool(user.get('notify_enabled', 1)),
         profile_public=bool(user.get('profile_public', 1)),
         can_toggle_visibility=await user_has_status_tag(user_id, "ace"),
-        has_callsign=bool(user.get('callsign')),
+        has_callsign=bool(user.get('callsign') and str(user.get('callsign')).strip()),
     ))
 
 
