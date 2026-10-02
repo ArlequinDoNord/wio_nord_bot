@@ -332,19 +332,39 @@ def rarity_choice_markup():
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def pilot_picker_markup(next_step: str, mark_tourists: bool = False):
+async def pilot_picker_markup(next_step: str, mark_tourists: bool = False, tourists_top: bool = False, page: int = 1, per_page: int = 10):
     """Клавиатура выбора пилота из списка; next_step — куда переходить после выбора.
 
     mark_tourists — помечать 🎫 тех, у кого ещё нет гражданства (меню статусов:
     суперадмину сразу видно, кому гражданство ещё выдавать, вместо поиска по списку).
+    tourists_top — ставить туристов (без гражданства) в самом верху списка.
+    page, per_page — пагинация (по умолчанию 10 на страницу, как запрошено 8–10).
     """
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     users = await get_all_users()
     # 🎫 — тот же бейдж, что в списке пилотов Ратуши (bot/handlers/pilots.py).
-    citizens = (await citizen_user_ids()) if mark_tourists else None
+    citizens = (await citizen_user_ids()) if (mark_tourists or tourists_top) else None
     rows = []
     if users:
-        for u in users[:50]:
+        # Сортировка: туристы вверху, если запрошено
+        items = list(users)
+        if tourists_top and citizens is not None:
+            def key(u):
+                is_tourist = u['user_id'] not in citizens
+                return (0 if is_tourist else 1, (u['first_name'] or u['username'] or '').lower())
+            items.sort(key=key)
+        elif not tourists_top:
+            # базовая сортировка по имени для консистентности
+            items.sort(key=lambda u: (u['first_name'] or u['username'] or '').lower())
+        else:
+            items.sort(key=lambda u: (u['first_name'] or u['username'] or '').lower())
+        # пагинация
+        total = len(items)
+        page = max(1, page)
+        per_page = max(8, min(10, per_page))  # 8–10
+        start = (page - 1) * per_page
+        end = start + per_page
+        for u in items[start:end]:
             label = u['first_name'] or u['username'] or str(u['user_id'])
             if u['username']:
                 label += f" (@{u['username']})"
@@ -354,6 +374,14 @@ async def pilot_picker_markup(next_step: str, mark_tourists: bool = False):
                 text=label,
                 callback_data=f"pickuser:{next_step}:{u['user_id']}"
             )])
+        # навигация
+        nav = []
+        if page > 1:
+            nav.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"pickuser:{next_step}:page:{page-1}"))
+        if end < total:
+            nav.append(InlineKeyboardButton(text="Вперёд ▶️", callback_data=f"pickuser:{next_step}:page:{page+1}"))
+        if nav:
+            rows.append(nav)
     rows.append([InlineKeyboardButton(text="✍️ Ввести вручную", callback_data=f"pickuser:{next_step}:manual")])
     rows.append([InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -362,15 +390,38 @@ async def pilot_picker_markup(next_step: str, mark_tourists: bool = False):
 @router.callback_query(F.data.startswith("pickuser:"))
 async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    _, next_step, raw = callback.data.split(":", 2)
+    parts = callback.data.split(":")
+    if len(parts) < 3:
+        return
+    _, next_step = parts[0], parts[1]
+    raw = ":".join(parts[2:]) if len(parts) > 2 else ""
+    # пагинация
+    if raw.startswith("page"):
+        try:
+            _, p = raw.split(":")
+            page = int(p)
+        except Exception:
+            page = 1
+        # определить флаги для данного next_step (status_pick нужно tourists_top)
+        tourists_top = (next_step == "status_pick")
+        mark_tourists = tourists_top or (next_step == "status_revoke")
+        markup = await pilot_picker_markup(next_step, mark_tourists=mark_tourists, tourists_top=tourists_top, page=page)
+        try:
+            await callback.message.edit_reply_markup(reply_markup=markup)
+        except Exception:
+            await callback.message.answer("Выбери пилота:", reply_markup=markup)
+        return
     if raw == "manual":
         await callback.message.answer(
             "Введи @username или числовой ID игрока:",
             reply_markup=cancel_keyboard()
         )
         return
-
-    target = await get_user(int(raw))
+    try:
+        uid = int(raw)
+    except Exception:
+        return
+    target = await get_user(uid)
     if not target:
         await callback.message.answer("❌ Игрок не найден.")
         return
@@ -1572,18 +1623,7 @@ async def shop_admin_delete(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("В магазине пока нет товаров.")
         return
 
-    rows = []
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    for it in items:
-        rows.append([InlineKeyboardButton(
-            text=f"{it['name']} ({it['price']} НМ)",
-            callback_data=f"del_item:{it['id']}"
-        )])
-    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:shop")])
-    await callback.message.edit_text(
-        "Выберите товар для удаления:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
-    )
+    await _shop_del_page(callback.message, 0)
 
 
 @router.callback_query(F.data.startswith("del_item:"))
@@ -1601,27 +1641,89 @@ async def delete_item_cb(callback: CallbackQuery):
     await callback.message.answer(f"🗑 Товар «{item['name']}» удалён.")
 
 
+@router.callback_query(F.data.startswith("shop_edit:page:"))
+async def shop_edit_page_cb(callback: CallbackQuery):
+    await callback.answer()
+    try:
+        page = int(callback.data.split(":")[2])
+    except Exception:
+        page = 0
+    await _shop_edit_page(callback.message, page)
+
+
+@router.callback_query(F.data.startswith("shop_del:page:"))
+async def shop_del_page_cb(callback: CallbackQuery):
+    await callback.answer()
+    try:
+        page = int(callback.data.split(":")[2])
+    except Exception:
+        page = 0
+    await _shop_del_page(callback.message, page)
+
+
+async def _shop_edit_page(message, page: int = 0):
+    items = await get_available_items()
+    rows = []
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    PER_I = 10
+    total = len(items) if items else 0
+    if total == 0:
+        await message.edit_text("В магазине пока нет товаров.")
+        return
+    start = page * PER_I
+    end = start + PER_I
+    for it in items[start:end]:
+        rows.append([InlineKeyboardButton(
+            text=f"{it['name']}",
+            callback_data=f"edit_item:{it['id']}"
+        )])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"shop_edit:page:{page-1}"))
+    if end < total:
+        nav.append(InlineKeyboardButton(text="Вперёд ▶️", callback_data=f"shop_edit:page:{page+1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:shop")])
+    await message.edit_text("Выберите товар для изменения:",
+                            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+async def _shop_del_page(message, page: int = 0):
+    items = await get_available_items()
+    rows = []
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    PER_I = 10
+    total = len(items) if items else 0
+    if total == 0:
+        await message.edit_text("В магазине пока нет товаров.")
+        return
+    start = page * PER_I
+    end = start + PER_I
+    for it in items[start:end]:
+        rows.append([InlineKeyboardButton(
+            text=f"{it['name']} ({it['price']} НМ)",
+            callback_data=f"del_item:{it['id']}"
+        )])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"shop_del:page:{page-1}"))
+    if end < total:
+        nav.append(InlineKeyboardButton(text="Вперёд ▶️", callback_data=f"shop_del:page:{page+1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:shop")])
+    await message.edit_text("Выберите товар для удаления:",
+                            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
 @router.callback_query(F.data == "shop_admin:edit")
 async def shop_admin_edit(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     if not await has_permission(callback.from_user.id, "can_edit_items"):
         await callback.message.answer("❌ Нет прав на изменение товаров.")
         return
-    items = await get_available_items()
-    if not items:
-        await callback.message.answer("В магазине пока нет товаров.")
-        return
-
-    rows = []
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    for it in items:
-        rows.append([InlineKeyboardButton(
-            text=f"{it['name']}",
-            callback_data=f"edit_item:{it['id']}"
-        )])
-    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:shop")])
-    await callback.message.edit_text("Выберите товар для изменения:",
-                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    await _shop_edit_page(callback.message, 0)
 
 
 @router.callback_query(F.data.startswith("edit_item:"))
@@ -2994,7 +3096,7 @@ async def status_grant_target(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ Нет прав для выдачи статусов.")
         return
     await state.set_state(AdminStatuses.target)
-    markup = await pilot_picker_markup("status_pick", mark_tourists=True)
+    markup = await pilot_picker_markup("status_pick", mark_tourists=True, tourists_top=True)
     await callback.message.answer(
         "Выбери пилота для выдачи статуса:\n"
         "🎫 — ещё турист, гражданства Нордхайма нет "

@@ -30,7 +30,7 @@ def town_hall_markup(voted: int = 0, active: int = 0) -> InlineKeyboardMarkup:
     ])
 
 
-PILOTS_PER_PAGE = 12
+PILOTS_PER_PAGE = 10
 
 
 def pilots_list_markup(users, tourists=frozenset(), page: int = 0,
