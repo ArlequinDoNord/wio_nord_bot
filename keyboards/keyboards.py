@@ -34,14 +34,15 @@ def admin_panel_keyboard(permissions: dict):
     buttons = []
     if permissions.get('can_manage_shop'):
         buttons.append([InlineKeyboardButton(text="🛒 Управление магазином", callback_data="admin:shop")])
-    if permissions.get('can_manage_finance') or permissions.get('can_add_currency') or permissions.get('can_remove_currency'):
+    if permissions.get('can_manage_finance') or permissions.get('can_view_balances') or permissions.get('can_add_currency') or permissions.get('can_remove_currency'):
         buttons.append([InlineKeyboardButton(text="💰 Финансы", callback_data="admin:finance")])
     if permissions.get('can_view_reports') or permissions.get('can_approve_reports'):
         buttons.append([InlineKeyboardButton(text="📋 Отчёты", callback_data="admin:reports")])
         buttons.append([InlineKeyboardButton(text="📊 Статистика регионов", callback_data="admin:region_stats")])
-    if permissions.get('can_manage_admins'):
+    if permissions.get('can_manage_admins') or permissions.get('can_assign_mvd_helper'):
         buttons.append([InlineKeyboardButton(text="👑 Управление ролями", callback_data="admin:roles")])
-    if permissions.get('can_manage_statuses') or permissions.get('can_grant_statuses'):
+    if permissions.get('can_manage_statuses') or permissions.get('can_grant_statuses') \
+            or permissions.get('can_grant_citizen_status'):
         buttons.append([InlineKeyboardButton(text="🎖️ Статусы", callback_data="admin:statuses")])
     if permissions.get('can_grant_troops'):
         buttons.append([InlineKeyboardButton(text="⭐ Повышение в звании", callback_data="admin:ranks")])

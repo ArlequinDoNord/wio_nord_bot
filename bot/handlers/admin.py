@@ -65,7 +65,8 @@ from database.db import (
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import (
     is_admin, has_permission, get_user_role,
-    add_role, remove_role, ROLES, role_label, log_action,
+    add_role, remove_role, ROLES, role_label, log_action, DELEGABLE_ROLES,
+    can_grant_status, can_view_status_panel, is_citizen_gate_status,
 )
 from utils.helpers import plural_nordmark
 from config import RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES, get_effective_rank, VERSION, DRINK_EFFECT_LABELS, AWARD_MAX_SHOP_DISCOUNT, AWARD_MIN_REPORT_TAX
@@ -289,7 +290,13 @@ async def perm_flags(user_id: int) -> dict:
              "can_manage_statuses", "can_grant_statuses", "can_grant_troops",
              "can_manage_states", "can_manage_locations", "can_manage_salaries",
              "can_manage_awards", "can_grant_awards", "can_manage_storage",
-             "can_manage_users"]
+             "can_manage_users", "can_assign_mvd_helper",
+             "can_grant_citizen_status",
+             # Без этих четырёх UI отдавал always-False, и кнопки были
+             # невидимы: Квестор не мог попасть в «Финансы» вообще,
+             # а глава МВД — в управление крылом.
+             "can_view_balances", "can_add_currency", "can_remove_currency",
+             "can_manage_wing"]
     return {p: await has_permission(user_id, p) for p in perms}
 
 
@@ -395,10 +402,15 @@ async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
             ])
         )
     elif next_step == "status_pick":
+        if not await can_view_status_panel(callback.from_user.id):
+            await callback.message.answer("❌ Нет прав для выдачи статусов.")
+            await state.clear()
+            return
         await state.set_state(AdminStatuses.status_pick)
-        await _send_status_picker(callback.message, target)
+        await _send_status_picker(callback.message, target, callback.from_user.id)
     elif next_step == "status_revoke":
         have = await get_user_statuses(target['user_id'])
+        have = [s for s in have if await can_grant_status(callback.from_user.id, s)]
         if not have:
             await callback.message.answer(f"У {target['first_name'] if 'first_name' in target.keys() else ''} нет статусов для снятия.")
             await state.clear()
@@ -1986,18 +1998,30 @@ async def edit_item_value(message: Message, state: FSMContext):
 
 # ============ ФИНАНСЫ ============
 
+async def _can_view_finance(actor_id: int) -> bool:
+    """Посмотреть казну и статистику — без права тратить.
+
+    can_view_balances — режим «только чтение»: видно баланс, долги и статистику,
+    но кнопки выдачи нет, а сам treasury:give всё равно спрашивает
+    can_manage_finance. can_manage_finance подразумевает и просмотр.
+    """
+    return (await has_permission(actor_id, "can_manage_finance")
+            or await has_permission(actor_id, "can_view_balances"))
+
+
 @router.callback_query(F.data == "admin:finance")
 async def admin_finance(callback: CallbackQuery):
     await callback.answer()
-    if not (await has_permission(callback.from_user.id, "can_manage_finance")
+    if not (await _can_view_finance(callback.from_user.id)
             or await has_permission(callback.from_user.id, "can_add_currency")
             or await has_permission(callback.from_user.id, "can_remove_currency")):
-        await callback.message.answer("❌ Нет прав для управления финансами.")
+        await callback.message.answer("❌ Нет прав для работы с финансами.")
         return
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     can_add = await has_permission(callback.from_user.id, "can_add_currency")
     can_remove = await has_permission(callback.from_user.id, "can_remove_currency")
     can_full = await has_permission(callback.from_user.id, "can_manage_finance")
+    can_look = await has_permission(callback.from_user.id, "can_view_balances")
 
     buttons = []
     if can_add:
@@ -2009,10 +2033,18 @@ async def admin_finance(callback: CallbackQuery):
         buttons.append([InlineKeyboardButton(text="📊 Налог на отчёты", callback_data="admin:tax")])
         buttons.append([InlineKeyboardButton(text="📊 Налог на продажи", callback_data="admin:saletax")])
         buttons.append([InlineKeyboardButton(text="💰 Зарплаты", callback_data="admin:salaries")])
+    elif can_look:
+        # Казна доступна только на чтение: кнопки выдачи внутри не будет.
+        buttons.append([InlineKeyboardButton(text="🏛️ Казна (только просмотр)", callback_data="admin:treasury")])
     buttons.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:menu")])
 
+    title = "💰 ФИНАНСЫ\n\nВыберите операцию:"
+    if not can_full:
+        title = ("💰 ФИНАНСЫ\n\n"
+                 "Вам доступно начисление и просмотр казны. "
+                 "Тратить из казны и менять налоги может только владелец.")
     await callback.message.edit_text(
-        "💰 ФИНАНСЫ\n\nВыберите операцию:",
+        title,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
 
@@ -2020,8 +2052,8 @@ async def admin_finance(callback: CallbackQuery):
 @router.callback_query(F.data == "admin:treasury")
 async def admin_treasury(callback: CallbackQuery):
     await callback.answer()
-    if not await has_permission(callback.from_user.id, "can_manage_finance"):
-        await callback.message.answer("❌ Нет прав для управления казной.")
+    if not await _can_view_finance(callback.from_user.id):
+        await callback.message.answer("❌ Нет прав для просмотра казны.")
         return
 
     balance = await get_treasury_balance()
@@ -2034,25 +2066,27 @@ async def admin_treasury(callback: CallbackQuery):
             warn += f"\n⚠️ На следующую выплату не хватает: {debts['shortfall']} {plural_nordmark(debts['shortfall'])}"
         warn += "\nПодробнее — в «Долги по выплатам»."
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    can_spend = await has_permission(callback.from_user.id, "can_manage_finance")
+    rows = []
+    if can_spend:
+        rows.append([InlineKeyboardButton(text="💸 Выдать из казны", callback_data="treasury:give")])
+    rows.append([InlineKeyboardButton(text="📊 Статистика казны", callback_data="treasury:stats")])
+    rows.append([InlineKeyboardButton(text="📋 Долги по выплатам", callback_data="treasury:debts")])
+    rows.append([InlineKeyboardButton(text="🔙 В финансы", callback_data="admin:finance")])
     await callback.message.edit_text(
         f"🏛️ КАЗНА НОРДХАЙМА\n\n"
         f"Баланс: {balance} {plural_nordmark(balance)}"
         f"{warn}\n\n"
         f"Налог с отчётов и пожертвования пополняют казну.",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="💸 Выдать из казны", callback_data="treasury:give")],
-            [InlineKeyboardButton(text="📊 Статистика казны", callback_data="treasury:stats")],
-            [InlineKeyboardButton(text="📋 Долги по выплатам", callback_data="treasury:debts")],
-            [InlineKeyboardButton(text="🔙 В финансы", callback_data="admin:finance")],
-        ])
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
 
 
 @router.callback_query(F.data == "treasury:debts")
 async def treasury_debts(callback: CallbackQuery):
     await callback.answer()
-    if not await has_permission(callback.from_user.id, "can_manage_finance"):
-        await callback.message.answer("❌ Нет прав для управления казной.")
+    if not await _can_view_finance(callback.from_user.id):
+        await callback.message.answer("❌ Нет прав для просмотра казны.")
         return
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     debts = await get_treasury_debts()
@@ -2098,8 +2132,8 @@ async def treasury_debts(callback: CallbackQuery):
 @router.callback_query(F.data == "treasury:stats")
 async def treasury_stats(callback: CallbackQuery):
     await callback.answer()
-    if not await has_permission(callback.from_user.id, "can_manage_finance"):
-        await callback.message.answer("❌ Нет прав.")
+    if not await _can_view_finance(callback.from_user.id):
+        await callback.message.answer("❌ Нет прав для просмотра казны.")
         return
     stats = await get_treasury_stats()
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -2473,10 +2507,23 @@ async def finance_amount(message: Message, state: FSMContext):
 
 # ============ РОЛИ ============
 
+async def _delegable_roles(admin_id: int) -> list:
+    """Роли, которые admin_id может назначить/снять помимо полного доступа."""
+    out = []
+    for role, perm in DELEGABLE_ROLES.items():
+        if await has_permission(admin_id, perm):
+            out.append(role)
+    return out
+
+
 @router.callback_query(F.data == "admin:roles")
 async def admin_roles(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    if not await has_permission(callback.from_user.id, "can_manage_admins"):
+    # Полный доступ — только Хранитель. Глава МВД видит панель, но внутри ему
+    # доступна единственная роль — вице-доминус (его помощник).
+    full = await has_permission(callback.from_user.id, "can_manage_admins")
+    deleg = await _delegable_roles(callback.from_user.id)
+    if not full and not deleg:
         await callback.message.answer("❌ Нет прав для управления ролями.")
         return
     await state.set_state(AdminRoles.target)
@@ -2515,22 +2562,34 @@ async def roles_action(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminRoles.role)
     rows = []
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from keyboards.keyboards import back_to_main
+    full = await has_permission(callback.from_user.id, "can_manage_admins")
+    deleg = await _delegable_roles(callback.from_user.id)
     if action == "add":
-        # Выдача: весь список, кроме super_admin (выдаётся только командой — защита).
-        for role_name in ROLES:
+        # Выдача: полный доступ — весь список, кроме super_admin (выдаётся только
+        # командой — защита). Глава МВД видит лишь те роли, которые ему делегированы.
+        source = ROLES.keys() if full else deleg
+        for role_name in source:
             if role_name == "super_admin":
                 continue
             rows.append([InlineKeyboardButton(text=role_label(role_name), callback_data=f"role:{role_name}")])
+        if not rows:
+            await state.clear()
+            await callback.message.edit_text(
+                "Нет ролей, которые тебе доступны для выдачи.",
+                reply_markup=back_to_main()
+            )
+            return
         prompt = "Выбери роль для выдачи:"
     else:
         # Снятие: только роли, выданные этому игроку (не весь список).
         user_roles = await get_user_role(data['target_id'])
+        allowed = set(ROLES.keys()) if full else set(deleg)
         for role_name in ROLES:
-            if role_name in user_roles:
+            if role_name in user_roles and role_name in allowed:
                 rows.append([InlineKeyboardButton(text=role_label(role_name), callback_data=f"role:{role_name}")])
         if not rows:
             await state.clear()
-            from keyboards.keyboards import back_to_main
             await callback.message.edit_text(
                 "У этого игрока нет ролей для снятия.",
                 reply_markup=back_to_main()
@@ -2684,24 +2743,36 @@ async def admin_news_chat(callback: CallbackQuery):
 @router.callback_query(F.data == "admin:statuses")
 async def admin_statuses(callback: CallbackQuery):
     await callback.answer()
-    if not (await has_permission(callback.from_user.id, "can_manage_statuses")
-            or await has_permission(callback.from_user.id, "can_grant_statuses")):
+    can_manage = await has_permission(callback.from_user.id, "can_manage_statuses")
+    can_grant = await has_permission(callback.from_user.id, "can_grant_statuses")
+    can_citizen = await has_permission(callback.from_user.id, "can_grant_citizen_status")
+    if not (can_manage or can_grant or can_citizen):
         await callback.message.answer("❌ Нет прав для управления статусами.")
         return
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     rows = []
-    if await has_permission(callback.from_user.id, "can_manage_statuses"):
+    if can_manage:
         rows.append([InlineKeyboardButton(text="➕ Создать статус", callback_data="st:create")])
         rows.append([InlineKeyboardButton(text="❌ Удалить статус", callback_data="st:delete")])
-    if await has_permission(callback.from_user.id, "can_grant_statuses") or \
-       await has_permission(callback.from_user.id, "can_manage_statuses"):
+    if can_manage or can_grant:
         rows.append([InlineKeyboardButton(text="🎁 Выдать статус игроку", callback_data="st:grant")])
         rows.append([InlineKeyboardButton(text="🚫 Снять статус у игрока", callback_data="st:revoke")])
+    elif can_citizen:
+        # Глава МВД принимает в гражданство и снимает гражданство — тот же вход,
+        # но дальше ему показывается только статус-ворота («Рекрут»).
+        rows.append([InlineKeyboardButton(text="🎫 Принять в гражданство", callback_data="st:grant")])
+        rows.append([InlineKeyboardButton(text="🚫 Снять гражданство", callback_data="st:revoke")])
     rows.append([InlineKeyboardButton(text="📋 Список статусов", callback_data="st:list")])
     rows.append([InlineKeyboardButton(text="🔙 В меню", callback_data="admin:menu")])
+    title = "🎖️ УПРАВЛЕНИЕ СТАТУСАМИ\n\nВыбери действие:"
+    if can_citizen and not can_manage and not can_grant:
+        title = ("🎖️ ПРИЁМ В ГРАЖДАНСТВО\n\n"
+                 "Ты можешь выдать и снять статус «Рекрут» — он открывает "
+                 "гражданство Нордхайма. Остальные статусы выдаёт владелец.\n\n"
+                 "Выбери действие:")
     await callback.message.edit_text(
-        "🎖️ УПРАВЛЕНИЕ СТАТУСАМИ\n\nВыбери действие:",
+        title,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
 
@@ -2876,11 +2947,21 @@ def _status_revoke_markup(have):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def _send_status_picker(chat, target):
-    """Экран выдачи статуса: сначала текущий статус пилота, затем выбор статуса."""
+async def _send_status_picker(chat, target, actor_id: int):
+    """Экран выдачи статуса: сначала текущий статус пилота, затем выбор статуса.
+
+    actor_id — кто нажал кнопку (у chat.from_user брать нельзя: у сообщения с
+    кнопкой from_user — это автор сообщения, а не нажавший).
+    """
     statuses = await get_all_statuses()
     if not statuses:
         await chat.answer("❌ Сначала создай хотя бы один статус.")
+        return False
+    # Актёр видит только те статусы, которые ему разрешено выдать. Глава МВД
+    # тут видит ровно «Рекрут» — ворота в гражданство.
+    statuses = [s for s in statuses if await can_grant_status(actor_id, s)]
+    if not statuses:
+        await chat.answer("❌ Нет статусов, которые тебе доступны для выдачи.")
         return False
     have = await get_user_statuses(target['user_id'])
     who = (target['first_name'] if 'first_name' in target.keys() else '') or str(target['user_id'])
@@ -2908,6 +2989,9 @@ async def _send_status_picker(chat, target):
 @router.callback_query(F.data == "st:grant")
 async def status_grant_target(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    if not await can_view_status_panel(callback.from_user.id):
+        await callback.message.answer("❌ Нет прав для выдачи статусов.")
+        return
     await state.set_state(AdminStatuses.target)
     markup = await pilot_picker_markup("status_pick", mark_tourists=True)
     await callback.message.answer(
@@ -2919,6 +3003,10 @@ async def status_grant_target(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminStatuses.target)
 async def status_grant_target_msg(message: Message, state: FSMContext):
+    if not await can_view_status_panel(message.from_user.id):
+        await message.answer("❌ Нет прав для выдачи статусов.")
+        await state.clear()
+        return
     target = await find_user(message.text)
     if not target:
         await message.answer("❌ Игрок не найден. Попробуй ещё раз:")
@@ -2926,12 +3014,15 @@ async def status_grant_target_msg(message: Message, state: FSMContext):
     await state.update_data(target_id=target['user_id'],
                             target_name=target['first_name'] if 'first_name' in target.keys() else '')
     await state.set_state(AdminStatuses.status_pick)
-    await _send_status_picker(message, target)
+    await _send_status_picker(message, target, message.from_user.id)
 
 
 @router.callback_query(F.data.startswith("st_rev:"))
 async def status_revoke_pick(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    if not await can_view_status_panel(callback.from_user.id):
+        await callback.message.answer("❌ Нет прав для снятия статусов.")
+        return
     status_id = int(callback.data.split(":")[1])
     data = await state.get_data()
     target_id = data.get('target_id')
@@ -2939,6 +3030,10 @@ async def status_revoke_pick(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ Сессия устарела, начни заново.")
         return
     s = await get_status(status_id)
+    if not await can_grant_status(callback.from_user.id, s):
+        await callback.message.answer(
+            "❌ Этот статус тебе выдавать/снимать нельзя.")
+        return
     await revoke_status(target_id, status_id)
     await log_action(callback.from_user.id, 'revoke_status', target_id, f"status={s['name']}" if s else f"status_id={status_id}")
     have = await get_user_statuses(target_id)
@@ -2952,6 +3047,9 @@ async def status_revoke_pick(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "st:revoke")
 async def status_revoke_target(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    if not await can_view_status_panel(callback.from_user.id):
+        await callback.message.answer("❌ Нет прав для снятия статусов.")
+        return
     data = await state.get_data()
     target_id = data.get('target_id')
     if not target_id:
@@ -2966,9 +3064,12 @@ async def status_revoke_target(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ Пилот не найден.")
         return
     have = await get_user_statuses(target_id)
+    # Глава МВД снимает только гражданство (статус-ворота), не любой статус.
+    have = [s for s in have if await can_grant_status(callback.from_user.id, s)]
     if not have:
         who = (target['first_name'] if 'first_name' in target.keys() else '') or str(target_id)
-        await callback.message.answer(f"У {who} нет статусов для снятия.")
+        await callback.message.answer(
+            f"У {who} нет статусов, которые тебе доступно снять.")
         return
     who = (target['first_name'] if 'first_name' in target.keys() else '') or str(target_id)
     await callback.message.answer(
@@ -2982,6 +3083,9 @@ async def status_revoke_target(callback: CallbackQuery, state: FSMContext):
 async def status_grant_pick(callback: CallbackQuery, state: FSMContext):
     """Выдача статуса с одного нажатия: кнопка статуса → статус выдан."""
     await callback.answer()
+    if not await can_view_status_panel(callback.from_user.id):
+        await callback.message.answer("❌ Нет прав для выдачи статусов.")
+        return
     status_id = int(callback.data.split(":")[1])
     data = await state.get_data()
     target_id = data.get('target_id')
@@ -2989,6 +3093,10 @@ async def status_grant_pick(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ Сессия устарела, начни заново.")
         return
     s = await get_status(status_id)
+    if not await can_grant_status(callback.from_user.id, s):
+        await callback.message.answer(
+            "❌ Этот статус тебе выдавать нельзя. Обратись к владельцу.")
+        return
     name = data.get('target_name') or str(target_id)
     ok, msg = await grant_status(target_id, status_id, callback.from_user.id)
     if ok:
@@ -3011,6 +3119,9 @@ async def status_grant_pick(callback: CallbackQuery, state: FSMContext):
 async def status_grant_more(callback: CallbackQuery, state: FSMContext):
     """Вернуться к списку статусов того же пилота (выдать несколько подряд)."""
     await callback.answer()
+    if not await can_view_status_panel(callback.from_user.id):
+        await callback.message.answer("❌ Нет прав для выдачи статусов.")
+        return
     data = await state.get_data()
     target_id = data.get('target_id')
     target = await get_user(target_id) if target_id else None
@@ -3018,7 +3129,7 @@ async def status_grant_more(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ Сессия устарела, начни заново.")
         return
     await state.set_state(AdminStatuses.status_pick)
-    await _send_status_picker(callback.message, target)
+    await _send_status_picker(callback.message, target, callback.from_user.id)
 
 
 # ============ НАГРАДЫ ============

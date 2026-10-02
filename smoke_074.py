@@ -242,7 +242,7 @@ async def run():
           escape_chance(1.0, dice_roll=3, percent_mult=DUNGEON_ESCAPE_DRUNK_MULT) is False)
 
     # ── 7. «Снять роль»: список только выданных ролей ──
-    from database.db import get_db
+    from database.db import get_db, add_user_role
     from bot.handlers.admin import roles_action
     conn = await get_db()
     U_ROLE = 740100
@@ -253,7 +253,14 @@ async def run():
             (U_ROLE, r, 1))
     await conn.commit()
 
-    cb_rm = FakeCallback(U_ROLE, data="rolop:remove")
+    # Актор — Хранитель: панель ролей доступна только ему (и главе МВД, но не
+    # для прочих ролей). Раньше roles_action не проверял права вовсе и рисовал
+    # весь список любому, кто дотянулся до callback.
+    ACTOR = 740001
+    await add_user(ACTOR, "actor", "Актор", "")
+    await add_user_role(ACTOR, "super_admin")
+
+    cb_rm = FakeCallback(ACTOR, data="rolop:remove")
     st_rm = FakeState(data={"target_id": U_ROLE, "target_name": "Роля"})
     await roles_action(cb_rm, st_rm)
     check("снять роль: текст «для снятия»", "снятия" in sent_text(cb_rm.message))
@@ -265,7 +272,7 @@ async def run():
     check("снять роль: только выданные роли",
           cb_rm_cbs == sorted([f"role:{r}" for r in ("finance_helper", "wing_commander")]))
 
-    cb_add = FakeCallback(U_ROLE, data="rolop:add")
+    cb_add = FakeCallback(ACTOR, data="rolop:add")
     st_add = FakeState(data={"target_id": U_ROLE, "target_name": "Роля"})
     await roles_action(cb_add, st_add)
     m_add = None
@@ -277,6 +284,21 @@ async def run():
     check("выдать роль: нет super_admin, есть остальные",
           "role:super_admin" not in cb_add_cbs
           and cb_add_cbs == {f"role:{r}" for r in set(ROLES) - {"super_admin"}})
+
+    # Глава МВД (moderator) в списке выдачи видит только вице-доминуса.
+    CHIEF = 740002
+    await add_user(CHIEF, "chief", "ГлаваМВД", "")
+    await add_user_role(CHIEF, "moderator")
+    cb_chief = FakeCallback(CHIEF, data="rolop:add")
+    st_chief = FakeState(data={"target_id": U_ROLE, "target_name": "Роля"})
+    await roles_action(cb_chief, st_chief)
+    m_chief = None
+    for kind, a, kw in cb_chief.message.sent:
+        if kind == "edit_text":
+            m_chief = kw.get('reply_markup')
+    cbs_chief = set(markup_callbacks(m_chief)) if m_chief else set()
+    check("глава МВД видит только роль вице-доминуса",
+          cbs_chief == {"role:mvd_helper"})
 
     # без ролей → «нет ролей для снятия»
     await conn.execute("DELETE FROM user_roles WHERE telegram_id = ?", (U_ROLE,))
