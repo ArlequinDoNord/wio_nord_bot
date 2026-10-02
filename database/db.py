@@ -939,8 +939,20 @@ async def init_db():
     await _ensure_column(conn, "dungeon_enemies", "poison_dmg", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "dungeon_enemies", "description", "TEXT")
     await _ensure_column(conn, "dungeon_enemies", "dodge", "INTEGER DEFAULT 0")
-    # admin_tuned=1 — врага правил админ через бота: стартовая синхронизация
-    # (ensure_dungeon_enemy_drops / seed_kvp) больше не перезаписывает его характеристики.
+    await _ensure_column(conn, "dungeon_enemies", "damage_min", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "dungeon_enemies", "damage_max", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "dungeon_enemies", "armor", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "dungeon_enemies", "dodge_chance", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "dungeon_enemies", "crit_chance", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "dungeon_enemies", "crit_mult", "REAL DEFAULT 1.5")
+    await _ensure_column(conn, "dungeon_enemies", "abilities", "TEXT DEFAULT '[]'")
+    await _ensure_column(conn, "forest_enemies", "armor", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "forest_enemies", "dodge_chance", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "forest_enemies", "crit_chance", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "forest_enemies", "crit_mult", "REAL DEFAULT 1.5")
+    await _ensure_column(conn, "forest_enemies", "abilities", "TEXT DEFAULT '[]'")
+    # admin_tuned=1 в обычных врагах dungeon не должен мешать: миграции по дропам
+    # (ensure_dungeon_enemy_drops / seed_kvp) запускаются только по admin_tuned>0
     await _ensure_column(conn, "dungeon_enemies", "admin_tuned", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "cure_poison", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "locations", "preview_photo", "TEXT")
