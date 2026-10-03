@@ -501,7 +501,10 @@ async def profile_callsign(callback: CallbackQuery):
             "Введи желаемый позывной:"
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="profile")]])
-        await callback.message.edit_text(text, reply_markup=kb)
+        try:
+            await callback.message.edit_text(text, reply_markup=kb)
+        except Exception:
+            await callback.message.answer(text, reply_markup=kb)
         await ProfileStates.waiting_callsign.set()
         await callback.answer()
         return
@@ -513,7 +516,10 @@ async def profile_callsign(callback: CallbackQuery):
             "Введи новый позывной:"
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="profile")]])
-        await callback.message.edit_text(text, reply_markup=kb)
+        try:
+            await callback.message.edit_text(text, reply_markup=kb)
+        except Exception:
+            await callback.message.answer(text, reply_markup=kb)
         await ProfileStates.waiting_callsign.set()
         await callback.answer()
         return
@@ -530,7 +536,10 @@ async def profile_callsign(callback: CallbackQuery):
             [InlineKeyboardButton(text=f"Оплатить {price} НМ", callback_data="profile:callsign_buy")],
             [InlineKeyboardButton(text="Отмена", callback_data="profile")],
         ])
-        await callback.message.edit_text(text, reply_markup=kb)
+        try:
+            await callback.message.edit_text(text, reply_markup=kb)
+        except Exception:
+            await callback.message.answer(text, reply_markup=kb)
         await callback.answer()
         return
 
@@ -543,7 +552,10 @@ async def profile_callsign(callback: CallbackQuery):
         [InlineKeyboardButton(text="Оплатить 500 НМ", callback_data="profile:callsign_buy")],
         [InlineKeyboardButton(text="Отмена", callback_data="profile")],
     ])
-    await callback.message.edit_text(text, reply_markup=kb)
+    try:
+        await callback.message.edit_text(text, reply_markup=kb)
+    except Exception:
+        await callback.message.answer(text, reply_markup=kb)
     await callback.answer()
 
 
