@@ -8428,7 +8428,7 @@ async def _source_enemy_send(target, src: str, loc: str, enemy_id: int, edit: bo
         f"❤️ HP: {enemy['hp']}\n"
         f"🗡 Урон: {enemy['dmg_min']}–{enemy['dmg_max']}\n"
         f"💨 Уклонение: {enemy['dodge']}%\n"
-        f"💥 Твой урон: {enemy['player_dmg_min']}–{enemy['player_dmg_max']}\n"
+
         f"🎲 Шанс встречи: {enemy['chance']}% (за попытку)\n"
         f"🧿 Гарантия: раз в {enemy['pity_target'] or '—'} попыток\n"
         f"⚡ Потеря ОД при поражении: {enemy['loss_ap']}\n"
@@ -8442,7 +8442,7 @@ async def _source_enemy_send(target, src: str, loc: str, enemy_id: int, edit: bo
     rows = [
         [_B(text="❤️ HP", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:hp"),
          _B(text="🗡 Урон", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:dmg_min")],
-        [_B(text="💥 Твой урон", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:player_dmg_min"),
+        [_B(text="🗡 Урон макс", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:dmg_max"),
          _B(text="💨 Уклонение", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:dodge")],
         [_B(text="🎲 Шанс встречи", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:chance"),
          _B(text="🧿 Гарантия", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:pity_target")],

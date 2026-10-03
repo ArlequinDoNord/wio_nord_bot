@@ -78,9 +78,9 @@ def profile_keyboard(notify_enabled: bool = True, profile_public: bool = True, c
         [InlineKeyboardButton(text="Выбрать статус", callback_data="profile:choose_status")],
         [InlineKeyboardButton(text="📖 О себе", callback_data="profile:edit_about")],
     ]
-    # Позывной: бесплатно 1 раз, потом смена 500 НМ
-    callsign_text = "📡 Сменить позывной" if has_callsign else "📡 Установить позывной"
-    rows.append([InlineKeyboardButton(text=callsign_text, callback_data="profile:callsign")])
+    # Позывной: временно убран по проблеме совместимости
+    # callsign_text = "📡 Сменить позывной" if has_callsign else "📡 Установить позывной"
+    # rows.append([InlineKeyboardButton(text=callsign_text, callback_data="profile:callsign")])
     rows.append([InlineKeyboardButton(text="🎖️ Награды", callback_data="profile:awards")])
     rows.append([InlineKeyboardButton(text="Карточка пилота", callback_data="profile:pilot_card")])
     rows.append([InlineKeyboardButton(
