@@ -1183,6 +1183,9 @@ async def init_db():
     await _ensure_column(conn, "items", "weapon_effect_dmg", "INTEGER DEFAULT 0")
     # v0.15.0: авиакрыло пилота ('1'/'2'/'3' → метка в utils/wings.py; NULL — нет крыла).
     await _ensure_column(conn, "users", "wing", "TEXT")
+    # v0.21.0: users.legioner — «легионерный» флаг. НЕ в иерархии статусов:
+    # кеп доступа и запрет голосования считаются по нему, а не по sort_order.
+    await _ensure_column(conn, "users", "legioner", "INTEGER DEFAULT 0")
     # v0.13.3: рыба (предметы категории fishing) выставляется на рынок по
     # умолчанию. Разовое обновление для уже существующих предметов.
     cur = await conn.execute(
@@ -4931,6 +4934,15 @@ async def ensure_base_statuses():
         ("Мастер-пилот", "master_pilot", "Мастер лётного дела и подземелий.", 6),
         ("Ас", "ace", "Ас ВВС Нордхайма.", 9),
         ("Хранитель", "keeper", "Доверенное лицо командования. Полный доступ.", 100),
+        # Легионер (v0.21.0) — НЕ ступень карьеры, а отдельная роль: сортировка
+        # в иерархии его НЕ поднимает, потому что настоящий кеп живёт во флаге
+        # users.legioner (см. effective_access_top). sort_order = 5 (как у
+        # Ветерана) нужен лишь затем, чтобы витрина и MAX(sort_order) вели себя
+        # разумно, пока флаг выключен. В canonical dict его нет намеренно:
+        # принудительная канонизация не должна была бы его перетирать.
+        ("🦅 Легионер", "legioner", "Пилот с гражданством чужого государства. "
+                                    "Обычная служба, но доступы не выше Ветерана "
+                                    "и права голоса нет.", 5),
     ]
     conn = await get_db()
     for name, tag, desc, level in base:
@@ -5067,6 +5079,65 @@ async def set_selected_status(user_id: int, status_id: int):
     return True
 
 
+# Потолок доступа для легионера: «не выше Ветерана». Взят из config, а не
+# зашит числом, чтобы каноническая иерархия осталась единственным источником
+# истины (veteran = 5).
+LEGIONER_ACCESS_TAG = "legioner"
+
+
+def _legioner_access_sort_order() -> int:
+    """sort_order, до которого ограничены доступы легионера."""
+    from config import LEGIONER_ACCESS_CAP_ORDER
+
+    return LEGIONER_ACCESS_CAP_ORDER
+
+
+async def is_legioner(user_id: int) -> bool:
+    """Помечен ли игрок как легионер (по флагу, а не по sort_order статуса)."""
+    conn = await get_db()
+    row = await (await conn.execute(
+        "SELECT legioner FROM users WHERE user_id = ?", (user_id,))).fetchone()
+    return bool(row and row['legioner'])
+
+
+async def set_legioner(user_id: int, value: bool) -> bool:
+    """Поставить/снять флаг легионера. True — включить, False — снять.
+
+    Кепит права доступа и голосование. Строка статуса «🦅 Легионер» в
+    user_statuses выдаётся отдельно (вариант А: кнопка в админ-карточке
+    выдаёт и статус, и флаг), потому что именно статус игрок выбирает себе
+    сам в профиле как отображаемый.
+    """
+    conn = await get_db()
+    cur = await conn.execute(
+        "UPDATE users SET legioner = ? WHERE user_id = ?",
+        (1 if value else 0, user_id))
+    await conn.commit()
+    return cur.rowcount > 0
+
+
+async def effective_access_top(user_id: int):
+    """Верхняя ступень доступа игрока С УЧЁТОМ кепа легионера.
+
+    Единая точка правды для всех гейтов: витрины магазина, покупки, локаций,
+    КВП, профиля, жилья и НИИ. Легионеру доступы не выше Ветерана, поэтому
+    возвращается константа, а не его реальный MAX(sort_order).
+
+    None — у игрока вообще нет статусов.
+    """
+    conn = await get_db()
+    row = await (await conn.execute("SELECT legioner FROM users WHERE user_id = ?",
+                                    (user_id,))).fetchone()
+    if row and row['legioner']:
+        return _legioner_access_sort_order()
+    row = await (await conn.execute("""
+        SELECT MAX(s.sort_order) as top FROM user_statuses us
+        JOIN statuses s ON us.status_id = s.id
+        WHERE us.user_id = ?
+    """, (user_id,))).fetchone()
+    return row['top'] if row else None
+
+
 # Доступ по рангу: открыт, если у игрока есть статус не слабее требуемого (sort_order >=)
 async def user_has_status_tag(user_id: int, tag: str) -> bool:
     if not tag:
@@ -5078,13 +5149,8 @@ async def user_has_status_tag(user_id: int, tag: str) -> bool:
     req = await cursor.fetchone()
     if not req:
         return False
-    # самый сильный статус игрока
-    cursor = await conn.execute("""
-        SELECT MAX(s.sort_order) as top FROM user_statuses us
-        JOIN statuses s ON us.status_id = s.id
-        WHERE us.user_id = ?
-    """, (user_id,))
-    top = (await cursor.fetchone())['top']
+    # самый сильный статус игрока, с кепом легионера
+    top = await effective_access_top(user_id)
     if top is None:
         return False
     return top >= req['sort_order']
@@ -5097,19 +5163,17 @@ async def user_status_visibility_top(user_id: int):
     и одной следующей ступени иерархии (требуется статус не далее следующего),
     а предметы на две ступени выше и дальше — скрываются.
 
+    Считается от effective_access_top(), поэтому легионер видит ровно витрину
+    Ветерана: кеп ставится ДО расчёта «+1 ступень», иначе он сдвинул бы границу.
+
     Возвращает sort_order этого статуса-«витрины»; None — если у игрока нет
     статусов (видны только товары без требования).
     """
-    conn = await get_db()
-    cursor = await conn.execute("""
-        SELECT MAX(s.sort_order) as top FROM user_statuses us
-        JOIN statuses s ON us.status_id = s.id
-        WHERE us.user_id = ?
-    """, (user_id,))
-    top = (await cursor.fetchone())['top']
+    top = await effective_access_top(user_id)
     if top is None:
         return None
-    cursor = await conn.execute(
+    cursor = await get_db()
+    cursor = await cursor.execute(
         "SELECT MIN(sort_order) AS nxt FROM statuses WHERE sort_order > ?", (top,))
     nxt = (await cursor.fetchone())['nxt']
     if nxt is None:

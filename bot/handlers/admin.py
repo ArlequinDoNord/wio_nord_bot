@@ -19,6 +19,7 @@ from database.db import (
     report_day_label_for, created_at_msk,
     create_status, delete_status, get_all_statuses, get_status,
     grant_status, revoke_status, get_user_statuses, citizen_user_ids,
+    get_status_by_tag, is_legioner, set_legioner, LEGIONER_ACCESS_TAG,
     get_users_for_rank_promotion, promote_user_rank, get_user,
     recompute_region_stats, get_region_stats,
     get_daily_spent, add_daily_spent,
@@ -3038,7 +3039,7 @@ def _status_current_line(have) -> str:
     return line
 
 
-def _status_grant_markup(statuses, have):
+def _status_grant_markup(statuses, have, legioner: bool = False):
     """Клавиатура выдачи: ⭐ текущий, ✅ уже есть, ➕ выдать. Порядок — по иерархии."""
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     top = _status_top(have)
@@ -3052,6 +3053,14 @@ def _status_grant_markup(statuses, have):
         else:
             text = f"➕ {s['name']}"
         rows.append([InlineKeyboardButton(text=text, callback_data=f"st_pick:{s['id']}")])
+    # Легионер выдаётся отдельной кнопкой (вариант А), а не через общий список:
+    # он не ступень карьеры, а роль с пониженными правами, и ставится вместе
+    # с флагом users.legioner — иначе кеп и голосование не заработают.
+    if legioner is not None:
+        rows.append([InlineKeyboardButton(
+            text=("🦅 Снять легионерский флаг" if legioner
+                  else "🦅 Сделать легионером"),
+            callback_data="st:legioner")])
     rows.append([InlineKeyboardButton(text="🚫 Снять статус этому пилоту", callback_data="st:revoke")])
     rows.append([InlineKeyboardButton(text="🔙 Выбрать другого пилота", callback_data="st:grant")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -3083,7 +3092,10 @@ async def _send_status_picker(chat, target, actor_id: int):
     # Актёр видит только те статусы, которые ему разрешено выдать. Глава МВД
     # тут видит ровно «Рекрут» — ворота в гражданство.
     statuses = [s for s in statuses if await can_grant_status(actor_id, s)]
-    if not statuses:
+    # Отдельная кнопка Легионера нужна только тем, кто вправе его выдавать.
+    can_legioner = await can_grant_status(
+        actor_id, await get_status_by_tag(LEGIONER_ACCESS_TAG))
+    if not statuses and not can_legioner:
         await chat.answer("❌ Нет статусов, которые тебе доступны для выдачи.")
         return False
     have = await get_user_statuses(target['user_id'])
@@ -3096,17 +3108,77 @@ async def _send_status_picker(chat, target, actor_id: int):
     # ещё не сделан (пункт в PLAN.md), текст должен быть правдой.
     no_cit = target['user_id'] not in await citizen_user_ids()
     warn = ("🎫 Турист: гражданства Нордхайма пока нет.\n"
-            "Гражданство — это статус от «Рекрута» и выше.\n\n") if no_cit else ""
+            "Гражданство — это статус от «Рекрута» и выше.\n\n") if no_cit else ''
+    leg = await is_legioner(target['user_id'])
+    leg_note = ("\n🦅 Пилот — легионер: доступы не выше Ветерана, голосовать нельзя.\n"
+                if leg else "")
     text = (
         "🎖 СТАТУС ПИЛОТА\n\n"
         f"👤 {who}\n"
         f"🆔 {target['user_id']}\n\n"
         f"{warn}"
         f"{_status_current_line(have)}\n\n"
+        f"{leg_note}"
         "Выбери статус для выдачи. Список снизу вверх — от слабого к сильному."
     )
-    await chat.answer(text, reply_markup=_status_grant_markup(statuses, have))
+    await chat.answer(
+        text,
+        reply_markup=_status_grant_markup(
+            statuses, have, legioner=leg if can_legioner else None))
     return True
+
+
+@router.callback_query(F.data == "st:legioner")
+async def status_legioner_toggle(callback: CallbackQuery, state: FSMContext):
+    """Вариант А выдачи Легионера: одна кнопка ставит и снимает флаг.
+
+    Флаг (users.legioner) — это права: кеп доступа «не выше Ветерана» и запрет
+    голосования. Строка статуса «🦅 Легионер» — это отображение: именно она
+    появляется в меню выбора статуса, чтобы игрок сам поставил её себе. Поэтому
+    кнопка делает оба действия разом — иначе получится легионер без прав или
+    статус без кепа.
+    """
+    await callback.answer()
+    if not await can_view_status_panel(callback.from_user.id):
+        await callback.message.answer("❌ Нет прав для выдачи статусов.")
+        return
+    st = await get_status_by_tag(LEGIONER_ACCESS_TAG)
+    if not st:
+        await callback.message.answer("❌ Статус «Легионер» не найден в базе.")
+        return
+    if not await can_grant_status(callback.from_user.id, st):
+        await callback.message.answer("❌ Этот статус тебе выдавать нельзя.")
+        return
+    data = await state.get_data()
+    target_id = data.get('target_id')
+    if not target_id:
+        await callback.message.answer("❌ Сессия устарела, начни заново.")
+        return
+    name = data.get('target_name') or str(target_id)
+    was = await is_legioner(target_id)
+    if was:
+        await set_legioner(target_id, False)
+        await revoke_status(target_id, st['id'])
+        await log_action(callback.from_user.id, 'revoke_legioner', target_id)
+        text = f"🦅 Снят легионерский статус: {name}"
+    else:
+        await set_legioner(target_id, True)
+        granted, why = await grant_status(target_id, st['id'], callback.from_user.id)
+        if not granted:
+            # Флаг уже стоит, но прав на строку статуса нет — честно откатываем,
+            # иначе пилот останется «легионером без статуса», т.е. без кепа.
+            await set_legioner(target_id, False)
+            await callback.message.answer(f"❌ Статус не выдан: {why}")
+            return
+        await log_action(callback.from_user.id, 'grant_legioner', target_id)
+        text = (f"🦅 Пилот — легионер: {name}\n"
+                "Доступы не выше Ветерана, голосовать нельзя.\n"
+                "Статус «🦅 Легионер» игрок выбирает себе сам в профиле.")
+    have = await get_user_statuses(target_id)
+    target = await find_user(str(target_id))
+    await _send_status_picker(callback.message, target or {'user_id': target_id},
+                              callback.from_user.id)
+    await callback.message.answer(f"{text}\n\n{_status_current_line(have)}")
 
 
 @router.callback_query(F.data == "st:grant")

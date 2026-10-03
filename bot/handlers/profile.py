@@ -295,6 +295,13 @@ async def choose_status(callback: CallbackQuery):
 async def select_status_cb(callback: CallbackQuery):
     await callback.answer()
     status_id = int(callback.data.split(":")[1])
+    # status_id приходит из callback_data, то есть от клиента, поэтому сверяем его
+    # с реально выданными: иначе нажатие на устаревшую или подделанную кнопку
+    # молча сбрасывало бы выбор (все is_selected → 0, а выбрать нечего), и игрок
+    # получал «✅ Статус обновлён» вместо правды.
+    if not any(s['id'] == status_id for s in await get_user_statuses(callback.from_user.id)):
+        await callback.message.answer("❌ Этот статус тебе не выдан.")
+        return
     await set_selected_status(callback.from_user.id, status_id)
     await callback.message.answer("✅ Статус обновлён в профиле!")
 
