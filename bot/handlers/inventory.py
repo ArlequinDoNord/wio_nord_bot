@@ -21,6 +21,7 @@ from database.db import (
     item_fits_slot, ARMOR_SLOTS, EQUIPMENT_SLOT_LABELS, EQUIPMENT_LOCKED_SLOTS,
     get_award_bonus, get_player_weapon_damage, get_player_armor,
     get_player_armor_with_bonus, get_player_dodge, get_equipped_weapon,
+    get_player_crit_chance, get_pilot_crit_chance,
     user_is_tourist,
 )
 from utils.helpers import (
@@ -226,6 +227,7 @@ async def _combat_stats(user_id: int) -> dict:
     defense_bonus = award['defense']
     dodge_bonus = award['dodge']
     hp_bonus = award['hp']
+    crit_bonus = int(award.get('crit') or 0)
 
     # Итоговая сила атаки: базовый урон + % наград + штраф состояний.
     total_attack = int(round(attack * (1 + attack_bonus / 100.0) * am)) if attack else 0
@@ -234,6 +236,9 @@ async def _combat_stats(user_id: int) -> dict:
     total_armor = await get_player_armor_with_bonus(user_id)
     # Итоговое уклонение уже включает базу 3% и бонус наград, × множитель состояний.
     total_dodge = await get_player_dodge(user_id, dm)
+    # Критический удар: базовый шанс по званию + снаряжение + награды.
+    total_crit = await get_player_crit_chance(user_id)
+    base_crit = await get_pilot_crit_chance(user_id)
 
     weapon_effect = None
     if weapon:
@@ -307,6 +312,23 @@ async def _combat_summary_lines(user_id: int) -> list:
     if def_src:
         def_line += f" ({', '.join(def_src)})"
     lines.append(def_line)
+
+    # Показываем шаг с дробными процентами: 1.5% у пилота 2 класса — это
+    # реальное значение, и «1%» смотрелось бы как ошибка округления.
+    def _fmt_chance(value):
+        return f"{value:.1f}".rstrip("0").rstrip(".")
+
+    crit_src = []
+    if base_crit:
+        crit_src.append(f"звание {_fmt_chance(base_crit)}%")
+    if crit_bonus:
+        crit_src.append(f"награды +{crit_bonus}%")
+    if _fmt_chance(total_crit) != _fmt_chance(base_crit) and not crit_bonus:
+        crit_src.append("снаряжение")
+    crit_line = f"💥 Крит: {_fmt_chance(total_crit)}%"
+    if crit_src:
+        crit_line += f" ({', '.join(crit_src)})"
+    lines.append(crit_line)
 
     dodge_src = []
     if s["dodge_bonus"]:

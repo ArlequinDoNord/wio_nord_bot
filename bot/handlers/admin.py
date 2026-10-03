@@ -45,7 +45,7 @@ from database.db import (
     remove_source_enemy_drop, add_source_enemy, get_fishing_spots,
     get_item_by_name,
     create_award, get_all_awards, get_award, delete_award, grant_award,
-    update_award, get_user_awards, revoke_award,
+    update_award, get_user_awards, revoke_award, MAX_CRIT_CHANCE,
     get_water_fish_rows, get_water_fish_row, update_water_fish_field,
     set_water_fish_sell_price, add_water_fish, remove_water_fish,
     create_water_fish,
@@ -2009,6 +2009,8 @@ EDIT_ITEM_FIELD_LABELS = {
     "heal": "❤️ Лечение",
     "regen": "♻ Регенерация % (от лечения)",
     "armor": "🛡️ Броня",
+    "crit_chance": "💥 Шанс крита, %",
+    "crit_mult": "💥 Множитель крита (0 = не менять базовый ×1.4)",
     "ap_cost": "⚡ AP за использование",
     "plant_name": "🌳 Растение в кадке (семечко)",
     "loot_only": "🎯 Только лут (вкл/выкл)",
@@ -3331,7 +3333,8 @@ async def _award_ask_bonus(message, state, idx: int):
             "name": data["name"], "description": data.get("desc"), "emoji": data["emoji"],
             "id": 0, "image": None,
             **{"bonus_attack": 0, "bonus_defense": 0, "bonus_dodge": 0, "bonus_fishing": 0,
-               "bonus_hp": 0, "bonus_shop_discount": 0, "bonus_report_tax": 0,
+               "bonus_hp": 0, "bonus_crit": 0, "bonus_shop_discount": 0,
+               "bonus_report_tax": 0,
                "reward_nm": 0, "monthly_nm": 0},
             **data.get("bonuses", {}),
         }
@@ -3478,6 +3481,7 @@ AWARD_EDIT_FIELDS = {
     "bonus_dodge": "💨 Уклонение, %",
     "bonus_fishing": "🎣 Рыбалка, %",
     "bonus_hp": "❤️ HP сверх 100",
+    "bonus_crit": "💥 Крит, %",
     "bonus_shop_discount": "💰 Скидка в магазине, %",
     "bonus_report_tax": "🧾 Снижение налога с отчёта, п.п.",
     "reward_nm": "🎁 Разовая премия, НМ (из казны)",
@@ -3492,6 +3496,11 @@ AWARD_EDIT_PROMPTS = {
     "bonus_dodge": "Введи бонус уклонения в % (целое число):",
     "bonus_fishing": "Введи бонус шанса рыбалки в % (целое число):",
     "bonus_hp": "Введи бонус HP сверх базовых 100 (целое число):",
+    "bonus_crit": (
+        "💥 Введи бонус к шансу КРИТИЧЕСКОГО УДАРА в % (целое число, 0 — без бонуса).\n"
+        "Складывается с базовым шансом по званию и с бонусом от снаряжения.\n"
+        f"Суммарный шанс ограничен {MAX_CRIT_CHANCE}% — выше делать бессмысленно.\n"
+        "Множитель урона при крите у пилота ×1.4 и меняется только снаряжением:"),
     "bonus_shop_discount": (
         "Введи скидку в магазине в % (целое число, 0 — без скидки). "
         f"Действует на все товары, включая оружие и Спец-отдел. Потолок — {AWARD_MAX_SHOP_DISCOUNT}% "
@@ -3543,6 +3552,7 @@ AWARD_CREATE_BONUS_STEPS = [
     ("bonus_dodge", "💨 Бонус уклонения, %"),
     ("bonus_fishing", "🎣 Бонус рыбалки, %"),
     ("bonus_hp", "❤️ Бонус HP (сверх 100)"),
+    ("bonus_crit", "💥 Бонус крита, % (шанс критического удара в бою)"),
     ("bonus_shop_discount", "💰 Скидка в магазине, % (потолок 40% с учётом всех наград)"),
     ("bonus_report_tax", "🧾 Снижение налога с отчёта, п.п. (например −5 → 10% при ставке 15%)"),
     ("reward_nm", "💵 Разовая премия, НМ (выплачивается из казны при выдаче)"),
@@ -3559,6 +3569,7 @@ def _award_summary_lines(award) -> list:
         f"💨 Уклонение: {award.get('bonus_dodge') or 0}",
         f"🎣 Рыбалка: {award.get('bonus_fishing') or 0}",
         f"❤️ HP: {award.get('bonus_hp') or 0}",
+        f"💥 Крит: {award.get('bonus_crit') or 0}",
         f"💰 Скидка в магазине: {award.get('bonus_shop_discount') or 0}%",
         f"🧾 Снижение налога с отчёта: −{award.get('bonus_report_tax') or 0} п.п.",
         "Деньги (из казны):",

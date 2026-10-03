@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config
 from config import (DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MINUTES,
                     DUNGEON_RUN_STALE_SEC, FOREST_BOAR_SEED, FOREST_BOAR_HP, MOLLUSK_SEED,
-                    MOLLUSK_ITEM_SEEDS, MOLLUSK_ENEMY_DROPS)
+                    MOLLUSK_ITEM_SEEDS, MOLLUSK_ENEMY_DROPS, PILOT_CRIT_MULT)
 from config import get_effective_rank
 
 logger = logging.getLogger(__name__)
@@ -833,6 +833,10 @@ async def init_db():
     await _ensure_column(conn, "users", "last_salary_date", "TIMESTAMP")
     await _ensure_column(conn, "users", "salary_debt", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "armor", "INTEGER DEFAULT 0")
+    # Критический удар пилота: шанс в процентах и множитель урона.
+    # Суммируются по всем надетым предметам — см. get_player_crit_chance.
+    await _ensure_column(conn, "items", "crit_chance", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "items", "crit_mult", "REAL DEFAULT 0")
     # Слот тела для предметов снаряжения: 'head' | 'body' | 'hands' | 'legs'
     await _ensure_column(conn, "items", "equip_slot", "TEXT")
     await conn.execute("UPDATE items SET equip_slot = 'head' WHERE name = 'Лётный шлем' AND equip_slot IS NULL")
@@ -987,6 +991,9 @@ async def init_db():
     await _ensure_column(conn, "awards", "bonus_dodge", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "awards", "bonus_fishing", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "awards", "bonus_hp", "INTEGER DEFAULT 0")
+    # v0.20.0: бонус к шансу критического удара (в процентах). Складывается
+    # с базовым шансом по званию и с crit_chance снаряжения.
+    await _ensure_column(conn, "awards", "bonus_crit", "INTEGER DEFAULT 0")
     # v0.18.2: экономические бонусы медалей — скидка в магазине (в %) и
     # снижение налога с отчёта (в процентных пунктах от ставки).
     await _ensure_column(conn, "awards", "bonus_shop_discount", "INTEGER DEFAULT 0")
@@ -1604,6 +1611,7 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
                    photo_file_id: str = None, ap_cost: int = 0,
                    production_time_hours: int = 0, produced_by: int = None,
                    damage: int = 0, heal: int = 0, armor: int = 0,
+                   crit_chance: float = 0, crit_mult: float = 0,
                    drink_effect: str = None, equip_slot: str = None,
                    market_ok: int = None, plant_name: str = None,
                    weapon_effect: str = None,
@@ -1621,11 +1629,13 @@ async def add_item(name: str, description: str, price: int, sell_price: int,
         market_ok = 1 if category == "fishing" else 0
     cursor = await conn.execute(
         """INSERT INTO items (name, description, photo_file_id, price, sell_price,
-           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name,
+           rarity, category, stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, crit_chance, crit_mult, drink_effect, equip_slot, market_ok, plant_name,
            weapon_effect, weapon_effect_chance, weapon_effect_dmg, housing_type, housing_slots, regen, required_status, loot_only)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (name, description, photo_file_id, price, sell_price, rarity, category,
-         stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor, drink_effect, equip_slot, market_ok, plant_name,
+         stock, added_by, ap_cost, production_time_hours, produced_by, damage, heal, armor,
+         crit_chance, crit_mult,
+         drink_effect, equip_slot, market_ok, plant_name,
          weapon_effect or None, weapon_effect_chance, weapon_effect_dmg,
          housing_type, housing_slots, regen, required_status, loot_only)
     )
@@ -4609,6 +4619,47 @@ async def get_pilot_base_damage(user_id: int) -> tuple:
     return tuple(PILOT_NO_WEAPON_DMG)
 
 
+async def get_pilot_crit_chance(user_id: int) -> float:
+    """Базовый шанс крита пилота по званию, в %.
+
+    Считается ровно по той же логике и по той же шкале, что
+    get_pilot_base_damage, только берёт RANK_CRIT_CHANCE. Это сделано
+    специально одной функцией, а не «крил = урон / константа», чтобы
+    пороги звания всегда совпадали: игрок, которому уже положен асий урон,
+    автоматически получает и асий крит, а не что-то промежуточное.
+    """
+    from config import (PILOT_NO_WEAPON_DMG, RANKS, RANK_CRIT_CHANCE,
+                        RANK_STATUS_TAGS)
+
+    tag_to_req = {}
+    for rname, req in RANKS:
+        tag = RANK_STATUS_TAGS.get(rname)
+        if tag:
+            tag_to_req[tag] = max(tag_to_req.get(tag, 0), req)
+    tag_to_req["recruit"] = max(tag_to_req.get("recruit", 0), RANKS[0][1])
+
+    user = await get_user(user_id)
+    if not user:
+        return float(RANK_CRIT_CHANCE.get("recruit", 0.0))
+    rank = get_effective_rank(user['troops'] or 0, user['promoted_rank'])
+    rank_req = RANKS[0][1]
+    for rname, req in RANKS:
+        if rname == rank:
+            rank_req = req
+            break
+
+    if await user_is_tourist(user_id):
+        return float(RANK_CRIT_CHANCE.get("tourist", 0.0))
+
+    for tag, chance in RANK_CRIT_CHANCE.items():
+        if tag == "tourist":
+            continue
+        req = tag_to_req.get(tag)
+        if req is not None and req <= rank_req:
+            return float(chance)
+    return 0.0
+
+
 async def grant_status_for_rank(user_id: int, rank_name: str, granted_by: int = 0):
     """Выдать игроку статус, закреплённый за званием, если его ещё нет.
 
@@ -5087,9 +5138,10 @@ async def user_is_tourist(user_id: int) -> bool:
 async def create_award(name: str, description: str = None, emoji: str = "🏅",
                        created_by: int = None, **bonuses):
     """Создать награду. Бонусы — kwargs: bonus_attack/defense/dodge/fishing/hp,
-    bonus_shop_discount (%, скидка в магазине), bonus_report_tax (п.п. налога)."""
+    bonus_crit (%, шанс крита), bonus_shop_discount (%, скидка в магазине),
+    bonus_report_tax (п.п. налога)."""
     allowed = {"bonus_attack", "bonus_defense", "bonus_dodge", "bonus_fishing",
-               "bonus_hp", "bonus_shop_discount", "bonus_report_tax",
+               "bonus_hp", "bonus_crit", "bonus_shop_discount", "bonus_report_tax",
                "reward_nm", "monthly_nm"}
     clean = {k: max(0, int(v or 0)) for k, v in bonuses.items() if k in allowed}
     cols = ["name", "description", "emoji", "created_by"] + list(clean)
@@ -5128,7 +5180,7 @@ async def delete_award(award_id: int):
 async def update_award(award_id: int, **fields) -> bool:
     """Обновление награды: описание, картинка, процентные бонусы. None = очистить."""
     allowed = {"description", "image", "bonus_attack", "bonus_defense",
-               "bonus_dodge", "bonus_fishing", "bonus_hp",
+               "bonus_dodge", "bonus_fishing", "bonus_hp", "bonus_crit",
                "bonus_shop_discount", "bonus_report_tax",
                "reward_nm", "monthly_nm"}
     updates = {k: v for k, v in fields.items() if k in allowed}
@@ -5158,7 +5210,8 @@ async def get_award_bonus(user_id: int) -> dict:
                COALESCE(SUM(a.bonus_fishing), 0) AS fishing,
                COALESCE(SUM(a.bonus_hp), 0) AS hp,
                COALESCE(SUM(a.bonus_shop_discount), 0) AS shop_discount,
-               COALESCE(SUM(a.bonus_report_tax), 0) AS report_tax
+               COALESCE(SUM(a.bonus_report_tax), 0) AS report_tax,
+               COALESCE(SUM(a.bonus_crit), 0) AS crit
         FROM user_awards ua
         JOIN awards a ON ua.award_id = a.id
         WHERE ua.user_id = ?
@@ -5166,7 +5219,7 @@ async def get_award_bonus(user_id: int) -> dict:
     row = await cursor.fetchone()
     if not row:
         return {"attack": 0, "defense": 0, "dodge": 0, "fishing": 0, "hp": 0,
-                "shop_discount": 0, "report_tax": 0}
+                "shop_discount": 0, "report_tax": 0, "crit": 0}
     return dict(row)
 
 
@@ -8917,6 +8970,62 @@ async def get_player_armor(user_id: int) -> int:
 
 # Базовое уклонение пилота (%) — остальное добавляют награды.
 PLAYER_BASE_DODGE = 3
+
+
+# Потолок суммарного шанса крита, %. Выше 75 делать смысла нет: при множителе
+# 1.4 крит и так бьёт очень сильно, а 100% сделало бы бой полностью случайным.
+MAX_CRIT_CHANCE = 75
+
+
+async def get_player_crit_chance(user_id: int) -> float:
+    """Суммарный шанс крита пилота в %.
+
+    Складывается из трёх источников (решение владельца 2026-10-03):
+    базовый шанс по званию (RANK_CRIT_CHANCE), crit_chance надетого снаряжения
+    и bonus_crit наград. Результат ограничен MAX_CRIT_CHANCE.
+
+    Шанс может быть дробным (шаг базовой шкалы — 1.5%), поэтому возвращается
+    float, а не int.
+    """
+    chance = await get_pilot_crit_chance(user_id)
+    chance += await get_player_gear_crit_chance(user_id)
+    chance += int((await get_award_bonus(user_id)).get('crit') or 0)
+    return max(0.0, min(float(MAX_CRIT_CHANCE), chance))
+
+
+async def get_player_gear_crit_chance(user_id: int) -> float:
+    """Суммарный crit_chance по всем надетым предметам (в %)."""
+    eq = await get_equipment(user_id)
+    ids = [i for i in eq.values() if i]
+    if not ids:
+        return 0.0
+    ph = ",".join("?" * len(ids))
+    conn = await get_db()
+    cursor = await conn.execute(
+        f"SELECT COALESCE(SUM(crit_chance), 0) AS s FROM items WHERE id IN ({ph})", ids
+    )
+    row = await cursor.fetchone()
+    return float(row['s'] or 0) if row else 0.0
+
+
+async def get_player_crit_mult(user_id: int) -> float:
+    """Множитель урона при крите: базовый PILOT_CRIT_MULT плюс crit_mult
+    надетого снаряжения. Если снаряжение ничего не добавляет — базовый.
+    """
+    mult = float(PILOT_CRIT_MULT or 1.0)
+    eq = await get_equipment(user_id)
+    ids = [i for i in eq.values() if i]
+    if ids:
+        ph = ",".join("?" * len(ids))
+        conn = await get_db()
+        cursor = await conn.execute(
+            f"SELECT COALESCE(SUM(crit_mult), 0) AS s FROM items WHERE id IN ({ph})", ids
+        )
+        row = await cursor.fetchone()
+        extra = float(row['s'] or 0) if row else 0.0
+        if extra:
+            mult += extra
+    return max(1.0, mult)
 
 
 async def get_player_dodge(user_id: int, dodge_mult: float = 1.0) -> int:

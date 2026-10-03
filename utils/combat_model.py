@@ -11,16 +11,17 @@
 """
 import random
 
-from config import PILOT_BASE_HP, PILOT_NO_WEAPON_DMG
+from config import PILOT_BASE_HP, PILOT_CRIT_MULT, PILOT_NO_WEAPON_DMG
 from utils.combat import roll_dodge
 from utils.states import combat_multipliers, get_state_info
 
 
 async def pilot_combat_stats(user_id: int) -> dict:
-    """Боевые характеристики пилота: урон, уклонение, броня, макс. HP."""
+    """Боевые характеристики пилота: урон, крит, уклонение, броня, макс. HP."""
     from database.db import (get_award_bonus, get_pilot_base_damage,
-                             get_player_armor_with_bonus, get_player_dodge,
-                             get_player_weapon_damage)
+                             get_player_armor_with_bonus, get_player_crit_mult,
+                             get_player_dodge, get_player_weapon_damage,
+                             get_player_crit_chance)
 
     weapon_damage = await get_player_weapon_damage(user_id)
     state_info = await get_state_info(user_id)
@@ -33,6 +34,8 @@ async def pilot_combat_stats(user_id: int) -> dict:
         'base_dmg': (int(base_lo), int(base_hi)),
         'weapon_damage': weapon_damage,
         'attack_mult': attack_mult,
+        'crit_chance': await get_player_crit_chance(user_id),
+        'crit_mult': await get_player_crit_mult(user_id),
         'dodge': await get_player_dodge(user_id, mult.get('dodge_mult', 1.0)),
         'armor': await get_player_armor_with_bonus(user_id),
         'hp_max': PILOT_BASE_HP + int(bonus.get('hp') or 0),
@@ -70,9 +73,12 @@ def roll_pilot_damage(stats: dict, enemy) -> dict:
 
     damage = raw
     crit = False
-    crit_chance = int(enemy.get('crit_chance') or 0)
-    if crit_chance and random.randint(1, 100) <= crit_chance:
-        damage = int(round(damage * float(enemy.get('crit_mult') or 1.5)))
+    # ⚠️ Раньше здесь читался crit_chance/enemy.get('crit_mult') — то есть
+    # урон по критическому удару считался по шансу крита ПРОТИВНИКА. Теперь
+    # берём свои характеристики: в PvP оба пилота критуют по своей шкале.
+    crit_chance = float(stats.get('crit_chance') or 0)
+    if crit_chance > 0 and random.random() * 100.0 < crit_chance:
+        damage = int(round(damage * float(stats.get('crit_mult') or PILOT_CRIT_MULT)))
         crit = True
 
     enemy_armor = int(enemy.get('armor') or 0)

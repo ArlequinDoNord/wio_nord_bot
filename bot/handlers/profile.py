@@ -411,6 +411,8 @@ def _award_perks(a) -> list:
         perks.append(f"🎣 +{a['bonus_fishing']}% рыбалка")
     if a['bonus_hp']:
         perks.append(f"❤️ +{a['bonus_hp']} HP")
+    if a['bonus_crit']:
+        perks.append(f"💥 +{a['bonus_crit']}% крит")
     if a['bonus_shop_discount']:
         perks.append(f"💰 −{a['bonus_shop_discount']}% в магазине")
     if a['bonus_report_tax']:
