@@ -502,9 +502,10 @@ async def profile_callsign(callback: CallbackQuery):
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="profile")]])
         try:
-            await callback.message.edit_text(text, reply_markup=kb)
+            await callback.message.delete()
         except Exception:
-            await callback.message.answer(text, reply_markup=kb)
+            pass
+        await callback.message.answer(text, reply_markup=kb)
         await ProfileStates.waiting_callsign.set()
         await callback.answer()
         return
@@ -517,9 +518,10 @@ async def profile_callsign(callback: CallbackQuery):
         )
         kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="profile")]])
         try:
-            await callback.message.edit_text(text, reply_markup=kb)
+            await callback.message.delete()
         except Exception:
-            await callback.message.answer(text, reply_markup=kb)
+            pass
+        await callback.message.answer(text, reply_markup=kb)
         await ProfileStates.waiting_callsign.set()
         await callback.answer()
         return
@@ -537,9 +539,10 @@ async def profile_callsign(callback: CallbackQuery):
             [InlineKeyboardButton(text="Отмена", callback_data="profile")],
         ])
         try:
-            await callback.message.edit_text(text, reply_markup=kb)
+            await callback.message.delete()
         except Exception:
-            await callback.message.answer(text, reply_markup=kb)
+            pass
+        await callback.message.answer(text, reply_markup=kb)
         await callback.answer()
         return
 
@@ -553,9 +556,10 @@ async def profile_callsign(callback: CallbackQuery):
         [InlineKeyboardButton(text="Отмена", callback_data="profile")],
     ])
     try:
-        await callback.message.edit_text(text, reply_markup=kb)
+        await callback.message.delete()
     except Exception:
-        await callback.message.answer(text, reply_markup=kb)
+        pass
+    await callback.message.answer(text, reply_markup=kb)
     await callback.answer()
 
 
