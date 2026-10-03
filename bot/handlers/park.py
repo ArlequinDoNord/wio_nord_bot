@@ -486,7 +486,7 @@ async def statue_admin_edit_field(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     if not await has_permission(callback.from_user.id, "can_manage_locations"):
         return
-    _, _, _, statue_s, field = callback.data.split(":", 4)
+    _, _, _, statue_id, field = callback.data.split(":", 4)
     await state.update_data(field=field)
     await state.set_state(AdminStatueEdit.value)
     statue = await get_park_statue(statue_id)

@@ -44,31 +44,22 @@ def run():
     check("следующий запуск не в прошлом",
           datetime.fromtimestamp(datetime.now().timestamp() + _seconds_until_payout(), MSK).hour == 10)
 
-    # ── 2. Заметки о деплоях: ровно две, короткие ──
+    # ── 2. Заметки о деплое: короткие, одна запись ──
     check("VERSION_NOTES заполнены", bool(config.VERSION_NOTES.strip()))
-    check("PREV_VERSION_NOTES заполнены", bool(config.PREV_VERSION_NOTES.strip()))
-    check("предыдущая версия указана", bool(str(config.PREV_VERSION).strip()))
-    v_now = tuple(int(x) for x in str(config.VERSION).split("."))
-    v_prev = tuple(int(x) for x in str(config.PREV_VERSION).split("."))
-    check("текущая версия не старше предыдущей", v_now >= v_prev, )
     check("заметки не простыня (текущий деплой)", len(config.VERSION_NOTES) <= 400)
-    check("заметки не простыня (предыдущий деплой)", len(config.PREV_VERSION_NOTES) <= 400)
 
-    # ── 3. Приветствие: два блока и только идея релиза (без перечня правок) ──
+    # ── 3. Приветствие: только идея текущего релиза, без старых сборок ──
     src = open(os.path.join(os.path.dirname(__file__), "bot", "handlers", "start.py"),
                encoding="utf-8").read()
     check("приветствие печатает «Что нового»", ">> Что нового:" in src)
-    check("приветствие печатает предыдущую сборку", "Сборка {PREV_VERSION}" in src)
     # Заметки печатаются через тизер, а не целиком: интрига не должна исчезать.
     check("текущая версия печатается тизером",
           src.count("_version_teaser(VERSION_NOTES)") == 1)
-    check("предыдущая версия печатается тизером",
-          src.count("_version_teaser(PREV_VERSION_NOTES)") == 1)
     check("полный текст заметок в приветствие не попадает",
           "{VERSION_NOTES}\n" not in src and "{PREV_VERSION_NOTES}\n" not in src)
-    # В приветствии нет места под третью-четвёртую сборку.
-    check("нет третьего блока деплоя",
-          "PREV2_" not in src and "PREV_PREV" not in src)
+    # Описание прошлого деплоя в приветствии больше не показывается.
+    check("в приветствии нет блока прошлой сборки",
+          "PREV_VERSION" not in src and "PREV_VERSION_NOTES" not in src)
 
     # ── 4. Тизер релиза: одна фраза, не длиннее лимита, без обрыва в скобках ──
     from bot.handlers.start import _version_teaser
@@ -79,8 +70,6 @@ def run():
     check("пустые заметки не ломают приветствие", _version_teaser("   ") == "…")
     check("текущий деплой укладывается в лимит",
           len(_version_teaser(config.VERSION_NOTES)) <= 121)
-    check("предыдущий деплой укладывается в лимит",
-          len(_version_teaser(config.PREV_VERSION_NOTES)) <= 121)
     long_paren = ("Баланс леса: поиск грибов теперь 4 ОД (было 3), продажа жареных грибов "
                   "снижена примерно вдвое (Опёнок 17→9 НМ, Ежовик 210→100 НМ) и казна покупает "
                   "грибы не больше 250 НМ в сутки. Рынок не затрагивает.")

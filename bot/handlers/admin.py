@@ -60,7 +60,7 @@ from database.db import (
     add_forest_mushroom_to_zone, remove_forest_mushroom_from_zone,
     set_forest_zone_chance, FOREST_AREAS,
     log_activity, get_user_activity, clear_user_photo,
-    get_recent_activity, get_activity_like,
+    get_recent_activity, get_activity_like, get_activity_by_action,
     get_location_visit_stats, get_location_visit_totals,
 )
 from keyboards.keyboards import cancel_keyboard

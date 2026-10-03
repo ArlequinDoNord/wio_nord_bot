@@ -1,5 +1,6 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery, ContentType
+from aiogram.types import (Message, CallbackQuery, ContentType,
+                           InlineKeyboardMarkup, InlineKeyboardButton)
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -384,7 +385,7 @@ async def pilot_card(callback: CallbackQuery):
     await callback.message.answer(card, reply_markup=profile_keyboard(
         notify_enabled=bool(user.get('notify_enabled', 1)),
         profile_public=bool(user.get('profile_public', 1)),
-        can_toggle_visibility=await user_has_status_tag(user_id, "ace"),
+        can_toggle_visibility=await user_has_status_tag(callback.from_user.id, "ace"),
         has_callsign=bool(user.get('callsign') and str(user.get('callsign')).strip()),
     ))
 
@@ -586,19 +587,19 @@ async def profile_callsign_input(message: Message, state: FSMContext):
         await set_callsign_free_used(user_id, 1)
         await state.finish()
         await message.answer(f"Позывной «{callsign}» установлен!")
-        await profile_main(message)
+        await render_profile(message, user_id)
         return
 
     if super_admin:
         await set_callsign(user_id, callsign)
         await state.finish()
         await message.answer(f"Позывной изменён на «{callsign}» (бесплатно, по правам суперадмина)")
-        await profile_main(message)
+        await render_profile(message, user_id)
         return
 
     await state.finish()
     await message.answer("Для платной смены позывного используй кнопку «Оплатить 500 НМ»")
-    await profile_main(message)
+    await render_profile(message, user_id)
 
 
 @router.callback_query(F.data == "profile:callsign_buy")

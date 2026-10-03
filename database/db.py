@@ -5721,25 +5721,6 @@ async def pay_award_monthly() -> dict:
             paid.append((row['user_id'], row['award_id'], award['name'], row['monthly_nm']))
     await conn.commit()
     return {"paid": paid, "debt": debt, "skipped": skipped}
-    if not tag:
-        return True
-    conn = await get_db()
-    # уровень (sort_order) требуемого тега
-    cursor = await conn.execute(
-        "SELECT sort_order FROM statuses WHERE access_tag = ?", (tag,))
-    req = await cursor.fetchone()
-    if not req:
-        return False
-    # самый сильный статус игрока
-    cursor = await conn.execute("""
-        SELECT MAX(s.sort_order) as top FROM user_statuses us
-        JOIN statuses s ON us.status_id = s.id
-        WHERE us.user_id = ?
-    """, (user_id,))
-    top = (await cursor.fetchone())['top']
-    if top is None:
-        return False
-    return top >= req['sort_order']
 
 
 # ============ ЛОКАЦИИ (статусный доступ + блокирующие состояния) ============
