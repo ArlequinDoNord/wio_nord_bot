@@ -1,0 +1,321 @@
+"""Smoke 124 — оплата отчётов по ПОСЛЕДНЕМУ снимку суток (v0.22.0).
+
+Правило владельца (2026-10-03): за отчётные сутки (10:00 МСК → 10:00 МСК) платится
+«за сутки» из ПОСЛЕДНЕГО отчёта, а не сумма отчётов. Суточное — снимок: оно копится
+с нуля до максимума, каждый следующий отчёт заменяет предыдущий.
+
+Проверяет:
+   1. Ранний отчёт суток superseded: платит 0, сумма заявок остаётся справочной.
+   2. Последний отчёт платит свою сумму; скидывает ли сумма копилок — неважно.
+   3. Кап ограничивает ОДИН снимок, а не сумму суток.
+   4. payout_reports() платит по последнему отчёту и не платит дважды.
+   5. Неодобренный последний отчёт блокирует выплату суток; после одобрения — платит.
+   6. Отклонение уже оплаченного последнего отчёта не открывает вторую выплату.
+   7. approve_report не выдаёт деньги повторно по уже одобренному отчёту.
+   8. Граница 10:00 МСК: 09:59:59 — вчерашние сутки, 10:00:00 — сегодняшние.
+   9. Единый эталон «сейчас»: _today_msk() == today_report_day(), и отчёт за
+      прошлые сутки не тратит лимит сдачи сегодняшних.
+  10. Мои отчёты: created_at_msk/report_day_value_of согласованы (сдача в 08:00 МСК
+      показывается как сегодняшние 08:00, а сутки — как вчерашние).
+"""
+import asyncio
+import os
+import sys
+from datetime import datetime, timedelta, timezone
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+PASS, FAIL = 0, 0
+
+
+def check(name, cond):
+    global PASS, FAIL
+    if cond:
+        PASS += 1
+        print(f"  OK  {name}")
+    else:
+        FAIL += 1
+        print(f"FAIL  {name}")
+
+
+async def main():
+    global DB_PATH
+    import config
+    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_test_smoke124.db")
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            os.remove(DB_PATH + suffix)
+        except OSError:
+            pass
+    config.DB_PATH = DB_PATH
+
+    import database.db as db
+    db.DB_PATH = DB_PATH
+    from database.db import (
+        init_db, close_db, get_db, add_user, add_report, approve_report,
+        reject_report, payout_reports, report_payout_context, set_report_daily_pay_cap,
+        get_report_daily_pay_cap, report_day_value_of, created_at_msk, today_report_day,
+        count_reports_today, _today_msk, _report_cycle_day_of,
+    )
+
+    await init_db()
+
+    day = today_report_day()          # текущие отчётные сутки 'YYYY-MM-DD'
+    day_dt = datetime.strptime(day, "%Y-%m-%d")
+
+    def msk(day_offset, hour, minute=0, second=0):
+        """МСК-время заданных суток → UTC-строка created_at (в базе хранится UTC)."""
+        return ((day_dt + timedelta(days=day_offset)).replace(
+            hour=hour, minute=minute, second=second)
+            - timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+
+    def at(hour, minute=0):
+        """МСК-время внутри текущих суток → UTC-строка created_at."""
+        return msk(0, hour, minute)
+
+    async def stamp(rid, utc_str):
+        conn = await get_db()
+        await conn.execute("UPDATE reports SET created_at = ? WHERE id = ?", (utc_str, rid))
+        await conn.commit()
+
+    async def troops_of(uid):
+        conn = await get_db()
+        row = await (await conn.execute(
+            "SELECT troops FROM users WHERE user_id = ?", (uid,))).fetchone()
+        return row['troops'] if row else 0
+
+    async def xp_of(uid):
+        conn = await get_db()
+        row = await (await conn.execute(
+            "SELECT xp_balance FROM users WHERE user_id = ?", (uid,))).fetchone()
+        return row['xp_balance'] if row else 0
+
+    await add_user(1001, "u1", "U1", "Лётчик")
+    await add_user(1002, "u2", "U2", "Лётчик")
+    await add_user(1003, "u3", "U3", "Лётчик")
+    await add_user(1004, "u4", "U4", "Лётчик")
+    await add_user(1005, "u5", "U5", "Лётчик")
+    await add_user(1006, "u6", "U6", "Лётчик")
+    await add_user(1007, "u7", "U7", "Лётчик")
+    await set_report_daily_pay_cap(4000)
+
+    # ── 8. Граница 10:00 МСК (до всех выплат, чистые функции) ───────────────
+    print("\n= Граница отчётных суток 10:00 МСК =")
+    check("09:59:59 МСК → вчерашние сутки",
+          report_day_value_of(msk(0, 9, 59, 59))
+          == (day_dt - timedelta(days=1)).strftime("%Y-%m-%d"))
+    check("10:00:00 МСК → сегодняшние сутки",
+          report_day_value_of(msk(0, 10, 0, 0)) == day)
+    check("сдача 08:00 МСК = вчерашние сутки, но время сегодняшнее",
+          report_day_value_of(msk(0, 8, 0))
+          == (day_dt - timedelta(days=1)).strftime("%Y-%m-%d")
+          and created_at_msk(msk(0, 8, 0))[-5:] == "08:00")
+
+    # ── 9. Единый эталон «сейчас» ─────────────────────────────────────────
+    print("\n= Единый источник времени =")
+    check("_today_msk() == today_report_day()", _today_msk() == today_report_day())
+
+    # ── 1-2. Три отчёта за сутки: платит последний ─────────────────────────
+    print("\n= Три отчёта за сутки: платит последний =")
+    UA = 1001
+    r1, _ = await add_report(UA, "s", 300, 300, "1")
+    await stamp(r1, at(11))
+    r2, _ = await add_report(UA, "s", 700, 700, "1")
+    await stamp(r2, at(14))
+    r3, _ = await add_report(UA, "s", 1200, 1200, "1")
+    await stamp(r3, at(18))
+
+    c1 = await report_payout_context(UA, 300, 300, exclude_id=r1, cycle_day=day)
+    check("ранний отчёт помечен superseded", c1["superseded"] is True)
+    check("ранний отчёт платит 0", c1["payable"] == 0)
+    c2 = await report_payout_context(UA, 700, 700, exclude_id=r2, cycle_day=day)
+    check("средний отчёт superseded", c2["superseded"] is True and c2["payable"] == 0)
+    c3 = await report_payout_context(UA, 1200, 1200, exclude_id=r3, cycle_day=day)
+    check("последний отчёт — не superseded", c3["superseded"] is False)
+    check(f"последний отчёт платит свою сумму ({c3['payable']})", c3["payable"] == 1200)
+    check(f"сумма заявок за сутки справочно, без себя ({c3['assigned_today']})",
+          c3["assigned_today"] == 1000)
+
+    # Последний МЕНЬШЕ предыдущего — всё равно платится последний.
+    UB = 1002
+    b1, _ = await add_report(UB, "s", 900, 900, "2")
+    await stamp(b1, at(12))
+    b2, _ = await add_report(UB, "s", 400, 400, "2")
+    await stamp(b2, at(19))
+    bc1 = await report_payout_context(UB, 900, 900, exclude_id=b1, cycle_day=day)
+    bc2 = await report_payout_context(UB, 400, 400, exclude_id=b2, cycle_day=day)
+    check("отчёт 900 superseded", bc1["superseded"] is True and bc1["payable"] == 0)
+    check("последний (меньший) отчёт платит 400, а не 1300", bc2["payable"] == 400)
+
+    # ── 3. Кап режет один снимок ──────────────────────────────────────────
+    print("\n= Суточный кап =")
+    UC = 1003
+    c_1, _ = await add_report(UC, "s", 3000, 3000, "3")
+    await stamp(c_1, at(11))
+    c_2, _ = await add_report(UC, "s", 6000, 6000, "3")
+    await stamp(c_2, at(16))
+    cc2 = await report_payout_context(UC, 6000, 6000, exclude_id=c_2, cycle_day=day)
+    check(f"кап 4000 режет последний снимок ({cc2['payable']})", cc2["payable"] == 4000)
+    check("capped_by_limit выставлен", cc2["capped_by_limit"] is True)
+    check("кап не суммируется с ранним отчётом (3000 не добавлены)",
+          cc2["payable"] == 4000 and cc2["assigned_today"] == 3000)
+    await set_report_daily_pay_cap(0)
+    cc0 = await report_payout_context(UC, 6000, 6000, exclude_id=c_2, cycle_day=day)
+    check("кап 0 = без ограничения", cc0["payable"] == 6000 and cc0["cap"] is None)
+    await set_report_daily_pay_cap(4000)
+
+    # ── 4. payout_reports: по последнему и без двойной выплаты ────────────
+    print("\n= payout_reports() =")
+    await approve_report(r1, 0)
+    await approve_report(r2, 0)
+    await approve_report(r3, 0)
+    for rid in (b1, b2, c_1, c_2):
+        await approve_report(rid, 0)
+
+    before_u1 = await troops_of(UA)
+    await payout_reports()
+    gained = (await troops_of(UA)) - before_u1
+    check(f"выплачено по последнему отчёту, не сумма ({gained})", gained == 1200)
+    check("опыт 1:1 с войсками", (await xp_of(UA)) >= 1200)
+
+    before_u1 = await troops_of(UA)
+    await payout_reports()
+    check("повторный payout_reports() не платит дважды",
+          (await troops_of(UA)) == before_u1)
+
+    # ── 5. Неодобренный последний отчёт блокирует выплату ─────────────────
+    print("\n= Последний отчёт ещё не одобрен =")
+    UD = 1004
+    d1, _ = await add_report(UD, "s", 500, 500, "4")
+    await stamp(d1, at(13))
+    d2, _ = await add_report(UD, "s", 800, 800, "4")
+    await stamp(d2, at(17))
+    await approve_report(d1, 0)
+    before = await troops_of(UD)
+    await payout_reports()
+    check("сутки не выплачены, пока последний отчёт не одобрен",
+          (await troops_of(UD)) == before)
+    await approve_report(d2, 0)
+    await payout_reports()
+    check(f"после одобрения последнего выплачено 800 ({(await troops_of(UD)) - before})",
+          (await troops_of(UD)) - before == 800)
+
+    # ── 6. Отклонение оплаченного последнего не открывает 2-ю выплату ─────
+    print("\n= Отклонение уже оплаченного последнего отчёта =")
+    UE = 1005
+    e1, _ = await add_report(UE, "s", 600, 600, "5")
+    await stamp(e1, at(11))
+    e2, _ = await add_report(UE, "s", 1000, 1000, "5")
+    await stamp(e2, at(15))
+    await approve_report(e1, 0)
+    await approve_report(e2, 0)
+    before = await troops_of(UE)
+    await payout_reports()
+    check(f"первая выплата 1000 ({(await troops_of(UE)) - before})",
+          (await troops_of(UE)) - before == 1000)
+
+    await reject_report(e2, 0)
+    ec1 = await report_payout_context(UE, 600, 600, exclude_id=e1, cycle_day=day)
+    check("после отклонения последнего бывший последний снова superseded-кандидат",
+          ec1["superseded"] is False)
+    check(f"но уже выплачено {ec1['already_paid']} — доплаты нет",
+          ec1["already_paid"] == 1000 and ec1["payable"] == 0)
+    before = await troops_of(UE)
+    await payout_reports()
+    check("повторная выплата не прошла", (await troops_of(UE)) == before)
+
+    # ── 7. Повторное одобрение ────────────────────────────────────────────
+    print("\n= Повторное одобрение =")
+    dup = await approve_report(e1, 0)
+    check(f"повторное одобрение вернуло 0 (было {dup})", dup == 0)
+    before = await troops_of(UE)
+    await payout_reports()
+    check("и не выплатило ничего сверху", (await troops_of(UE)) == before)
+
+    # ── 7b. Отчёт за ПРОШЛЫЕ сутки: одобрен, оплачен сразу ─────────────────
+    # Отдельный пилот: у UE сутки уже оплачены, и мгновенная выплата пересчитала бы
+    # его снимок по сегодняшним суткам и дала бы 0 вместо полной суммы.
+    UG = 1006
+    old_day = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    g1, _ = await add_report(UG, "s", 700, 700, "6")
+    await stamp(g1, f"{old_day} 12:00:00")
+    paid_now = await approve_report(g1, 0)
+    check(f"прошлые сутки: одобрение платит сразу ({paid_now})", paid_now == 700)
+    check("и сразу начисляет", (await troops_of(UG)) == 700)
+    check("повторное одобрение прошлых суток тоже возвращает 0",
+          await approve_report(g1, 0) == 0)
+    before = await troops_of(UG)
+    await payout_reports()
+    check("мгновенная выплата не дублируется суточным циклом",
+          (await troops_of(UG)) == before)
+
+    # ── 7c. Новый снимок после выплаты: сутки платятся ОДИН раз ────────────
+    # Регресс на двойное вычитание: approve_report уже записал в credited_troops
+    # дельту (снимок минус выплаченное), поэтому payout_reports берёт её как есть.
+    # Раньше он вычитал выплаченное второй раз и платил 1200 − 1200 − 1200 = 0.
+    UH = 1007
+    h1, _ = await add_report(UH, "s", 300, 300, "7")
+    await stamp(h1, at(12))
+    await approve_report(h1, 0)
+    await payout_reports()
+    before_h = await troops_of(UH)
+    h2, _ = await add_report(UH, "s", 900, 900, "7")
+    await stamp(h2, at(19))
+    top_up = await approve_report(h2, 0)
+    check(f"новый снимок платит разницу (900 − 300 = 600, было {top_up})",
+          top_up == 600)
+    await payout_reports()
+    gained_h = (await troops_of(UH)) - before_h
+    check(f"доплата 600, за сутки всего 900, а не 1200 ({gained_h})",
+          gained_h == 600 and (await troops_of(UH)) == 900)
+
+    # ── 9. Лимит сдачи и эталон времени ───────────────────────────────────
+    print("\n= Сутки отчёта в сдаче =")
+    conn = await get_db()
+    old_day = (day_dt - timedelta(days=1)).strftime("%Y-%m-%d")
+    await conn.execute(
+        "UPDATE reports SET created_at = ? WHERE id = ?",
+        (f"{old_day} 11:00:00", r3))
+    await conn.commit()
+    check("отчёт за прошлые сутки попадает в сутки по created_at",
+          _report_cycle_day_of(f"{old_day} 11:00:00") == old_day)
+    check("утёкший в прошлые сутки отчёт не тратит лимит сдачи сегодня",
+          await count_reports_today(UA) == 2)
+    await stamp(r3, at(18))
+    check("после возврата в текущие сутки счётчик снова 3",
+          await count_reports_today(UA) == 3)
+
+    await close_db()
+    print(f"\n{'=' * 46}\nPASS: {PASS}   FAIL: {FAIL}")
+    print("SMOKE 124 OK" if FAIL == 0 else "SMOKE 124 FAILED")
+    return 1 if FAIL else 0
+
+
+DB_PATH = None
+
+
+async def _cleanup():
+    """Закрыть БД и убрать файлы. Без этого при падении внутри main процесс
+    не завершается: aiosqlite держит свой поток, и тест молчаит вместо ошибки."""
+    try:
+        from database.db import close_db
+        await close_db()
+    except Exception:
+        pass
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            os.remove(DB_PATH + suffix)
+        except (OSError, NameError):
+            pass
+
+
+if __name__ == "__main__":
+    code = 1
+    try:
+        code = asyncio.run(main()) or 0
+    except Exception:
+        import traceback
+        traceback.print_exc()
+    finally:
+        asyncio.run(_cleanup())
+    sys.exit(code)

@@ -223,6 +223,24 @@ async def main():
     check("и кеп не применяется к туристу",
           not await D.user_has_status_tag(999999, "recruit"))
 
+    print("\n11. Легионер НЕ выдаётся общим списком (иначе строка без флага)")
+    # Кнопка «➕ 🦅 Легионер» в общем списке выдала бы только строку статуса,
+    # без users.legioner — получился бы легионер без кепа и без запрета голосовать.
+    from bot.handlers.admin import _status_grant_markup
+    from database.db import get_all_statuses
+    _lg = next((s for s in await get_all_statuses()
+                if s['access_tag'] == 'legioner'), None)
+    check("статус Легионер существует", _lg is not None)
+    if _lg:
+        _rows = _status_grant_markup([_lg], [], legioner=True)
+        _cbs = [b.callback_data for row in _rows.inline_keyboard for b in row]
+        check(f"в общем списке нет кнопки выдачи Легионера (кнопки: {_cbs})",
+              f"st_pick:{_lg['id']}" not in _cbs)
+        check("зато есть отдельная кнопка st:legioner", "st:legioner" in _cbs)
+        _rows2 = _status_grant_markup([_lg], [], legioner=False)
+        _cbs2 = [b.callback_data for row in _rows2.inline_keyboard for b in row]
+        check("кнопка снятия — тоже st:legioner", _cbs2.count("st:legioner") == 1)
+
     await D.close_db()
 
 

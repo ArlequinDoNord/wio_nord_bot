@@ -3046,6 +3046,12 @@ def _status_grant_markup(statuses, have, legioner: bool = False):
     have_ids = {s['id'] for s in have}
     rows = []
     for s in sorted(statuses, key=lambda x: (x['sort_order'] or 0, x['id'] or 0)):
+        # Легионера фильтруем ЗДЕСЬ, а не только в вызывающем коде: иначе кнопка
+        # «➕ 🦅 Легионер» всё равно рисуется и нажатие уходит в отказ. Общая выдача
+        # ставит только строку user_statuses, без флага users.legioner — получился бы
+        # легионер без кепа и без запрета голосовать. Настоящая выдача — st:legioner.
+        if s.get('access_tag') == LEGIONER_ACCESS_TAG:
+            continue
         if top and s['id'] == top['id']:
             text = f"⭐ {s['name']} — сейчас"
         elif s['id'] in have_ids:
@@ -3092,12 +3098,14 @@ async def _send_status_picker(chat, target, actor_id: int):
     # Актёр видит только те статусы, которые ему разрешено выдать. Глава МВД
     # тут видит ровно «Рекрут» — ворота в гражданство.
     statuses = [s for s in statuses if await can_grant_status(actor_id, s)]
-    # Отдельная кнопка Легионера нужна только тем, кто вправе его выдавать.
+    # Отдельная кнопка Легионера нужна только тем, кто вправе его выдать.
     can_legioner = await can_grant_status(
         actor_id, await get_status_by_tag(LEGIONER_ACCESS_TAG))
     if not statuses and not can_legioner:
         await chat.answer("❌ Нет статусов, которые тебе доступны для выдачи.")
         return False
+    # Легионера из общего списка убирает сама _status_grant_markup — правило
+    # «легионер только через st:legioner» держится в одном месте.
     have = await get_user_statuses(target['user_id'])
     who = (target['first_name'] if 'first_name' in target.keys() else '') or str(target['user_id'])
     if target['username']:
@@ -3228,6 +3236,14 @@ async def status_revoke_pick(callback: CallbackQuery, state: FSMContext):
     if not await can_grant_status(callback.from_user.id, s):
         await callback.message.answer(
             "❌ Этот статус тебе выдавать/снимать нельзя.")
+        return
+    # Страховка от подделанного callback_data: Легионер выдаётся только через
+    # st:legioner, где флаг users.legioner ставится вместе со строкой статуса.
+    # Через st_pick он получил бы только строку — то есть отображение без прав.
+    if s and s['access_tag'] == LEGIONER_ACCESS_TAG:
+        await callback.message.answer(
+            "❌ Легионера выдают отдельной кнопкой «🦅 Сделать легионером» — "
+            "она ставит флаг и статус разом.")
         return
     await revoke_status(target_id, status_id)
     await log_action(callback.from_user.id, 'revoke_status', target_id, f"status={s['name']}" if s else f"status_id={status_id}")
@@ -4096,18 +4112,23 @@ async def report_pay_cap_edit_value(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
         f"✅ Суточный лимит оплаты: {value if value else 'без ограничения'}.\n"
-        f"За сутки теперь начисляется не больше {value} войск суммарно."
+        f"За сутки начисляется не больше {value} войск — лимит режет один снимок "
+        f"(последний отчёт суток), а не сумму отчётов."
     )
     await show_pending_reports(message)
 
 
 async def _report_payout_block(report) -> str:
-    """Блок оплаты для карточки отчёта: платим заявку «за сутки» в пределах суточного
-    лимита. «Всего» и регион — справочные данные для статистики, на оплату не влияют.
+    """Блок оплаты для карточки отчёта.
 
-    Сутки и остаток лимита берём по САМОМУ отчёту (его created_at), а не по текущим:
-    отчёт, сданный до 10:00 МСК, относится к ПРЕДЫДУЩИМ суткам, и надпись про
-    текущие сутки сбивала с толку при проверке."""
+    Платится «за сутки» из ПОСЛЕДНЕГО отчёта этих суток (см. report_payout_context),
+    поэтому для непоследнего отчёта блок прямо говорит, что он перекрыт свежим
+    снимком и денег не приносит. «Всего» и регион — справочные данные для
+    статистики, на оплату не влияют.
+
+    Сутки берём по САМОМУ отчёту (его created_at), а не по текущим: отчёт, сданный
+    до 10:00 МСК, относится к ПРЕДЫДУЩИМ суткам, и надпись про текущие сутки сбивала
+    с толку при проверке."""
     from database.db import report_payout_context, _report_cycle_day_of
     total_claim = report['total_troops'] if 'total_troops' in report.keys() else 0
     ctx = await report_payout_context(
@@ -4118,12 +4139,18 @@ async def _report_payout_block(report) -> str:
         f"💰 К выдаче: {ctx['payable']}",
         f"🗓 Сутки отчёта: {ctx['day_label']}",
     ]
+    if ctx.get("superseded"):
+        lines.append(
+            "🚫 Не последний отчёт этих суток — оплату даёт более свежий снимок. "
+            "Одобрить можно (останется в статистике), но платить здесь нечего.")
     if total_claim:
         lines.append(f"🗺 В регионе накоплено (статистика): {total_claim}")
     if ctx.get("capped_by_limit"):
         lines.append(f"🚦 Обрезано суточным лимитом ({ctx['cap']})")
     if ctx["assigned_today"]:
-        lines.append(f"📋 Уже засчитано за эти сутки: {ctx['assigned_today']}")
+        lines.append(f"📋 Сумма заявок за эти сутки (справочно): {ctx['assigned_today']}")
+    if ctx.get("already_paid"):
+        lines.append(f"✅ Уже выплачено за эти сутки: {ctx['already_paid']}")
     return "\n".join(lines)
 
 
@@ -4334,7 +4361,10 @@ async def report_fix_total(message: Message, state: FSMContext):
               f"💰 К выдаче: <b>{ctx['payable']}</b>\n"
               f"🗓 Сутки: {ctx['day_label']}")
     note = ""
-    if ctx["capped_by_limit"]:
+    if ctx.get("superseded"):
+        note = ("\n\n🚫 Не последний отчёт этих суток: оплату даёт более свежий "
+                "снимок, поэтому к выдаче 0. Цифры исправлены в статистике.")
+    elif ctx["capped_by_limit"]:
         note = f"\n\n🚦 Обрезано суточным лимитом ({ctx['cap']} войск)"
 
     await state.clear()
@@ -4399,12 +4429,16 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
             f"⚔️ Начислено: {amount} войск — пилот уведомлён в личке."
         )
     else:
+        _zero_note = ""
+        if amount <= 0:
+            _zero_note = ("\nℹ️ К выдаче 0: этот отчёт перекрыт более свежим снимком "
+                          "за эти же сутки — оплату получит последний отчёт.")
         await callback.message.answer(
             f"✅ Отчёт #{report_id} принят.\n"
             f"🗓 Сутки отчёта: {own_label}\n"
             f"⚔️ К начислению: {amount} войск и столько же опыта "
             f"(выплата в 10:00 МСК — в начале новых суток)."
-            + ("" if amount > 0 else "\nℹ️ Суточный лимит уже выбран — оплата не начислена.")
+            + _zero_note
         )
     await show_pending_reports(callback.message, start=queue_pos)
 

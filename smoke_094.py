@@ -1,13 +1,17 @@
-"""Smoke v0.17.0: оплата заявки «за сутки» вместо прироста «всего» + накопительный XP.
+﻿"""Smoke v0.17.0 (обновлён под v0.22.0): оплата заявки «за сутки» + накопительный XP.
 
 Новое правило: «всего» — остаток очков пилота в регионе (статистика), а не счётчик
 фарма, поэтому оно может уменьшаться (оборона) и расти не от фарма. К оплате идёт
 заявка «за сутки» в пределах суточного лимита 4000, независимо от «всего».
 Сутки считаются от 10:00 МСК до 10:00 МСК. XP копится 1:1 с фармом и без налога.
 
-Проверяем: неизменное «всего», несколько отчётов за сутки, лимит, сутки по циклу
-выплаты, справку за прошлые сутки, XP без налога, региональную статистику по «всего»,
-пересчёт висящих отчётов и отсутствие налога у XP.
+v0.22.0: несколько отчётов за сутки НЕ суммируются — платится «за сутки» из
+последнего отчёта (суточное копится с нуля, отчёты лишь заменяют снимок), а лимит
+4000 режет этот один снимок.
+
+Проверяем: неизменное «всего», последний отчёт суток вместо суммы, лимит, сутки по
+циклу выплаты, справку за прошлые сутки, XP без налога, региональную статистику по
+«всего», пересчёт висящих отчётов и отсутствие налога у XP.
 
 Запуск: .venv\\Scripts\\python.exe smoke_094.py
 """
@@ -47,14 +51,15 @@ async def run():
 
     async def _report_at(uid, daily, total, region="0", status="approved",
                          credited=None, paid=1, ts_utc=None):
-        """Отчёт с произвольным моментом created_at (UTC-строка)."""
+        """Отчёт с произвольным моментом created_at (UTC-строка). Возвращает id."""
         conn = await get_db()
-        await conn.execute(
+        cur = await conn.execute(
             "INSERT INTO reports (user_id, screenshot_file_id, troops_reported, total_troops, "
             "region, credited_troops, status, paid, created_at) "
             "VALUES (?, 'f', ?, ?, ?, ?, ?, ?, ?)",
             (uid, daily, total, region, credited, status, paid, ts_utc))
         await conn.commit()
+        return cur.lastrowid
 
     start, end = report_day_bounds()
     # Время «позавчера»/«вчера» относительно границы суток (10:00 МСК).
@@ -75,19 +80,27 @@ async def run():
     # ── 2. «Всего» не растёт — фарм всё равно оплачивается (кейс Антонио) ──
     UA = 91001
     await add_user(UA, "antonio", "Антонио", "Полк")
-    await _report_at(UA, 291, 7045, "25", ts_utc=yday)
+    yest_id = await _report_at(UA, 291, 7045, "25", ts_utc=yday)
     ctx = await report_payout_context(UA, 291, 7045)
     check("«всего» не выросло → заявка 291 оплачивается", ctx['payable'] == 291)
     check("счётчик суток чист (вчерашний отчёт не в лимите)", ctx['assigned_today'] == 0)
 
-    # ── 3. Несколько отчётов за сутки суммируются ──
+    # ── 3. Несколько отчётов за сутки: платит последний, сумма — справочно ──
     rid1, c1 = await add_report(UA, "f", 100, 7045, "25")
     rid2, c2 = await add_report(UA, "f", 200, 7145, "25")
     rid3, c3 = await add_report(UA, "f", 50, 7395, "25")
-    check("три отчёта за сутки: 100 + 200 + 50", (c1, c2, c3) == (100, 200, 50))
+    check("заявка каждого отчёта при сдаче засчитывается целиком",
+          (c1, c2, c3) == (100, 200, 50))
     ctx = await report_payout_context(UA, 100, 7495)
-    check("уже принято за сутки = 350", ctx['assigned_today'] == 350)
+    check("сумма заявок за сутки = 350 (только справочно)",
+          ctx['assigned_today'] == 350)
     check("остаток лимита 4000 − 350 = 3650", ctx['room_today'] == 3650)
+    c_last = await report_payout_context(UA, 50, 7395, exclude_id=rid3)
+    check("последний отчёт платит 50, а не сумму 350",
+          c_last['superseded'] is False and c_last['payable'] == 50)
+    c_first = await report_payout_context(UA, 100, 7045, exclude_id=rid1)
+    check("ранний отчёт superseded — платит 0",
+          c_first['superseded'] is True and c_first['payable'] == 0)
 
     # ── 4. Суточный лимит 4000 режет, а не «всего» ──
     UB = 91002
@@ -95,7 +108,8 @@ async def run():
     _, c = await add_report(UB, "f", 999999, 7045, "0")
     check("заявка выше лимита обрезана до 4000", c == 4000)
     ctx = await report_payout_context(UB, 1, 7045)
-    check("после лимита остатка нет", ctx['payable'] == 0 and ctx['capped_by_limit'])
+    check("лимит режет снимок, а не «остаток суток»: заявка 1 платится",
+          ctx['payable'] == 1 and not ctx['capped_by_limit'])
 
     # ── 5. Справка «за прошлые сутки» — сумма за сутки, а не «всего» ──
     check("справка за прошлые сутки = 291 (не 7045)", await report_prev_day_total(UA) == 291)
@@ -106,13 +120,14 @@ async def run():
     await approve_report(rid3, 0)
     payouts = await payout_reports()
     paid = [p for p in payouts if p['user_id'] == UA]
-    check("выплата за сутки = 350", paid and paid[0]['troops'] == 350)
-    check("XP начислен так же 1:1 (350)", paid and paid[0]['xp'] == 350)
+    check("выплата за сутки = последний отчёт (50), не сумма 350",
+          paid and paid[0]['troops'] == 50)
+    check("XP начислен так же 1:1 (50)", paid and paid[0]['xp'] == 50)
     check("XP без налога: начислено столько же, сколько войск",
           paid and paid[0]['xp'] == paid[0]['troops'])
     u = await get_user(UA)
-    check("баланс XP пилота = 350", u['xp_balance'] == 350)
-    check("опыт звания (users.troops) = 350", u['troops'] == 350)
+    check("баланс XP пилота = 50", u['xp_balance'] == 50)
+    check("опыт звания (users.troops) = 50", u['troops'] == 50)
 
     # ── 7. Региональная статистика = сумма «всего» последнего отчёта ──
     await recompute_region_stats()
@@ -126,9 +141,9 @@ async def run():
     # Пилот не «испарявается» из региона, просто его отчёт старше 72 часов:
     # в регионе он остаётся, потому что силы берутся из последнего отчёта.
     conn2 = await get_db()
-    await conn2.execute("UPDATE reports SET created_at = ? WHERE user_id = ?",
-                        ((start - timedelta(days=5, hours=1)).astimezone(timezone.utc)
-                         .strftime('%Y-%m-%d %H:%M:%S'), UA))
+    shift_ts = ((start - timedelta(days=5, hours=1)).astimezone(timezone.utc)
+                .strftime('%Y-%m-%d %H:%M:%S'))
+    await conn2.execute("UPDATE reports SET created_at = ? WHERE user_id = ?", (shift_ts, UA))
     await conn2.commit()
     await recompute_region_stats()
     stats_old = {r['region']: r for r in await get_region_stats()}
@@ -136,22 +151,50 @@ async def run():
           stats_old["25"]['troops_24h'] == 7395)
     check("пилот остаётся в регионе, даже если давно не сдавал отчёт",
           stats_old["25"]['active_pilots_72h'] == 1)
-    # Возвращаем дату, чтобы дальнейшие проверки не зависели от этого сдвига
-    await conn2.execute("UPDATE reports SET created_at = datetime('now') WHERE user_id = ?", (UA,))
+    # Возвращаем даты, чтобы дальнейшие проверки не зависели от этого сдвига.
+    # Вчерашний отчёт возвращаем ВЧЕРА: сдвинутый в сегодняшние сутки, он попал бы
+    # в «уже выплачено за сутки» и следующая проверка доплаты считалась бы не от
+    # своих чисел (вчерашний отчёт оплачен и помечен paid=1 с credited=NULL).
+    await conn2.execute(
+        "UPDATE reports SET created_at = ? WHERE user_id = ? AND created_at = ?",
+        (today_ts, UA, shift_ts))
+    await conn2.execute(
+        "UPDATE reports SET created_at = ? WHERE user_id = ? AND id = ?", (yday, UA, yest_id))
     await conn2.commit()
     await recompute_region_stats()
     check("лимит суток по умолчанию 4000", await get_report_daily_pay_cap() == 4000)
 
     # ── 8. Висящий отчёт с credited=0 пересчитывается по новому правилу ──
+    # Отдельный пилот: у UA сутки уже оплачены (см. проверку «не доплачивается»
+    # ниже), и пересчёт на нём ничего не показал бы.
+    UF = 91006
+    await add_user(UF, "recalc", "ПилотПересчёт", "Тест")
     conn = await get_db()
     cur = await conn.execute(
         "INSERT INTO reports (user_id, screenshot_file_id, troops_reported, total_troops, "
         "region, credited_troops, status, created_at) "
-        "VALUES (?, 'f', 291, 7045, '25', 0, 'pending', datetime('now'))", (UA,))
+        "VALUES (?, 'f', 291, 7045, '77', 0, 'pending', ?)", (UF, today_ts))
     stuck = cur.lastrowid
     await conn.commit()
     check("висящий pending с credited=0 оплачивается по заявке",
           await approve_report(stuck, 0) == 291)
+
+    # Регресс на двойную выплату: за сутки уже выплачено 50 (последний на тот момент
+    # отчёт), поэтому новый снимок платит только разницу (900 − 50 = 850), а свои 50
+    # не прибавляет сверху. Итог за сутки = ровно заявленный снимок 900.
+    cur = await conn.execute(
+        "INSERT INTO reports (user_id, screenshot_file_id, troops_reported, total_troops, "
+        "region, credited_troops, status, created_at) "
+        "VALUES (?, 'f', 900, 7395, '25', 0, 'pending', ?)", (UA, today_ts))
+    late = cur.lastrowid
+    await conn.commit()
+    _dbg = await approve_report(late, 0)
+    check("после выплаты суток новый снимок платит только разницу (900 − 50 = 850)",
+          _dbg == 850)
+    paid_late = [p for p in await payout_reports() if p['user_id'] == UA]
+    u_late = await get_user(UA)
+    check("цикл доплачивает 850, итого за сутки ровно снимок 900",
+          paid_late and paid_late[0]['troops'] == 850 and u_late['troops'] == 900)
 
     # ── 9. Отчёт сдан вчера, одобрен сегодня: лимит берётся по ЕГО суткам ──
     # Регресс: раньше одобрение считалось по текущим суткам, и сегодняшний отчёт
@@ -220,7 +263,8 @@ async def run():
 
     # Пилот не учитывается в двух регионах сразу
     total_pilots = sum(r['active_pilots_72h'] for r in s2.values())
-    check("пилот не задвоен в статистике по регионам", total_pilots == 4)
+    # UA, UB (25), UC (13), UD (12), UF (77) — пять разных пилотов в четырёх регионах
+    check("пилот не задвоен в статистике по регионам", total_pilots == 5)
 
     # ── 12. Показания пилотов одного региона складываются ──
     UE = 91005

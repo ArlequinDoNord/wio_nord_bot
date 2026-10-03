@@ -5,7 +5,7 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from config import REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT
-from database.db import add_report, approve_report, get_user, get_user_reports, report_tax_percent_for, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist, report_payout_context, report_prev_day_total
+from database.db import add_report, approve_report, get_user, get_user_reports, report_tax_percent_for, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist, report_payout_context, report_prev_day_total, created_at_msk, report_day_value_of
 from utils.helpers import is_main_menu_text
 from utils.notify import notify_report_praise
 from keyboards.keyboards import report_keyboard, cancel_keyboard
@@ -77,7 +77,10 @@ async def report_receive_photo(message: Message, state: FSMContext):
     await message.answer(
         "✍️ Сколько войск ты заработал за СЕГОДНЯШНИЕ сутки?\n"
         "Только то, что набежало сегодня — НЕ всё накопленное за все дни.\n"
-        f"(цифрами, до {REPORT_MAX_TROOPS:,})".replace(",", " "),
+        f"(цифрами, до {REPORT_MAX_TROOPS:,})".replace(",", " ")
+        + "\n\nℹ️ За сутки считается накопленное с 10:00 до 10:00. Если сдашь "
+          "несколько отчётов, платят по ПОСЛЕДНЕМУ — отчёты не складываются. "
+          "Поэтому сдавай отчёт по мере накопления, а не один раз в конце.",
         reply_markup=cancel_keyboard()
     )
 
@@ -194,7 +197,9 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
         f"⚔️ К оплате за текущие сутки: {credited} по заявке «за сутки»{prev_note}"
     )
     if ctx["assigned_today"] > 0:
-        payout_info += f"\n⚔️ Уже принято за сутки: {ctx['assigned_today']}"
+        payout_info += (f"\n⚔️ Сумма заявок за сутки (справочно): {ctx['assigned_today']}"
+                        f" — платится только твой последний отчёт, поэтому сдавай новый "
+                        f"отчёт по мере накопления")
     if ctx.get("capped_by_limit"):
         payout_info += (f"\n🚦 Сработал суточный лимит: за сутки начисляется не больше "
                         f"{ctx['cap']} войск. Излишек в оплату не идёт.")
@@ -213,7 +218,7 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
             await state.clear()
             await message.answer(
                 f"✅ Отчёт #{report_id} принят.\n"
-                f"Суточный лимит уже выбран ({ctx['assigned_today']}) — доплата не начислена.{reminder}"
+                f"К оплате 0: суточный лимит уже выбран, доплаты нет.{reminder}"
             )
             return
         tax_percent = await report_tax_percent_for(message.from_user.id)
@@ -259,11 +264,18 @@ async def report_my_reports(callback: CallbackQuery):
     lines = []
     for r in reports[:10]:
         emoji = status_emoji.get(r["status"], "❓")
+        # Время сдачи — по МСК (created_at в базе UTC). Раньше тут печатался сырой
+        # UTC-день, из-за чего отчёт, сданный в 08:00 МСК, показывался «вчера».
+        when = created_at_msk(r["created_at"]) or r["created_at"][:16]
+        # Сутки отчёта: у отчёта до 10:00 МСК календарная дата одна, а отчётные
+        # сутки начинаются в 10:00 — поэтому день показываем отдельно.
+        day = report_day_value_of(r["created_at"])
+        day_hint = f" (сутки {day[5:]})" if day else ""
         lines.append(
             f"{emoji} #{r['id']} | {r['troops_reported']} войск | "
-            f"{r['region'] or '—'} | {r['created_at'][:10]}"
+            f"{r['region'] or '—'} | {when}{day_hint}"
         )
 
     await callback.message.answer(
-        "📋 Твои отчёты:\n\n" + "\n".join(lines)
+        "📋 Твои отчёты (время по МСК):\n\n" + "\n".join(lines)
     )
