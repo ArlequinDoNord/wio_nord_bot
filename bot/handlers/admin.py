@@ -1708,8 +1708,10 @@ async def _shop_cat_page(message, mode: str, category: str, page: int):
 @router.callback_query(F.data.startswith("shop_edit:cat:"))
 async def shop_edit_cat_page_cb(callback: CallbackQuery):
     await callback.answer()
-    _, _, _, cat, page = callback.data.split(":", 4)
-    await _shop_cat_page(callback.message, "edit", cat, int(page or 0))
+    parts = callback.data.split(":")
+    cat = parts[2] if len(parts) > 2 else ""
+    page = int(parts[3] or 0) if len(parts) > 3 else 0
+    await _shop_cat_page(callback.message, "edit", cat, page)
 
 
 @router.callback_query(F.data == "shop_edit:cats")
@@ -1721,8 +1723,10 @@ async def shop_edit_cats_cb(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("shop_del:cat:"))
 async def shop_del_cat_page_cb(callback: CallbackQuery):
     await callback.answer()
-    _, _, _, cat, page = callback.data.split(":", 4)
-    await _shop_cat_page(callback.message, "del", cat, int(page or 0))
+    parts = callback.data.split(":")
+    cat = parts[2] if len(parts) > 2 else ""
+    page = int(parts[3] or 0) if len(parts) > 3 else 0
+    await _shop_cat_page(callback.message, "del", cat, page)
 
 
 @router.callback_query(F.data == "shop_del:cats")
