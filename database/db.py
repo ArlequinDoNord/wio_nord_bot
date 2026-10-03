@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config
 from config import (DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MINUTES,
-                    DUNGEON_RUN_STALE_SEC, FOREST_BOAR_SEED, MOLLUSK_SEED,
+                    DUNGEON_RUN_STALE_SEC, FOREST_BOAR_SEED, FOREST_BOAR_HP, MOLLUSK_SEED,
                     MOLLUSK_ITEM_SEEDS, MOLLUSK_ENEMY_DROPS)
 from config import get_effective_rank
 
@@ -1129,6 +1129,10 @@ async def init_db():
     # Старые записи Пилота, которым ранее могли поставить высокий уровень, возвращаем к 0.
     await conn.execute("UPDATE statuses SET sort_order = 2 WHERE access_tag = 'pilot'")
     await conn.execute("UPDATE statuses SET sort_order = -10 WHERE access_tag = 'tourist'")
+    # v0.19.12: кабану поднято HP до 40. Правки админа (admin_tuned=1) не трогаем.
+    await conn.execute(
+        "UPDATE forest_enemies SET hp = ? WHERE key = 'boar' AND hp < ? AND admin_tuned = 0",
+        (FOREST_BOAR_HP, FOREST_BOAR_HP))
     # v0.10.0: рынок (слоты продажи + лицензия) и налог на жильё
     await _ensure_column(conn, "dungeons", "is_training", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "market_license_expires", "TEXT DEFAULT NULL")

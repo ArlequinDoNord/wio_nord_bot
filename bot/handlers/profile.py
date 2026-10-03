@@ -10,7 +10,7 @@ from database.db import (
     set_callsign, set_callsign_free_used, get_callsign_free_used, get_db,
 )
 from keyboards.keyboards import profile_keyboard, cancel_keyboard, main_menu_kb
-from config import get_rank, get_effective_rank, get_next_rank, get_rank_index, RANKS
+from config import get_rank, get_effective_rank, get_next_rank, get_rank_index, RANKS, CALLSIGN_PRICE
 
 router = Router()
 
@@ -206,6 +206,14 @@ async def profile_cmd(message: Message):
 @router.message(F.text == "Профиль")
 async def show_profile(message: Message):
     await render_profile(message, message.from_user.id)
+
+
+@router.callback_query(F.data == "profile")
+async def profile_back(callback: CallbackQuery, state: FSMContext):
+    """Кнопка «Отмена» и возврат в профиль из вложенных экранов."""
+    await state.set_state(None)
+    await callback.answer()
+    await render_profile(callback.message, callback.from_user.id)
 
 
 @router.callback_query(F.data == "profile:set_photo")
@@ -487,81 +495,64 @@ async def profile_open_cb(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "profile:callsign")
-async def profile_callsign(callback: CallbackQuery):
+async def profile_callsign(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
+    await callback.answer()
     user = await get_user(user_id)
     has_callsign = bool(user and user.get('callsign') and str(user.get('callsign')).strip())
     free_used = await get_callsign_free_used(user_id)
     super_admin = await user_has_status_tag(user_id, "super_admin")
 
+    kb_cancel = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="Отмена", callback_data="profile")]])
+
+    # Позывной ещё не установлен и бесплатная установка не использована.
     if not has_callsign and not free_used:
-        text = (
+        await state.set_state(ProfileStates.waiting_callsign)
+        await callback.message.answer(
             "Установить позывной\n\n"
-            "Позывной — это твой игровой ник, который будет отображаться в карточке пилота.\n"
-            "Установка позывного — один раз бесплатно.\n\n"
-            "Введи желаемый позывной:"
-        )
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="profile")]])
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-        await callback.message.answer(text, reply_markup=kb)
-        await ProfileStates.waiting_callsign.set()
-        await callback.answer()
+            "Позывной — твой игровой ник, он виден в карточке пилота.\n"
+            "Первая установка — один раз бесплатно.\n\n"
+            "Введи желаемый позывной:",
+            reply_markup=kb_cancel)
         return
 
+    # Позывной есть, но игрок — суперадмин: смена бесплатная.
     if has_callsign and super_admin:
+        await state.set_state(ProfileStates.waiting_callsign)
+        await callback.message.answer(
+            "Смена позывного\n\n"
+            "У тебя уже есть позывной. По правам суперадмина смена — бесплатная.\n\n"
+            "Введи новый позывной:",
+            reply_markup=kb_cancel)
+        return
+
+    # Позывной есть и игрок не суперадмин: смена платная.
+    if has_callsign:
+        text = (
+            "Смена позывного — платная\n\n"
+            f"Стоимость: {CALLSIGN_PRICE} НМ\n"
+            "Текущий позывной заменится новым.\n\n"
+            "Оплатить и сменить?"
+        )
+    else:
         text = (
             "Смена позывного\n\n"
-            "У тебя уже есть позывной. По правам суперадмина смена позывного — бесплатная.\n\n"
-            "Введи новый позывной:"
+            f"Бесплатная установка уже использована. Смена стоит {CALLSIGN_PRICE} НМ.\n\n"
+            "Оплатить и сменить?"
         )
-        kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="profile")]])
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-        await callback.message.answer(text, reply_markup=kb)
-        await ProfileStates.waiting_callsign.set()
-        await callback.answer()
-        return
-
-    if has_callsign and not super_admin:
-        price = 500
-        text = (
-            f"Смена позывного — платная\n\n"
-            f"Стоимость: {price} НМ\n"
-            "Текущий позывной можно будет заменить новым.\n\n"
-            "Хочешь оплатить и сменить позывной?"
-        )
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"Оплатить {price} НМ", callback_data="profile:callsign_buy")],
-            [InlineKeyboardButton(text="Отмена", callback_data="profile")],
-        ])
-        try:
-            await callback.message.delete()
-        except Exception:
-            pass
-        await callback.message.answer(text, reply_markup=kb)
-        await callback.answer()
-        return
-
-    text = (
-        "Смена позывного\n\n"
-        "Бесплатная установка уже использована. Смена позывного стоит 500 НМ.\n\n"
-        "Хочешь оплатить и сменить позывной?"
-    )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Оплатить 500 НМ", callback_data="profile:callsign_buy")],
+    await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=f"Оплатить {CALLSIGN_PRICE} НМ",
+                              callback_data="profile:callsign_buy")],
         [InlineKeyboardButton(text="Отмена", callback_data="profile")],
-    ])
-    try:
-        await callback.message.delete()
-    except Exception:
-        pass
-    await callback.message.answer(text, reply_markup=kb)
-    await callback.answer()
+    ]))
+
+
+@router.callback_query(F.data == "profile:callsign_cancel")
+async def profile_callsign_cancel(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(None)
+    await callback.answer("Отменено")
+    await render_profile(callback.message, callback.from_user.id)
 
 
 @router.message(ProfileStates.waiting_callsign)
@@ -597,35 +588,36 @@ async def profile_callsign_input(message: Message, state: FSMContext):
         await render_profile(message, user_id)
         return
 
-    await state.finish()
-    await message.answer("Для платной смены позывного используй кнопку «Оплатить 500 НМ»")
+    # Бесплатная установка уже была — ввод без оплаты не принимаем.
+    await state.set_state(None)
+    await message.answer(
+        f"Бесплатная установка уже использована — смена стоит {CALLSIGN_PRICE} НМ.\n\n"
+        "Вернись в профиль и нажми «Сменить позывной», чтобы оплатить смену."
+    )
     await render_profile(message, user_id)
 
 
 @router.callback_query(F.data == "profile:callsign_buy")
-async def profile_callsign_buy(callback: CallbackQuery):
+async def profile_callsign_buy(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     user = await get_user(user_id)
-    price = 500
-    if user['nordmarks'] < price:
-        await callback.answer(f"❌ Недостаточно. Нужно {price} НМ", show_alert=True)
+    if not user:
+        await callback.answer("Сначала нажми /start", show_alert=True)
+        return
+    if user['nordmarks'] < CALLSIGN_PRICE:
+        await callback.answer(f"❌ Недостаточно. Нужно {CALLSIGN_PRICE} НМ", show_alert=True)
         return
 
-    try:
-        from database.db import transfer_nordmarks, add_transaction
-        await transfer_nordmarks(user_id, 0, price, "callsign_change")
-    except Exception:
-        from database.db import add_transaction
-        conn = await get_db()
-        await conn.execute("UPDATE users SET nordmarks = nordmarks - ? WHERE user_id = ?",
-                           (price, user_id))
-        await conn.commit()
-        await add_transaction(user_id, "callsign_change", -price, f"Смена позывного")
+    from database.db import transfer_nordmarks, add_transaction
+    await transfer_nordmarks(user_id, 0, CALLSIGN_PRICE, "callsign_change")
+    await add_transaction(user_id, "callsign_change", -CALLSIGN_PRICE, "Смена позывного")
 
+    # Позывной сбрасываем, чтобы ввод нового прошёл как первая установка.
     await set_callsign(user_id, None)
-    await callback.message.edit_text(
-        "Позывной сброшен для замены. Введи новый позывной:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="Отмена", callback_data="profile")]])
-    )
-    await ProfileStates.waiting_callsign.set()
-    await callback.answer("Оплата прошла")
+    await state.set_state(ProfileStates.waiting_callsign)
+    await callback.answer(f"✅ Списано {CALLSIGN_PRICE} НМ")
+    await callback.message.answer(
+        f"Оплачено {CALLSIGN_PRICE} НМ.\nВведи новый позывной:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="Отмена", callback_data="profile:callsign_cancel")],
+        ]))
