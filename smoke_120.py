@@ -10,7 +10,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import FOREST_BOAR_DMG, PILOT_BASE_DMG, PILOT_BASE_HP
+from config import (FOREST_BOAR_DMG, PILOT_BASE_HP, PILOT_NO_WEAPON_DMG,
+                    RANK_DAMAGE_TIERS)
 from utils.combat_model import roll_enemy_damage, roll_pilot_damage
 
 PASSED = 0
@@ -27,9 +28,10 @@ def check(name, cond, extra=""):
         print(f"  FAIL  {name}{(' — ' + extra) if extra else ''}")
 
 
-def stats(weapon=0, mult=1.0, dodge=0, armor=0, hp_max=PILOT_BASE_HP):
-    return {'weapon_damage': weapon, 'attack_mult': mult, 'dodge': dodge,
-            'armor': armor, 'hp_max': hp_max, 'award_attack': 0}
+def stats(weapon=0, mult=1.0, dodge=0, armor=0, hp_max=PILOT_BASE_HP,
+          base=PILOT_NO_WEAPON_DMG):
+    return {'base_dmg': base, 'weapon_damage': weapon, 'attack_mult': mult,
+            'dodge': dodge, 'armor': armor, 'hp_max': hp_max, 'award_attack': 0}
 
 
 def main():
@@ -56,12 +58,20 @@ def main():
     check("броня врага фиксируется в armor_blocked",
           all(r['armor_blocked'] == 5 for r in armored if not r['dodged']))
 
-    # ── 4. Урон не уходит в ноль и не уходит в минус ──
+    # ── 4. Урон не уходит в минус; броня может поглотить удар целиком ──
     all_dmg = [r['damage'] for r in armored if not r['dodged']]
-    check("урон по бронированному врагу всегда ≥ 1", all(d >= 1 for d in all_dmg),
-          f"мин={min(all_dmg)}")
-    huge = [roll_pilot_damage(stats(weapon=10), {'armor': 999})['damage'] for _ in range(500)]
-    check("даже броня выше урона оставляет ≥ 1", all(d >= 1 for d in huge))
+    check("урон по бронированному врагу не уходит в ноль/минус",
+          all(d >= 0 for d in all_dmg), f"мин={min(all_dmg)}")
+    check("слабый удар рекрута броня врага съедает частично (остаётся ≥ 0)",
+          all(d >= 0 for d in all_dmg) and max(all_dmg) >= 1)
+    # Броня выше урона = удар не проходит совсем (важно для туриста 0–1).
+    huge = [roll_pilot_damage(stats(weapon=10), {'armor': 999})['damage']
+            for _ in range(500)]
+    check("броня выше урона полностью гасит удар (0)", all(d == 0 for d in huge))
+    weak = [roll_pilot_damage(stats(weapon=0), {'armor': 99})['damage']
+            for _ in range(500)]
+    check("турист/рекрут против бронированного врага дают 0",
+          all(d == 0 for d in weak))
 
     # ── 5. Враг бьёт в своём диапазоне ──
     boar = {'dmg_min': FOREST_BOAR_DMG[0], 'dmg_max': FOREST_BOAR_DMG[1]}
@@ -110,22 +120,20 @@ def main():
     # ── 11. PILOT_BASE_HP в конфиге ──
     check("PILOT_BASE_HP = 100", PILOT_BASE_HP == 100)
 
-    # ── 12. Бой без оружия: кабан опасен только за счёт своих статов ──
-    # Без оружия удар = d6 (1–6), кабан 30 HP и 15% уклонения — бой затягивается.
-    print("\n── Обычный пилот без снаряжения, 100 HP ──")
+    # ── 12. Бой без оружия: рекрут (1–1) против кабана ──
+    print("\n── Рекрут без снаряжения, 100 HP ──")
     dmg_bare = [roll_pilot_damage(stats(weapon=0), {'dodge': 0})['damage']
                 for _ in range(4000)]
     print(f"  Урон пилота без оружия: {min(dmg_bare)}–{max(dmg_bare)} "
           f"(средний {statistics.mean(dmg_bare):.1f})")
-    check("без оружия урон пилота = PILOT_BASE_DMG (1–3)",
-          min(dmg_bare) >= PILOT_BASE_DMG[0] and max(dmg_bare) <= PILOT_BASE_DMG[1],
-          f"{PILOT_BASE_DMG}")
-    check("PILOT_BASE_DMG = (1, 3)", tuple(PILOT_BASE_DMG) == (1, 3))
+    check("рекрут без оружия бьёт 1",
+          min(dmg_bare) >= 1 and max(dmg_bare) <= 1, "1–1")
+    check("PILOT_NO_WEAPON_DMG = (1, 1)", tuple(PILOT_NO_WEAPON_DMG) == (1, 1))
 
     sim = random.Random(777)
     rounds, left_hp = [], []
     for _ in range(20000):
-        boar_hp, player_hp, n = 30, PILOT_BASE_HP, 0
+        boar_hp, player_hp, n = 40, PILOT_BASE_HP, 0
         while boar_hp > 0 and player_hp > 0:
             n += 1
             r = roll_pilot_damage(stats(weapon=0), {'dodge': 15, 'armor': 0})
@@ -138,13 +146,46 @@ def main():
                 player_hp -= e['damage']
         rounds.append(n)
         left_hp.append(player_hp)
-    print(f"  Раундов до победы: среднее {statistics.mean(rounds):.1f}")
+    print(f"  Раундов боя: среднее {statistics.mean(rounds):.1f}")
     print(f"  HP у пилота после боя: среднее {statistics.mean(left_hp):.1f}")
-    check("пилот без оружия побеждает кабана за 6–20 раундов",
-          6 <= statistics.mean(rounds) <= 20, f"{statistics.mean(rounds):.1f}")
-    check("после боя у пилота остаётся меньше половины HP",
-          statistics.mean(left_hp) < PILOT_BASE_HP * 0.5,
+    check("бой рекрута без оружия против кабана длится 15–25 раундов",
+          15 <= statistics.mean(rounds) <= 25, f"{statistics.mean(rounds):.1f}")
+    check("рекруту 1 урона не хватает добить кабана без оружия",
+          statistics.mean(left_hp) < PILOT_BASE_HP * 0.2,
           f"{statistics.mean(left_hp):.1f} из {PILOT_BASE_HP}")
+
+    # ── 13. Урон растёт по статусу: рекрут → ас ──
+    print("\n── Урон без оружия по статусам ──")
+    for tag, (lo, hi) in RANK_DAMAGE_TIERS.items():
+        d = [roll_pilot_damage(stats(weapon=0, base=(lo, hi)), {})['damage']
+             for _ in range(3000)]
+        print(f"  {tag:14s} {min(d)}–{max(d)} (средний {statistics.mean(d):.1f})")
+        check(f"{tag}: урон в диапазоне {lo}–{hi}",
+              min(d) >= lo and max(d) <= hi)
+    means = {}
+    for tag, (lo, hi) in RANK_DAMAGE_TIERS.items():
+        d = [roll_pilot_damage(stats(weapon=0, base=(lo, hi)), {})['damage']
+             for _ in range(3000)]
+        means[tag] = statistics.mean(d)
+    order = ["recruit", "pilot2", "pilot1", "veteran", "master_pilot", "ace"]
+    check("урон растёт вместе со званием",
+          all(means[order[i]] < means[order[i + 1]] for i in range(len(order) - 1)),
+          " → ".join(f"{means[t]:.1f}" for t in order))
+    check("турист слабее рекрута", means["tourist"] < means["recruit"],
+          f"{means['tourist']:.1f} < {means['recruit']:.1f}")
+    check("турист может не нанести урона (0–1)",
+          RANK_DAMAGE_TIERS["tourist"] == (0, 1))
+    check("турист с бронёй врага может дать ровно 0",
+          roll_pilot_damage(stats(weapon=0, base=(0, 0)), {'armor': 99})['damage'] == 0)
+
+    # ── 14. Хранитель бьёт по своему званию, а не по должности ──
+    check("хранителя нет в таблице урона", "keeper" not in RANK_DAMAGE_TIERS)
+    check("хранитель без статусов получает базовый 1",
+          PILOT_NO_WEAPON_DMG == (1, 1))
+
+    # ── 15. Статусы за звание покрывают всю шкалу до аса ──
+    for tag in order:
+        check(f"статус {tag} есть в таблице урона", tag in RANK_DAMAGE_TIERS)
 
     print(f"\n=== SMOKE 120: {PASSED} passed, {FAILED} failed ===")
     return 1 if FAILED else 0

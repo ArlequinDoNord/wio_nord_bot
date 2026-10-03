@@ -1,7 +1,8 @@
 """Единая боевая модель для всех поединков.
 
-Пилот атакует СВОИМ уроном: оружие (слот weapon) + бонус наград + состояния,
-плюс бросок d6. Снаряжение врага (armor) поглощает часть урона, враг может
+Пилот атакует СВОИМ уроном: базовый урон по статусу (config.RANK_DAMAGE_TIERS —
+«Ас» 4–8, «Ветеран» 2–4 и так далее) + урон оружия, затем бонусы наград и
+состояния. Снаряжение врага (armor) поглощает часть урона, враг может
 увернуться или crit'нуть. Каждый враг держит СВОИ параметры: hp, диапазон
 урона dmg_min..dmg_max, dodge, armor, crit_chance/crit_mult.
 
@@ -10,23 +11,26 @@
 """
 import random
 
-from config import PILOT_BASE_DMG, PILOT_BASE_HP
+from config import PILOT_BASE_HP, PILOT_NO_WEAPON_DMG
 from utils.combat import roll_dodge
 from utils.states import combat_multipliers, get_state_info
 
 
 async def pilot_combat_stats(user_id: int) -> dict:
     """Боевые характеристики пилота: урон, уклонение, броня, макс. HP."""
-    from database.db import (get_award_bonus, get_player_armor_with_bonus,
-                             get_player_dodge, get_player_weapon_damage)
+    from database.db import (get_award_bonus, get_pilot_base_damage,
+                             get_player_armor_with_bonus, get_player_dodge,
+                             get_player_weapon_damage)
 
     weapon_damage = await get_player_weapon_damage(user_id)
     state_info = await get_state_info(user_id)
     mult = combat_multipliers(state_info['names'])
     bonus = await get_award_bonus(user_id)
+    base_lo, base_hi = await get_pilot_base_damage(user_id)
 
     attack_mult = mult.get('attack_mult', 1.0) * (1.0 + bonus['attack'] / 100.0)
     return {
+        'base_dmg': (int(base_lo), int(base_hi)),
         'weapon_damage': weapon_damage,
         'attack_mult': attack_mult,
         'dodge': await get_player_dodge(user_id, mult.get('dodge_mult', 1.0)),
@@ -47,16 +51,18 @@ def _enemy_range(enemy) -> tuple:
 
 
 def roll_pilot_damage(stats: dict, enemy) -> dict:
-    """Удар пилота по врагу: базовый диапазон + оружие, затем броня и уклонение врага.
+    """Удар пилота по врагу: базовый урон по статусу + оружие, затем броня и
+    уклонение врага.
 
-    Без оружия пилот бьёт PILOT_BASE_DMG (1–3). Снаряжение прибавляется к базе,
-    дальше применяются бонусы наград и состояния.
+    Базовый урон берётся из stats['base_dmg'] — это RANK_DAMAGE_TIERS по самому
+    сильному статусу игрока (без оружия это 1–1 у рекрута, 4–8 у аса, 0–1 у туриста).
+    Снаряжение прибавляется к базе, дальше бонусы наград и состояния.
 
     Возвращает: damage (сколько HP снято), dodged, raw, armor_blocked, crit.
     """
-    lo, hi = PILOT_BASE_DMG
-    raw = random.randint(lo, hi) + int(stats['weapon_damage'] or 0)
-    raw = max(1, int(raw * stats['attack_mult']))
+    lo, hi = stats.get('base_dmg') or PILOT_NO_WEAPON_DMG
+    raw = random.randint(int(lo), int(hi)) + int(stats.get('weapon_damage') or 0)
+    raw = max(0, int(raw * stats['attack_mult']))
 
     enemy_dodge = int(enemy.get('dodge') or enemy.get('dodge_chance') or 0)
     if roll_dodge(enemy_dodge):
@@ -71,7 +77,9 @@ def roll_pilot_damage(stats: dict, enemy) -> dict:
 
     enemy_armor = int(enemy.get('armor') or 0)
     blocked = min(damage, enemy_armor)
-    damage = max(1, damage - enemy_armor)
+    # Турист (0–1) может не нанести урона совсем, поэтому минимум — 0,
+    # а не 1: иначе «может вообще не ударить» не получится.
+    damage = max(0, damage - enemy_armor)
     return {'damage': damage, 'dodged': False, 'raw': raw,
             'armor_blocked': blocked, 'crit': crit}
 

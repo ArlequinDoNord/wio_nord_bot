@@ -32,19 +32,20 @@ async def run():
         add_report, approve_report, payout_reports,
         set_report_daily_pay_cap,
         get_users_for_rank_promotion,
+        get_status_by_tag, grant_status,
     )
 
     await init_db()
     passed = 0
     failed = 0
 
-    def check(name, cond):
+    def check(name, cond, extra=""):
         nonlocal passed, failed
         if cond:
             passed += 1
         else:
             failed += 1
-            print(f"  FAIL: {name}")
+            print(f"  FAIL: {name}{(' — ' + str(extra)) if extra else ''}")
 
     # ── 1. Новая шкала RANKS ──
     check("RANKS: 16 ступеней", len(RANKS) == 16)
@@ -183,6 +184,75 @@ async def run():
     check("повторная выдача того же статуса → None",
           await grant_status_for_rank(u_p2, "Капитан") is None
           and await grant_status_for_rank(34099, "Майор") is None)
+
+    # ── 9. Боевой урон по статусу (RANK_DAMAGE_TIERS) ──
+    from config import PILOT_NO_WEAPON_DMG, RANK_DAMAGE_TIERS
+    from database.db import get_pilot_base_damage
+
+    # Урон считается ПО ЗВАНИЮ, а не по выданным статусам: у Хранителя
+    # (sort_order 100) user_has_status_tag считает «есть» любой статус.
+
+    # u_vet = 4040 войск → «Старший Лейтенант» → veteran (2–4).
+    check("урон по званию «Ст. Лейтенант» = (2, 4)",
+          await get_pilot_base_damage(u_vet) == (2, 4),
+          await get_pilot_base_damage(u_vet))
+    # u_p1 = 1500 → «Старший Сержант» → pilot1 (1–3).
+    check("урон по званию «Ст. Сержант» = (1, 3)",
+          await get_pilot_base_damage(u_p1) == (1, 3),
+          await get_pilot_base_damage(u_p1))
+
+    # Повышение админом пересчитывает урон сразу.
+    await promote_user_rank(u_vet, "Полковник", 1)
+    check("после повышения до Полковника урон = (4, 8)",
+          await get_pilot_base_damage(u_vet) == (4, 8),
+          await get_pilot_base_damage(u_vet))
+
+    # Хранитель бьёт по своему званию: статус «Хранитель» не даёт бонуса.
+    keeper = await get_status_by_tag("keeper")
+    await grant_status(u_vet, keeper['id'], 1)
+    check("хранитель с званием Полковника всё равно бьёт (4, 8)",
+          await get_pilot_base_damage(u_vet) == (4, 8),
+          await get_pilot_base_damage(u_vet))
+    check("в таблице урона нет keeper", "keeper" not in RANK_DAMAGE_TIERS)
+
+    # Турист (ещё без звания) — почти безвреден.
+    u_t = await mk(34050, 0)
+    tourist = await get_status_by_tag("tourist")
+    await grant_status(u_t, tourist['id'], 1)
+    check("турист → (0, 1)",
+          await get_pilot_base_damage(u_t) == (0, 1),
+          await get_pilot_base_damage(u_t))
+    check("без звания урон = запасные (1, 1)",
+          await get_pilot_base_damage(await mk(34051, 0)) == (1, 1))
+    check("запасной урон = (1, 1)", tuple(PILOT_NO_WEAPON_DMG) == (1, 1))
+
+    # Промежуточные звания без статуса тянутся к предыдущей ступени урона.
+    # Выше «Ст. Лейтенанта» авто-звание не растёт (get_effective_rank капнет),
+    # поэтому по войскам дальше не прыгнуть — только через promote_user_rank.
+    for troops, expected, label in ((100, (1, 1), "Рядовой"),
+                                    (350, (1, 2), "Ефрейтор"),
+                                    (500, (1, 2), "Капрал"),
+                                    (850, (1, 2), "Сержант"),
+                                    (1500, (1, 3), "Ст. Сержант"),
+                                    (2500, (1, 3), "Лейтенант"),
+                                    (6000, (2, 4), "Капитан"),
+                                    (22000, (2, 4), "Генерал-майор (капнет)")):
+        u_x = await mk(34060 + troops, troops)
+        check(f"{label} ({troops} войск) → {expected[0]}–{expected[1]}",
+              await get_pilot_base_damage(u_x) == expected,
+              await get_pilot_base_damage(u_x))
+
+    # Генералы получают максимум только через админское повышение.
+    for rank, expected in (("Подполковник", (3, 5)), ("Майор", (3, 5)),
+                           ("Генерал Армии", (4, 8))):
+        u_y = await mk(34100 + len(rank), 11000)
+        await promote_user_rank(u_y, rank, 1)
+        check(f"админское звание «{rank}» → {expected[0]}–{expected[1]}",
+              await get_pilot_base_damage(u_y) == expected,
+              await get_pilot_base_damage(u_y))
+    check("в таблице урона нет keeper", "keeper" not in RANK_DAMAGE_TIERS)
+    check("запасной урон без статусов = (1, 1)",
+          tuple(PILOT_NO_WEAPON_DMG) == (1, 1))
 
     await close_db()
     print(f"\nSmoke 084: {passed} passed, {failed} failed")

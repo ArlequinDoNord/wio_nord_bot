@@ -4564,6 +4564,51 @@ async def get_users_for_rank_promotion():
     return result
 
 
+async def get_pilot_base_damage(user_id: int) -> tuple:
+    """Базовый урон пилота в бою: (минимум, максимум) по его званию.
+
+    Считается по званию (войска + админ-назначение), а не по выданным статусам:
+    у Хранителя (sort_order 100) user_has_status_tag считает «есть» любой статус,
+    поэтому по статусам он получил бы асий урон независимо от звания.
+
+    Логика: берётся самый высокий статус из шкалы RANK_DAMAGE_TIERS, который
+    положен званию не выше текущего. Турист (sort_order -10, ещё без звания)
+    может совсем не нанести урона. Если звание неизвестно — PILOT_NO_WEAPON_DMG.
+    """
+    from config import (PILOT_NO_WEAPON_DMG, RANK_DAMAGE_TIERS, RANKS,
+                        RANK_STATUS_TAGS)
+
+    # Порядок тегов — от сильного к слабому (ace → … → recruit).
+    tag_to_req = {}
+    for rname, req in RANKS:
+        tag = RANK_STATUS_TAGS.get(rname)
+        if tag:
+            tag_to_req[tag] = max(tag_to_req.get(tag, 0), req)
+    tag_to_req["recruit"] = max(tag_to_req.get("recruit", 0),
+                                RANKS[0][1])
+
+    user = await get_user(user_id)
+    if not user:
+        return tuple(PILOT_NO_WEAPON_DMG)
+    rank = get_effective_rank(user['troops'] or 0, user['promoted_rank'])
+    rank_req = RANKS[0][1]
+    for rname, req in RANKS:
+        if rname == rank:
+            rank_req = req
+            break
+
+    if await user_is_tourist(user_id):
+        return tuple(RANK_DAMAGE_TIERS["tourist"])
+
+    for tag, dmg in RANK_DAMAGE_TIERS.items():
+        if tag == "tourist":
+            continue
+        req = tag_to_req.get(tag)
+        if req is not None and req <= rank_req:
+            return tuple(dmg)
+    return tuple(PILOT_NO_WEAPON_DMG)
+
+
 async def grant_status_for_rank(user_id: int, rank_name: str, granted_by: int = 0):
     """Выдать игроку статус, закреплённый за званием, если его ещё нет.
 
