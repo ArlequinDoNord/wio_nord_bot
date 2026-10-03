@@ -1623,7 +1623,7 @@ async def shop_admin_delete(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("В магазине пока нет товаров.")
         return
 
-    await _shop_del_page(callback.message, 0)
+    await _shop_cat_picker(callback.message, "del")
 
 
 @router.callback_query(F.data.startswith("del_item:"))
@@ -1641,80 +1641,94 @@ async def delete_item_cb(callback: CallbackQuery):
     await callback.message.answer(f"🗑 Товар «{item['name']}» удалён.")
 
 
-@router.callback_query(F.data.startswith("shop_edit:page:"))
-async def shop_edit_page_cb(callback: CallbackQuery):
+@router.callback_query(F.data == "del_item:back")
+async def delete_item_back(callback: CallbackQuery):
     await callback.answer()
-    try:
-        page = int(callback.data.split(":")[2])
-    except Exception:
-        page = 0
-    await _shop_edit_page(callback.message, page)
+    await _shop_cat_picker(callback.message, "del")
 
 
-@router.callback_query(F.data.startswith("shop_del:page:"))
-async def shop_del_page_cb(callback: CallbackQuery):
-    await callback.answer()
-    try:
-        page = int(callback.data.split(":")[2])
-    except Exception:
-        page = 0
-    await _shop_del_page(callback.message, page)
-
-
-async def _shop_edit_page(message, page: int = 0):
+async def _shop_cat_picker(message, mode: str):
+    """Выбор раздела (категории) товара — как каталог в магазине. mode: edit|del."""
     items = await get_available_items()
-    rows = []
+    counts = {}
+    for it in items or []:
+        counts[it['category']] = counts.get(it['category'], 0) + 1
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    PER_I = 10
-    total = len(items) if items else 0
-    if total == 0:
+    rows = []
+    for key, cnt in sorted(counts.items(), key=lambda kv: -(kv[1] or 0)):
+        label = ITEM_CATEGORIES.get(key, key)
+        rows.append([InlineKeyboardButton(
+            text=f"{label} ({cnt})",
+            callback_data=f"shop_{mode}:cat:{key}:0")])
+    if not rows:
         await message.edit_text("В магазине пока нет товаров.")
         return
-    start = page * PER_I
-    end = start + PER_I
-    for it in items[start:end]:
-        rows.append([InlineKeyboardButton(
-            text=f"{it['name']}",
-            callback_data=f"edit_item:{it['id']}"
-        )])
-    nav = []
-    if page > 0:
-        nav.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"shop_edit:page:{page-1}"))
-    if end < total:
-        nav.append(InlineKeyboardButton(text="Вперёд ▶️", callback_data=f"shop_edit:page:{page+1}"))
-    if nav:
-        rows.append(nav)
     rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:shop")])
-    await message.edit_text("Выберите товар для изменения:",
-                            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    title = ("Выбери раздел для изменения товара:" if mode == "edit"
+             else "Выбери раздел для удаления товара:")
+    await message.edit_text(title, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
-async def _shop_del_page(message, page: int = 0):
-    items = await get_available_items()
-    rows = []
+async def _shop_cat_page(message, mode: str, category: str, page: int):
+    """Список товаров внутри раздела, по 10 на страницу."""
+    items = await get_available_items(category=category)
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     PER_I = 10
-    total = len(items) if items else 0
+    items = items or []
+    total = len(items)
     if total == 0:
-        await message.edit_text("В магазине пока нет товаров.")
+        await _shop_cat_picker(message, mode)
         return
+    pages = max(1, (total + PER_I - 1) // PER_I)
+    page = max(0, min(page, pages - 1))
     start = page * PER_I
-    end = start + PER_I
-    for it in items[start:end]:
-        rows.append([InlineKeyboardButton(
-            text=f"{it['name']} ({it['price']} НМ)",
-            callback_data=f"del_item:{it['id']}"
-        )])
-    nav = []
+    chunk = items[start:start + PER_I]
+
+    rows = []
+    for it in chunk:
+        if mode == "edit":
+            rows.append([InlineKeyboardButton(text=it['name'],
+                                              callback_data=f"edit_item:{it['id']}")])
+        else:
+            rows.append([InlineKeyboardButton(text=f"{it['name']} ({it['price']} НМ)",
+                                              callback_data=f"del_item:{it['id']}")])
+    nav = [InlineKeyboardButton(text=f"Стр. {page + 1}/{pages}", callback_data="noop")]
     if page > 0:
-        nav.append(InlineKeyboardButton(text="◀️ Назад", callback_data=f"shop_del:page:{page-1}"))
-    if end < total:
-        nav.append(InlineKeyboardButton(text="Вперёд ▶️", callback_data=f"shop_del:page:{page+1}"))
-    if nav:
-        rows.append(nav)
-    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="admin:shop")])
-    await message.edit_text("Выберите товар для удаления:",
-                            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        nav.insert(0, InlineKeyboardButton(text="◀️", callback_data=f"shop_{mode}:cat:{category}:{page - 1}"))
+    if page < pages - 1:
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"shop_{mode}:cat:{category}:{page + 1}"))
+    rows.append(nav)
+    rows.append([InlineKeyboardButton(text="🔙 К разделам", callback_data=f"shop_{mode}:cats")])
+    label = ITEM_CATEGORIES.get(category, category)
+    await message.edit_text(
+        f"Раздел: {label} — товаров: {total}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("shop_edit:cat:"))
+async def shop_edit_cat_page_cb(callback: CallbackQuery):
+    await callback.answer()
+    _, _, _, cat, page = callback.data.split(":", 4)
+    await _shop_cat_page(callback.message, "edit", cat, int(page or 0))
+
+
+@router.callback_query(F.data == "shop_edit:cats")
+async def shop_edit_cats_cb(callback: CallbackQuery):
+    await callback.answer()
+    await _shop_cat_picker(callback.message, "edit")
+
+
+@router.callback_query(F.data.startswith("shop_del:cat:"))
+async def shop_del_cat_page_cb(callback: CallbackQuery):
+    await callback.answer()
+    _, _, _, cat, page = callback.data.split(":", 4)
+    await _shop_cat_page(callback.message, "del", cat, int(page or 0))
+
+
+@router.callback_query(F.data == "shop_del:cats")
+async def shop_del_cats_cb(callback: CallbackQuery):
+    await callback.answer()
+    await _shop_cat_picker(callback.message, "del")
 
 
 @router.callback_query(F.data == "shop_admin:edit")
@@ -1723,7 +1737,7 @@ async def shop_admin_edit(callback: CallbackQuery, state: FSMContext):
     if not await has_permission(callback.from_user.id, "can_edit_items"):
         await callback.message.answer("❌ Нет прав на изменение товаров.")
         return
-    await _shop_edit_page(callback.message, 0)
+    await _shop_cat_picker(callback.message, "edit")
 
 
 @router.callback_query(F.data.startswith("edit_item:"))
