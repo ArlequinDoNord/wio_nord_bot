@@ -559,21 +559,15 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         current_enemy_hp = enemy['hp']
     player_hp = run['hp']
 
-    # Урон игрока
-    weapon_damage = await get_player_weapon_damage(user_id)
-    damage_to_enemy = calculate_attack(0, weapon_damage)
-    state_info = await get_state_info(user_id)
-    mult = combat_multipliers(state_info['names'])
-    am = mult.get('attack_mult', 1.0)
-    award_bonus = await get_award_bonus(user_id)
-    am *= 1.0 + award_bonus['attack'] / 100.0
-    damage_to_enemy = max(1, int(damage_to_enemy * am))
-
-    # Уклонение врага: может полностью избежать удара
-    enemy_dodge = enemy['dodge'] if 'dodge' in enemy.keys() else 0
-    enemy_dodged = roll_dodge(enemy_dodge)
-    if enemy_dodged:
-        damage_to_enemy = 0
+    # Урон игрока: своё оружие + награды + состояния, броня врага поглощает часть.
+    from utils.combat_model import pilot_combat_stats, roll_pilot_damage
+    stats = await pilot_combat_stats(user_id)
+    enemy_row = enemy if isinstance(enemy, dict) else dict(enemy)
+    if not enemy_row.get('dodge') and enemy_row.get('dodge_chance'):
+        enemy_row['dodge'] = enemy_row['dodge_chance']
+    res = roll_pilot_damage(stats, enemy_row)
+    damage_to_enemy = res['damage']
+    enemy_dodged = res['dodged']
 
     current_enemy_hp = max(0, current_enemy_hp - damage_to_enemy)
     await state.update_data(current_enemy_hp=current_enemy_hp)
@@ -595,18 +589,18 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         return
 
     # Враг контратакует (с шансом пилот уклоняется)
-    player_dodge = await get_player_dodge(user_id, mult.get('dodge_mult', 1.0))
-    player_dodged = roll_dodge(player_dodge)
-    enemy_dmg = calculate_enemy_damage(enemy['attack'])
-    armor = await get_player_armor_with_bonus(user_id)
+    from utils.combat_model import roll_enemy_damage
+    eres = roll_enemy_damage(stats, enemy_row)
     blocked_line = ""
-    if player_dodged:
+    if eres['dodged']:
         reduced = 0
         dodge_line = f"💨 Ты уклонился от атаки {enemy['name']}! (−0 HP)"
     else:
-        reduced = max(1, enemy_dmg - armor)
-        if armor > 0 and reduced < enemy_dmg:
-            blocked_line = f"\n🛡️ Броня поглотила {enemy_dmg - reduced} урона!"
+        reduced = eres['damage']
+        if eres['armor_blocked']:
+            blocked_line = f"\n🛡️ Броня поглотила {eres['armor_blocked']} урона!"
+        if eres['crit']:
+            blocked_line += " 💥 crit!"
         dodge_line = ""
     player_hp = max(0, player_hp - reduced)
     await update_run_hp(run['id'], player_hp)
@@ -614,14 +608,17 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     if enemy_dodged:
         attack_line = f"💨 {enemy['name']} уклонился от удара! (−0 HP врагу)\n"
     else:
-        attack_line = f"−{damage_to_enemy} HP врагу\n"
+        crit_mark = " 💥 crit!" if res['crit'] else ""
+    armor_note = (f"\n🛡️ Броня врага поглотила {res['armor_blocked']} урона!"
+                  if res['armor_blocked'] else "")
+    attack_line = f"−{damage_to_enemy} HP врагу{crit_mark}{armor_note}\n"
     enemy_bar = get_enemy_bar(current_enemy_hp, enemy['hp'])
     text = (
         f"🗡️ Ты атакуешь {enemy['name']}!\n"
         f"{attack_line}"
         f"{enemy_bar}\n\n"
     )
-    if player_dodged:
+    if eres['dodged']:
         text += dodge_line
     else:
         text += get_enemy_attack_text(enemy['name'], reduced, player_hp) + blocked_line

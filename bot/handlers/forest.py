@@ -531,8 +531,9 @@ async def forest_cast(callback: CallbackQuery):
                 chance, random.random() * 100, counter_before, pity)
         if encounter:
             await reset_forest_boar_counter(user_id)
-            bonus = (await get_award_bonus(user_id)) or {}
-            player_hp = 100 + int(bonus.get('hp') or 0)
+            from utils.combat_model import pilot_combat_stats
+            stats = await pilot_combat_stats(user_id)
+            player_hp = stats['hp_max']
             token = FOREST_TOKEN.get(user_id, "")
             FOREST_BATTLE[user_id] = {
                 "token": token,
@@ -542,11 +543,12 @@ async def forest_cast(callback: CallbackQuery):
                 "boar_hp": int(boar.get('hp') or FOREST_BOAR_HP),
                 "boar_hp_max": int(boar.get('hp') or FOREST_BOAR_HP),
                 "boar_name": boar.get('name') or "Дикий кабан",
-                "dodge": float(boar.get('dodge') or 0),
+                "dodge": float(boar.get('dodge') or boar.get('dodge_chance') or 0),
+                "armor": int(boar.get('armor') or 0),
+                "crit_chance": int(boar.get('crit_chance') or 0),
+                "crit_mult": float(boar.get('crit_mult') or 1.5),
                 "dmg_min": int(boar.get('dmg_min') or FOREST_BOAR_DMG[0]),
                 "dmg_max": int(boar.get('dmg_max') or FOREST_BOAR_DMG[1]),
-                "player_dmg_min": int(boar.get('player_dmg_min') or 9),
-                "player_dmg_max": int(boar.get('player_dmg_max') or 15),
                 "loss_ap": int(boar.get('loss_ap') or FOREST_BOAR_LOSS_AP),
                 "boar": boar,
                 "round": 1,
@@ -638,8 +640,7 @@ def _boar_fallback() -> dict:
         "dmg_min": FOREST_BOAR_DMG[0],
         "dmg_max": FOREST_BOAR_DMG[1],
         "dodge": FOREST_BOAR_DODGE,
-        "player_dmg_min": 9,
-        "player_dmg_max": 15,
+        "armor": 0,
         "loss_ap": FOREST_BOAR_LOSS_AP,
         "chance": round(100 / FOREST_BOAR_PITY_TARGET, 2),
         "pity_target": FOREST_BOAR_PITY_TARGET,
@@ -717,15 +718,28 @@ async def forest_battle_hit(callback: CallbackQuery):
         return
     await callback.answer()
 
-    # Твой удар: зверь может уклониться (шанс уклонения — из БД).
-    if random.random() * 100 < float(battle.get('dodge') or 0):
-        player_hit = 0
+    # Твой удар: считается от ТВОЕГО оружия, наград и состояний.
+    # Зверь может увернуться; его броня поглощает часть урона.
+    from utils.combat_model import pilot_combat_stats, roll_pilot_damage
+    stats = await pilot_combat_stats(user_id)
+    enemy = {
+        'dodge': battle.get('dodge') or 0,
+        'armor': battle.get('armor') or 0,
+        'crit_chance': battle.get('crit_chance') or 0,
+        'crit_mult': battle.get('crit_mult') or 1.5,
+    }
+    res = roll_pilot_damage(stats, enemy)
+    player_hit = res['damage']
+    battle['boar_hp'] -= player_hit
+    if res['dodged']:
         hit_line = "Ты замахнулся — но зверь увернулся в последний миг.\n\n"
     else:
-        player_hit = random.randint(int(battle.get('player_dmg_min') or 9),
-                                    int(battle.get('player_dmg_max') or 15))
-        battle['boar_hp'] -= player_hit
-        hit_line = f"Ты бьёшь наотмашь: −{player_hit} HP по зверю!\n\n"
+        extra = ""
+        if res['armor_blocked']:
+            extra += f"🛡️ Шкура зверя поглотила {res['armor_blocked']}. "
+        if res['crit']:
+            extra += "💥 crit! "
+        hit_line = f"Ты бьёшь наотмашь: −{player_hit} HP по зверю! {extra}\n\n"
 
     if battle['boar_hp'] <= 0:
         battle_area = battle.get('area') or FOREST_HOME_AREA
@@ -759,9 +773,24 @@ async def forest_battle_hit(callback: CallbackQuery):
                      kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area))
         return
 
-    # Ответный удар зверя.
-    boar_hit = random.randint(int(battle.get('dmg_min') or FOREST_BOAR_DMG[0]),
-                              int(battle.get('dmg_max') or FOREST_BOAR_DMG[1]))
+    # Ответный удар зверя: свой диапазон урона, твоя броня поглощает часть.
+    from utils.combat_model import roll_enemy_damage
+    eres = roll_enemy_damage(stats, {
+        'dmg_min': battle.get('dmg_min') or FOREST_BOAR_DMG[0],
+        'dmg_max': battle.get('dmg_max') or FOREST_BOAR_DMG[1],
+        'crit_chance': battle.get('crit_chance') or 0,
+        'crit_mult': battle.get('crit_mult') or 1.5,
+    })
+    boar_hit = eres['damage']
+    if eres['dodged']:
+        counter_line = "💨 Ты уклонился от рывка зверя! (−0 HP)\n\n"
+    else:
+        extra = ""
+        if eres['armor_blocked']:
+            extra += f"🛡️ Броня поглотила {eres['armor_blocked']}. "
+        if eres['crit']:
+            extra += "💥 crit! "
+        counter_line = f"Зверь бьёт: −{boar_hit} HP. {extra}\n\n"
     battle['player_hp'] -= boar_hit
     if battle['player_hp'] <= 0:
         battle_area = battle.get('area') or FOREST_HOME_AREA
@@ -771,7 +800,7 @@ async def forest_battle_hit(callback: CallbackQuery):
         text = (
             "🐗 БОЙ С ЗВЕРЕМ\n\n"
             f"{hit_line}"
-            f"Зверь бьёт: −{boar_hit} HP... ты теряешь сознание.\n\n"
+            f"{counter_line}Ты теряешь сознание.\n\n"
             f"Очнулся ты на {FOREST_AREA_NAME[battle_area].lower()} весь в ссадинах — "
             f"зверь ушёл в чащу. Победа досталась ему ценой твоих сил: −{removed} ОД."
         )
@@ -782,7 +811,7 @@ async def forest_battle_hit(callback: CallbackQuery):
     battle['round'] += 1
     await _show_battle(
         callback,
-        prefix=f"{hit_line}"
+        prefix=f"{hit_line}{counter_line}"
     )
 
 

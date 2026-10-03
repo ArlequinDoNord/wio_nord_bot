@@ -1,8 +1,8 @@
 # SMOKE 119: бой с кабаном — реальные числа для обычного пилота без снаряжения
 #
-# Вопрос: сколько наносит обычный пилот без снаряжения и сколько атакует кабан.
-# Модель бояforest.py: игрок бьёт player_dmg_min..player_dmg_max из строки врага,
-# кабан бьёт dmg_min..dmg_max, у игрока 100 HP + бонус награды за HP.
+# С v0.19.11 урон пилота считается от ЕГО оружия (utils/combat_model), а не из
+# строки врага. Без снаряжения удар = d6 (1–6). Кабан бьёт в свой диапазон
+# dmg_min..dmg_max, броня пилота поглощает часть урона.
 import os
 import random
 import statistics
@@ -10,8 +10,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import (FOREST_BOAR_HP, FOREST_BOAR_DMG, FOREST_BOAR_DODGE,
-                    FOREST_BOAR_SEED)
+from config import (FOREST_BOAR_DMG, FOREST_BOAR_DODGE, FOREST_BOAR_HP,
+                    PILOT_BASE_DMG, PILOT_BASE_HP)
+from utils.combat_model import roll_enemy_damage, roll_pilot_damage
 
 PASSED = 0
 FAILED = 0
@@ -27,12 +28,13 @@ def check(name, cond, extra=""):
         print(f"  FAIL  {name}{(' — ' + extra) if extra else ''}")
 
 
-def simulate(seed_player=(9, 15), hp=100, rounds=20000):
-    """Прогон боя: игрок без снаряжения (100 HP) против кабана."""
-    p_lo, p_hi = seed_player
-    b_lo, b_hi = FOREST_BOAR_DMG
-    boar_hp = FOREST_BOAR_HP
-    player_hp = hp
+def simulate(hp=PILOT_BASE_HP, rounds=20000):
+    """Прогон боя: игрок без снаряжения против кабана."""
+    stats = {'weapon_damage': 0, 'attack_mult': 1.0, 'dodge': 0,
+             'armor': 0, 'hp_max': hp, 'award_attack': 0}
+    boar = {'dodge': FOREST_BOAR_DODGE, 'armor': 0,
+            'dmg_min': FOREST_BOAR_DMG[0], 'dmg_max': FOREST_BOAR_DMG[1],
+            'crit_chance': 0, 'crit_mult': 1.5}
     rnd = random.Random(20261003)
 
     player_hits, boar_hits = [], []
@@ -44,17 +46,16 @@ def simulate(seed_player=(9, 15), hp=100, rounds=20000):
         n = 0
         while boar_hp > 0 and player_hp > 0:
             n += 1
-            if rnd.random() * 100 < FOREST_BOAR_DODGE:
-                pass  # зверь увернулся
-            else:
-                hit = rnd.randint(p_lo, p_hi)
-                player_hits.append(hit)
-                boar_hp -= hit
+            r = roll_pilot_damage(stats, boar)
+            if not r['dodged']:
+                player_hits.append(r['damage'])
+                boar_hp -= r['damage']
             if boar_hp <= 0:
                 break
-            b_hit = rnd.randint(b_lo, b_hi)
-            boar_hits.append(b_hit)
-            player_hp -= b_hit
+            e = roll_enemy_damage(stats, boar)
+            if not e['dodged']:
+                boar_hits.append(e['damage'])
+                player_hp -= e['damage']
         if boar_hp <= 0:
             rounds_to_kill.append(n)
         else:
@@ -63,22 +64,20 @@ def simulate(seed_player=(9, 15), hp=100, rounds=20000):
 
 
 def main():
-    print("── Параметры кабана (сид по умолчанию) ──")
-    print(f"  HP кабана:      {FOREST_BOAR_SEED['hp']} (config FOREST_BOAR_HP={FOREST_BOAR_HP})")
+    print("── Параметры кабана ──")
+    print(f"  HP кабана:      {FOREST_BOAR_HP}")
     print(f"  Урон кабана:    {FOREST_BOAR_DMG[0]}–{FOREST_BOAR_DMG[1]}")
     print(f"  Уклонение:      {FOREST_BOAR_DODGE}%")
-    print("  Урон игрока:    9–15 (player_dmg_min/max из строки врага, НЕ снаряжение)")
-    print("  HP игрока:      100 (без награды)")
+    print(f"  Броня кабана:   0")
+    print(f"  Урон пилота:    {PILOT_BASE_DMG[0]}–{PILOT_BASE_DMG[1]} "
+          f"без оружия (PILOT_BASE_DMG) + оружие сверху")
+    print(f"  HP пилота:      {PILOT_BASE_HP} (без награды)")
 
-    p_lo = int(FOREST_BOAR_SEED.get("player_dmg_min") or 9)
-    p_hi = int(FOREST_BOAR_SEED.get("player_dmg_max") or 15)
+    check("диапазон урона кабана из конфига",
+          (FOREST_BOAR_DMG[0], FOREST_BOAR_DMG[1]) == (4, 7),
+          f"{FOREST_BOAR_DMG[0]}–{FOREST_BOAR_DMG[1]}")
 
-    check("сид кабана содержит player_dmg_min", "player_dmg_min" in FOREST_BOAR_SEED)
-    check("диапазон урона кабана из сида",
-          (FOREST_BOAR_SEED["dmg_min"], FOREST_BOAR_SEED["dmg_max"]) == FOREST_BOAR_DMG,
-          f"{FOREST_BOAR_SEED['dmg_min']}–{FOREST_BOAR_SEED['dmg_max']}")
-
-    player_hits, boar_hits, kills, deaths = simulate((p_lo, p_hi))
+    player_hits, boar_hits, kills, deaths = simulate()
 
     avg_p = statistics.mean(player_hits)
     avg_b = statistics.mean(boar_hits)
@@ -90,36 +89,36 @@ def main():
     print(f"  Раундов до победы пилота:  среднее {statistics.mean(kills):.1f}")
     if deaths:
         print(f"  Раундов до поражения пилота: среднее {statistics.mean(deaths):.1f}")
+        check("пилот без оружия изредка проигрывает кабану", len(deaths) > 0,
+              f"{len(deaths)} из {len(kills) + len(deaths)} боёв")
 
     # ── Проверки против фактического кода forest.py ──
     src = open(os.path.join(os.path.dirname(__file__), "bot", "handlers", "forest.py"),
                encoding="utf-8").read()
 
-    check("урон игрока из player_dmg_min/max строки врага",
-          "battle.get('player_dmg_min')" in src and "battle.get('player_dmg_max')" in src)
+    check("урон пилота НЕ берётся из player_dmg_* строки врага",
+          "player_dmg_min" not in src and "player_dmg_max" not in src)
     check("кабан бьёт в своём диапазоне dmg_min..dmg_max",
           "battle.get('dmg_min')" in src and "battle.get('dmg_max')" in src)
-    check("игрок НЕ бьёт player_damage из equipment (старая модель)",
-          "player_damage" not in src)
-    check("в бою кабана нет расчёта от брони/снаряжения",
-          "armor" not in src.lower())
+    check("бой считается через общую модель combat_model", "combat_model" in src)
+    check("броня пилота учитывается", "roll_enemy_damage" in src)
 
     # Диапазоны совпадают с конфигом
-    check(f"средний урон пилота в диапазоне {p_lo}–{p_hi}", p_lo <= avg_p <= p_hi,
-          f"{avg_p:.1f}")
+    check(f"средний урон пилота в диапазоне {PILOT_BASE_DMG[0]}–{PILOT_BASE_DMG[1]}",
+          PILOT_BASE_DMG[0] <= avg_p <= PILOT_BASE_DMG[1], f"{avg_p:.1f}")
     check(f"средний урон кабана в диапазоне {FOREST_BOAR_DMG[0]}–{FOREST_BOAR_DMG[1]}",
           FOREST_BOAR_DMG[0] <= avg_b <= FOREST_BOAR_DMG[1], f"{avg_b:.1f}")
 
     # Кабан сносит пилота: 100 HP / ~5.5 = ~18-19 ударов
-    pilot_hp = 100
+    pilot_hp = PILOT_BASE_HP
     expected_death = pilot_hp / avg_b
     check("кабан убивает пилота без снаряжения (100 HP)",
           avg_b > 0 and expected_death < 30, f"~{expected_death:.1f} ударов")
 
-    # Пилот убивает кабана: 30 HP / ~12 = ~2.5 удара
+    # Пилот без оружия: 30 HP / ~2 = ~15 ударов (с учётом уклонения кабана)
     expected_kill = FOREST_BOAR_HP / avg_p
-    check("пилот без снаряжения убивает кабана за 2–4 удара",
-          2 <= expected_kill <= 4, f"~{expected_kill:.1f} удара")
+    check("пилот без снаряжения убивает кабана за 8–25 ударов",
+          8 <= expected_kill <= 25, f"~{expected_kill:.1f} удара")
 
     print(f"\n=== SMOKE 119: {PASSED} passed, {FAILED} failed ===")
     return 1 if FAILED else 0

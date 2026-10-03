@@ -280,8 +280,8 @@ async def _mollusk_start(callback, state: FSMContext, user_id: int, extra: str =
     enemy = await _mollusk_roll()
     if not enemy:
         return False
-    bonus = (await get_award_bonus(user_id)) or {}
-    player_hp = 100 + int(bonus.get('hp') or 0)
+    from utils.combat_model import pilot_combat_stats
+    player_hp = (await pilot_combat_stats(user_id))['hp_max']
     enemy_hp = max(1, int(enemy.get('hp') or 20))
     MOLLUSK_BATTLE[user_id] = {
         "token": str(random.randint(100000, 999999)),
@@ -354,14 +354,21 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
     enemy = battle['enemy']
-    if random.random() * 100 < float(enemy.get('dodge') or 0):
-        player_hit = 0
+    # Твой удар: считается от ТВОЕГО оружия, наград и состояний.
+    from utils.combat_model import pilot_combat_stats, roll_pilot_damage
+    stats = await pilot_combat_stats(user_id)
+    res = roll_pilot_damage(stats, enemy)
+    player_hit = res['damage']
+    battle['enemy_hp'] -= player_hit
+    if res['dodged']:
         hit_line = "Ты ударил по панцирю — раковина скользнула, моллюск ушёл в глубину.\n\n"
     else:
-        player_hit = random.randint(int(enemy.get('player_dmg_min') or 8),
-                                    int(enemy.get('player_dmg_max') or 14))
-        battle['enemy_hp'] -= player_hit
-        hit_line = f"Ты сжимаешь раковину: −{player_hit} HP по моллюску!\n\n"
+        extra = ""
+        if res['armor_blocked']:
+            extra += f"🛡️ Панцирь поглотил {res['armor_blocked']}. "
+        if res['crit']:
+            extra += "💥 crit! "
+        hit_line = f"Ты сжимаешь раковину: −{player_hit} HP по моллюску! {extra}\n\n"
 
     if battle['enemy_hp'] <= 0:
         MOLLUSK_BATTLE.pop(user_id, None)
@@ -378,8 +385,19 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
         await _reservoir_answer_result(callback, text, _reservoir_result_markup(step), enemy)
         return
 
-    dmg = random.randint(int(enemy.get('dmg_min') or 5), int(enemy.get('dmg_max') or 9))
+    from utils.combat_model import roll_enemy_damage
+    eres = roll_enemy_damage(stats, enemy)
+    dmg = eres['damage']
     battle['player_hp'] -= dmg
+    if eres['dodged']:
+        counter_line = "💨 Ты уклонился от щупальца! (−0 HP)\n\n"
+    else:
+        extra = ""
+        if eres['armor_blocked']:
+            extra += f"🛡️ Броня поглотила {eres['armor_blocked']}. "
+        if eres['crit']:
+            extra += "💥 crit! "
+        counter_line = f"Молюск впивается щупальцем: −{dmg} HP. {extra}\n\n"
     if battle['player_hp'] <= 0:
         MOLLUSK_BATTLE.pop(user_id, None)
         loss_ap = int(enemy.get('loss_ap') or 12)
@@ -388,7 +406,7 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
         text = (
             "🦪 БОЙ С МОЛЮСКОМ\n\n"
             f"{hit_line}"
-            f"Молюск впивается щупальцем: −{dmg} HP... ты срываешься с крючка.\n\n"
+            f"{counter_line}Ты срываешься с крючка.\n\n"
             f"Пока ты выбирался из воды, снасть потерялась. Плата за бессмысленный риск: "
             f"−{removed} ОД."
         )
@@ -397,7 +415,7 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
         return
 
     battle['round'] += 1
-    await _show_mollusk_battle(callback, prefix=hit_line)
+    await _show_mollusk_battle(callback, prefix=f"{hit_line}{counter_line}")
 
 
 @router.callback_query(F.data.regexp(r"^mollusk:flee:\d+$"))
@@ -1302,21 +1320,17 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
             await _enemy_defeated(callback, state, bot, run, enemy, player_hp)
             return
 
-    weapon_damage = await get_player_weapon_damage(user_id)
-    damage_to_enemy = calculate_attack(0, weapon_damage)
-    from utils.states import get_state_info, combat_multipliers
-    state_info = await get_state_info(user_id)
-    mult = combat_multipliers(state_info['names'])
-    am = mult.get('attack_mult', 1.0)
-    award_bonus = await get_award_bonus(user_id)
-    am *= 1.0 + award_bonus['attack'] / 100.0
-    damage_to_enemy = max(1, int(damage_to_enemy * am))
-
-    # Уклонение врага: может полностью избежать удара
-    enemy_dodge = enemy['dodge'] if 'dodge' in enemy.keys() else 0
-    enemy_dodged = roll_dodge(enemy_dodge)
-    if enemy_dodged:
-        damage_to_enemy = 0
+    # Урон игрока: своё оружие + награды + состояния, броня врага поглощает часть.
+    from utils.combat_model import pilot_combat_stats, roll_pilot_damage
+    stats = await pilot_combat_stats(user_id)
+    enemy_row = enemy if isinstance(enemy, dict) else dict(enemy)
+    if not enemy_row.get('dodge') and enemy_row.get('dodge_chance'):
+        enemy_row['dodge'] = enemy_row['dodge_chance']
+    res = roll_pilot_damage(stats, enemy_row)
+    damage_to_enemy = res['damage']
+    enemy_dodged = res['dodged']
+    enemy_armor_line = (f"\n🛡️ Броня врага поглотила {res['armor_blocked']} урона!"
+                        if res['armor_blocked'] else "")
 
     current_enemy_hp = max(0, current_enemy_hp - damage_to_enemy)
     await state.update_data(current_enemy_hp=current_enemy_hp)
@@ -1331,7 +1345,8 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     if enemy_dodged:
         attack_line = f"💨 {enemy['name']} уклонился от удара! (−0 HP врагу)\n"
     else:
-        attack_line = f"−{damage_to_enemy} HP врагу\n"
+        crit_mark = " 💥 crit!" if res['crit'] else ""
+        attack_line = f"−{damage_to_enemy} HP врагу{crit_mark}{enemy_armor_line}\n"
     regen_line = f"♻ Регенерация: +{regen_healed} HP.\n" if regen_healed else ""
     text = (
         f"{regen_line}🗡️ Ты атакуешь {enemy['name']}!\n"
@@ -1362,7 +1377,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
                 enemy_eff_just = True
 
     # Уклонение пилота: шанс избежать контратаки (база + нашивка, × состояния)
-    player_dodge = await get_player_dodge(user_id, mult.get('dodge_mult', 1.0))
+    player_dodge = stats['dodge']
     player_dodged = roll_dodge(player_dodge)
     # Оглушение: враг дезориентирован, его точность падает (штраф к попаданию).
     stun_data = await state.get_data()
@@ -1370,19 +1385,23 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     enemy_stun_penalty = int(stun_data.get('enemy_stun_penalty', 0) or 0)
     stunned_miss = (not player_dodged and enemy_stun_ticks > 0
                     and enemy_stun_penalty > 0 and roll_dodge(enemy_stun_penalty))
-    enemy_dmg = calculate_enemy_damage(enemy['attack'])
-    armor = await get_player_armor_with_bonus(user_id)
+    from utils.combat_model import roll_enemy_damage
+    eres = roll_enemy_damage(stats, enemy_row)
     blocked_line = ""
     if stunned_miss:
         reduced = 0
         stun_line = (f"💫 {enemy['name']} оглушён и промахивается! (−0 HP)")
-    elif player_dodged:
+    elif eres['dodged']:
         reduced = 0
+        stun_line = ""
         dodge_line = f"💨 Ты уклонился от атаки {enemy['name']}! (−0 HP)"
     else:
-        reduced = max(1, enemy_dmg - armor)
-        if armor > 0 and reduced < enemy_dmg:
-            blocked_line = f"\n🛡️ Броня поглотила {enemy_dmg - reduced} урона!"
+        reduced = eres['damage']
+        if eres['armor_blocked']:
+            blocked_line = f"\n🛡️ Броня поглотила {eres['armor_blocked']} урона!"
+        if eres['crit']:
+            blocked_line += " 💥 crit!"
+        stun_line = ""
         dodge_line = ""
     player_hp = max(0, player_hp - reduced)
     await update_run_hp(run['id'], player_hp)
