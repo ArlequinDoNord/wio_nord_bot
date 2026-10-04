@@ -46,15 +46,29 @@ def check(name, cond, extra=""):
 def keys_read_by_render():
     """Ключи, которые _combat_summary_lines читает из словаря s["..."]."""
     from bot.handlers.inventory import _combat_summary_lines
-    tree = ast.parse(textwrap.dedent(inspect.getsource(_combat_summary_lines)))
+    return _subscript_keys(_combat_summary_lines, "s")
+
+
+PERK_KEYS = ()
+
+
+def _subscript_keys(func, var_name):
+    """Ключи, которые функция читает как <var_name>["..."]."""
+    tree = ast.parse(textwrap.dedent(inspect.getsource(func)))
     found = set()
     for node in ast.walk(tree):
         if (isinstance(node, ast.Subscript)
                 and isinstance(node.value, ast.Name)
-                and node.value.id == "s"
+                and node.value.id == var_name
                 and isinstance(node.slice, ast.Constant)):
             found.add(node.slice.value)
     return found
+
+
+def _perk_keys():
+    """Ключи, которые _award_perks читает из аргумента a["..."]."""
+    from bot.handlers.profile import _award_perks
+    return _subscript_keys(_award_perks, "a")
 
 
 async def main():
@@ -171,6 +185,36 @@ async def main():
         check("экран слота оружия отрендерился", False, f"{type(e).__name__}: {e}")
     if ok_s:
         check("экран слота оружия отрендерился", True)
+
+    # ── 5. Тот же класс бага в списке наград ─────────────────────────────────
+    # get_user_awards() не выбирал bonus_crit, а _award_perks() его читал →
+    # KeyError на экране наград пилота. Тоже из v0.20.0 (90dfb62).
+    print("\n5. Экран наград: контракт get_user_awards → _award_perks")
+    from bot.handlers.profile import _award_perks
+    global PERK_KEYS
+    PERK_KEYS = _perk_keys()
+    ok_a, aid = await D.create_award("Медаль с критом", bonus_crit=8,
+                                     bonus_attack=5)
+    check("награда с бонусом крита создалась", ok_a, str(aid))
+    await D.grant_award(778001, aid)
+    await conn.commit()
+    rows = await D.get_user_awards(778001)
+    check("выдача награды видна в get_user_awards", bool(rows))
+    if rows:
+        a = rows[0]
+        missing_a = sorted(k for k in PERK_KEYS if k not in a.keys())
+        check(f"_award_perks читает {len(PERK_KEYS)} ключей, все есть в строке",
+              not missing_a, f"отсутствуют: {missing_a}")
+        try:
+            perks = _award_perks(a)
+            ok_p = True
+        except Exception as e:                               # noqa: BLE001
+            perks, ok_p = [], False
+            check("_award_perks не падает", False, f"{type(e).__name__}: {e}")
+        if ok_p:
+            check("_award_perks не падает", True)
+            check("бонус крита показан", any("8% крит" in p for p in perks), perks)
+            check("бонус атаки показан", any("+5% атака" in p for p in perks), perks)
 
 
 async def _noop_edit(self, text, reply_markup=None, **kwargs):

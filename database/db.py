@@ -6064,7 +6064,7 @@ async def get_user_awards(user_id: int):
         SELECT ua.id as grant_id, ua.comment, ua.created_at AS granted_at,
                a.id AS award_id, a.name, a.description, a.emoji, a.image,
                a.bonus_attack, a.bonus_defense, a.bonus_dodge, a.bonus_fishing,
-               a.bonus_hp, a.bonus_shop_discount, a.bonus_report_tax,
+               a.bonus_hp, a.bonus_crit, a.bonus_shop_discount, a.bonus_report_tax,
                a.reward_nm, a.monthly_nm
         FROM user_awards ua
         JOIN awards a ON ua.award_id = a.id
