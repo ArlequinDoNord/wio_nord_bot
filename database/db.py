@@ -10162,49 +10162,49 @@ async def set_housing_slot(user_id: int, slot_index: int, expansion_type: str = 
 # ---------- Рецепты ----------
 
 RECIPES_DEF = [
-    {"name": "Пожарить сига", "desc": "Жареный сиг со специями: +15 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареный сиг", "old": "Пожарить сига", "desc": "Жареный сиг со специями: +15 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный сиг", "qty": 1, "exp": "kitchen", "lvl": 1,
      "ingredients": [("Сиг", 1), ("Соль", 1)], "ap": 5, "time": 20, "rarity": 1},
-    {"name": "Пожарить муксуна", "desc": "Жареный муксун со специями: +30 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареный муксун", "old": "Пожарить муксуна", "desc": "Жареный муксун со специями: +30 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный муксун", "qty": 1, "exp": "kitchen", "lvl": 1,
      "ingredients": [("Муксун", 1), ("Соль", 1)], "ap": 5, "time": 20, "rarity": 1},
-    {"name": "Пожарить чира", "desc": "Жареный чир со специями: +45 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареный чир", "old": "Пожарить чира", "desc": "Жареный чир со специями: +45 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный чир", "qty": 1, "exp": "kitchen", "lvl": 1,
      "ingredients": [("Чир", 1), ("Соль", 1)], "ap": 7, "time": 25, "rarity": 1},
-    {"name": "Пожарить налима", "desc": "Жареный налим со специями: +55 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареный налим", "old": "Пожарить налима", "desc": "Жареный налим со специями: +55 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный налим", "qty": 1, "exp": "kitchen", "lvl": 1,
      "ingredients": [("Налим", 1), ("Соль", 1)], "ap": 8, "time": 25, "rarity": 1},
-    {"name": "Пожарить сома", "desc": "Жареный сом со специями и водорослями: +65 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареный сом", "old": "Пожарить сома", "desc": "Жареный сом со специями и водорослями: +65 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный сом", "qty": 1, "exp": "kitchen", "lvl": 1,
      "ingredients": [("Мерцающий сом", 1), ("Соль", 1), ("Кусочек водорослей", 1)], "ap": 9, "time": 30, "rarity": 1},
-    {"name": "Пожарить угря", "desc": "Хрустящий жареный угорь с водорослями: +90 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареный угорь", "old": "Пожарить угря", "desc": "Хрустящий жареный угорь с водорослями: +90 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный угорь", "qty": 1, "exp": "kitchen", "lvl": 2,
      "ingredients": [("Искрящийся угорь", 1), ("Соль", 1), ("Кусочек водорослей", 1)], "ap": 12, "time": 40, "rarity": 2},
-    {"name": "Пожарить форель", "desc": "Светящаяся форель, пожаренная до золотой корочки: +140 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареная форель", "old": "Пожарить форель", "desc": "Светящаяся форель, пожаренная до золотой корочки: +140 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный форель", "qty": 1, "exp": "kitchen", "lvl": 3,
      "ingredients": [("Светящаяся форель", 1), ("Соль", 1), ("Кусочек водорослей", 1)], "ap": 16, "time": 50, "rarity": 4},
-    {"name": "Пожарить опёнка", "desc": "Жареные опята со специями: +12 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареный опёнок", "old": "Пожарить опёнка", "desc": "Жареный опёнок со специями: +12 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный опёнок", "qty": 1, "exp": "kitchen", "lvl": 1,
      "ingredients": [("Опёнок", 1), ("Соль", 1)], "ap": 5, "time": 20, "rarity": 1},
-    {"name": "Пожарить подберёзовик", "desc": "Жареный подберёзовик со специями: +18 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареный подберёзовик", "old": "Пожарить подберёзовик", "desc": "Жареный подберёзовик со специями: +18 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный подберёзовик", "qty": 1, "exp": "kitchen", "lvl": 1,
      "ingredients": [("Подберёзовик", 1), ("Соль", 1)], "ap": 5, "time": 20, "rarity": 1},
-    {"name": "Пожарить лисички", "desc": "Ароматные жареные лисички: +26 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареные лисички", "old": "Пожарить лисички", "desc": "Ароматные жареные лисички: +26 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареные лисички", "qty": 1, "exp": "kitchen", "lvl": 1,
      "ingredients": [("Лисичка", 2), ("Соль", 1)], "ap": 7, "time": 25, "rarity": 1},
-    {"name": "Пожарить белый гриб", "desc": "Жареный белый гриб: +34 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареный белый гриб", "old": "Пожарить белый гриб", "desc": "Жареный белый гриб: +34 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный белый гриб", "qty": 1, "exp": "kitchen", "lvl": 2,
      "ingredients": [("Белый гриб", 1), ("Соль", 1)], "ap": 8, "time": 30, "rarity": 2},
-    {"name": "Пожарить гиропор", "desc": "Редкий жареный гиропор: +48 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареный гиропор", "old": "Пожарить гиропор", "desc": "Редкий жареный гиропор: +48 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный гиропор", "qty": 1, "exp": "kitchen", "lvl": 2,
      "ingredients": [("Гиропор", 1), ("Соль", 1)], "ap": 12, "time": 40, "rarity": 2},
-    {"name": "Пожарить ежовик гребенчатый", "desc": "Деликатес из самого редкого гриба леса: +70 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареный ежовик гребенчатый", "old": "Пожарить ежовик гребенчатый", "desc": "Деликатес из самого редкого гриба леса: +70 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареный ежовик гребенчатый", "qty": 1, "exp": "kitchen", "lvl": 3,
      "ingredients": [("Ежовик гребенчатый", 1), ("Соль", 1)], "ap": 16, "time": 50, "rarity": 4},
-    {"name": "Пожарить мясо кабана", "desc": "Жаренное на костре мясо кабана: +30 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареное мясо кабана", "old": "Пожарить мясо кабана", "desc": "Жаренное на костре мясо кабана: +30 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареное мясо кабана", "qty": 1, "exp": "kitchen", "lvl": 1,
      "ingredients": [("Мясо кабана", 1), ("Соль", 1)], "ap": 6, "time": 25, "rarity": 2},
-    {"name": "Пожарить мясо моллюска", "desc": "Жареное мясо мутировавшего моллюска: +26 HP в бою подземелья. Срок годности: 4 суток.",
+    {"name": "Жареное мясо моллюска", "old": "Пожарить мясо моллюска", "desc": "Жареное мясо мутировавшего моллюска: +26 HP в бою подземелья. Срок годности: 4 суток.",
      "result": "Жареное мясо моллюска", "qty": 1, "exp": "kitchen", "lvl": 2,
      "ingredients": [("Мясо моллюска", 1), ("Соль", 1)], "ap": 8, "time": 25, "rarity": 3},
     {"name": "Сварить яд", "desc": "Мутное зелье из ядовитых лесных грибов: основа для улучшения оружия кузнецом.",
@@ -10235,12 +10235,42 @@ async def ensure_recipes():
     """Идемпотентно засевает рецепты и синхронизирует уже существующие.
 
     Рецепты обновляются по названию: если строка уже есть — перезаписываем состав
-    и описание, иначе добавляем новую. Это нужно, чтобы смена рецептуры
+    и описание, иначе добавляем новый. Это нужно, чтобы смена рецептуры
     (например, добавление соли в жареную рыбу) доезжала до существующих БД.
+
+    Переименование (ключ 'old' у рецепта) меняет name у существующей строки
+    В СИЛУ id, а не добавляет новую строку. Иначе игроки потеряли бы выученные
+    рецепты (user_recipes ссылается на id), а купленные предметы-рецепты со
+    старым названием стали бы мёртвыми: learn_recipe_from_item() ищет рецепт
+    по имени и отвечает «Рецепт не найден».
     """
     conn = await get_db()
     changed = False
     for r in RECIPES_DEF:
+        old = r.get('old')
+        if old:
+            old_row = await (await conn.execute(
+                "SELECT id FROM recipes WHERE name = ? AND required_expansion = ? "
+                "AND required_level = ?", (old, r['exp'], r['lvl']))).fetchone()
+            if old_row:
+                new_row = await (await conn.execute(
+                    "SELECT id FROM recipes WHERE name = ? AND required_expansion = ? "
+                    "AND required_level = ?", (r['name'], r['exp'], r['lvl']))).fetchone()
+                if new_row:
+                    # Целевое имя уже занято (напр. товар продавался, а рецепт назывался
+                    # иначе): переносим выученное на актуальную строку, старую гасим,
+                    # чтобы в базе не осталось двух рецептов с одним названием.
+                    await conn.execute(
+                        "INSERT OR IGNORE INTO user_recipes (user_id, recipe_id) "
+                        "SELECT user_id, ? FROM user_recipes WHERE recipe_id = ?",
+                        (new_row['id'], old_row['id']))
+                    await conn.execute(
+                        "UPDATE recipes SET is_available = 0 WHERE id = ?", (old_row['id'],))
+                else:
+                    await conn.execute(
+                        "UPDATE recipes SET name = ? WHERE id = ?",
+                        (r['name'], old_row['id']))
+                changed = True
         cursor = await conn.execute(
             "SELECT id FROM recipes WHERE name = ? AND required_expansion = ? AND required_level = ?",
             (r['name'], r['exp'], r['lvl']))
@@ -10914,27 +10944,56 @@ async def get_learned_recipes(user_id: int, expansion: str = None, level: int = 
 RECIPE_ITEM_PREFIX = "Рецепт: "
 
 RECIPE_ITEM_PRICES = {
-    "Пожарить сига": 60,
-    "Пожарить муксуна": 60,
-    "Пожарить чира": 70,
-    "Пожарить налима": 80,
-    "Пожарить сома": 90,
-    "Пожарить угря": 220,
-    "Пожарить форель": 750,
-    "Пожарить опёнка": 60,
-    "Пожарить подберёзовик": 60,
-    "Пожарить лисички": 90,
-    "Пожарить белый гриб": 120,
-    "Пожарить гиропор": 220,
-    "Пожарить ежовик гребенчатый": 750,
-    "Пожарить мясо кабана": 90,
+    "Жареный сиг": 60,
+    "Жареный муксун": 60,
+    "Жареный чир": 70,
+    "Жареный налим": 80,
+    "Жареный сом": 90,
+    "Жареный угорь": 220,
+    "Жареная форель": 750,
+    "Жареный опёнок": 60,
+    "Жареный подберёзовик": 60,
+    "Жареные лисички": 90,
+    "Жареный белый гриб": 120,
+    "Жареный гиропор": 220,
+    "Жареный ежовик гребенчатый": 750,
+    "Жареное мясо кабана": 90,
     "Сварить яд": 400,
     "Комбинированная наживка": 90,
     "Пара сапог": 320,
     "Малая настойка здоровья": 150,
     "Энергетик": 280,
     "Улучшенная настойка здоровья": 480,
+    "Жареное мясо моллюска": 100,
 }
+
+
+async def _merge_inventory(conn, from_item_id: int, to_item_id: int):
+    """Переносит строки инвентаря с одного товара на другой, складывая количество.
+
+    Нужна при слиянии дублей товаров: user_id + item_id — первичный ключ, поэтому
+    простое UPDATE ... SET item_id упрётся в конфликт. Количество складываем,
+    а не затираем, иначе игрок потеряет купленное.
+    """
+    rows = await (await conn.execute(
+        "SELECT user_id, quantity FROM inventory WHERE item_id = ?", (from_item_id,)
+    )).fetchall()
+    for row in rows:
+        target = await (await conn.execute(
+            "SELECT quantity FROM inventory WHERE user_id = ? AND item_id = ?",
+            (row['user_id'], to_item_id))).fetchone()
+        if target:
+            await conn.execute(
+                "UPDATE inventory SET quantity = ? WHERE user_id = ? AND item_id = ?",
+                ((target['quantity'] or 0) + (row['quantity'] or 0),
+                 row['user_id'], to_item_id))
+            await conn.execute(
+                "DELETE FROM inventory WHERE user_id = ? AND item_id = ?",
+                (row['user_id'], from_item_id))
+        else:
+            await conn.execute(
+                "UPDATE inventory SET item_id = ? WHERE user_id = ? AND item_id = ?",
+                (to_item_id, row['user_id'], from_item_id))
 
 
 async def ensure_recipe_shop_items():
@@ -10942,9 +11001,40 @@ async def ensure_recipe_shop_items():
 
     Предмет «Рецепт: <название>» при использовании из инвентаря открывает
     соответствующий рецепт для пилота (таблица user_recipes).
+
+    Переименованные рецепты (ключ 'old') тянут за собой и товар: игнорировать
+    старый товар нельзя, learn_recipe_from_item() ищет рецепт ровно по имени.
+    Товары, чей рецепт в базе отсутствует, гасятся (is_available = 0) — иначе
+    они продаются, но выучить их нельзя.
     """
     conn = await get_db()
     changed = False
+    for r in RECIPES_DEF:
+        old = r.get('old')
+        if not old:
+            continue
+        old_name = RECIPE_ITEM_PREFIX + old
+        new_name = RECIPE_ITEM_PREFIX + r['name']
+        old_item = await (await conn.execute(
+            "SELECT id FROM items WHERE name = ? AND category = 'recipes'", (old_name,)
+        )).fetchone()
+        if not old_item:
+            continue
+        new_item = await (await conn.execute(
+            "SELECT id FROM items WHERE name = ? AND category = 'recipes'", (new_name,)
+        )).fetchone()
+        if new_item:
+            # Товар с новым именем уже есть (например, «Рецепт: Жареная форель»
+            # продавался, пока рецепт назывался «Пожарить форель»). Складываем
+            # инвентарь старого товара в существующий и гасим дубль, иначе в магазине
+            # один рецепт будет показан дважды, а часть выданного — отыгравшая.
+            await _merge_inventory(conn, old_item['id'], new_item['id'])
+            await conn.execute(
+                "UPDATE items SET is_available = 0 WHERE id = ?", (old_item['id'],))
+        else:
+            await conn.execute(
+                "UPDATE items SET name = ? WHERE id = ?", (new_name, old_item['id']))
+        changed = True
     for r in RECIPES_DEF:
         row = await conn.execute(
             "SELECT id FROM recipes WHERE name = ? AND required_expansion = ? AND required_level = ?",
@@ -10967,6 +11057,20 @@ async def ensure_recipe_shop_items():
         else:
             await add_item(item_name, desc, price, price // 2, r.get('rarity', 1),
                            'recipes', -1, 0)
+            changed = True
+    # Гасим товары-рецепты, для которых рецепта в базе нет: продавать их бессмысленно,
+    # а learn_recipe_from_item() на них отвечает «Рецепт не найден».
+    known = {r['name'] for r in await (await conn.execute(
+        "SELECT name FROM recipes WHERE is_available = 1")).fetchall()}
+    for it in await (await conn.execute(
+            "SELECT id, name FROM items WHERE category = 'recipes' AND is_available = 1"
+    )).fetchall():
+        title = it['name']
+        if title.startswith(RECIPE_ITEM_PREFIX):
+            title = title[len(RECIPE_ITEM_PREFIX):]
+        if title not in known:
+            await conn.execute(
+                "UPDATE items SET is_available = 0 WHERE id = ?", (it['id'],))
             changed = True
     if changed:
         await conn.commit()

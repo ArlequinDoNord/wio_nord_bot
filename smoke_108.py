@@ -6,7 +6,7 @@
   * боевые параметры из БД (лес читает кабана из БД, а не из конфига);
   * шанс встречи и гарантия (enemy_encounter_hit);
   * независимый ролл дропов — жемчужина 2% реально выпадает (roll_enemy_drops);
-  * предметы добычи моллюска + рецепт «Пожарить мясо моллюска»;
+  * предметы добычи моллюска + рецепт «Жареное мясо моллюска»;
   * опушка — отдельная картинка (фото локации леса её не подменяет).
 
 Запуск: .venv\\Scripts\\python.exe smoke_108.py
@@ -134,8 +134,8 @@ async def run():
     fried = await get_item_by_name("Жареное мясо моллюска")
     check("жареное мясо лечит 26 HP", fried['heal'] == 26)
     await ensure_recipes()
-    mollusk_recipes = [r for r in await get_recipes() if r['name'] == "Пожарить мясо моллюска"]
-    check("рецепт «Пожарить мясо моллюска» есть", bool(mollusk_recipes))
+    mollusk_recipes = [r for r in await get_recipes() if r['name'] == "Жареное мясо моллюска"]
+    check("рецепт «Жареное мясо моллюска» есть", bool(mollusk_recipes))
     check("рецепт: кухня, ур. 2",
           bool(mollusk_recipes) and mollusk_recipes[0]['required_expansion'] == "kitchen"
           and mollusk_recipes[0]['required_level'] == 2)

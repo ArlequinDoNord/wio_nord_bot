@@ -138,16 +138,16 @@ async def run():
     check("delete_clan: нет заявок", not await has_clan_request(clan_id, U2))
 
     # ── 6. Рецепты-товары ──
-    r = await get_recipe_by_name("Пожарить сига")
+    r = await get_recipe_by_name("Жареный сиг")
     if not r:
-        check("рецепт «Пожарить сига» существует", False)
+        check("рецепт «Жареный сиг» существует", False)
         r = {"id": 1}
-    item_name = RECIPE_ITEM_PREFIX + "Пожарить сига"
+    item_name = RECIPE_ITEM_PREFIX + "Жареный сиг"
     item = await get_item_by_name(item_name)
     check("создан предмет-рецепт", item and item['category'] == 'recipes'
           and item['is_available'] == 1)
     check("цена рецепта из RECIPE_ITEM_PRICES",
-          item and item['price'] == RECIPE_ITEM_PRICES["Пожарить сига"]
+          item and item['price'] == RECIPE_ITEM_PRICES["Жареный сиг"]
           and item['sell_price'] == item['price'] // 2)
 
     # ── 7. Изучение через предмет ──
@@ -165,7 +165,7 @@ async def run():
 
     # ── 8. get_learned_recipes ──
     rb = await get_recipe_by_name("Пара сапог") or {"id": 2}
-    rk = await get_recipe_by_name("Пожарить муксуна") or {"id": 3}
+    rk = await get_recipe_by_name("Жареный муксун") or {"id": 3}
     await learn_recipe(U3, rb['id'])
     await learn_recipe(U3, rk['id'])
     learned_all = await get_learned_recipes(U3)
