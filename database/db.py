@@ -4412,12 +4412,20 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
         )
         claimed = cur.rowcount
         if claimed:
-            await _apply_report_payout(conn, row['user_id'], [report_id], amount)
-            # Более ранние отчёты тех же суток выплату не получают: она уже учтена
-            # по последнему отчёту. Помечаем оплаченными, чтобы суточный цикл их
-            # потом не подхватил и не выплатил повторно.
-            await _suppress_superseded(conn, row['user_id'], report_id,
-                                       cycle_day=report_day, credited=0)
+            if ctx["superseded"]:
+                # Отчёт перекрыт более свежим снимком: денег не приносит. Но paid=1
+                # ему НЕ ставим — если тот, кто его перекрыл, потом отклонит, этот
+                # отчёт снова станет последним, и его пересчитает
+                # _reopen_report_day() (см. reject_report).
+                await conn.execute(
+                    "UPDATE reports SET paid = 0 WHERE id = ?", (report_id,))
+            else:
+                await _apply_report_payout(conn, row['user_id'], [report_id], amount)
+                # Более ранние отчёты тех же суток выплату не получают: она уже учтена
+                # по последнему отчёту. Помечаем оплаченными, чтобы суточный цикл их
+                # потом не подхватил и не выплатил повторно.
+                await _suppress_superseded(conn, row['user_id'], report_id,
+                                           cycle_day=report_day, credited=0)
         await conn.commit()
         return amount if claimed else 0
 
@@ -4432,16 +4440,21 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
 
 async def _suppress_superseded(conn, user_id: int, winner_id: int,
                                cycle_day: str = None, credited: int = 0) -> int:
-    """Погасить более ранние не-отклонённые отчёты тех же суток, что и winner_id.
+    """Погасить более ранние ОДОБРЕННЫЕ отчёты тех же суток, что и winner_id.
 
     Они не приносят денег: их заявку «за сутки» перекрыл более свежий снимок
     (см. report_payout_context). Ставим paid=1 и credited_troops=credited, чтобы
     суточный цикл их больше не видел и не выплатил повторно. Возвращает число
     погашенных отчётов.
+
+    Только status='approved' — и это важно: PENDING нельзя гасить. Отчёт, который
+    ещё не рассмотрен, не может быть «перекрыт снимком» в смысле выплаты, и его
+    credited_troops = 0 пережил бы отклонение того, кто его перекрывал: сутки
+    остались бы с принятым отчётом и нулевой выплатой.
     """
     cur = await conn.execute(
         "UPDATE reports SET paid = 1, credited_troops = ? "
-        f"WHERE user_id = ? AND status != 'rejected' AND id != ? AND paid = 0 "
+        f"WHERE user_id = ? AND status = 'approved' AND id != ? AND paid = 0 "
         f"AND {_report_day('created_at')} = ?",
         (credited, user_id, winner_id, cycle_day or _today_msk())
     )
@@ -4580,13 +4593,61 @@ async def payout_reports() -> list:
     return results
 
 
+async def _reopen_report_day(conn, user_id: int, cycle_day: str) -> dict:
+    """Пересчитать нового последнего по суткам после отклонения отчёта.
+
+    Зачем: у отчёта, который был последним, `credited_troops` = полная его доля, и он
+    оплачен. Если его отклонить, последним становится предыдущий — а его
+    `credited_troops` был посчитан, когда он ещё был superseded (0), и он помечен
+    paid=1. Без этого пересчёта сутки просто не платились бы: отчёт принят, а деньги
+    не выданы (проверено smoke_094/smoke_124).
+
+    Пересчитываем по тем же правилам, что и одобрение: снимок под капом минус уже
+    выплаченное за сутки, но не ниже нуля. Если сутки уже закрылись (их 10:00
+    прошло) — платим сразу, иначе отчёт ждёт суточного цикла в 10:00.
+
+    Молчим, если нового последнего нет, он не принят или уже оплачен: платить
+    нечего, а пересчитывать чужое одобрение нельзя.
+    """
+    last_id = await _last_report_id_of_day(conn, user_id, cycle_day)
+    if last_id is None:
+        return {}
+    row = await (await conn.execute(
+        "SELECT troops_reported, status, paid FROM reports WHERE id = ?",
+        (last_id,))).fetchone()
+    if not row or row['status'] != 'approved' or row['paid']:
+        return {}
+
+    claim = max(0, row['troops_reported'] or 0)
+    cap = await get_report_daily_pay_cap()
+    cap = cap if (cap or 0) > 0 else None
+    already = await _report_paid_today(conn, user_id, cycle_day, exclude_id=last_id)
+    amount = max(0, (min(claim, cap) if cap is not None else claim) - already)
+    instant = bool(cycle_day) and cycle_day < today_report_day()
+    await conn.execute(
+        f"UPDATE reports SET credited_troops = ?, paid = {1 if instant else 0} WHERE id = ?",
+        (amount, last_id))
+    if instant:
+        await _apply_report_payout(conn, user_id, [last_id], amount)
+        await _suppress_superseded(conn, user_id, last_id,
+                                   cycle_day=cycle_day, credited=0)
+    return {'report_id': last_id, 'amount': amount, 'instant': instant}
+
+
 async def reject_report(report_id: int, reviewed_by: int):
     conn = await get_db()
+    row = await (await conn.execute(
+        "SELECT user_id, created_at FROM reports WHERE id = ?", (report_id,))).fetchone()
     await conn.execute(
         "UPDATE reports SET status = 'rejected', reviewed_by = ? WHERE id = ?",
         (reviewed_by, report_id)
     )
     await conn.commit()
+    # Отклонение могло отдать сутки предыдущему отчёту — пересчитываем его долю.
+    if row:
+        await _reopen_report_day(conn, row['user_id'],
+                                 _report_cycle_day_of(row['created_at']))
+        await conn.commit()
 
 
 async def get_pending_reports():

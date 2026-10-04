@@ -97,6 +97,9 @@ async def main():
     await add_user(1005, "u5", "U5", "Лётчик")
     await add_user(1006, "u6", "U6", "Лётчик")
     await add_user(1007, "u7", "U7", "Лётчик")
+    for _uid, _un in ((1008, "w8"), (1009, "w9"), (1010, "w10"), (1011, "w11"),
+                      (1012, "w12"), (1013, "w13")):
+        await add_user(_uid, _un, "Окна", "Окна")
     await set_report_daily_pay_cap(4000)
 
     # ── 8. Граница 10:00 МСК (до всех выплат, чистые функции) ───────────────
@@ -236,9 +239,12 @@ async def main():
     # Отдельный пилот: у UE сутки уже оплачены, и мгновенная выплата пересчитала бы
     # его снимок по сегодняшним суткам и дала бы 0 вместо полной суммы.
     UG = 1006
-    old_day = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+    # Час внутри ПРОШЛЫХ отчётных суток: 14:00 МСК вчерашнего цикла. Именно цикл по
+    # МСК, а не календарный «вчерашний» день UTC: после полуночи UTC «вчера 12:00
+    # UTC» — это 15:00 МСК СЕГОДНЯШНИХ суток, мгновенной выплаты там ещё нет, и тест
+    # проверял бы не то, что назвал.
     g1, _ = await add_report(UG, "s", 700, 700, "6")
-    await stamp(g1, f"{old_day} 12:00:00")
+    await stamp(g1, msk(-1, 14))
     paid_now = await approve_report(g1, 0)
     check(f"прошлые сутки: одобрение платит сразу ({paid_now})", paid_now == 700)
     check("и сразу начисляет", (await troops_of(UG)) == 700)
@@ -268,6 +274,85 @@ async def main():
     gained_h = (await troops_of(UH)) - before_h
     check(f"доплата 600, за сутки всего 900, а не 1200 ({gained_h})",
           gained_h == 600 and (await troops_of(UH)) == 900)
+
+    # ── 10. Окна одобрения: сегодня / вчера / позавчера ────────────────────
+    # Смысл раздела: отчёт, чьё расчётное 10:00 уже прошло, платится СРАЗУ при
+    # одобрении («мгновенная выплата»), иначе пилот ждал бы почти сутки. Сутки, чьё
+    # 10:00 ещё не наступило, ждут суточного цикла. Проверяем обе стороны, включая
+    # переход «последний отклонён → предыдущий становится последним».
+    print("\n= Окна одобрения =")
+
+    # 1) Вчерашний отчёт, одобряю сегодня → сразу.
+    UI1 = 1008
+    await add_user(UI1, "w1", "ВчераОдин", "Окна")
+    i1, _ = await add_report(UI1, "s", 500, 500, "8")
+    await stamp(i1, msk(-1, 14))
+    check(f"вчерашний отчёт одобрен сразу ({await approve_report(i1, 0)})",
+          await troops_of(UI1) == 500)
+    before = await troops_of(UI1)
+    await payout_reports()
+    check("суточный цикл не доплачивает сверху", (await troops_of(UI1)) == before)
+
+    # 2) Позавчерашний отчёт → тоже сразу: правило «прошло 10:00», а не «вчера».
+    UI2 = 1009
+    await add_user(UI2, "w2", "Позавчера", "Окна")
+    i2, _ = await add_report(UI2, "s", 600, 600, "9")
+    await stamp(i2, msk(-2, 12))
+    check(f"отчёт двухдневной давности одобрен сразу ({await approve_report(i2, 0)})",
+          await troops_of(UI2) == 600)
+
+    # 3) Вчера два отчёта: одобряю ПОЗДНИЙ → платится поздний, ранний superseded.
+    UI3 = 1010
+    await add_user(UI3, "w3", "ВчераПара", "Окна")
+    j1, _ = await add_report(UI3, "s", 400, 400, "10")
+    await stamp(j1, msk(-1, 14))
+    j2, _ = await add_report(UI3, "s", 900, 900, "10")
+    await stamp(j2, msk(-1, 19))
+    check(f"поздний вчерашний отчёт платится сразу ({await approve_report(j2, 0)})",
+          await troops_of(UI3) == 900)
+    check("ранний вчерашний superseded — платит 0",
+          await approve_report(j1, 0) == 0)
+    before = await troops_of(UI3)
+    await payout_reports()
+    check("ранний не доплачивается позже", (await troops_of(UI3)) == before)
+
+    # 4) Вчера два отчёта: одобряю РАННИЙ, пока поздний ещё pending → 0.
+    #    Если поздний потом отклоняют, сутки отдаются раннему — и сразу.
+    UI4 = 1011
+    await add_user(UI4, "w4", "ВчераПозднийОтклонён", "Окна")
+    k1, _ = await add_report(UI4, "s", 500, 500, "11")
+    await stamp(k1, msk(-1, 14))
+    k2, _ = await add_report(UI4, "s", 800, 800, "11")
+    await stamp(k2, msk(-1, 20))
+    check("ранний при висящем позднем не платится", await approve_report(k1, 0) == 0)
+    check("и пилоту пока ничего не начислено", (await troops_of(UI4)) == 0)
+    await reject_report(k2, 0)
+    check("отклонён поздний → ранний стал последним и оплачен сразу (500)",
+          (await troops_of(UI4)) == 500)
+
+    # 5) То же для НЕзакрытых суток: ждём 10:00, а не платим сразу.
+    UI5 = 1012
+    await add_user(UI5, "w5", "Сегодня", "Окна")
+    m1, _ = await add_report(UI5, "s", 700, 700, "12")
+    await stamp(m1, at(13))
+    check("сегодняшний отчёт одобрен, но не выплачен",
+          await approve_report(m1, 0) == 700 and (await troops_of(UI5)) == 0)
+    await payout_reports()
+    check("суточный цикл выплатил 700", (await troops_of(UI5)) == 700)
+
+    # 6) Отклонение уже оплаченного последнего → доплаты нет.
+    UI6 = 1013
+    await add_user(UI6, "w6", "ОплаченныйОтклонён", "Окна")
+    n1, _ = await add_report(UI6, "s", 1200, 1200, "13")
+    await stamp(n1, at(16))
+    await approve_report(n1, 0)
+    await payout_reports()
+    check("сегодняшние сутки выплачены 1200", (await troops_of(UI6)) == 1200)
+    await reject_report(n1, 0)
+    before = await troops_of(UI6)
+    await payout_reports()
+    check("отклонение оплаченного не открывает вторую выплату",
+          (await troops_of(UI6)) == before)
 
     # ── 9. Лимит сдачи и эталон времени ───────────────────────────────────
     print("\n= Сутки отчёта в сдаче =")
