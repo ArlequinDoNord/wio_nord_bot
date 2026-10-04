@@ -134,8 +134,8 @@ async def run():
     stats = {r['region']: r for r in await get_region_stats()}
     # У Антонио последний отчёт: 7395 всего, регион 25
     check("регион 25: силы = «всего» последнего отчёта (7395)",
-          stats["25"]['troops_24h'] == 7395)
-    check("регион 25: 1 активный пилот", stats["25"]['active_pilots_72h'] == 1)
+          stats["25"]['troops_total'] == 7395)
+    check("регион 25: 1 активный пилот", stats["25"]['pilots_count'] == 1)
 
     # ── 7b. Силы региона НЕ обнуляются со временем (остаток, а не поток) ──
     # Пилот не «испарявается» из региона, просто его отчёт старше 72 часов:
@@ -148,9 +148,9 @@ async def run():
     await recompute_region_stats()
     stats_old = {r['region']: r for r in await get_region_stats()}
     check("отчёт старше 5 суток — силы региона на месте (7395), не 0",
-          stats_old["25"]['troops_24h'] == 7395)
+          stats_old["25"]['troops_total'] == 7395)
     check("пилот остаётся в регионе, даже если давно не сдавал отчёт",
-          stats_old["25"]['active_pilots_72h'] == 1)
+          stats_old["25"]['pilots_count'] == 1)
     # Возвращаем даты, чтобы дальнейшие проверки не зависели от этого сдвига.
     # Вчерашний отчёт возвращаем ВЧЕРА: сдвинутый в сегодняшние сутки, он попал бы
     # в «уже выплачено за сутки» и следующая проверка доплаты считалась бы не от
@@ -248,7 +248,7 @@ async def run():
     await recompute_region_stats()
     s1 = {r['region']: r for r in await get_region_stats()}
     check("до переезда регион 11: 5000 и 1 пилот",
-          (s1["11"]['troops_24h'], s1["11"]['active_pilots_72h']) == (5000, 1))
+          (s1["11"]['troops_total'], s1["11"]['pilots_count']) == (5000, 1))
 
     # Переезд: новый отчёт из другого региона
     rid_d2, _ = await add_report(UD, "f", 100, 5200, "12")
@@ -259,10 +259,10 @@ async def run():
     check("после переезда старый регион 11 выпал из статистики (пилотов нет)",
           "11" not in s2)
     check("новый регион 12: силы 5200 и 1 пилот",
-          (s2["12"]['troops_24h'], s2["12"]['active_pilots_72h']) == (5200, 1))
+          (s2["12"]['troops_total'], s2["12"]['pilots_count']) == (5200, 1))
 
     # Пилот не учитывается в двух регионах сразу
-    total_pilots = sum(r['active_pilots_72h'] for r in s2.values())
+    total_pilots = sum(r['pilots_count'] for r in s2.values())
     # UA, UB (25), UC (13), UD (12), UF (77) — пять разных пилотов в четырёх регионах
     check("пилот не задвоен в статистике по регионам", total_pilots == 5)
 
@@ -277,15 +277,15 @@ async def run():
     # В регионе 13 теперь два пилота: этот (3000) и пилот из теста 10, у которого
     # последний одобренный отчёт содержит «всего» = 8000
     check("показания пилотов региона складываются (3000 + 8000 = 11000)",
-          s3["13"]['troops_24h'] == 11000)
-    check("в регионе 13 два пилота", s3["13"]['active_pilots_72h'] == 2)
+          s3["13"]['troops_total'] == 11000)
+    check("в регионе 13 два пилота", s3["13"]['pilots_count'] == 2)
 
     # ── 13. Повторный пересчёт на тех же данных ничего не ломает ──
     await recompute_region_stats()
     s4 = {r['region']: r for r in await get_region_stats()}
     check("повторный пересчёт даёт тот же результат",
-          {k: (v['troops_24h'], v['active_pilots_72h']) for k, v in s4.items()}
-          == {k: (v['troops_24h'], v['active_pilots_72h']) for k, v in s3.items()})
+          {k: (v['troops_total'], v['pilots_count']) for k, v in s4.items()}
+          == {k: (v['troops_total'], v['pilots_count']) for k, v in s3.items()})
     # Логгер db.py нужен миграциям на старте: без него init_db падал бы с NameError
     check("в database.db есть logger для миграций", dbmod.logger is not None)
 

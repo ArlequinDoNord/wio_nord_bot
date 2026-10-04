@@ -4538,14 +4538,15 @@ async def show_region_stats(message, refreshed: bool = False, to_edit: CallbackQ
 
     if stats:
         text += ("🪖 Силы — сумма показаний «всего» пилотов региона из их последних отчётов.\n"
-                 "👤 Пилотов — кто сейчас в регионе. Переезд меняет оба показателя.\n\n")
+                 "👤 Пилотов — кто сейчас в регионе. Переезд меняет оба показателя.\n"
+                 "ℹ️ Это остаток сил на сейчас, а не заработок за сутки: окна времени тут нет.\n\n")
         for s in stats:
             region_label = f"Регион {s['region']}"
             if s['region'] == "0":
                 region_label += " (Столица)"
             text += (f"🌍 {region_label}\n"
-                     f"   🪖 Силы: {s['troops_24h']}\n"
-                     f"   👤 Пилотов: {s['active_pilots_72h']}\n\n")
+                     f"   🪖 Силы: {s['troops_total']}\n"
+                     f"   👤 Пилотов: {s['pilots_count']}\n\n")
     else:
         text += "Нет данных. Регионы появятся после одобренных отчётов."
 

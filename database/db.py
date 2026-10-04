@@ -359,9 +359,8 @@ async def init_db():
             screenshot_file_id TEXT,
             troops_reported INTEGER NOT NULL,
             region TEXT,
-            status TEXT DEFAULT 'pending',
-            reviewed_by INTEGER,
-            nordmarks_earned INTEGER DEFAULT 0,
+    status TEXT DEFAULT 'pending',
+    reviewed_by INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(user_id)
         );
@@ -378,9 +377,9 @@ async def init_db():
         );
 
         CREATE TABLE IF NOT EXISTS region_stats (
-            region TEXT PRIMARY KEY,
-            troops_24h INTEGER DEFAULT 0,
-            active_pilots_72h INTEGER DEFAULT 0,
+    region TEXT PRIMARY KEY,
+    troops_total INTEGER DEFAULT 0,
+    pilots_count INTEGER DEFAULT 0,
             computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -876,6 +875,20 @@ async def init_db():
     # в таблице лежат значения, посчитанные по старой логике (суточный заработок за
     # окно 24ч), поэтому пересчитываем на старте: иначе после деплоя админ увидел бы
     # старые числа до первого суточного цикла. Дальше цикл поддерживает их сам.
+    # v0.22.2: имена колонок региональной статистики врали. troops_24h и
+    # active_pilots_72h обещали окна времени (24 часа / 72 часа), а окна нет: это
+    # «остаток» — сумма «всего» каждого пилота по его последнему одобренному отчёту,
+    # и сколько пилотов этот отчёт сдали. «troops_total» читается как «всего сил»,
+    # но новичок всё равно ждёт потока, поэтому смысл держится в докстринге
+    # recompute_region_stats(), а не в имени колонки.
+    _region_stats_cols = {r['name'] for r in await (await conn.execute(
+        "PRAGMA table_info(region_stats)")).fetchall()}
+    for _old, _new in (("troops_24h", "troops_total"),
+                       ("active_pilots_72h", "pilots_count")):
+        if _old in _region_stats_cols:
+            await conn.execute(
+                f"ALTER TABLE region_stats RENAME COLUMN {_old} TO {_new}")
+    await conn.commit()
     _old_stats = await (await conn.execute(
         "SELECT COUNT(*) AS n FROM region_stats")).fetchone()
     if _old_stats and _old_stats['n']:
@@ -4342,7 +4355,15 @@ async def add_report(user_id: int, screenshot_file_id: str, troops_reported: int
 
     troops_reported — заявка «за сутки», total_troops — заявка «всего»,
     credited_troops — сумма к оплате (см. report_payout_context).
+
+    Регион нормализуется здесь, а не в хендлере: колонка TEXT, а региональная
+    статистика группирует по ней (`GROUP BY region`), поэтому «07» и «7» стали бы
+    двумя разными регионами и силы пилота разъехались бы между ними. add_report —
+    единственная точка записи в reports, поэтому гарантия тут одна и не обходится.
     """
+    region_text = str(region or "").strip()
+    if region_text.isdigit():
+        region = str(int(region_text))
     ctx = await report_payout_context(user_id, troops_reported, total_troops)
     conn = await get_db()
     cursor = await conn.execute(
@@ -4388,7 +4409,12 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
     )
     row = await cursor.fetchone()
     if not row:
-        return False
+        # Не 0, а тоже число: вызывающий код трактует результат как сумму к оплате, а
+        # False == 0 в Python — раньше пилот получал «К оплате 0: суточный лимит уже
+        # выбран» вместо «отчёт не найден». Отчёт мог исчезнуть только гонкой с БД, но
+        # врать о причине нельзя.
+        logger.warning("approve_report: отчёт %s не найден", report_id)
+        return 0
 
     # Лимит считаем по суткам САМОГО отчёта: одобрение часто приходит на следующие
     # сутки, и по текущим суткам лимит уже съеден другими отчётами пилота.
@@ -4703,14 +4729,15 @@ async def recompute_region_stats():
     складываются в сумму по региону, а переезд пилота сразу переносит и его силы, и
     его самого: старый регион теряет и войска, и пилота, новый — получает.
 
-      • СИЛЫ (troops_24h)     — сумма «всего» пилотов региона. Это остаток, а не поток
+      • СИЛЫ (troops_total)  — сумма «всего» пилотов региона. Это остаток, а не поток
                                  за сутки, поэтому возраст отчёта не важен: накопленное
                                  не испаряется само, и силы не обнуляются, когда отчёт
-                                 старше суток.
-      • ПИЛОТЫ (active_pilots_72h) — сколько пилотов сейчас стоят в регионе. Раньше
+                                 старше суток. Окна 24 часа тут НЕТ.
+      • ПИЛОТЫ (pilots_count) — сколько пилотов сейчас стоят в регионе. Раньше
                                  считалось за окно 72 часа, из-за чего переехавший
                                  пилот учитывался в старом и новом регионах сразу, и
                                  сумма пилотов по регионам превышала число людей.
+                                 Окна 72 часов тут тоже НЕТ.
     """
     conn = await get_db()
     await conn.execute("DELETE FROM region_stats")
@@ -4738,7 +4765,7 @@ async def recompute_region_stats():
 
     for region, (troops, pilots) in regions.items():
         await conn.execute(
-            "INSERT INTO region_stats (region, troops_24h, active_pilots_72h, computed_at) "
+            "INSERT INTO region_stats (region, troops_total, pilots_count, computed_at) "
             "VALUES (?, ?, ?, datetime('now'))",
             (region, troops, pilots)
         )

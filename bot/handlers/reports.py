@@ -107,7 +107,7 @@ async def report_receive_daily_troops(message: Message, state: FSMContext):
     prev_total = await report_prev_day_total(message.from_user.id)
     prev_note = (f"\n🗓 За прошлые сутки ты сдал: {prev_total}." if prev_total else "")
     await message.answer(
-        f"📊 Сколько у тебя всего войск на данный момент? (цифрами, до {REPORT_MAX_TROOPS:,})"
+        f"🗺 Сколько у тебя сейчас войск на карте в регионе? (цифрами, до {REPORT_MAX_TROOPS:,})"
         .replace(",", " ")
         + prev_note + "\n\nЭто число нужно для статистики сил по регионам — на оплату "
                        "оно не влияет.",
@@ -123,9 +123,6 @@ async def report_daily_troops_expected(message: Message):
 @router.message(ReportSubmit.waiting_total_troops, F.text.regexp(r"^\d{1,7}$"))
 async def report_receive_total_troops(message: Message, state: FSMContext):
     total = int(message.text)
-    if total < 0:
-        await message.answer("❌ Число не может быть отрицательным.")
-        return
     if total > REPORT_MAX_TROOPS:
         await message.answer(
             f"❌ Слишком большое число. Максимум для одного отчёта: {REPORT_MAX_TROOPS:,} войск."
@@ -161,7 +158,9 @@ async def report_total_troops_expected(message: Message):
 
 @router.message(ReportSubmit.waiting_region, F.text.regexp(r"^\d+$"))
 async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
-    region_code = message.text.strip()
+    # Номер региона нормализуем и здесь, чтобы в подтверждении и в логе показать
+    # ровно то, что лежит в базе (нормализация «в одном месте» — в add_report).
+    region_code = str(int(message.text.strip()))
 
     region_int = int(region_code)
     if region_int > REPORT_MAX_REGION:
@@ -231,8 +230,12 @@ async def report_receive_region(message: Message, state: FSMContext, bot: Bot):
         )
         # Принятый отчёт — похвала в общий чат по накопленной сумме за сутки
         # (сама функция молчит ниже порога и не дублирует уже отправленный уровень).
+        # Сутки берём те же, что и у отчёта: иначе автоодобрение хвалило бы по
+        # «сегодняшним», а ручное — по суткам отчёта, и на границе 10:00 подписи
+        # разъезжались бы.
         pilot_row = await get_user(message.from_user.id)
-        await notify_report_praise(message.bot, pilot_row, message.from_user.id)
+        await notify_report_praise(message.bot, pilot_row, message.from_user.id,
+                                   day=ctx['cycle_day'])
     else:
         await state.clear()
         await message.answer(

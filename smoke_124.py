@@ -56,6 +56,7 @@ async def main():
         reject_report, payout_reports, report_payout_context, set_report_daily_pay_cap,
         get_report_daily_pay_cap, report_day_value_of, created_at_msk, today_report_day,
         count_reports_today, _today_msk, _report_cycle_day_of,
+        recompute_region_stats, get_region_stats,
     )
 
     await init_db()
@@ -98,7 +99,7 @@ async def main():
     await add_user(1006, "u6", "U6", "Лётчик")
     await add_user(1007, "u7", "U7", "Лётчик")
     for _uid, _un in ((1008, "w8"), (1009, "w9"), (1010, "w10"), (1011, "w11"),
-                      (1012, "w12"), (1013, "w13")):
+                      (1012, "w12"), (1013, "w13"), (1014, "w14")):
         await add_user(_uid, _un, "Окна", "Окна")
     await set_report_daily_pay_cap(4000)
 
@@ -369,6 +370,41 @@ async def main():
     await stamp(r3, at(18))
     check("после возврата в текущие сутки счётчик снова 3",
           await count_reports_today(UA) == 3)
+
+    # ── 11. Регион нормализуется при записи ────────────────────────────────
+    # reports.region — TEXT, а региональная статистика группирует по этой строке.
+    # Без нормализации «07» и «7» — два разных региона, и силы пилота разъезжаются.
+    print("\n= Нормализация региона =")
+    UR1 = 1014
+    await add_user(UR1, "w14", "РегионВедущийНоль", "Окна")
+    # Регионы 30 и 31 в этом смоуке не использует никто — иначе проверка «пилот уехал»
+    # путалась бы с чужими силами в том же регионе.
+    t1, _ = await add_report(UR1, "s", 100, 100, "030")
+    t2, _ = await add_report(UR1, "s", 200, 200, "30")
+    conn = await get_db()
+    stored = [r['region'] for r in await (await conn.execute(
+        "SELECT region FROM reports WHERE id IN (?, ?) ORDER BY id", (t1, t2))).fetchall()]
+    check("«030» и «30» сохраняются как один регион «30»", stored == ['30', '30'])
+    await approve_report(t1, 0)
+    await approve_report(t2, 0)
+    await recompute_region_stats()
+    stats = {r['region']: (r['troops_total'], r['pilots_count'])
+             for r in await get_region_stats()}
+    check("пилот с регионом «30» учтён один раз и со своими силами",
+          stats.get('30') == (200, 1))
+    # Пилот переехал в регион 31: сила 200 из «30» должна уехать вместе с ним, иначе
+    # «30» и «030» разъедутся на два региона, если хоть одна строка минует нормализацию.
+    t3, _ = await add_report(UR1, "s", 300, 300, "031")
+    await approve_report(t3, 0)
+    await recompute_region_stats()
+    stats = {r['region']: (r['troops_total'], r['pilots_count'])
+             for r in await get_region_stats()}
+    check("переезд увозит силы пилота в новый регион",
+          stats.get('31') == (300, 1) and '30' not in stats)
+
+    # ── 12. Одобрение несуществующего отчёта не притворяется лимитом ───────
+    check("одобрение несуществующего отчёта вернуло 0, а не False",
+          await approve_report(999999, 0) == 0 and (await approve_report(999999, 0)) is not False)
 
     await close_db()
     print(f"\n{'=' * 46}\nPASS: {PASS}   FAIL: {FAIL}")
