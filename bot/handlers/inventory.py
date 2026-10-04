@@ -262,6 +262,9 @@ async def _combat_stats(user_id: int) -> dict:
         "dodge_bonus": dodge_bonus,
         "dodge_mult": dm,
         "hp_bonus": hp_bonus,
+        "crit_bonus": crit_bonus,
+        "base_crit": base_crit,
+        "total_crit": total_crit,
         "weapon_effect": weapon_effect,
         "states": info['states'],
     }
@@ -319,13 +322,13 @@ async def _combat_summary_lines(user_id: int) -> list:
         return f"{value:.1f}".rstrip("0").rstrip(".")
 
     crit_src = []
-    if base_crit:
-        crit_src.append(f"звание {_fmt_chance(base_crit)}%")
-    if crit_bonus:
-        crit_src.append(f"награды +{crit_bonus}%")
-    if _fmt_chance(total_crit) != _fmt_chance(base_crit) and not crit_bonus:
+    if s["base_crit"]:
+        crit_src.append(f"звание {_fmt_chance(s['base_crit'])}%")
+    if s["crit_bonus"]:
+        crit_src.append(f"награды +{s['crit_bonus']}%")
+    if _fmt_chance(s["total_crit"]) != _fmt_chance(s["base_crit"]) and not s["crit_bonus"]:
         crit_src.append("снаряжение")
-    crit_line = f"💥 Крит: {_fmt_chance(total_crit)}%"
+    crit_line = f"💥 Крит: {_fmt_chance(s['total_crit'])}%"
     if crit_src:
         crit_line += f" ({', '.join(crit_src)})"
     lines.append(crit_line)
