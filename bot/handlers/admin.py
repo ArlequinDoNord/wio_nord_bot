@@ -2806,13 +2806,16 @@ async def admin_chatinfo(message: Message):
                          reply_markup=InlineKeyboardMarkup(inline_keyboard=rows) if rows else None)
 
 
-@router.callback_query(F.data.startswith("news:"))
+@router.callback_query(F.data.regexp(
+    r"^news:(?:off|(?:dis)?allow:-?\d+|chat:-?\d+:-?\d+|topic:-?\d+:-?\d+)$"))
 async def admin_news_chat(callback: CallbackQuery):
     await callback.answer()
     if 'super_admin' not in await get_user_role(callback.from_user.id):
         await callback.message.answer("❌ Настройка оповещений только для супер-админа.")
         return
     _, action, *rest = callback.data.split(":")
+    if action not in ("off", "allow", "disallow", "chat", "topic"):
+        return
     if action == "off":
         await set_news_chat(None, None)
         from utils.chat_guard import reset_cache
