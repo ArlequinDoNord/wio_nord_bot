@@ -585,14 +585,17 @@ async def profile_callsign_input(message: Message, state: FSMContext):
     if not has_callsign and not free_used:
         await set_callsign(user_id, callsign)
         await set_callsign_free_used(user_id, 1)
-        await state.finish()
+        # state.finish() в aiogram 3 не существует: вызов падал с AttributeError,
+        # позывной сохранялся, но игрок не получал подтверждения и оставался в
+        # состоянии ввода позывного (v0.22.7).
+        await state.clear()
         await message.answer(f"Позывной «{callsign}» установлен!")
         await render_profile(message, user_id)
         return
 
     if super_admin:
         await set_callsign(user_id, callsign)
-        await state.finish()
+        await state.clear()
         await message.answer(f"Позывной изменён на «{callsign}» (бесплатно, по правам суперадмина)")
         await render_profile(message, user_id)
         return

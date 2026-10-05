@@ -80,28 +80,66 @@ async def bank_balance(callback: CallbackQuery):
     )
 
 
+RECIPIENTS_PER_PAGE = 10
+
+
+def _recipient_label(u) -> str:
+    label = u['first_name'] or u['username'] or str(u['user_id'])
+    if u['username']:
+        label += f" (@{u['username']})"
+    return label
+
+
+async def _recipient_page(callback, page: int):
+    """Список получателей перевода постранично.
+
+    Раньше список обрывался на первых 50 игроках, из-за чего новички (в т.ч. без
+    позывного) вообще не попадали в перевод. Теперь показываем всех, по 10 на
+    страницу, сортируя по имени — порядок стабильный между открытиями.
+    """
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    me = callback.from_user.id
+    users = [u for u in await get_all_users() if u['user_id'] != me]
+    users.sort(key=lambda u: (u['first_name'] or u['username'] or '').lower())
+    pages = max(1, (len(users) + RECIPIENTS_PER_PAGE - 1) // RECIPIENTS_PER_PAGE)
+    page = max(0, min(page, pages - 1))
+    chunk = users[page * RECIPIENTS_PER_PAGE:(page + 1) * RECIPIENTS_PER_PAGE]
+
+    buttons = [
+        [InlineKeyboardButton(text=_recipient_label(u), callback_data=f"bank:pickrecipient:{u['user_id']}")]
+        for u in chunk
+    ]
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"bank:transfer:list:{page - 1}"))
+    nav.append(InlineKeyboardButton(text=f"Стр. {page + 1}/{pages}", callback_data="noop"))
+    if page < pages - 1:
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"bank:transfer:list:{page + 1}"))
+    if nav:
+        buttons.append(nav)
+    buttons.append([InlineKeyboardButton(text="✍️ Ввести username вручную", callback_data="bank:transfer_manual")])
+    buttons.append([InlineKeyboardButton(text="🔙 В банк", callback_data="bank:menu")])
+    await callback.message.answer(
+        f"💸 Кому перевести? Всего пилотов: {len(users)}.\n"
+        f"Выбери пилота из списка или введи username вручную:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+
+
 @router.callback_query(F.data == "bank:transfer")
 async def bank_transfer(callback: CallbackQuery):
     await callback.answer()
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    rows = [[InlineKeyboardButton(text="✍️ Ввести username вручную", callback_data="bank:transfer_manual")]]
-    me = callback.from_user.id
-    shown = 0
-    for u in await get_all_users():
-        if u['user_id'] == me:
-            continue
-        label = u['first_name'] or u['username'] or str(u['user_id'])
-        if u['username']:
-            label += f" (@{u['username']})"
-        rows.append([InlineKeyboardButton(text=label, callback_data=f"bank:pickrecipient:{u['user_id']}")])
-        shown += 1
-        if shown >= 50:
-            break
-    rows.append([InlineKeyboardButton(text="🔙 В банк", callback_data="bank:menu")])
-    await callback.message.answer(
-        "💸 Кому перевести? Выбери пилота из списка или введи username вручную:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
-    )
+    await _recipient_page(callback, 0)
+
+
+@router.callback_query(F.data.startswith("bank:transfer:list:"))
+async def bank_transfer_page(callback: CallbackQuery):
+    await callback.answer()
+    try:
+        page = int(callback.data.split(":")[3])
+    except (ValueError, IndexError):
+        page = 0
+    await _recipient_page(callback, page)
 
 
 @router.callback_query(F.data == "bank:transfer_manual")

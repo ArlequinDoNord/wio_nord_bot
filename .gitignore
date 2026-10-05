@@ -6,6 +6,7 @@ __pycache__/
 database/nordmark.db
 database/nordmark.db-shm
 database/nordmark.db-wal
+database/fsm/
 bot.log
 _test_smoke*.db
 _test_*.py

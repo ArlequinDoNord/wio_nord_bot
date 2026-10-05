@@ -52,6 +52,7 @@ from config import (
     DUNGEON_SMOKE_MAX,
     FISH_AP_COST,
 )
+from config import RESERVOIR_AP_COST as RESERVOIR_AP_COST_CFG
 
 
 def heal_limit_mult(uses: int) -> float:
@@ -148,7 +149,8 @@ WEAPON_EFFECT_ATTACK_LINE = {
 }
 
 # Рыба подземного водохранилища (после победы над Крысиным капитаном): веса.
-RESERVOIR_AP_COST = FISH_AP_COST
+# Стоимость заброса — RESERVOIR_AP_COST из config (5 ОД, дороже озера).
+RESERVOIR_AP_COST = RESERVOIR_AP_COST_CFG
 RESERVOIR_FISH_POOL = (
     ("Мерцающий сом", 62),
     ("Искрящийся угорь", 33),

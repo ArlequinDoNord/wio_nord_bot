@@ -8592,6 +8592,12 @@ KVP_CANE_NAME = "Сержантская трость"
 KVP_MAX_COMPLETIONS = 4
 KVP_OD_COST = 5  # стоимость прохождения препятствия (одиночное действие)
 
+# Предметы, которые нельзя передать другому игроку. Трость КВП — личная награда за
+# босса: её можно продать скупщику (sell_price), но нельзя ни отдать, ни выставить
+# на рынок. Проверка идёт по названию, а не по флагу loot_only: лут (кабан, моллюск)
+# игроками передаётся свободно.
+UNTRANSFERABLE_ITEMS = frozenset({KVP_CANE_NAME})
+
 # Враги курса: (name, hp, atk, reward, is_boss, drops, image, poison_chance, poison_dmg, dodge, description)
 KVP_ENEMIES = [
     ("Ефрейтор", 15, 2, 0, False, [], None, 0, 0, 5,

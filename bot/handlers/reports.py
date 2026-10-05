@@ -43,7 +43,34 @@ async def report_menu(message: Message):
 @router.callback_query(F.data == "report:submit")
 async def report_submit_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
-    if await user_is_tourist(callback.from_user.id):
+    # Сдачу отчёта нельзя начинать, пока игрок внутри подземелья/КВП или идёт заброс.
+    # Раньше report:submit молча перетирал состояние рыбалки: в подземном
+    # водохранилище это означало потерю доступа к нему (восстановить можно только
+    # «Продолжить путь», и тогда рыбалка в водохранилище уже недоступна), а во время
+    # заброса (озеро/водохранилище, 4–7 секунд) — потерю улова при уже списанных ОД
+    # и наживке: resv_cast/fish_cast выбрасывали результат (v0.22.7).
+    from bot.handlers.fishing import FISHING_CASTING
+    from bot.handlers.dungeon import DungeonFSM
+    user_id = callback.from_user.id
+    dungeon_states = {
+        DungeonFSM.in_dungeon.state,
+        DungeonFSM.in_combat.state,
+        DungeonFSM.in_boss.state,
+        DungeonFSM.in_reservoir.state,
+    }
+    if await state.get_state() in dungeon_states:
+        await callback.message.answer(
+            "🗺 Ты сейчас в подземелье — сначала выйди из него.\n"
+            "Кнопка «Выход» есть в меню подземелья."
+        )
+        return
+    if user_id in FISHING_CASTING:
+        await callback.message.answer(
+            "🎣 Дождись результата заброса — потом сдашь отчёт.\n"
+            "Это займёт несколько секунд."
+        )
+        return
+    if await user_is_tourist(user_id):
         await callback.message.answer(
             "❌ Сдавать отчёты могут рекруты и пилоты.\n"
             "Статус «Рекрут» выдают после проверки — напиши об этом администраторам."

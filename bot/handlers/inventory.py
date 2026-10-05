@@ -22,7 +22,7 @@ from database.db import (
     get_award_bonus, get_player_weapon_damage, get_player_armor,
     get_player_armor_with_bonus, get_player_dodge, get_equipped_weapon,
     get_player_crit_chance, get_pilot_crit_chance,
-    user_is_tourist,
+    user_is_tourist, UNTRANSFERABLE_ITEMS,
 )
 from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text,
@@ -135,7 +135,8 @@ def inv_list_markup(items, catches=None, back_cb: str = "back:main", back_label:
 
 def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equipped: bool = False,
                     equip_slot: str = None, potion_slots: list = None, sellable: bool = True,
-                    qty: int = 1, occupied: dict = None, market_ok: bool = False):
+                    qty: int = 1, occupied: dict = None, market_ok: bool = False,
+                    transferable: bool = True):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = []
     if can_use:
@@ -175,7 +176,8 @@ def inv_item_markup(item_id: int, category: str, can_use: bool = False, is_equip
             buttons.append([InlineKeyboardButton(text="💵 Продать", callback_data=f"inv_sell:{item_id}")])
     if market_ok:
         buttons.append([InlineKeyboardButton(text="🏪 На рынок", callback_data=f"itemmarket:{item_id}")])
-    buttons.append([InlineKeyboardButton(text="📤 Передать", callback_data=f"inv_transfer:{item_id}")])
+    if transferable:
+        buttons.append([InlineKeyboardButton(text="📤 Передать", callback_data=f"inv_transfer:{item_id}")])
     buttons.append([InlineKeyboardButton(text="🔙 В категорию", callback_data=f"inventory:cat:{category}")])
     buttons.append([InlineKeyboardButton(text="🔙 К списку категорий", callback_data="inventory:list")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -740,6 +742,7 @@ async def _render_item_card(message, user_id: int, item_id: int, note: str = "")
                              sellable=(item['sell_price'] or 0) > 0 and sellable_qty > 0,
                              qty=sellable_qty,
                              occupied=occupied,
+                             transferable=item['name'] not in UNTRANSFERABLE_ITEMS,
                              market_ok=bool(item.get('market_ok')) and sellable_qty > 0
                              and not await user_is_tourist(user_id))
 
@@ -1609,6 +1612,13 @@ async def inv_transfer_start(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ У тебя нет этого предмета.")
         return
 
+    if item['name'] in UNTRANSFERABLE_ITEMS:
+        await callback.message.answer(
+            f"❌ «{item['name']}» нельзя передать игроку.\n"
+            "Её можно только продать скупщику."
+        )
+        return
+
     eq = await get_equipment(user_id)
     if item_id in eq.values():
         used = [EQUIPMENT_SLOT_LABELS[s].lower() for s in EQUIPMENT_SLOT_LABELS if eq.get(s) == item_id]
@@ -1697,6 +1707,14 @@ async def inv_transfer_message(message: Message, state: FSMContext):
     item_id = data['item_id']
     amount = data['amount']
     target_id = data['target_id']
+    # Страховка от устаревшего состояния FSM: передача запрещённых предметов не проходит.
+    if data.get('item_name') in UNTRANSFERABLE_ITEMS:
+        await message.answer(
+            f"❌ «{data['item_name']}» нельзя передать игроку.\n"
+            "Её можно только продать скупщику."
+        )
+        await state.clear()
+        return
     inv = await get_inventory_item(from_user, item_id)
     if not inv or inv['quantity'] < amount:
         await message.answer(f"❌ У тебя нет столько. В наличии: {inv['quantity'] if inv else 0} шт.")

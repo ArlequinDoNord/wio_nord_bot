@@ -584,8 +584,8 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
             text += "\n💰 +2 Нордмарки (заберёшь при выходе)"
         text += f"\n\n❤️ {_hp_bar(player_hp, run['hp_max'])}\nНажми «Продолжить путь»."
         new_step = await dungeon_new_step(state)
-        await answer_course_photo(callback.message, text,
-                                  reply_markup=kvp_continue_keyboard(new_step))
+        await answer_enemy_or_course_photo(callback.message, enemy, text,
+                                           reply_markup=kvp_continue_keyboard(new_step))
         return
 
     # Враг контратакует (с шансом пилот уклоняется)
@@ -605,13 +605,19 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     player_hp = max(0, player_hp - reduced)
     await update_run_hp(run['id'], player_hp)
 
+    # crit_mark и строка уклонения нужны ВСЕГДА: ниже они подставляются в текст
+    # безусловно, а раньше задавались только в ветке «враг не уклонился». Когда враг
+    # уклонялся, бой падал с UnboundLocalError, и игрок после удара не видел НИЧЕГО —
+    # ни экрана боя, ни ошибки (v0.22.7).
     if enemy_dodged:
-        attack_line = f"💨 {enemy['name']} уклонился от удара! (−0 HP врагу)\n"
+        crit_mark = ""
+        dodge_attack_line = f"💨 {enemy['name']} уклонился от удара! (−0 HP врагу)\n"
     else:
         crit_mark = " 💥 crit!" if res['crit'] else ""
+        dodge_attack_line = ""
     armor_note = (f"\n🛡️ Броня врага поглотила {res['armor_blocked']} урона!"
                   if res['armor_blocked'] else "")
-    attack_line = f"−{damage_to_enemy} HP врагу{crit_mark}{armor_note}\n"
+    attack_line = f"−{damage_to_enemy} HP врагу{crit_mark}{armor_note}\n{dodge_attack_line}"
     enemy_bar = get_enemy_bar(current_enemy_hp, enemy['hp'])
     text = (
         f"🗡️ Ты атакуешь {enemy['name']}!\n"
@@ -631,12 +637,13 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
             f"\n\n💀 Ты погиб на полигоне. Курс — непройден, лут потерян.\n"
             f"Попробуешь ещё раз?"
         )
-        await answer_course_photo(callback.message, text, reply_markup=kvp_menu_keyboard())
+        await answer_enemy_or_course_photo(callback.message, enemy, text,
+                                           reply_markup=kvp_menu_keyboard())
         return
 
     new_step = await dungeon_new_step(state)
-    await answer_course_photo(callback.message, text,
-                              reply_markup=kvp_combat_keyboard(enemy['id'], new_step))
+    await answer_enemy_or_course_photo(callback.message, enemy, text,
+                                       reply_markup=kvp_combat_keyboard(enemy['id'], new_step))
 
 
 async def kvp_win(callback: CallbackQuery, run, user_id, state: FSMContext, bot: Bot, boss):

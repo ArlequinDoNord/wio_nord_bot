@@ -1,14 +1,17 @@
 import asyncio
 import logging
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot, Dispatcher, BaseMiddleware
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BotCommand, Message, CallbackQuery
 from dotenv import load_dotenv
 
 from config import (BOT_TOKEN,
+                    FSM_STORAGE_PATH,
                     REPORT_DAY_START_HOUR as PAYOUT_HOUR_MSK,
                     REPORT_DAY_START_MINUTE as PAYOUT_MINUTE_MSK)
 from database.db import (
@@ -407,7 +410,13 @@ async def main():
     logger.info("Буклет туриста (предмет и награда) проверены")
 
     bot = Bot(token=BOT_TOKEN)
-    dp = Dispatcher()
+    # FSM — на диске, рядом с БД (/app/data в контейнере, docker volume): состояния
+    # незаконченных форм переживают рестарт и деплой. На MemoryStorage любой рестарт
+    # обнулял их, и пилот на середине формы получал молчание (v0.22.7).
+    from bot.fsm_store import JsonFileStorage
+    os.makedirs(FSM_STORAGE_PATH, exist_ok=True)
+    dp = Dispatcher(storage=JsonFileStorage(os.path.join(FSM_STORAGE_PATH, "fsm_state.json")))
+    logger.info(f"FSM-хранилище: {FSM_STORAGE_PATH}")
 
     @dp.errors()
     async def global_error_handler(event):
@@ -431,6 +440,18 @@ async def main():
             f"Ошибка хендлера (user {uid}): {type(ex).__name__}: {ex}",
             exc_info=(type(ex), ex, ex.__traceback__),
         )
+        # Раньше обработчик писал ошибку только в логи, и игрок после неудачного
+        # действия не получал ровно ничего — выглядело как «бот завис». Теперь
+        # сообщаем, что произошло, и что можно просто повторить действие (v0.22.7).
+        try:
+            ev = event.update.event if event.update else None
+            if uid and ev is not None and not isinstance(ex, TelegramBadRequest):
+                await ev.answer(
+                    "⚠️ Что-то пошло не так — действие не выполнено.\n"
+                    "Попробуй ещё раз. Если не помогло, напиши в техподдержку."
+                )
+        except Exception:
+            pass
         return True
 
     logger.info("Глобальный обработчик ошибок зарегистрирован")
