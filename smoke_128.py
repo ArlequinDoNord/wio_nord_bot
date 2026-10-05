@@ -1,4 +1,4 @@
-"""Smoke v0.22.7: регрессии по жалобам пилотов от 04–05.10.2026.
+﻿"""Smoke v0.22.7: регрессии по жалобам пилотов от 04–05.10.2026.
 
 Каждый пункт — реальная поломка, из-за которой пилот упирался в «молчащий бот»:
 
@@ -17,6 +17,7 @@
 """
 import asyncio
 import inspect
+import json
 import os
 import shutil
 import sys
@@ -44,8 +45,8 @@ from bot.fsm_store import JsonFileStorage
 FAILED = []
 
 
-def check(name, cond):
-    print(("  ok   " if cond else "  FAIL ") + name)
+def check(name, cond, extra=""):
+    print(("  ok   " if cond else "  FAIL ") + name + (f"   [{extra}]" if extra else ""))
     if not cond:
         FAILED.append(name)
 
@@ -226,7 +227,12 @@ async def main():
     # ── 7. FSM переживает рестарт ───────────────────────────────────────────
     print("\n7. Персистентность FSM")
     path = os.path.join(WORK, "fsm2", "fsm_state.json")
-    key = ("42", 555)
+    # Именно настоящий StorageKey, а не плейсхолдер-кортеж: StorageKey в aiogram 3
+    # это frozen dataclass, и итерация по нему падает. Настоящий ключ ловит это.
+    from aiogram.fsm.storage.base import StorageKey
+    key = StorageKey(bot_id=42, chat_id=42, user_id=555)
+    check("StorageKey — dataclass, не кортеж", not isinstance(key, tuple),
+          f"{type(key).__name__}")
     from bot.handlers.reports import ReportSubmit
     st_a = FSMContext(JsonFileStorage(path), key=key)
     await st_a.set_state(ReportSubmit.waiting_total_troops)
@@ -236,6 +242,39 @@ async def main():
           (await st_b.get_state()) == ReportSubmit.waiting_total_troops.state)
     check("данные формы пережили рестарт",
           (await st_b.get_data()).get("daily_troops") == 111)
+
+    # Один экземпляр на файл — как в проде (его создаёт Dispatcher): состояния
+    # разных пилотов не сливаются, clear() не задевает соседей.
+    shared = JsonFileStorage(path)
+    k1 = StorageKey(bot_id=1, chat_id=1, user_id=2)
+    k2 = StorageKey(bot_id=1, chat_id=1, user_id=3)
+    k3 = StorageKey(bot_id=1, chat_id=1, user_id=4)
+    st_1 = FSMContext(shared, key=k1)
+    st_2 = FSMContext(shared, key=k2)
+    await st_1.set_state("S:one")
+    await st_1.update_data(v="один")
+    await st_2.set_state("S:two")
+    await st_2.update_data(v="два")
+    check("состояние пилота 1 не затирается пилотом 2",
+          (await st_1.get_state()) == "S:one" and (await st_1.get_data())["v"] == "один",
+          f"{(await st_1.get_state())} {(await st_1.get_data())}")
+    check("состояние пилота 2 отдельно",
+          (await st_2.get_state()) == "S:two" and (await st_2.get_data())["v"] == "два")
+    await st_1.clear()
+    check("clear() убирает состояние и данные",
+          (await st_1.get_state()) is None and (await st_1.get_data()) == {},
+          f"{(await st_1.get_state())} {(await st_1.get_data())}")
+    check("соседний пилот не пострадал от clear()",
+          (await st_2.get_state()) == "S:two", f"={(await st_2.get_state())}")
+
+    # Второй экземпляр на том же файле не должен УДАЛЯТЬ чужие записи при записи.
+    other = JsonFileStorage(path)
+    st_3 = FSMContext(other, key=k3)
+    await st_3.set_state("S:three")
+    raw = json.load(open(path, encoding="utf-8"))
+    check("запись второго экземпляра не стирает записи первого",
+          "1:1:2" in raw and "1:1:3" in raw and "42:42:555" in raw, f"{sorted(raw.keys())}")
+    check("в файле ключ записан как bot:chat:user", "1:1:4" in raw, f"{sorted(raw.keys())}")
 
     import config
     check("FSM_STORAGE_PATH берётся из окружения",

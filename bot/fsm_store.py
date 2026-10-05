@@ -26,6 +26,13 @@ Mongo требуют отдельного сервера, а ботаняетс�
 через временный файл + ``os.replace``, поэтому оборванный деплой не оставляет
 повреждённый JSON: при ошибке чтения состояние просто считается пустым.
 
+Один экземпляр на файл
+----------------------
+Чтения кэшируются в памяти, а каждая запись перечитывает файл, поэтому два
+экземпляра на одном файле не могут стереть записи друг друга. Но чтения у
+второго экземпляра будут видеть устаревший кэш, поэтому экземпляр должен быть
+один — его и создаёт ``Dispatcher`` в ``main.py``.
+
 Почему JSON, а не pickle
 ------------------------
 Данные FSM в этом боте — строки, числа и ``None``. JSON безопаснее и читаем
@@ -55,8 +62,15 @@ MAX_RECORDS = 5000
 
 
 def _key_id(key: StorageKey) -> str:
-    """Ключ хранилища -> стабильный id записи: 'bot_id:chat_id'."""
-    return ":".join(str(part) for part in key)
+    """Ключ хранилища -> стабильный id записи: 'bot_id:chat_id:user_id'.
+
+    Именно атрибуты, а НЕ итерация по ключу: в aiogram 3 ``StorageKey`` — это
+    frozen dataclass, а не кортеж-NamedTuple, поэтому ``":".join(str(p) for p in
+    key)`` падает с ``TypeError: 'StorageKey' object is not iterable`` на каждом
+    обращении к состоянию. ``thread_id`` и ``business_connection_id`` в id не
+    входят — состояние пилота одно и то же в личке и в теме, как и у MemoryStorage.
+    """
+    return f"{key.bot_id}:{key.chat_id}:{key.user_id}"
 
 
 class JsonFileStorage(BaseStorage):
@@ -108,39 +122,36 @@ class JsonFileStorage(BaseStorage):
                 :len(data) - MAX_RECORDS
             ]:
                 data.pop(k, None)
-        if stale or len(data) > MAX_RECORDS:
+        if stale:
             logger.info("FSM: вычищено устаревших записей — %d", len(stale))
 
-    async def _flush(self) -> None:
-        if not self._dirty or self._cache is None:
-            return
-        snapshot = json.loads(json.dumps(self._cache, ensure_ascii=False, default=str))
-        await asyncio.to_thread(self._write_sync, snapshot)
-        self._dirty = False
+    async def _apply(self, key: StorageKey, **changes: Any) -> None:
+        """Изменить запись и записать файл.
 
-    async def _mutate(self, key: StorageKey, **changes: Any) -> None:
+        Файл перечитывается на КАЖДОЙ записи, а не берётся из кэша: иначе два
+        экземпляра хранилища на одном файле затирали бы друг друга (кэш первого
+        не знает о правке второго, и следующая запись первого затирала её целиком).
+        В боте экземпляр один и чтения идут чаще записей, так что лишний
+        read+write на шаг формы ничем не мешает.
+        """
         async with self._lock:
-            data = await self._load()
+            data = await asyncio.to_thread(self._read_sync)
+            await asyncio.to_thread(self._prune_sync, data)
             rec = data.setdefault(_key_id(key), {"state": None, "data": {}})
             rec.update(changes)
             rec["_ts"] = time.time()
-            self._dirty = True
-            await self._flush()
+            await asyncio.to_thread(self._write_sync, data)
+            self._cache = data
+            self._dirty = False
 
     # ── BaseStorage ─────────────────────────────────────────────────────────
     async def close(self) -> None:
-        async with self._lock:
-            await self._flush()
+        """Нечего закрывать: каждая запись уходит в файл сразу, буфера нет."""
+        return None
 
     async def set_state(self, key: StorageKey, state: StateType = None) -> None:
         value = state.state if isinstance(state, State) else state
-        async with self._lock:
-            data = await self._load()
-            rec = data.setdefault(_key_id(key), {"state": None, "data": {}})
-            rec["state"] = value
-            rec["_ts"] = time.time()
-            self._dirty = True
-            await self._flush()
+        await self._apply(key, state=value)
 
     async def get_state(self, key: StorageKey) -> str | None:
         data = await self._load()
@@ -155,7 +166,7 @@ class JsonFileStorage(BaseStorage):
             json.dumps(dict(data))
         except (TypeError, ValueError):
             logger.warning("FSM: нестандартные значения в данных %s — сохраняю через str()", key)
-        await self._mutate(key, data=dict(data))
+        await self._apply(key, data=dict(data))
 
     async def get_data(self, key: StorageKey) -> dict[str, Any]:
         data = await self._load()
