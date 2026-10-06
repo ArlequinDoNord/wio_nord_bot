@@ -599,7 +599,7 @@ async def inventory_cat_cb(callback: CallbackQuery):
         header += "\nУлов:"
         from config import FISH_TREASURY_DAILY_LIMIT
         sold = await fish_sold_today(user_id)
-        if fish_sale_daily_left(user_id):
+        if await fish_sale_daily_left(user_id):
             header += (
                 f"\n💵 Скупщик: {FISH_TREASURY_DAILY_LIMIT - sold}/"
                 f"{FISH_TREASURY_DAILY_LIMIT} НМ доступно сегодня"

@@ -99,9 +99,11 @@ ROLES = {
         'can_manage_library': True,
         'level': 40
     },
-    'representative': {  # Представитель — опросы (2 в сутки) и речь городу (4 в сутки)
+    'representative': {  # Представитель = Главнокомандующий ВВС: опросы (2 в сутки),
+        # речь городу (4 в сутки) и приказы штаба всем авиакрыльям сразу.
         'can_create_polls': True,
         'can_address_city': True,
+        'can_send_orders': True,
         'level': 15
     },
     'journalist': {  # Журналист ГосСМИ — пишет новости (лимит 2 в сутки)

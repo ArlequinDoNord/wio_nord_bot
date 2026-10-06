@@ -5,6 +5,8 @@
 2. set_wing / get_user.wing; get_wing_members (по крылу и по всем крыльям).
 3. Профиль пилота: строка «Авиакрыло» и правильная метка крыла.
 4. Права: can_manage_wing / can_send_orders у super_admin и moderator.
+   Представитель (representative) — Главнокомандующий: получает can_send_orders
+   и рассылает приказы всем авиакрыльям сразу.
 5. Admin-панель: кнопка «🪽 Авиакрылья» по флагу can_manage_wing.
    Мастер выдачи: pickuser → wing; wing_set применяет крыло пилоту.
 6. Штаб ВВС: кнопка города по can_send_orders; hq:menu требует право;
@@ -257,6 +259,18 @@ async def run():
     await conn.execute("DELETE FROM user_roles WHERE telegram_id = ?", (uid3,))
     await conn.commit()
 
+    # Представитель — Главнокомандующий: право приказов штаба.
+    await conn.execute(
+        "INSERT INTO user_roles (telegram_id, role, granted_by) VALUES (?, 'representative', ?)",
+        (uid3, _CMD_ID))
+    await conn.commit()
+    check("representative: в роли есть can_send_orders",
+          ROLES['representative'].get('can_send_orders'))
+    check("representative проходит can_send_orders",
+          await has_permission(uid3, 'can_send_orders'))
+    check("representative не получает can_manage_wing",
+          not await has_permission(uid3, 'can_manage_wing'))
+
     # ── 6. Штаб ВВС (локация «Штаб ВВС» в городе, видна всем) ──
     hq_loc = [{"key": "hq", "name": "Штаб ВВС"}]
     ck = city_keyboard(is_pilot=False, locations=hq_loc)
@@ -306,6 +320,29 @@ async def run():
           all("ПРИКАЗ ШТАБА ВВС" in t for _, t in send_bot.sent))
     check("подтверждение с количеством адресатов",
           "отправлен 2 пилота" in sent_text(msg_all))
+
+    # Представитель (role representative) тоже главнокомандующий: входит в штаб
+    # и отдаёт приказ всем авиакрыльям сразу.
+    send_bot3 = FakeSender()
+    cb_rep = FakeCallback(uid3, data="hq:menu", message=FakeMessage(uid3, bot=send_bot3))
+    await HQQ.hq_menu_cb(cb_rep, FakeState())
+    check("представитель входит в штаб ВВС", "ШТАБ ВВС" in sent_text(cb_rep.message))
+
+    cb_rep_t = FakeCallback(uid3, data="hq:order:all", message=FakeMessage(uid3, bot=send_bot3))
+    st_rep_t = FakeState()
+    await HQQ.hq_order_start(cb_rep_t, st_rep_t)
+    check("представитель выбрал «Всем авиакрыльям»",
+          "все авиакрылья" in sent_text(cb_rep_t.message))
+
+    msg_rep = FakeMessage(uid3, bot=send_bot3, text="Все на тренировку!")
+    await HQQ.hq_order_text(msg_rep, st_rep_t)
+    sent_rep = sorted({uid for uid, _ in send_bot3.sent})
+    check("приказ представителя ушёл всем крыльям (uid1, uid2)",
+          set(sent_rep) == {uid1, uid2})
+    check("приказ представителя подписан штабом",
+          all("ПРИКАЗ ШТАБА ВВС" in t for _, t in send_bot3.sent))
+    check("подтверждение представителю «отправлен 2 пилота»",
+          "отправлен 2 пилота" in sent_text(msg_rep))
 
     # Приказ конкретному крылу (2 АК).
     send_bot2 = FakeSender()
