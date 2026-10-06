@@ -1270,6 +1270,8 @@ async def init_db():
     # с казны задним числом; формирования ВВС читаем в кэш штаба/профиля.
     await load_wings_cache()
     await _balance_legacy_booklet_payouts()
+    # v0.22.8: единые игровые сутки (10:00 МСК) — прижать «опережающие» ключи.
+    await _normalize_daily_keys()
 
 
 async def seed_locations(conn):
@@ -1564,8 +1566,32 @@ async def remove_ap(user_id: int, amount: int, reason: str = None) -> bool:
     return True
 
 
+async def _normalize_daily_keys():
+    """Прижать суточные ключи *_day к текущим игровым суткам, если они «впереди».
+
+    Старый код писал в *_day календарную дату: UTC (смена в 03:00 МСК) для ОД,
+    расходников, алкоголя и фонтана, МСК (смена в 00:00) для рыбы/леса. После
+    перехода на игровые сутки 10:00 МСК в окне между старой и новой границей
+    записанное значение оказывается на день «позднее» нового ключа, и счётчик
+    читается как неиспользованный — пилот получил бы второй заход по лимиту.
+
+    Прижатие меняет только день, счёт сохраняет, а в 10:00 счётчик обнулится по
+    обычному правилу. Идемпотентно (вызывается при каждом старте) и дешёво:
+    UPDATE без WHERE по строкам с «будущей» датой почти ничего не трогает.
+    """
+    day = today_report_day()
+    conn = await get_db()
+    for col in ("ap_recovery_day", "ap_restored_day", "seaweed_used_day",
+                "fountain_used_day", "fish_sold_day", "forest_sold_day",
+                "alcohol_weak_used_day", "alcohol_strong_used_day"):
+        await conn.execute(
+            f"UPDATE users SET {col} = ? WHERE {col} IS NOT NULL AND {col} > ?",
+            (day, day))
+    await conn.commit()
+
+
 async def daily_ap_recovery():
-    """Суточное восстановление ОД — раз в сутки.
+    """Суточное восстановление ОД — раз в сутки, в 10:00 МСК.
 
     Начисляет AP_DAILY_RECOVERY (100 ОД) до потолка ap_max; для состояния
     «истощён» — AP_EXHAUSTED_DAILY_RECOVERY (75 ОД) до AP_EXHAUSTED_MAX_AP (90).
@@ -1573,9 +1599,13 @@ async def daily_ap_recovery():
     бота посреди дня не раздают ОД повторно. Счётчики (ap_restored_today,
     seaweed_used_today, fountain_used_today) обнуляются при смене суток.
     Каждое начисление пишется в ap_log.
+
+    Сутки здесь — ИГРОВЫЕ (today_report_day, 10:00 МСК), как у отчётов: ОД,
+    лимиты расходников, фонтан, рыба/лес, стена, опросы и алкоголь обновляются
+    в одну и ту же минуту вместе с выплатами.
     """
     from config import (AP_DAILY_RECOVERY, AP_EXHAUSTED_DAILY_RECOVERY, AP_EXHAUSTED_MAX_AP)
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = today_report_day()
     conn = await get_db()
 
     cursor = await conn.execute(
@@ -1607,18 +1637,31 @@ async def daily_ap_recovery():
         )
     await conn.commit()
 
-    # Обнуление суточных счётчиков при смене суток (то же поведение, что и раньше).
+    # Обнуление суточных счётчиков. Ключ — те же игровые сутки, что и у отчётов
+    # (10:00 МСК → 10:00 МСК), поэтому ВСЕ лимиты переезжают вместе с выплатами.
+    # Раньше здесь стоял date('now') (календарь UTC = 03:00 МСК) и обнулялись только
+    # 4 счётчика из 9 — алкоголь, лес и спец-отдел сбрасывались кто во что горазд.
+    # Ленивые проверки (fish_sale_daily_left, can_use_fountain и др.) обнуляются и
+    # сами по несовпадению ключа: блок нужен, чтобы счётчик обнулился даже если
+    # пилот в этот день в раздел не заходил.
     await conn.execute("""
         UPDATE users SET
-            ap_restored_today = CASE WHEN ap_restored_day = date('now') THEN ap_restored_today ELSE 0 END,
-            ap_restored_day = CASE WHEN ap_restored_day = date('now') THEN ap_restored_day ELSE date('now') END,
-            seaweed_used_today = CASE WHEN seaweed_used_day = date('now') THEN seaweed_used_today ELSE 0 END,
-            seaweed_used_day = CASE WHEN seaweed_used_day = date('now') THEN seaweed_used_day ELSE date('now') END,
-            fountain_used_today = CASE WHEN fountain_used_day = date('now') THEN fountain_used_today ELSE 0 END,
-            fountain_used_day = CASE WHEN fountain_used_day = date('now') THEN fountain_used_day ELSE date('now') END,
-            fish_sold_today = CASE WHEN fish_sold_day = date('now') THEN fish_sold_today ELSE 0 END,
-            fish_sold_day = CASE WHEN fish_sold_day = date('now') THEN fish_sold_day ELSE date('now') END
-    """)
+            ap_restored_today = CASE WHEN ap_restored_day = ? THEN ap_restored_today ELSE 0 END,
+            ap_restored_day = ?,
+            seaweed_used_today = CASE WHEN seaweed_used_day = ? THEN seaweed_used_today ELSE 0 END,
+            seaweed_used_day = ?,
+            fountain_used_today = CASE WHEN fountain_used_day = ? THEN fountain_used_today ELSE 0 END,
+            fountain_used_day = ?,
+            fish_sold_today = CASE WHEN fish_sold_day = ? THEN fish_sold_today ELSE 0 END,
+            fish_sold_day = ?,
+            forest_sold_today = CASE WHEN forest_sold_day = ? THEN forest_sold_today ELSE 0 END,
+            forest_sold_day = ?,
+            alcohol_weak_used_today = CASE WHEN alcohol_weak_used_day = ? THEN alcohol_weak_used_today ELSE 0 END,
+            alcohol_weak_used_day = ?,
+            alcohol_strong_used_today = CASE WHEN alcohol_strong_used_day = ? THEN alcohol_strong_used_today ELSE 0 END,
+            alcohol_strong_used_day = ?,
+            special_fails_today = 0
+    """, (today,) * 14)
     await conn.commit()
 
 
@@ -1731,7 +1774,7 @@ async def consume_drink(user_id: int, item_id: int):
     if not user:
         return False, "Ты не зарегистрирован."
     name = item["name"]
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = today_report_day()
     conn = await get_db()
 
     if effect in ("alcohol_weak", "alcohol_strong"):
@@ -2045,7 +2088,7 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
                     f"максимум {AP_EXHAUSTED_MAX_AP} ОД."
                 )
 
-            today = datetime.utcnow().strftime("%Y-%m-%d")
+            today = today_report_day()
             restored_today = user.get('ap_restored_today') or 0
             if user.get('ap_restored_day') != today:
                 restored_today = 0
@@ -2193,11 +2236,12 @@ async def create_poll(admin_id: int, question: str, options: str):
 
 
 async def get_polls_created_today(admin_id: int) -> int:
+    """Сколько опросов создал админ за текущие игровые сутки (10:00 МСК)."""
     conn = await get_db()
     cursor = await conn.execute(
-        "SELECT COUNT(*) AS cnt FROM polls WHERE admin_id = ? "
-        "AND created_at >= datetime('now', 'start of day')",
-        (admin_id,)
+        f"SELECT COUNT(*) AS cnt FROM polls WHERE admin_id = ? "
+        f"AND {_report_day('created_at')} = ?",
+        (admin_id, today_report_day())
     )
     row = await cursor.fetchone()
     return row['cnt'] if row else 0
@@ -2206,10 +2250,8 @@ async def get_polls_created_today(admin_id: int) -> int:
 # ============ АРХИВ ОПРОСОВ И АВТОЗАКРЫТИЕ ============
 
 def _poll_today_key() -> str:
-    """Ключ текущих суток по МСК (YYYY-MM-DD) — день ухода опроса в архив."""
-    from datetime import datetime
-    from utils.helpers import MOSCOW_TZ
-    return datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d")
+    """Ключ текущих игровых суток (10:00 МСК) — день ухода опроса в архив."""
+    return today_report_day()
 
 
 async def get_visible_polls(limit: int = None):
@@ -2357,10 +2399,8 @@ async def count_archived_polls_by_day(day: str) -> int:
 # ============ РЕЧЬ ПРЕДСТАВИТЕЛЯ ============
 
 def _rep_speech_today_key() -> str:
-    """Ключ суток МСК (YYYY-MM-DD) — суточный лимит обращений представителя."""
-    from datetime import datetime
-    from utils.helpers import MOSCOW_TZ
-    return datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d")
+    """Ключ текущих игровых суток (10:00 МСК) — суточный лимит обращений представителя."""
+    return today_report_day()
 
 
 async def add_rep_speech(user_id: int, text: str) -> int:
@@ -2510,12 +2550,12 @@ async def delete_news(id: int) -> bool:
 
 
 async def get_news_count_today(user_id: int) -> int:
-    """Сколько выпусков опубликовал игрок за текущие сутки (МСК)."""
+    """Сколько выпусков опубликовал игрок за текущие игровые сутки (10:00 МСК)."""
     conn = await get_db()
     cursor = await conn.execute(
-        "SELECT COUNT(*) AS cnt FROM news_releases "
-        "WHERE author_id = ? AND substr(created_at, 1, 10) = ?",
-        (user_id, datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d"))
+        f"SELECT COUNT(*) AS cnt FROM news_releases "
+        f"WHERE author_id = ? AND {_report_day('created_at')} = ?",
+        (user_id, today_report_day())
     )
     row = await cursor.fetchone()
     return row['cnt'] if row else 0
@@ -2525,12 +2565,12 @@ NII_DAILY_LIMIT = 2  # максимум обращений в сутки от о
 
 
 async def count_nii_reports_today(user_id: int) -> int:
-    """Сколько обращений в НИИ пилот отправил за текущие сутки (МСК)."""
+    """Сколько обращений в НИИ пилот отправил за текущие игровые сутки (10:00 МСК)."""
     conn = await get_db()
     cursor = await conn.execute(
-        "SELECT COUNT(*) AS cnt FROM nii_reports "
-        "WHERE user_id = ? AND date(created_at, 'localtime') = date('now', 'localtime')",
-        (user_id,)
+        f"SELECT COUNT(*) AS cnt FROM nii_reports "
+        f"WHERE user_id = ? AND {_report_day('created_at')} = ?",
+        (user_id, today_report_day())
     )
     row = await cursor.fetchone()
     return row['cnt'] if row else 0
@@ -3610,10 +3650,8 @@ async def count_reports_today(user_id: int) -> int:
 
 
 def _wall_today_key() -> str:
-    """Ключ текущих суток по МСК (YYYY-MM-DD) для лимита «N изречений в сутки»."""
-    from utils.helpers import MOSCOW_TZ
-    from datetime import datetime
-    return datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d")
+    """Ключ текущих игровых суток (10:00 МСК) для лимита «N изречений в сутки»."""
+    return today_report_day()
 
 
 async def count_wall_posts_today(user_id: int) -> int:
@@ -6660,9 +6698,8 @@ async def sell_one_fish_catch(user_id: int, item_id: int, weight: int) -> bool:
 
 
 def fish_sold_day_key() -> str:
-    """Текущие сутки (МСК) для лимита выкупа рыбы казной."""
-    from utils.helpers import MOSCOW_TZ
-    return datetime.now(MOSCOW_TZ).strftime("%Y-%m-%d")
+    """Текущие игровые сутки (10:00 МСК) для лимитов выкупа казной — рыба и лес."""
+    return today_report_day()
 
 
 async def fish_sold_today(user_id: int) -> int:
@@ -10540,14 +10577,16 @@ async def can_use_fountain(user_id: int) -> bool:
     user = await get_user(user_id)
     if not user:
         return False
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = today_report_day()
     return not (user.get('fountain_used_day') == today and (user.get('fountain_used_today') or 0) >= 1)
 
 
 async def mark_fountain_used(user_id: int):
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = today_report_day()
     user = await get_user(user_id)
-    used = 1 if user and user.get('fountain_used_day') == today else 1
+    # Обе ветки раньше возвращали 1: счётчик не рос, если фонтан в один день
+    # почему-то обошёл can_use_fountain. Считаем честно, ограничение — 1/сут.
+    used = ((user.get('fountain_used_today') or 0) + 1) if user and user.get('fountain_used_day') == today else 1
     await update_user(user_id, fountain_used_day=today, fountain_used_today=used)
 
 

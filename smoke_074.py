@@ -97,6 +97,7 @@ async def run():
     from database.db import (
         init_db, close_db, add_user, add_ap, remove_ap, daily_ap_recovery,
         get_user, update_user, set_user_state, remove_user_state,
+        today_report_day, shift_report_day,
     )
 
     await init_db()
@@ -118,11 +119,14 @@ async def run():
     for uid, name in ((U1, "Т1"), (U2, "Т2"), (U3, "Т3")):
         await add_user(uid, f"u{uid}", name, "")
 
+    # Сутки — игровые (10:00 МСК), как в проде. Раньше здесь стоял utcnow(), и в
+    # окне 03:00–10:00 МСК ключ теста расходился с ключом кода: «в те же сутки»
+    # падало, а «смена суток» срабатывала в обратную сторону.
     def today():
-        return datetime.utcnow().strftime("%Y-%m-%d")
+        return today_report_day()
 
     def yesterday():
-        return (datetime.utcnow() - timedelta(days=1)).strftime("%Y-%m-%d")
+        return shift_report_day(today_report_day(), -1)
 
     async def ap_log_rows(uid, limit=10):
         from database.db import get_db
