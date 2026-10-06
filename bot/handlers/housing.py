@@ -504,6 +504,12 @@ async def housing_craft(cb: CallbackQuery):
     if not slot or slot.get("expansion_type") != r["required_expansion"]:
         await cb.answer("❌ Это расширение не подходит для рецепта.", show_alert=True)
         return
+    # Меню рецептов фильтруется по уровню расширения, но само действие
+    # перепроверяет уровень: устаревшая кнопка не должна крафтить рецепт
+    # выше уровня кухни/верстака.
+    if int(slot.get("expansion_level") or 1) < int(r.get("required_level") or 1):
+        await cb.answer("❌ Рецепт выше уровня расширения.", show_alert=True)
+        return
 
     ingredients = json.loads(r["ingredients"] or "[]")
     inv_map = await get_ingredient_map(uid)
@@ -511,16 +517,32 @@ async def housing_craft(cb: CallbackQuery):
         if inv_map.get(ing_name, 0) < qty:
             await cb.answer(f"❌ Нет «{ing_name}»!", show_alert=True)
             return
-
-    # Снимаем ОД и ингредиенты
-    if not await remove_ap(uid, r["ap_cost"], reason="крафт"):
+    user = await get_user(uid)
+    if not user or int(user.get("ap") or 0) < int(r["ap_cost"] or 0):
         await cb.answer("❌ Не хватает ОД!", show_alert=True)
         return
 
+    # Списываем ингредиенты, затем ОД. Если ОД не хватило (гонка или острый
+    # дефицит) — возвращаем уже списанное сырьё, иначе крафт съел бы ресурсы
+    # «в никуда».
+    async def _refund(consumed):
+        for ing_name, qty in consumed:
+            it = await get_item_by_name(ing_name)
+            if it:
+                await add_inventory_item(uid, it["id"], qty)
+
+    consumed = []
     for ing_name, qty in ingredients:
         if not await consume_ingredient(uid, ing_name, qty):
+            await _refund(consumed)
             await cb.answer(f"❌ Не удалось списать «{ing_name}»!", show_alert=True)
             return
+        consumed.append((ing_name, qty))
+
+    if not await remove_ap(uid, r["ap_cost"], reason="крафт"):
+        await _refund(consumed)
+        await cb.answer("❌ Не хватает ОД!", show_alert=True)
+        return
 
     CRAFTING.add(uid)
     try:
