@@ -406,7 +406,8 @@ async def run():
 
     # Похвала шлётся только при принятии: отклонение и «в очереди» её не порождают.
     # Уровень — от накопленной суммы за сутки, один уровень за сутки отправляется один раз.
-    from database.db import reject_report, report_day_credited_total
+    from database.db import (reject_report, report_day_credited_total, set_callsign,
+                             get_user)
     U6 = 70006
     await add_user(U6, "ace", "Ас", "Асов")
     rid6, credited6 = await add_report(U6, "f", 400, 400, "0")
@@ -427,6 +428,21 @@ async def run():
     bot6 = FakeBot()
     await notify_report_praise(bot6, {"username": "ace", "first_name": "Ас", "user_id": U6}, U6)
     check("отклонённый отчёт похвалы не вызывает", not bot6.sent)
+
+    # Похвала за рекордную сдачу в общий чат — игровой позывной, а не тег телеграма.
+    U9 = 70015
+    await add_user(U9, "sokol2", "Сокол", "Два")
+    await set_callsign(U9, "Сокол-2")
+    r9, _ = await add_report(U9, "f", 400, 400, "0")
+    await approve_report(r9, 0)
+    b11 = FakeBot()
+    await notify_report_praise(b11, await get_user(U9), U9)
+    check("рекорд показывает позывной пилота",
+          len(b11.sent) == 1 and "Сокол-2" in b11.sent[0][1])
+    check("рекорд не показывает тег телеграма",
+          len(b11.sent) == 1 and "@sokol2" not in b11.sent[0][1])
+    check("без позывного — фолбэк на @username (не регресс)",
+          bot5.sent == [(-100555, "🏆 @ace проявляет характер истинного Аса!", 42)])
 
     # За сутки считается последний принятый отчёт (v0.22.0), а не сумма: снимок
     # растёт 160 → 400, похвала растёт вместе с ним, как и выплата.

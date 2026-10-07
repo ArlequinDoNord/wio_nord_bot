@@ -43,6 +43,24 @@ async def player_display(user) -> str:
     return f"#{uid}" if uid is not None else "пилот"
 
 
+async def player_callsign_display(user) -> str:
+    """Имя пилота для похвалы за рекордные отчёты: позывной, иначе @username.
+
+    В общий чат при записи рекорда выводится игровой позывной (callsign), а не
+    тег телеграма, если пилот его установил; иначе — @username, затем реальное имя.
+    """
+    if user is None:
+        return "пилот"
+    keys = user.keys() if hasattr(user, 'keys') else []
+    try:
+        callsign = user['callsign'] if 'callsign' in keys else None
+    except (KeyError, IndexError):
+        callsign = None
+    if callsign and str(callsign).strip():
+        return str(callsign).strip()
+    return await player_display(user)
+
+
 async def notifications_enabled(user_id: int) -> bool:
     user = await get_user(user_id)
     if not user:
@@ -139,7 +157,7 @@ async def notify_report_praise(bot: Bot, pilot, user_id: int = None, day_total: 
         return False
     if tier <= await get_report_notify_tier(uid, day=day):
         return False
-    text = praise_tier_text(await player_display(pilot), tier)
+    text = praise_tier_text(await player_callsign_display(pilot), tier)
     if not text:
         return False
     await notify(bot, text, uid)
