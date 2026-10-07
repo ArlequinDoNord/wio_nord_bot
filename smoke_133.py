@@ -8,8 +8,8 @@
   • ключ last_announced_version пишется ТОЛЬКО после успешной отправки:
     если чат не настроен или send_message упал — версия не запоминается
     (оповещение уйдёт при следующем старте после настройки);
-  • текст оповещения короткий: версия, суть (VERSION_NOTES) и ссылка
-    на /changelog;
+  • текст оповещения короткий: версия, суть (VERSION_NOTES, усечённая
+    до 7 слов многоточием) и фраза «подробности в боте»;
   • /changelog отдаёт обе записи (текущий + предыдущий релиз);
   • main.py зовёт notify_release_update на старте, приветствие в /start
     осталось тизером (smoke_093 не нарушается).
@@ -53,7 +53,8 @@ async def run():
     from database.db import (init_db, close_db, get_db, set_news_chat,
                              get_news_chat, get_setting, set_setting)
     from utils.notify import (notify, notify_release_update, release_update_text,
-                              RELEASE_ANNOUNCED_SETTING_KEY)
+                              release_notes_short, RELEASE_ANNOUNCED_SETTING_KEY,
+                              RELEASE_NOTES_MAX_WORDS)
     from config import VERSION, VERSION_NOTES, PREV_VERSION, PREV_VERSION_NOTES
 
     await init_db()
@@ -86,14 +87,19 @@ async def run():
     check("упавшая отправка → notify False",
           await notify(FakeBot(fail=True), "привет") is False)
 
-    # ── 3. текст оповещения короткий и со ссылкой ──
+    # ── 3. текст оповещения короткий, суть усечена до 7 слов ──
     txt = release_update_text(VERSION, VERSION_NOTES)
     check("в тексте есть версия", f"v{VERSION}" in txt)
-    flat_notes = " ".join(VERSION_NOTES.split())
-    check("в тексте есть суть релиза", flat_notes in txt)
+    short_notes = release_notes_short(VERSION_NOTES)
+    check("в тексте есть суть релиза (усечённая)", short_notes in txt)
+    full_words = len(VERSION_NOTES.split())
+    check("суть не длиннее 7 слов", len(short_notes.split()) <= RELEASE_NOTES_MAX_WORDS)
+    check("длинная суть обрывается многоточием",
+          short_notes.endswith("…") == (full_words > RELEASE_NOTES_MAX_WORDS))
     check("нет нерабочей команды-/ссылки /changelog", "/changelog" not in txt)
     check("подробности — обычной фразой «в боте»", "в боте" in txt)
-    check("нет сырых переносов строк из заметок", "\n" not in flat_notes)
+    check("нет сырых переносов строк из заметок",
+          "\n" not in " ".join(VERSION_NOTES.split()))
     check("оповещение не простыня (<= 700 символов)", len(txt) <= 700)
 
     # ── 4. первый запуск: ключа нет → объявляет сразу ──

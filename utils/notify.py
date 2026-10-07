@@ -98,6 +98,22 @@ async def notify(bot: Bot, text: str, user_id: int = None) -> bool:
 # Ключ settings с последней версией, объявленной в общем чате (см. notify_release_update).
 RELEASE_ANNOUNCED_SETTING_KEY = "last_announced_version"
 
+# Максимум слов сути релиза в оповещении — остальное обрезается многоточием.
+RELEASE_NOTES_MAX_WORDS = 7
+
+
+def release_notes_short(notes) -> str:
+    """Суть релиза для оповещения: максимум RELEASE_NOTES_MAX_WORDS слов.
+
+    Длинные заметки обрезаются по границе слова многоточием — в общем чате
+    оповещение должно читаться с одного взгляда, подробности — в /changelog.
+    """
+    words = " ".join(str(notes or "").split()).split()
+    if len(words) <= RELEASE_NOTES_MAX_WORDS:
+        return " ".join(words)
+    truncated = " ".join(words[:RELEASE_NOTES_MAX_WORDS]).rstrip(".,;:!?")
+    return truncated + "…"
+
 
 def release_update_text(version: str, notes: str) -> str:
     """Короткое релизное оповещение для общего чата: версия, суть, где подробности.
@@ -105,10 +121,9 @@ def release_update_text(version: str, notes: str) -> str:
     Без команды-/ссылки `/changelog`: в общем чате Telegram она нерабочая и
     выглядит как сломанная кнопка — подробности смотрят прямо в боте.
     """
-    flat = " ".join(str(notes or "").split())
     return (
         f"🔄 Н.О.Р.Д. обновлён — v{version}\n"
-        f"📝 {flat}\n"
+        f"📝 {release_notes_short(notes)}\n"
         f"📄 Подробности смотри в боте."
     )
 
