@@ -56,6 +56,7 @@ from bot.handlers.hq import router as hq_router
 from bot.handlers.clans import router as clans_router
 from bot.handlers.nii import router as nii_router
 from bot.handlers.tourist_booklet import router as tourist_booklet_router
+from bot.handlers.changelog import router as changelog_router
 
 load_dotenv()
 
@@ -461,9 +462,11 @@ async def main():
         BotCommand(command="profile", description="Мой профиль"),
         BotCommand(command="shop", description="Магазин товаров"),
         BotCommand(command="help", description="Справочник"),
+        BotCommand(command="changelog", description="Что нового в боте"),
     ])
 
     dp.include_router(start_router)
+    dp.include_router(changelog_router)
     dp.include_router(profile_router)
     dp.include_router(bank_router)
     dp.include_router(admin_router)
@@ -489,7 +492,7 @@ async def main():
     dp.include_router(nii_router)
     dp.include_router(tourist_booklet_router)
 
-    for r in (start_router, profile_router, bank_router, admin_router, shop_router,
+    for r in (start_router, changelog_router, profile_router, bank_router, admin_router, shop_router,
               inventory_router, reports_router, dungeon_router, pilots_router,
               polls_router, poll_archive_router, representative_router, library_router,
               locations_router, park_router,
@@ -502,6 +505,17 @@ async def main():
         r.callback_query.middleware(FishingActiveLock())
 
     logger.info("Хендлеры зарегистрированы")
+
+    # Оповещение в общий чат о новой версии — один раз на релиз (v0.22.12):
+    # срабатывает только при смене config.VERSION, обычный рестарт молчит.
+    # Ошибка/отсутствие чата не мешает запуску — при неудаче попробуем в
+    # следующий старт (ключ версии пишется только после успешной отправки).
+    try:
+        from utils.notify import notify_release_update
+        if await notify_release_update(bot):
+            logger.info("Оповещение о новой версии отправлено в общий чат")
+    except Exception as e:
+        logger.warning(f"Оповещение о новой версии не отправлено: {e}")
 
     job_task = asyncio.create_task(scheduled_jobs(bot))
 

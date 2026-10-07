@@ -68,7 +68,7 @@ async def notifications_enabled(user_id: int) -> bool:
     return bool(user['notify_enabled'] if 'notify_enabled' in user.keys() else 1)
 
 
-async def notify(bot: Bot, text: str, user_id: int = None):
+async def notify(bot: Bot, text: str, user_id: int = None) -> bool:
     """Отправить игровое оповещение в общую группу (или в её топик).
 
     Куда именно — настройка «news_chat_id» + «news_topic_id» (см. get_news_chat):
@@ -77,17 +77,59 @@ async def notify(bot: Bot, text: str, user_id: int = None):
     Если пользователь отключил оповещения о себе — сообщение не отправляется.
     Ошибка отправки пишется в журнал (handle_error), а не проглатывается молча:
     иначе «нет оповещений» и «бот не имеет прав в чате» выглядят одинаково.
+
+    Возвращает True только при реально отправленном сообщении — вызывающий по
+    этому признаку решает, запоминать ли состояние (см. notify_release_update).
     """
     chat_id, topic_id = await get_news_chat()
     if not chat_id:
-        return
+        return False
     if user_id is not None and not await notifications_enabled(user_id):
-        return
+        return False
     try:
         await bot.send_message(chat_id, text, message_thread_id=topic_id)
+        return True
     except Exception as e:
         from database.db import log_activity
         await log_activity(None, 'notify_failed', f"chat={chat_id} topic={topic_id}: {e}")
+        return False
+
+
+# Ключ settings с последней версией, объявленной в общем чате (см. notify_release_update).
+RELEASE_ANNOUNCED_SETTING_KEY = "last_announced_version"
+
+
+def release_update_text(version: str, notes: str) -> str:
+    """Короткое релизное оповещение для общего чата: версия, суть, где подробности."""
+    flat = " ".join(str(notes or "").split())
+    return (
+        f"🔄 Н.О.Р.Д. обновлён — v{version}\n"
+        f"📝 {flat}\n"
+        f"📄 Подробности: /changelog в боте"
+    )
+
+
+async def notify_release_update(bot: Bot) -> bool:
+    """Сообщить в общий чат о новой версии бота — один раз на релиз.
+
+    Сравнивает config.VERSION с последней объявленной версией в settings
+    (ключ last_announced_version). Обычный рестарт/пересборка с той же версией
+    молчит; смена версии (деплой) — шлёт короткое описание (VERSION_NOTES).
+
+    Ключ записывается ТОЛЬКО после успешной отправки: если чат не настроен или
+    бот без прав, оповещение уйдёт при следующем старте после настройки.
+    Первый запуск (ключа ещё нет) объявляет текущую версию — фичу видно сразу.
+    """
+    from config import VERSION, VERSION_NOTES
+    from database.db import get_setting, set_setting
+
+    last = await get_setting(RELEASE_ANNOUNCED_SETTING_KEY)
+    if last == VERSION:
+        return False
+    if not await notify(bot, release_update_text(VERSION, VERSION_NOTES)):
+        return False
+    await set_setting(RELEASE_ANNOUNCED_SETTING_KEY, VERSION)
+    return True
 
 
 PRIZE_TIER_NONE = 0

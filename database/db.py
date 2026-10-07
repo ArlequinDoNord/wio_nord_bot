@@ -3190,6 +3190,27 @@ async def _get_setting_int(key: str, default=None):
         return default
 
 
+async def get_setting(key: str, default: str = None) -> str | None:
+    """Строковое значение из таблицы settings (или default, если ключа нет)."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT value FROM settings WHERE key = ?", (key,))
+    row = await cursor.fetchone()
+    if not row or row['value'] in (None, ''):
+        return default
+    return row['value']
+
+
+async def set_setting(key: str, value: str):
+    """Сохранить строковое значение в settings (upsert + commit)."""
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        (key, str(value))
+    )
+    await conn.commit()
+
+
 async def set_news_chat(chat_id: int, topic_id: int = None):
     """Куда слать игровые оповещения: чат + (для форума) топик.
 
