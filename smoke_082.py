@@ -96,6 +96,11 @@ async def run():
         dbmod, "regen: int = 0"))
     check("dungeon.py: helper regen_amounts", source_has(
         dungeon, "def regen_amounts("))
+    check("dungeon.py: helper сброса после боя", source_has(
+        dungeon, "async def clear_dungeon_regen(state: FSMContext):"))
+    check("dungeon.py: сброс регенерации при победе и побеге",
+          source_has(dungeon, "clear_dungeon_regen(state)") and
+          open(dungeon, encoding="utf-8").read().count("clear_dungeon_regen(state)") >= 3)
     check("dungeon.py: тик в начале хода", source_has(
         dungeon, "regen_queue = data.get('regen_amounts')"))
     check("dungeon.py: строка регенерации в атаке", source_has(

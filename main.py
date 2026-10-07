@@ -35,6 +35,7 @@ from bot.handlers.start import router as start_router
 from bot.handlers.profile import router as profile_router
 from bot.handlers.bank import router as bank_router
 from bot.handlers.admin import router as admin_router
+from bot.handlers.admin_recipes import router as admin_recipes_router
 from bot.handlers.shop import router as shop_router
 from bot.handlers.inventory import router as inventory_router
 from bot.handlers.reports import router as reports_router
@@ -470,6 +471,7 @@ async def main():
     dp.include_router(profile_router)
     dp.include_router(bank_router)
     dp.include_router(admin_router)
+    dp.include_router(admin_recipes_router)
     dp.include_router(shop_router)
     dp.include_router(inventory_router)
     dp.include_router(reports_router)
@@ -492,7 +494,7 @@ async def main():
     dp.include_router(nii_router)
     dp.include_router(tourist_booklet_router)
 
-    for r in (start_router, changelog_router, profile_router, bank_router, admin_router, shop_router,
+    for r in (start_router, changelog_router, profile_router, bank_router, admin_router, admin_recipes_router, shop_router,
               inventory_router, reports_router, dungeon_router, pilots_router,
               polls_router, poll_archive_router, representative_router, library_router,
               locations_router, park_router,

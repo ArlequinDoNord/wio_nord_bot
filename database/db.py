@@ -10408,6 +10408,143 @@ async def get_recipe(recipe_id: int):
     return await cursor.fetchone()
 
 
+# ---------- Менеджер рецептов (v0.22.13): создание/правка/удаление ----------
+# Рецепты, созданные в админ-панели, лежат в той же таблице recipes, но НЕ
+# должны перезатираться ensure_recipes(): она работает только по RECIPES_DEF
+# (по имени+расширению+уровню), поэтому менеджерные строки она не трогает.
+# Товар-рецепт «Рецепт: <название>» вносится в лавку напрямую (sync-версия
+# ensure_recipe_shop_items для одной строки).
+
+async def list_recipes_for_admin() -> list:
+    """Все рецепты (включая скрытые), для админ-менеджера рецептов."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM recipes ORDER BY required_expansion, required_level, id")
+    return await cursor.fetchall()
+
+
+def _norm_recipe_ingredients(ingredients):
+    """Приводит ингредиенты рецепта к списку пар [name, qty].
+
+    Крафт (housing.py) читает ingredients как `for ing_name, qty in ...` —
+    пары, как в RECIPES_DEF. Менеджер рецептов хранит словари
+    {'name': ..., 'qty': ...} — здесь они выравниваются к общему формату.
+    """
+    norm = []
+    for ing in ingredients:
+        if isinstance(ing, dict):
+            norm.append([ing["name"], ing["qty"]])
+        else:
+            norm.append([ing[0], ing[1]])
+    return norm
+
+
+async def upsert_recipe(name: str, desc: str, result_item_name: str,
+                        result_quantity: int, required_expansion: str,
+                        required_level: int, ingredients: list,
+                        ap_cost: int, production_time: int, rarity: int,
+                        recipe_id: int = None) -> int:
+    """Создаёт новый рецепт или обновляет существующий по id. Возвращает id."""
+    conn = await get_db()
+    ing_json = json.dumps(list(_norm_recipe_ingredients(ingredients)), ensure_ascii=False)
+    if recipe_id:
+        row = await (await conn.execute(
+            "SELECT id FROM recipes WHERE id = ?", (recipe_id,))).fetchone()
+        if row:
+            await conn.execute(
+                "UPDATE recipes SET name = ?, description = ?, result_item_name = ?, "
+                "result_quantity = ?, required_expansion = ?, required_level = ?, "
+                "ingredients = ?, ap_cost = ?, production_time = ?, rarity = ?, "
+                "is_available = 1 WHERE id = ?",
+                (name, desc, result_item_name, result_quantity, required_expansion,
+                 required_level, ing_json, ap_cost, production_time, rarity, recipe_id))
+            await conn.commit()
+            return recipe_id
+    cursor = await conn.execute(
+        "INSERT INTO recipes (name, description, result_item_name, result_quantity, "
+        "required_expansion, required_level, ingredients, ap_cost, production_time, "
+        "rarity, is_available) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+        (name, desc, result_item_name, result_quantity, required_expansion,
+         required_level, ing_json, ap_cost, production_time, rarity))
+    await conn.commit()
+    return cursor.lastrowid
+
+
+async def ensure_recipe_shop_item(recipe: dict, price: int = None):
+    """Синхронизирует товар-рецепт «Рецепт: <name>» с рецептом (менеджер).
+
+    Создаёт предмет категории 'recipes', если его нет, иначе обновляет цену/
+    описание/редкость и включает в магазине. Цена при создании — из
+    RECIPE_ITEM_PRICES (менеджерные рецепты получают дефолт 100), при обновлении
+    сохраняется цена, уже стоящая на товаре, если явно не передана `price` —
+    иначе админская настройка цены терялась бы при правке других полей.
+    """
+    item_name = RECIPE_ITEM_PREFIX + recipe['name']
+    desc = (f"📜 Обучает рецепту: {recipe['name']}.\n"
+            f"{recipe['description'] or ''}\n"
+            f"Используй из инвентаря, чтобы выучить рецепт и крафтить в жилье.")
+    conn = await get_db()
+    item = await get_item_by_name(item_name)
+    if price is None:
+        price = item['price'] if item else RECIPE_ITEM_PRICES.get(recipe['name'], 100)
+    if item:
+        await conn.execute(
+            "UPDATE items SET description = ?, price = ?, sell_price = ?, rarity = ?, "
+            "category = 'recipes', is_available = 1 WHERE id = ?",
+            (desc, price, price // 2, recipe.get('rarity', 1), item['id']))
+    else:
+        await add_item(item_name, desc, price, price // 2, recipe.get('rarity', 1),
+                       'recipes', -1, 0)
+    await conn.commit()
+
+
+async def find_recipe(name: str, required_expansion: str,
+                      required_level: int) -> dict:
+    """Строка рецепта по имени+расширению+уровню (проверка дубликатов)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id, is_available FROM recipes WHERE name = ? "
+        "AND required_expansion = ? AND required_level = ?",
+        (name, required_expansion, required_level))
+    return await cursor.fetchone()
+
+
+async def set_recipe_visible(recipe_id: int, visible: bool) -> bool:
+    """Показать/скрыть рецепт и его товар «Рецепт: …» в лавке (менеджер)."""
+    conn = await get_db()
+    recipe = await get_recipe(recipe_id)
+    if not recipe:
+        return False
+    flag = 1 if visible else 0
+    await conn.execute(
+        "UPDATE recipes SET is_available = ? WHERE id = ?", (flag, recipe_id))
+    await conn.execute(
+        "UPDATE items SET is_available = ? WHERE name = ? AND category = 'recipes'",
+        (flag, RECIPE_ITEM_PREFIX + recipe['name']))
+    await conn.commit()
+    return True
+
+
+async def delete_recipe(recipe_id: int) -> bool:
+    """Удаление рецепта менеджером: гасит рецепт и товар «Рецепт: …» в лавке.
+
+    Строка остаётся в базе (is_available = 0), чтобы не терять выученные
+    записи игроков (user_recipes ссылается на id). Пилоты, уже выучившие
+    рецепт, теряют доступ к крафту — это и есть «удаление» из игры.
+    """
+    conn = await get_db()
+    recipe = await get_recipe(recipe_id)
+    if not recipe:
+        return False
+    await conn.execute(
+        "UPDATE recipes SET is_available = 0 WHERE id = ?", (recipe_id,))
+    await conn.execute(
+        "UPDATE items SET is_available = 0 WHERE name = ? AND category = 'recipes'",
+        (RECIPE_ITEM_PREFIX + recipe['name'],))
+    await conn.commit()
+    return True
+
+
 # ---------- Учёт и списание ингредиентов (в т.ч. уловов рыбы) ----------
 
 async def get_ingredient_map(user_id: int) -> dict:

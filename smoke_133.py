@@ -91,7 +91,8 @@ async def run():
     check("в тексте есть версия", f"v{VERSION}" in txt)
     flat_notes = " ".join(VERSION_NOTES.split())
     check("в тексте есть суть релиза", flat_notes in txt)
-    check("в тексте есть ссылка на подробности", "/changelog" in txt)
+    check("нет нерабочей команды-/ссылки /changelog", "/changelog" not in txt)
+    check("подробности — обычной фразой «в боте»", "в боте" in txt)
     check("нет сырых переносов строк из заметок", "\n" not in flat_notes)
     check("оповещение не простыня (<= 700 символов)", len(txt) <= 700)
 

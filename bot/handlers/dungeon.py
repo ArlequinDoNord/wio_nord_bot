@@ -95,6 +95,17 @@ def regen_amounts(heal: int, pct: int, turns: int = REGEN_TURNS) -> list:
     return [round(k * (turns - i)) for i in range(turns)]
 
 
+async def clear_dungeon_regen(state: FSMContext):
+    """Сброс очереди регенерации по окончании боя (v0.22.13).
+
+    Тики «тикают» только по ходам игрока в бою, но очередь жила в FSM-стейте
+    забега и переносилась между боями. По решению владельца бой закончился —
+    регенерация сгорает: недопитые тики в следующий бой НЕ переходят
+    (иначе между боями пирог работал бы «накоплением»).
+    """
+    await state.update_data(regen_amounts=None)
+
+
 class DungeonFSM(StatesGroup):
     in_dungeon = State()
     in_combat = State()
@@ -383,6 +394,7 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
             "Панцирь хрустнул и раскрылся — в тёмной воде осталось только сияние.\n\n"
             f"{loot_line}"
         )
+        await clear_dungeon_regen(state)
         step = await dungeon_new_step(state)
         await _reservoir_answer_result(callback, text, _reservoir_result_markup(step), enemy)
         return
@@ -1162,6 +1174,7 @@ async def _enemy_defeated(callback, state, bot, run, enemy, player_hp):
             # Промежуточный босс «Крысиный капитан»: награда копится в луте,
             # после победы — выбор: водохранилище или этаж 2.
             await state.update_data(captain_defeated=1)
+            await clear_dungeon_regen(state)
             await log_activity(user_id, "dungeon_boss",
                                f"Победил промежуточного босса «{enemy['name']}» на 1 этаже")
             run = await get_active_run(user_id)
@@ -1209,6 +1222,7 @@ async def _enemy_defeated(callback, state, bot, run, enemy, player_hp):
 
         text += f"❤️ {hp_text}\n"
         text += f"Нажми «Продолжить путь» чтобы идти дальше."
+        await clear_dungeon_regen(state)
         next_step = await dungeon_new_step(state)
         await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_main_keyboard(next_step))
 
@@ -1737,6 +1751,7 @@ async def _do_dungeon_escape(where, state, user_id: int, run, enemy,
     escaped = escape_chance(hp_percent, smoke_used=smoke_used, percent_mult=percent_mult)
 
     if escaped:
+        await clear_dungeon_regen(state)
         next_step = await dungeon_new_step(state)
         if smoke_used:
             text = (

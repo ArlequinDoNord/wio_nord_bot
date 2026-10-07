@@ -31,6 +31,10 @@ router = Router()
 PAGE_SIZE = 10
 
 KIND_EMOJI = {"clan": "🏰", "party": "🏛"}
+# Множественное число и родительный падеж: наивное «{title()}ы» даёт «Партияы»,
+# а «Создание {label}а» — «Создание партияа» (см. _show_clans_list и ClansCreate).
+KIND_PLURAL = {"clan": "Кланы", "party": "Партии"}
+KIND_GENITIVE = {"clan": "клана", "party": "партии"}
 
 
 class ClansCreate(StatesGroup):
@@ -101,12 +105,12 @@ async def _show_clans_list(callback: CallbackQuery):
         if kind in by_kind:
             by_kind[kind].append(c)
     for kind in ("clan", "party"):
-        label = KIND_LABELS.get(kind, kind)
         items = by_kind[kind]
+        plural = KIND_PLURAL.get(kind, KIND_LABELS.get(kind, kind).title() + "ы")
         if not items:
-            lines.append(f"{KIND_EMOJI[kind]} {label.title()}ы: пока пусто")
+            lines.append(f"{KIND_EMOJI[kind]} {plural}: пока пусто")
         else:
-            lines.append(f"{KIND_EMOJI[kind]} {label.title()}ы:")
+            lines.append(f"{KIND_EMOJI[kind]} {plural}:")
         for c in items:
             members = len(await get_clan_member_ids(c['id']))
             leader = ""
@@ -520,7 +524,7 @@ async def clan_create_start(callback: CallbackQuery, state: FSMContext):
     await state.update_data(clans_kind=kind)
     await state.set_state(ClansCreate.wait_name)
     await callback.message.answer(
-        f"{KIND_EMOJI[kind]} Создание {KIND_LABELS[kind]}а.\n\nВведи название:",
+        f"{KIND_EMOJI[kind]} Создание {KIND_GENITIVE.get(kind, KIND_LABELS.get(kind, kind) + 'а')}.\n\nВведи название:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="❌ Отмена", callback_data="city:clans")]]))
 

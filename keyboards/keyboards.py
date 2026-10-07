@@ -34,6 +34,7 @@ def admin_panel_keyboard(permissions: dict):
     buttons = []
     if permissions.get('can_manage_shop'):
         buttons.append([InlineKeyboardButton(text="🛒 Управление магазином", callback_data="admin:shop")])
+        buttons.append([InlineKeyboardButton(text="📜 Менеджер рецептов", callback_data="recadm:menu")])
     if permissions.get('can_manage_finance') or permissions.get('can_view_balances') or permissions.get('can_add_currency') or permissions.get('can_remove_currency'):
         buttons.append([InlineKeyboardButton(text="💰 Финансы", callback_data="admin:finance")])
     if permissions.get('can_view_reports') or permissions.get('can_approve_reports'):
