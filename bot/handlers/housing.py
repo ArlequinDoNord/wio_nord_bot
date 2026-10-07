@@ -83,6 +83,8 @@ PLANT_PHOTOS: dict[str, dict[int, str]] = {
 FRIED_PREFIX = "Жареный "
 FRIED_PREFIXES = ("Жареный ", "Жареная ", "Жареное ", "Жареные ")
 FOOD_EXPIRY_SEC = 4 * 86400          # 96 часов
+# Готовая еда протухает через 96 часов: жареные блюда и выпечка (рыбный пирог).
+FOOD_EXPIRY_PREFIXES = FRIED_PREFIXES + ("Рыбный ",)
 
 # Перепланировка: первая установка расширения в дом бесплатна, далее платно.
 # Цена зависит от уровня жилья: Квартира (2 слота) — 300 НМ, далее +300 за уровень.
@@ -581,9 +583,9 @@ async def housing_craft(cb: CallbackQuery):
             await cb.bot.send_message(cb.message.chat.id, f"❌ Предмет «{result_name}» не найден.")
             return
 
-        # Жареная рыба и жареные грибные блюда — срок годности 96 часов
+        # Жареная рыба, жареные грибные блюда и выпечка — срок годности 96 часов
         expires_at = None
-        if result_name.startswith(FRIED_PREFIXES):
+        if result_name.startswith(FOOD_EXPIRY_PREFIXES):
             expires_at = str(int(time.time()) + FOOD_EXPIRY_SEC)
 
         await add_inventory_item(uid, result_item["id"], result_qty, expires_at=expires_at)

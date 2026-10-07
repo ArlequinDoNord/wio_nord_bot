@@ -9782,6 +9782,8 @@ async def ensure_life_items():
          20, 10, 1, "resource", -1, 0, "pilot2", 1),
         ("Соль", "Каменная соль из лавки. Специи для готовки рыбы: ни одно жареное блюдо не обходится без щепотки.",
          5, 2, 1, "consumable", -1, 0, None, 1),
+        ("Мука", "Мука с парковской мельницы. Для выпечки: без неё не испечёшь рыбный пирог.",
+         8, 4, 1, "consumable", -1, 0, None, 1),
         ("Лапка паука", "Высушенная лапка обычного паука. Ингредиент для комбинированной наживки.",
          10, 5, 1, "resource", 0, 0, None, 0),
         ("Жареный сиг", "Жаренный на углях сиг. +15 HP в бою. Срок годности 4 суток.",
@@ -9857,6 +9859,24 @@ async def ensure_life_items():
     # Подстраховка старых БД: слот и броня ног.
     await conn.execute("UPDATE items SET equip_slot = 'legs' WHERE name = 'Пара сапог' AND equip_slot IS NULL")
     await conn.execute("UPDATE items SET armor = 2 WHERE name = 'Пара сапог' AND (armor IS NULL OR armor = 0)")
+
+    # --- Рыбный пирог (v0.22.11): 5 карасей + сиг + муксун. Единственное блюдо
+    # с регенерацией: +80 HP и 60% от лечения тиками в следующие 3 хода боя. ---
+    cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = 'Рыбный пирог'")
+    if (await cursor.fetchone())['c'] == 0:
+        pie_id = await add_item(
+            name="Рыбный пирог",
+            description=("Запечённый пирог с карасём, сигом и муксуном. "
+                         "+80 HP в бою подземелья и регенерация 60% от лечения следующие "
+                         "3 хода. Срок годности 4 суток."),
+            price=400, sell_price=200, rarity=3, category="consumable", stock=-1,
+            added_by=0, ap_cost=0, damage=0, heal=80, regen=60,
+        )
+        await update_item(pie_id, is_available=0)
+        added = True
+    await conn.execute("UPDATE items SET heal = 80 WHERE name = 'Рыбный пирог' AND heal != 80")
+    await conn.execute("UPDATE items SET regen = 60 WHERE name = 'Рыбный пирог' AND regen != 60")
+    await conn.execute("UPDATE items SET is_available = 0 WHERE name = 'Рыбный пирог'")
 
     # Типы напитков: привязываем действие на состояние к напиткам по имени
     # (миграция старых БД + сидирование новых). Один напиток — одно действие.
@@ -10271,6 +10291,11 @@ RECIPES_DEF = [
      "result": "Улучшенная настойка здоровья", "qty": 1, "exp": "kitchen", "lvl": 3,
      "ingredients": [("Яблоко", 1), ("Бутылка чистой воды", 1), ("Осколок кристалла", 1), ("Кусочек водорослей", 2)],
      "ap": 20, "time": 60, "rarity": 3},
+    {"name": "Рыбный пирог", "desc": "Праздничный пирог из пяти карасей, сига и муксуна: "
+     "+80 HP в бою подземелья и регенерация 60% от лечения следующие 3 хода. Срок годности 4 суток.",
+     "result": "Рыбный пирог", "qty": 1, "exp": "kitchen", "lvl": 2,
+     "ingredients": [("Карась", 5), ("Сиг", 1), ("Муксун", 1), ("Соль", 1), ("Мука", 1)],
+     "ap": 8, "time": 40, "rarity": 3},
 ]
 
 
@@ -11010,6 +11035,7 @@ RECIPE_ITEM_PRICES = {
     "Энергетик": 280,
     "Улучшенная настойка здоровья": 480,
     "Жареное мясо моллюска": 100,
+    "Рыбный пирог": 150,
 }
 
 
