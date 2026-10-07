@@ -71,8 +71,9 @@
   До тех пор — считать документацией, а не рабочим полем.
 
 ### Заметки по деплою
-- Пуш в `origin` (`arlequin@89.19.210.194:/opt/arlequin.git`, ветка `main`) триггерит
-  hook `docker compose up -d --build`.
+- Деплой — пуш в `server` (`arlequin@89.19.210.194:/opt/arlequin.git`, ветка `main`):
+  он триггерит hook `docker compose up -d --build`. `origin` — это только
+  GitHub-зеркало (HTTPS), пуш в него прод не обновляет.
 - **ssh-клиент git-a не проходит проверку host key**, хотя системный OpenSSH проходит.
   Обход: `$env:GIT_SSH_COMMAND = "C:/Windows/System32/OpenSSH/ssh.exe"` перед `git push`.
   Проверка host key при этом НЕ ослаблена — запись есть в `~/.ssh/known_hosts`.
