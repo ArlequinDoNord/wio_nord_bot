@@ -397,12 +397,15 @@ async def pilot_card(callback: CallbackQuery):
         f"═══════════════════════════"
     )
 
-    await callback.message.answer(card, reply_markup=profile_keyboard(
+    kb = profile_keyboard(
         notify_enabled=bool(user.get('notify_enabled', 1)),
         profile_public=bool(user.get('profile_public', 1)),
         can_toggle_visibility=await user_has_status_tag(callback.from_user.id, "ace"),
         has_callsign=bool(user.get('callsign') and str(user.get('callsign')).strip()),
-    ))
+    )
+    kb.inline_keyboard.insert(0, [
+        InlineKeyboardButton(text="🔙 В профиль", callback_data="profile:open")])
+    await callback.message.answer(card, reply_markup=kb)
 
 
 def _award_perks(a) -> list:
