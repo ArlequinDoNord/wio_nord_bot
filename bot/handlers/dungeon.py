@@ -25,7 +25,8 @@ from database.db import (
     update_user, get_fish_catches, add_fish_catch,
     get_water_fish_pool, get_water_fish_photo_by_name, get_water_fish_kind,
     log_location_visit,
-    get_source_enemies, get_source_enemy_drops, roll_enemy_drops,
+    get_source_enemies, get_source_enemy_drops,
+    roll_enemy_drops as roll_enemy_drops_db,
     enemy_encounter_hit, remove_ap_or_floor,
 )
 from utils.combat import (
@@ -314,7 +315,7 @@ async def _mollusk_start(callback, state: FSMContext, user_id: int, extra: str =
 async def _mollusk_loot(user_id: int, enemy: dict) -> str:
     """Дроп за победу (по дропам врага из БД) — текстом для экрана результата."""
     drops = await get_source_enemy_drops("fishing", enemy.get('id'))
-    picked = roll_enemy_drops(drops)
+    picked = roll_enemy_drops_db(drops)
     if not picked:
         return "Добыча не досталась: моллюск оказался пустым."
     got = []

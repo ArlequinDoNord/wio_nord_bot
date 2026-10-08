@@ -202,6 +202,7 @@ async def town_hall_pilot_card(callback: CallbackQuery):
         )])
     else:
         text += f"\n🔒 Профиль скрыт владельцем.\n"
+    buttons.append([InlineKeyboardButton(text="🏠 В профиль", callback_data="profile:open")])
     buttons.append([InlineKeyboardButton(text="🔙 К пилотам", callback_data="city:pilots:list")])
     markup = InlineKeyboardMarkup(inline_keyboard=buttons)
 

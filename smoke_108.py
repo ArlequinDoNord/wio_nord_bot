@@ -42,6 +42,7 @@ async def run():
     )
     from bot.handlers.dungeon import (
         MOLLUSK_BATTLE, purge_mollusk_battle, MOLLUSK_BATTLE_TTL,
+        _mollusk_loot,
     )
 
     passed = failed = 0
@@ -277,6 +278,12 @@ async def run():
     await conn.commit()
     check("−12 ОД при 5 ОД: списано 5", await remove_ap_or_floor(86010, 12) == 5)
     check("ОД не ушли в минус", (await get_user(86010))['ap'] == 0)
+
+    # ── 11. Победный лут моллюска: ролл идёт из database.db — без TypeError ──
+    with patch("random.random", lambda: 0.1):
+        loot_line = await _mollusk_loot(86010, mollusk)
+    check("моллюск: победный лут не падает (мена в инвентарь)",
+          isinstance(loot_line, str) and "Мясо моллюска" in loot_line)
 
     await close_db()
     print(f"\nSmoke 108: {passed} passed, {failed} failed")
