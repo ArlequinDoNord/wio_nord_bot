@@ -22,6 +22,7 @@ from database.db import (
     remove_nordmarks,
     get_housing_expansions_installed, increment_housing_expansions,
     get_housing_tax_rate, pay_housing_tax, is_housing_tax_paid, pay_housing_debt,
+    bump_achievement, get_achievement_bonus,
 )
 from utils.helpers import resolve_image, rarity_emoji, rarity_label, edit_or_replace
 
@@ -82,9 +83,9 @@ PLANT_PHOTOS: dict[str, dict[int, str]] = {
 
 FRIED_PREFIX = "Жареный "
 FRIED_PREFIXES = ("Жареный ", "Жареная ", "Жареное ", "Жареные ")
-FOOD_EXPIRY_SEC = 4 * 86400          # 96 часов
+FOOD_EXPIRY_SEC = 6 * 86400          # 6 дней
 # Готовая еда протухает через 96 часов: жареные блюда и выпечка (рыбный пирог).
-FOOD_EXPIRY_PREFIXES = FRIED_PREFIXES + ("Рыбный ",)
+FOOD_EXPIRY_PREFIXES = FRIED_PREFIXES + ("Рыбный ", "Жареный гриб", "Жареные грибы")
 
 # Перепланировка: первая установка расширения в дом бесплатна, далее платно.
 # Цена зависит от уровня жилья: Квартира (2 слота) — 300 НМ, далее +300 за уровень.
@@ -500,6 +501,10 @@ async def housing_craft(cb: CallbackQuery):
         await cb.answer("❌ Ты ещё не изучил этот рецепт.", show_alert=True)
         return
 
+    # Скидка ОД за ачивку «Крафт» (craft_ap_pct) — процент от базовой стоимости.
+    craft_ap_bonus = await get_achievement_bonus(uid, "craft", "craft_ap_pct")
+    ap_cost = max(1, round(int(r["ap_cost"] or 0) * (100 - craft_ap_bonus) / 100))
+
     # Проверяем слот и тип расширения
     slots = await get_housing_slots(uid)
     slot = slots.get(idx)
@@ -520,7 +525,7 @@ async def housing_craft(cb: CallbackQuery):
             await cb.answer(f"❌ Нет «{ing_name}»!", show_alert=True)
             return
     user = await get_user(uid)
-    if not user or int(user.get("ap") or 0) < int(r["ap_cost"] or 0):
+    if not user or int(user.get("ap") or 0) < ap_cost:
         await cb.answer("❌ Не хватает ОД!", show_alert=True)
         return
 
@@ -541,7 +546,7 @@ async def housing_craft(cb: CallbackQuery):
             return
         consumed.append((ing_name, qty))
 
-    if not await remove_ap(uid, r["ap_cost"], reason="крафт"):
+    if not await remove_ap(uid, ap_cost, reason="крафт"):
         await _refund(consumed)
         await cb.answer("❌ Не хватает ОД!", show_alert=True)
         return
@@ -583,17 +588,23 @@ async def housing_craft(cb: CallbackQuery):
             await cb.bot.send_message(cb.message.chat.id, f"❌ Предмет «{result_name}» не найден.")
             return
 
-        # Жареная рыба, жареные грибные блюда и выпечка — срок годности 96 часов
+        # Жареная рыба, жареные грибные блюда и выпечка — срок годности 6 дней
         expires_at = None
         if result_name.startswith(FOOD_EXPIRY_PREFIXES):
             expires_at = str(int(time.time()) + FOOD_EXPIRY_SEC)
 
         await add_inventory_item(uid, result_item["id"], result_qty, expires_at=expires_at)
 
+        # Достижения: готовка (кухня) и крафт (верстак)
+        if r["required_expansion"] == "kitchen":
+            await bump_achievement(uid, "cooking", result_qty)
+        else:
+            await bump_achievement(uid, "craft", result_qty)
+
         lines = [f"✅ *{result_name}* готово!",
                  f"Количество: ×{result_qty}"]
         if expires_at:
-            lines.append("⏳ Срок годности: 96 часов")
+            lines.append("⏳ Срок годности: 6 дней")
         lines.append("\nДобавлено в инвентарь.")
 
         # Проверяем, можно ли готовить ещё
@@ -605,7 +616,7 @@ async def housing_craft(cb: CallbackQuery):
                 break
         if can_repeat:
             user = await get_user(uid)
-            if user and user['ap'] < r['ap_cost']:
+            if user and user['ap'] < ap_cost:
                 can_repeat = False
         if can_repeat:
             remaining = []
@@ -617,7 +628,7 @@ async def housing_craft(cb: CallbackQuery):
 
         rows = []
         if can_repeat:
-            rows.append([_inv_row(f"🔄 Жарить ещё ({r['ap_cost']} ОД)", f"housing:craft:{idx}:{rid}")])
+            rows.append([_inv_row(f"🔄 Жарить ещё ({ap_cost} ОД)", f"housing:craft:{idx}:{rid}")])
         rows.append([_inv_row("📋 К рецептам", f"housing:room:{idx}")])
         rows.append([_inv_row("🏠 К жилью", "housing:menu")])
         kb = InlineKeyboardMarkup(inline_keyboard=rows)

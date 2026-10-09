@@ -242,19 +242,19 @@ async def run():
 
     from unittest.mock import patch
     with patch("random.random", _seq_factory([0.1, 0.9, 0.9])):
-        looted = await _roll_boar_loot_items(boar_db)
+        looted = await _roll_boar_loot_items(boar_db, 0)
     check("лес: добыча мяса (50%)", looted == ["Мясо кабана"])
     with patch("random.random", _seq_factory([0.6, 0.1, 0.9])):
-        looted = await _roll_boar_loot_items(boar_db)
+        looted = await _roll_boar_loot_items(boar_db, 0)
     check("лес: шкура (20%) достижима и не затенена мясом", looted == ["Шкура кабана"])
     with patch("random.random", _seq_factory([0.9, 0.9, 0.05])):
-        looted = await _roll_boar_loot_items(boar_db)
+        looted = await _roll_boar_loot_items(boar_db, 0)
     check("лес: клык (10%) достижим", looted == ["Клык кабана"])
     with patch("random.random", _seq_factory([0.1, 0.9, 0.01])):
-        looted = await _roll_boar_loot_items(boar_db)
+        looted = await _roll_boar_loot_items(boar_db, 0)
     check("лес: мясо и клык выпали разом", looted == ["Мясо кабана", "Клык кабана"])
     with patch("random.random", _seq_factory([0.99])):
-        looted = await _roll_boar_loot_items(boar_db)
+        looted = await _roll_boar_loot_items(boar_db, 0)
     check("лес: победа без добычи", looted == [])
 
     # ── 9. Бой моллюска: очистка зависших записей ──

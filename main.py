@@ -13,13 +13,15 @@ from dotenv import load_dotenv
 from config import (BOT_TOKEN,
                     FSM_STORAGE_PATH,
                     REPORT_DAY_START_HOUR as PAYOUT_HOUR_MSK,
-                    REPORT_DAY_START_MINUTE as PAYOUT_MINUTE_MSK)
+                    REPORT_DAY_START_MINUTE as PAYOUT_MINUTE_MSK,
+                    ROLE_SALARY_PAY_DAY)
 from database.db import (
     init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon,
     ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, ensure_life_items, ensure_recipes,
     ensure_dungeon_reservoir_items, ensure_market_license_item, pay_salaries, payout_reports,
-    pay_award_monthly,
+    pay_award_monthly, pay_role_salaries,
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award,
+    ensure_achievements,
     ensure_tourist_booklet,
     ensure_water_fish, migrate_legacy_junk,
     ensure_forest_items, ensure_forest_mushrooms, ensure_forest_zones,
@@ -247,6 +249,23 @@ async def scheduled_jobs(bot: Bot):
         except Exception as e:
             logger.error(f"Ошибка ежемесячных наградных: {e}", exc_info=True)
         try:
+            # v0.22.16: оклады за должности (ролевые) — 28-го числа каждого месяца.
+            # Деньги всегда из казны; нехватка уходит в зарплатный долг.
+            if datetime.now(MSK).day == ROLE_SALARY_PAY_DAY:
+                ro = await pay_role_salaries()
+                if ro['paid'] or ro['debt']:
+                    logger.info(
+                        f"Оклады за должности: выплачено {len(ro['paid'])}, "
+                        f"в долг {len(ro['debt'])} на {ro['reserves']}"
+                    )
+                if ro['debt']:
+                    await notify_treasury_shortage(
+                        bot, ro['reserves'],
+                        [(uid, amt) for uid, amt, _ in ro['debt']]
+                    )
+        except Exception as e:
+            logger.error(f"Ошибка окладов за должности: {e}", exc_info=True)
+        try:
             payouts = await payout_reports()
             if payouts:
                 for p in payouts:
@@ -407,6 +426,9 @@ async def main():
 
     await ensure_kvp_award()
     logger.info("Награда К.В.П. («Значок В.У.С.П.») проверена")
+
+    await ensure_achievements()
+    logger.info("Достижения (награды-уровни из ACHIEVEMENTS_DEF) проверены")
 
     await ensure_tourist_booklet()
     logger.info("Буклет туриста (предмет и награда) проверены")

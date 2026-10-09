@@ -34,6 +34,7 @@ from database.db import (
     get_source_enemy_by_key, get_source_enemy_drops, roll_enemy_drops,
     enemy_encounter_hit,
     get_location_by_key, location_glade_photo, location_clearing_photo, location_photo_for_tod,
+    bump_achievement, get_achievement_bonus,
 )
 from utils.helpers import (
     resolve_image, resolve_image_seasonal, season_key, time_of_day_key,
@@ -253,17 +254,20 @@ def forest_boar_hit(counter_before: int, roll_1toN: int) -> bool:
     return roll_1toN == 1
 
 
-def roll_boar_loot(r: float) -> str:
-    """Добыча за победу над кабаном по броску r в [0, 100) (пустая строка — ничего)."""
+def roll_boar_loot(r: float, loot_pct: float = 0) -> str:
+    """Добыча за победу над кабаном по броску r в [0, 100) (пустая строка — ничего).
+    loot_pct — бонус к шансу дропа (достижение «Зверь Севера»).
+    """
     acc = 0
     for name, chance in FOREST_BOAR_LOOT:
-        acc += chance
+        sc = chance * (1 + loot_pct / 100.0) if loot_pct else chance
+        acc += sc
         if r < acc:
             return name
     return ""
 
 
-def pick_forest_mushroom(pool_rows, r: float):
+def pick_forest_mushroom(pool_rows, r: float, rarity_bonus: float = 0):
     """Гриб по броску r в [0, 100): FOREST_EMPTY_CHANCE % — пусто, остальное —
     шансы пула. Возвращает строку пула или None.
 
@@ -272,15 +276,19 @@ def pick_forest_mushroom(pool_rows, r: float):
     веса в админке не обрезает хвост пула и не ломает итог. До нормировки сумма
     весов жёстко складывалась с «пусто» в 100, и грибы из конца списка переставали
     выпадать, если админ завышал веса.
+
+    rarity_bonus — процент от достижения «Тихий охотник»: сжимает окно «пусто»
+    и раскрывает его на шансы пула.
     """
-    if r < FOREST_EMPTY_CHANCE:
+    eff_empty = max(0.0, float(FOREST_EMPTY_CHANCE) * (100 - rarity_bonus) / 100)
+    if r < eff_empty:
         return None
     total = sum(int(row['chance'] or 0) for row in pool_rows)
     if total <= 0:
         return None
-    acc = float(FOREST_EMPTY_CHANCE)
+    acc = eff_empty
     for row in pool_rows:
-        acc += int(row['chance'] or 0) * (100.0 - FOREST_EMPTY_CHANCE) / total
+        acc += int(row['chance'] or 0) * (100.0 - eff_empty) / total
         if r < acc:
             return row
     return None
@@ -562,7 +570,8 @@ async def forest_cast(callback: CallbackQuery):
 
         # ── выбор гриба из пула ЗОНЫ ──
         pool = await get_forest_mushroom_pool(area)
-        row = pick_forest_mushroom(pool, random.random() * 100)
+        rarity_pct = await get_achievement_bonus(user_id, "mushrooms", "rarity_pct")
+        row = pick_forest_mushroom(pool, random.random() * 100, rarity_bonus=rarity_pct)
         fresh = await get_user(user_id) or {}
         _ap = fresh.get('ap', 0) or 0
         _ap_max = fresh.get('ap_max', _ap) or _ap
@@ -592,6 +601,7 @@ async def forest_cast(callback: CallbackQuery):
 
         await add_inventory_item(user_id, item['id'], 1)
         await log_activity(user_id, "forest", f"Нашёл «{item['name']}» ({area_name})")
+        await bump_achievement(user_id, "mushrooms", 1)
         kind_label = "☠ Ядовитый гриб!" if (row.get('kind') or 'edible') == "toxic" else "🍄"
         sell_line = ""
         if item['sell_price'] > 0:
@@ -659,22 +669,23 @@ async def _boar() -> dict | None:
     return dict(row)
 
 
-async def _roll_boar_loot_items(boar: dict) -> list:
+async def _roll_boar_loot_items(boar: dict, user_id: int) -> list:
     """Добыча из кабана: список названий предметов (может быть пустым).
 
     Каждый дроп бросается независимо, поэтому шкура и клык достижимы,
     а не «затеняются» мясом. Нет дропов в БД — запасной вариант из конфига.
     """
+    loot_pct = await get_achievement_bonus(user_id, "hunter", "loot_pct")
     if boar.get('id'):
         drops = await get_source_enemy_drops("forest", boar['id'])
         if drops:
             names = []
-            for d in roll_enemy_drops(drops):
+            for d in roll_enemy_drops(drops, loot_bonus_pct=loot_pct):
                 item = await get_item(d.get('item_id'))
                 if item:
                     names.append(item['name'])
             return names
-    name = roll_boar_loot(random.random() * 100)
+    name = roll_boar_loot(random.random() * 100, loot_pct)
     return [name] if name else []
 
 
@@ -730,6 +741,10 @@ async def forest_battle_hit(callback: CallbackQuery):
     }
     res = roll_pilot_damage(stats, enemy)
     player_hit = res['damage']
+    # Достижение «Зверь Севера»: урон по зверю в лесу прибавляется процентом.
+    dmg_forest_pct = await get_achievement_bonus(user_id, "hunter", "dmg_forest")
+    if dmg_forest_pct and player_hit > 0:
+        player_hit = max(1, round(player_hit * (100 + dmg_forest_pct) / 100))
     battle['boar_hp'] -= player_hit
     if res['dodged']:
         hit_line = "Ты замахнулся — но зверь увернулся в последний миг.\n\n"
@@ -745,7 +760,7 @@ async def forest_battle_hit(callback: CallbackQuery):
         battle_area = battle.get('area') or FOREST_HOME_AREA
         FOREST_BATTLE.pop(user_id, None)
         await log_activity(user_id, "forest", "Победил зверя в лесу")
-        loot_names = await _roll_boar_loot_items(battle.get('boar') or {})
+        loot_names = await _roll_boar_loot_items(battle.get('boar') or {}, user_id)
         got = []
         for loot in loot_names:
             loot_item = await get_item_by_name(loot)
@@ -754,6 +769,7 @@ async def forest_battle_hit(callback: CallbackQuery):
             await add_inventory_item(user_id, loot_item['id'], 1)
             await log_activity(user_id, "forest", f"Добыча: {loot}")
             got.append(loot)
+        await bump_achievement(user_id, "hunter", 1)
         if got:
             loot_list = "\n".join(f"• «{name}»" for name in got)
             head = "Из поверженного зверя ты добыл:" if len(got) > 1 \

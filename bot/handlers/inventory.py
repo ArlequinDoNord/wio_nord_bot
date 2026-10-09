@@ -23,6 +23,7 @@ from database.db import (
     get_player_armor_with_bonus, get_player_dodge, get_equipped_weapon,
     get_player_crit_chance, get_pilot_crit_chance,
     user_is_tourist, UNTRANSFERABLE_ITEMS,
+    bump_achievement,
 )
 from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text,
@@ -1250,6 +1251,7 @@ async def item_market_confirm(callback: CallbackQuery):
 
     await remove_inventory_item(user_id, item_id, 1)
     await place_item_offer(user_id, item_id, price)
+    await bump_achievement(user_id, "trader", 1)
     await log_activity(user_id, "shop_sale",
                        f"Выставил «{item['name']}» на рынок за {price} НМ (база {base})")
     await callback.message.answer(
@@ -1557,6 +1559,7 @@ async def fish_market_confirm(callback: CallbackQuery):
     remaining = max(1, (expi or (now + RAW_FISH_SHELF_SEC)) - now)
 
     await add_fish_offer(user_id, item_id, weight, price, remaining, base_price=base)
+    await bump_achievement(user_id, "trader", 1)
     await log_activity(user_id, "shop_sale",
                        f"Выставил «{item['name']}» на рынок за {price} НМ (база {base})")
     await callback.message.answer(

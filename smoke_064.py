@@ -291,7 +291,7 @@ async def run():
     for i in range(13):
         await add_wall_post(uid3, f"заполнение {i}")
     cnt = await count_wall_posts_today(uid3)
-    foot = _wall_footer(uid3, cnt, await get_user(uid3))
+    foot = await _wall_footer(uid3, cnt, await get_user(uid3))
     check("footer при исчерпании", foot.startswith("⛔"))
 
     await close_db()

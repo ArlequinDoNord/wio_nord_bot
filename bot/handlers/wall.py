@@ -21,6 +21,7 @@ from database.db import (
     log_activity, log_location_visit,
     count_wall_archives, get_wall_archives, get_wall_archive,
     count_wall_archive_posts, get_wall_archive_posts, has_library_access,
+    bump_achievement, get_achievement_level,
 )
 from utils.helpers import plural_nordmark, is_main_menu_text, edit_message_safe
 from utils.permissions import has_permission, log_action
@@ -33,10 +34,11 @@ class WallWrite(StatesGroup):
     waiting_text = State()
 
 
-def _wall_footer(user_id: int, count_today: int, user: dict) -> str:
+async def _wall_footer(user_id: int, count_today: int, user: dict) -> str:
     """Строка лимитов на сегодня: сколько осталось и по какой цене."""
-    if count_today >= WALL_REVIEW_TOTAL:
-        return f"⛔ Сегодня стена заполнена: лимит {WALL_REVIEW_TOTAL} изречений исчерпан. Новые — с завтра."
+    limit = WALL_REVIEW_TOTAL + await get_achievement_level(user_id, "writer")
+    if count_today >= limit:
+        return f"⛔ Сегодня стена заполнена: лимит {limit} изречений исчерпан. Новые — с завтра."
     free_left = max(0, WALL_FREE_PER_DAY - count_today)
     if free_left > 0:
         return f"🆓 Бесплатных сегодня осталось: {free_left}"
@@ -86,7 +88,7 @@ async def _show_wall(sender, state: FSMContext, page: int = 0):
         # показать лимиты автора запроса
         user = await get_user(user_id)
         cnt = await count_wall_posts_today(user_id)
-        lines.append(f"\n{_wall_footer(user_id, cnt, user)}")
+        lines.append(f"\n{await _wall_footer(user_id, cnt, user)}")
         text = "\n".join(lines)
 
     if not hasattr(sender, "message"):  # Message (у Callback есть .message)
@@ -170,7 +172,7 @@ async def wall_write_start(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     user = await get_user(callback.from_user.id)
     cnt = await count_wall_posts_today(callback.from_user.id)
-    footer = _wall_footer(callback.from_user.id, cnt, user)
+    footer = await _wall_footer(callback.from_user.id, cnt, user)
     if footer.startswith("⛔"):
         await callback.message.answer(f"❌ {footer}")
         return
@@ -189,7 +191,7 @@ async def wall_write_text(message: Message, state: FSMContext):
         user = await get_user(message.from_user.id)
         await message.answer(
             f"❌ Слишком длинно: {len(text)} символов, лимит {WALL_TEXT_MAX_LEN}.\n"
-            f"\n{_wall_footer(message.from_user.id, cnt, user)}"
+            f"\n{await _wall_footer(message.from_user.id, cnt, user)}"
         )
         return
     result = await add_wall_post(message.from_user.id, text)
@@ -216,6 +218,7 @@ async def wall_write_text(message: Message, state: FSMContext):
         ])
     )
     await log_activity(message.from_user.id, "wall_post", text[:60])
+    await bump_achievement(message.from_user.id, "writer", 1)
 
 
 @router.callback_query(F.data.regexp(r"^wall:delete:\d+$"))

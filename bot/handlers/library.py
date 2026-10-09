@@ -11,6 +11,7 @@ from database.db import (
     get_library_cards, can_access_sections, has_library_access,
     get_library_books, get_library_book, add_library_book, delete_library_book,
     can_enter_location, log_location_visit,
+    bump_achievement,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import has_permission, log_action
@@ -213,6 +214,8 @@ async def library_book(callback: CallbackQuery):
     if book['section'] not in open_list:
         await callback.message.answer("🔒 Нет доступа к этой книге с твоим билетом.")
         return
+
+    await bump_achievement(callback.from_user.id, "books", 1)
 
     text = f"📖 {book['title']}\n"
     if book['author']:

@@ -115,7 +115,7 @@ async def _profile_caption(user_id: int, owner: bool = True):
 
     caption += (
         f"💰 Нордмарки: {user['nordmarks']}\n"
-        f"⚡ Очки действия: {user['ap']}/{user['ap_max']}\n"
+        f"⚡ ОД: {user['ap']}/{user['ap_max']}\n"
         + (f"{state_line}\n" if state_line else "❤️ Состояние: нормально\n")
         + f"🎖️ Статус: {status}\n"
     )
@@ -124,6 +124,8 @@ async def _profile_caption(user_id: int, owner: bool = True):
     party = await get_user_clan(user_id, 'party')
     caption += f"🏰 Клан: {clan['name'] if clan else '—'}\n"
     caption += f"🏛 Партия: {party['name'] if party else '—'}\n"
+    if owner:
+        caption += await _salary_line(user_id)
     about = (user.get('about') or '').strip()
     if about:
         caption += f"📖 О себе: {about}\n"
@@ -137,6 +139,31 @@ async def _profile_caption(user_id: int, owner: bool = True):
     if owner:
         caption += "👇 Выберите действие:"
     return caption, photo
+
+
+async def _salary_line(user_id: int) -> str:
+    """Строка оклада по должности для профиля владельца.
+
+    Несколько должностей перечисляются все: первая (максимальная) идёт в полном
+    размере, остальные — с меткой −50%. Пустая строка, если окладов нет.
+    """
+    from database.db import role_salary_info
+    from utils.permissions import role_label
+    info = await role_salary_info(user_id)
+    if not info['entries']:
+        return ""
+    if len(info['entries']) == 1:
+        e = info['entries'][0]
+        return f"💰 Оклад по должности: {role_label(e['role'])} — {e['amount']} НМ/мес · выплата 28-го\n"
+    lines = ["💰 Оклад по должности:"]
+    for i, e in enumerate(info['entries']):
+        if i == 0:
+            lines.append(f"  • {role_label(e['role'])} — {e['amount']} НМ/мес")
+        else:
+            half = int(e['amount'] * 0.5)
+            lines.append(f"  • {role_label(e['role'])} — {e['amount']} НМ/мес ×50% ({half})")
+    lines.append(f"Итого к 28-му: {info['total']} НМ/мес")
+    return "\n".join(lines) + "\n"
 
 
 async def render_profile(where, user_id: int):
@@ -391,7 +418,7 @@ async def pilot_card(callback: CallbackQuery):
         + f"───────────────────────────\n"
         f"ФИНАНСЫ\n"
         f"Нордмарки: {user['nordmarks']}\n"
-        f"Очки действия: {user['ap']}/{user['ap_max']}\n"
+        f"ОД: {user['ap']}/{user['ap_max']}\n"
         f"═══════════════════════════\n"
         f"Выдан: {user['created_at'] if 'created_at' in user.keys() else '—'}\n"
         f"═══════════════════════════"
@@ -457,6 +484,44 @@ async def profile_awards(callback: CallbackQuery):
     await callback.message.answer(
         "\n".join(lines),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+    )
+
+
+@router.callback_query(F.data == "profile:achievements")
+async def profile_achievements(callback: CallbackQuery):
+    """Достижения пилота: по всем группам — прогресс, открытый уровень и следующий порог."""
+    await callback.answer()
+    from database.db import get_user_achievements
+    lst = await get_user_achievements(callback.from_user.id)
+    if not lst:
+        await callback.message.answer(
+            "🏅 Достижения ещё не загружены. Попробуй позже.",
+            reply_markup=profile_keyboard()
+        )
+        return
+
+    lines = ["🏅 ДОСТИЖЕНИЯ:\n"]
+    for item in lst:
+        levels = item['levels']
+        cur = item['level']
+        prog = item['progress']
+        if cur == 0:
+            nxt = levels[0]
+            status = f"{prog}/{nxt['threshold']} → {nxt['name']}"
+        elif cur >= 4:
+            status = f"выполнено (уровень 4: {levels[3]['name']})"
+        else:
+            nxt = levels[cur]
+            status = f"{prog}/{nxt['threshold']} → {nxt['name']}"
+        lines.append(
+            f"{item['emoji']} {item['title']} — уровень {cur}: {status}"
+        )
+    lines.append("\nУровень растёт с набором действий; бонусы — из карточки награды.")
+    await callback.message.answer(
+        "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 В профиль", callback_data="profile:open")]
+        ])
     )
 
 

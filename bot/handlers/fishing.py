@@ -21,6 +21,7 @@ from database.db import (
     remove_ap, log_activity, get_active_run,
     get_water_fish_pool, get_water_fish_kind, get_water_fish_photo_by_name, get_award_bonus,
     get_water_junk_map, JUNK_DEFAULT_CHANCES, user_is_tourist,
+    bump_achievement, get_achievement_bonus,
 )
 from utils.helpers import resolve_image, time_of_day_key, plural_nordmark, item_local_photo, fish_weight_tier, fish_sell_price
 from config import FISH_AP_COST, FISH_WEIGHTS
@@ -298,18 +299,25 @@ def _catch_chance(rod, bait_name: str, fishing_bonus: int = 0) -> int:
     return min(CHANCE_CAP, FISHING_BASE_CHANCE + bonus + bait + fishing_bonus)
 
 
-async def _pick_fish() -> str:
+async def _pick_fish(user_id: int) -> str:
     """Случайная рыба озера по весам из БД (water_fish); ночью — ночной пул.
 
     Если таблица пуста/не засеяна — откат на константы FISH_POOL_*.
+
+    Достижение «Бывалый» приподнимает шанс вылова редкой рыбы: вес рыбы
+    умножается на (1 + (rarity−1) × rarity_pct/100), обычная (rarity 1) не меняется.
     """
     tod = time_of_day_key()
+    rarity_pct = await get_achievement_bonus(user_id, "fishing", "rarity_pct")
     pool_rows = await get_water_fish_pool("lake")
     pool = []
     if pool_rows:
         for r in pool_rows:
             w = r['night_weight'] if tod == "night" else r['day_weight']
             if w > 0:
+                rank = int(r['rarity'] or 1)
+                if rarity_pct and rank > 1:
+                    w = max(0.0, w * (1 + (rank - 1) * rarity_pct / 100.0))
                 pool.append((r['name'], w))
     if not pool:
         pool = FISH_POOL_NIGHT if tod == "night" else FISH_POOL_DAY
@@ -599,7 +607,7 @@ async def fish_cast(callback: CallbackQuery):
             # С наживкой — рыбалка как раньше.
             caught = random.random() * 100 < chance
             if caught:
-                fish_name = await _pick_fish()
+                fish_name = await _pick_fish(user_id)
                 fish_item = await get_item_by_name(fish_name)
                 if fish_item:
                     weight_idx = _roll_fish_weight()
@@ -608,6 +616,8 @@ async def fish_cast(callback: CallbackQuery):
                     kind = await get_water_fish_kind("lake", fish_name)
                     await add_fish_catch(user_id, fish_item['id'], weight_idx, kind=kind)
                     await log_activity(user_id, "fishing", f"Поймал «{fish_name}» ({tier['label']})")
+                    if kind == "fish":
+                        await bump_achievement(user_id, "fishing", 1)
                     text = (
                         f"{FISH_EMOJI.get(fish_name, '🐟')} РЫБАЛКА\n\n"
                         f"Поплавок дёрнулся — поклёвка!\n"

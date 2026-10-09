@@ -14,7 +14,7 @@ from database.db import (
     get_user, count_nii_reports_today, add_nii_report, get_nii_report,
     get_my_nii_reports, get_all_nii_reports, set_nii_report_status,
     nii_notify_ids, user_has_status_tag, log_activity,
-    NII_DAILY_LIMIT,
+    NII_DAILY_LIMIT, bump_achievement,
 )
 from utils.helpers import edit_or_replace, is_main_menu_text
 from utils.permissions import is_admin
@@ -305,7 +305,12 @@ async def nii_set_status(callback: CallbackQuery):
         return
     _, _, report_id_s, status = callback.data.split(":")
     report_id = int(report_id_s)
+    r = await get_nii_report(report_id)
     ok = await set_nii_report_status(report_id, status)
+    # Достижение «НИИ»: рассмотренным считается обращение, статус которого
+    # только что изменили на «решено»/«закрыто» (автору).
+    if ok and r and r['status'] != status and status in ("done", "closed"):
+        await bump_achievement(r['user_id'], "reports", 1)
     await callback.message.answer(
         ("✅ " if ok else "❌ ") + f"Обращение #{report_id} отмечено: "
         + {"done": "решено", "closed": "закрыто"}.get(status, status)

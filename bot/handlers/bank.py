@@ -24,6 +24,8 @@ def tx_type_label(tx_type: str) -> str:
         "shop_purchase": "🛒 Покупка",
         "shop_sale": "💵 Продажа",
         "salary": "💰 Зарплата",
+        "news": "📰 Гонорар за публикацию",
+        "news": "📰 Гонорар за публикацию",
         "bonus": "🎁 Бонус",
         "fine": "⚠️ Штраф",
         "building_purchase": "🏠 Здание",
@@ -55,7 +57,7 @@ async def bank_menu_text(user_id: int) -> str:
     text = (
         f"🏦 НОРДБАНК\n\n"
         f"💰 Баланс: {user['nordmarks']} {plural_nordmark(user['nordmarks'])}\n"
-        f"⚡ Очки действия: {user['ap']}/{user['ap_max']}\n"
+        f"⚡ ОД: {user['ap']}/{user['ap_max']}\n"
     )
     if await user_is_tourist(user_id):
         remaining = max(0, TOURIST_BALANCE_LIMIT - user['nordmarks'])
@@ -76,7 +78,7 @@ async def bank_balance(callback: CallbackQuery):
     await callback.message.answer(
         f"💰 Твой баланс:\n"
         f"Нордмарки: {user['nordmarks']}\n"
-        f"Очки действия: {user['ap']}/{user['ap_max']}"
+        f"⚡ ОД: {user['ap']}/{user['ap_max']}"
     )
 
 

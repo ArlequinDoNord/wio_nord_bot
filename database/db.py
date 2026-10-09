@@ -182,6 +182,38 @@ async def init_db():
             PRIMARY KEY (user_id, award_id, month)
         );
 
+        CREATE TABLE IF NOT EXISTS role_salaries (
+            role TEXT PRIMARY KEY,
+            amount INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT OR IGNORE INTO role_salaries (role, amount) VALUES
+            ('shop_admin', 200),
+            ('finance_admin', 200),
+            ('finance_helper', 50),
+            ('moderator', 200),
+            ('mvd_helper', 50),
+            ('representative', 350),
+            ('wing_commander', 150),
+            ('wing_deputy', 75),
+            ('librarian', 100),
+            ('journalist', 70),
+            ('editor', 120);
+
+        CREATE TABLE IF NOT EXISTS role_salary_paid (
+            user_id INTEGER NOT NULL,
+            month TEXT NOT NULL,
+            amount INTEGER DEFAULT 0,
+            paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, month)
+        );
+
+        CREATE TABLE IF NOT EXISTS news_pub_paid (
+            user_id INTEGER NOT NULL,
+            month TEXT NOT NULL,
+            count INTEGER DEFAULT 0,
+            PRIMARY KEY (user_id, month)
+        );
+
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL DEFAULT ''
@@ -617,6 +649,16 @@ async def init_db():
             FOREIGN KEY (award_id) REFERENCES awards(id)
         );
 
+        CREATE TABLE IF NOT EXISTS user_achievements (
+            user_id INTEGER NOT NULL,
+            akey TEXT NOT NULL,
+            level INTEGER NOT NULL DEFAULT 0,
+            progress INTEGER NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, akey),
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        );
+
         CREATE TABLE IF NOT EXISTS player_housing (
             user_id INTEGER PRIMARY KEY,
             housing_type TEXT DEFAULT 'municipal',
@@ -1015,6 +1057,14 @@ async def init_db():
     # выплачиваются ТОЛЬКО из казны (treasury), никогда не создаются из воздуха.
     await _ensure_column(conn, "awards", "reward_nm", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "awards", "monthly_nm", "INTEGER DEFAULT 0")
+    # v0.22.16: достижения. Строки awards выступают «уровнями» ачивки:
+    # achievement_key/achievement_level связывают награду с DEF-уровнем,
+    # bonus_json хранит точечные бонусы уровня (лечение, ОД, шанс лута/редкого,
+    # урон по контексту, яд, наценку рынка и т.п.), которые нельзя вынести в
+    # глобальные bonus_* — те применяются только в своих игровых точках.
+    await _ensure_column(conn, "awards", "achievement_key", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "awards", "achievement_level", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "awards", "bonus_json", "TEXT DEFAULT '{}'")
     # Формирования ВВС (редактор в штабе): поля добавляются на случай старой
     # схемы без них.
     await _ensure_column(conn, "wings", "num", "TEXT DEFAULT ''")
@@ -1495,6 +1545,15 @@ async def update_user(user_id: int, **kwargs):
     await conn.commit()
 
 
+async def _maybe_money_achievement(user_id: int):
+    """Ачивка «Золото» растёт вверх от единовременного максимума баланса."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT nordmarks FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    if row:
+        await set_achievement_progress(user_id, "money", row['nordmarks'] or 0)
+
+
 async def add_nordmarks(user_id: int, amount: int, tx_type: str, description: str = ""):
     conn = await get_db()
     await conn.execute("UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?", (amount, user_id))
@@ -1503,6 +1562,7 @@ async def add_nordmarks(user_id: int, amount: int, tx_type: str, description: st
         (user_id, amount, tx_type, description)
     )
     await conn.commit()
+    await _maybe_money_achievement(user_id)
 
 
 async def remove_nordmarks(user_id: int, amount: int, tx_type: str, description: str = ""):
@@ -1513,6 +1573,7 @@ async def remove_nordmarks(user_id: int, amount: int, tx_type: str, description:
         (user_id, amount, tx_type, description)
     )
     await conn.commit()
+    await _maybe_money_achievement(user_id)
 
 
 async def transfer_nordmarks(from_user: int, to_user: int, amount: int, description: str = ""):
@@ -1524,6 +1585,8 @@ async def transfer_nordmarks(from_user: int, to_user: int, amount: int, descript
         (from_user, to_user, amount, "transfer", description)
     )
     await conn.commit()
+    await _maybe_money_achievement(from_user)
+    await _maybe_money_achievement(to_user)
 
 
 async def add_ap(user_id: int, amount: int, reason: str = None):
@@ -3080,6 +3143,124 @@ async def get_treasury_debts() -> dict:
     }
 
 
+# ============ ОКЛАДЫ ЗА ДОЛЖНОСТИ (ролевые, раз в месяц 28-го) ============
+
+async def get_role_salary_map() -> dict:
+    """Справочник окладов по должностям: {role: НМ/мес}. Нули отбрасываются."""
+    conn = await get_db()
+    cursor = await conn.execute("SELECT role, amount FROM role_salaries")
+    rows = await cursor.fetchall()
+    return {r['role']: int(r['amount'] or 0) for r in rows if int(r['amount'] or 0) > 0}
+
+
+def _role_pay_out(amounts: list) -> int:
+    """Оклад по должностям: самая высокооплачиваемая полностью, остальные −50%.
+
+    Роли с одинаковой суммой считаются как есть: первая из них проходит как «макс»,
+    вторая режется наполовину. Округление вниз (int).
+    """
+    amounts = sorted(int(a) for a in amounts if int(a) > 0)
+    if not amounts:
+        return 0
+    return amounts[-1] + sum(int(a * 0.5) for a in amounts[:-1])
+
+
+async def role_salary_info(user_id: int) -> dict:
+    """Оклады пилота для профиля: {'entries': [{role, amount}...], 'total': int}.
+
+    entries отсортированы по убыванию; первая запись — должность, идущая в полном
+    размере, остальные в информационных целях показываются как есть (вычитание 50%
+    применяется только к выплате).
+    """
+    sals = await get_role_salary_map()
+    from utils.permissions import get_user_role
+    roles = await get_user_role(user_id)
+    entries = [{"role": r, "amount": sals[r]} for r in roles if r in sals]
+    entries.sort(key=lambda e: e["amount"], reverse=True)
+    return {"entries": entries, "total": _role_pay_out([e["amount"] for e in entries])}
+
+
+async def pay_role_salaries() -> dict:
+    """Ежемесячные оклады за должности ИЗ КАЗНЫ (вызов — 28-го числа, main.scheduled_jobs).
+
+    Берутся роли на дату выплаты: несколько должностей → самая высокооплачиваемая
+    полностью, остальные −50% (см. _role_pay_out). Нехватка казны уходит в salary_debt
+    и догоняется тем же циклом, что и зарплаты. Защита от дублей: табель
+    role_salary_paid(user_id, месяц). Хранитель/глава клана оклада не имеют —
+    в справочнике их нет.
+
+    Возвращает {'paid': [...], 'debt': [...], 'reserves': int, 'skipped': int}.
+    """
+    month = datetime.now(MOSCOW_TZ).strftime("%Y-%m")
+    conn = await get_db()
+    cursor = await conn.execute("SELECT DISTINCT telegram_id FROM user_roles")
+    ids = [r['telegram_id'] for r in await cursor.fetchall()]
+
+    sals = await get_role_salary_map()
+    from utils.permissions import get_user_role
+    paid, debt, skipped = [], [], 0
+    reserves = 0
+
+    for uid in ids:
+        roles = await get_user_role(uid)
+        total = _role_pay_out([sals[r] for r in roles if r in sals])
+        if total <= 0:
+            skipped += 1
+            continue
+        done = await (await conn.execute(
+            "SELECT 1 FROM role_salary_paid WHERE user_id = ? AND month = ?",
+            (uid, month))).fetchone()
+        if done:
+            continue
+        before = (await (await conn.execute(
+            "SELECT salary_debt FROM users WHERE user_id = ?", (uid,))).fetchone())['salary_debt'] or 0
+        await _cash_from_treasury(uid, total, "salary", "Оклад по должности (28-е число)")
+        after = (await (await conn.execute(
+            "SELECT salary_debt FROM users WHERE user_id = ?", (uid,))).fetchone())['salary_debt'] or 0
+        await conn.execute(
+            "INSERT OR IGNORE INTO role_salary_paid (user_id, month, amount) VALUES (?, ?, ?)",
+            (uid, month, total))
+        if after > before:
+            short = after - before
+            reserves += short
+            debt.append((uid, total, short))
+        else:
+            paid.append((uid, total))
+    await conn.commit()
+    return {"paid": paid, "debt": debt, "reserves": reserves, "skipped": skipped}
+
+
+async def award_news_publication(user_id: int) -> bool:
+    """Гонорар ГосСМИ: +NEWS_PUBLISH_BONUS НМ за публикацию журналисту/редактору.
+
+    Кап NEWS_PUBLISH_CAP публикаций в месяц на игрока — дальше считаем, но не платим.
+    Гонорар идёт из казны (нехватка — в salary_debt). Хранитель (super_admin) без
+    оклада — без гонорара. Возвращает True, если начислено.
+    """
+    from config import NEWS_PUBLISH_BONUS, NEWS_PUBLISH_CAP, ADMIN_IDS
+    from utils.permissions import get_user_role
+    if user_id in ADMIN_IDS:
+        return False
+    roles = await get_user_role(user_id)
+    if not any(r in ("journalist", "editor") for r in roles):
+        return False
+    month = datetime.now(MOSCOW_TZ).strftime("%Y-%m")
+    conn = await get_db()
+    row = await (await conn.execute(
+        "SELECT count FROM news_pub_paid WHERE user_id = ? AND month = ?",
+        (user_id, month))).fetchone()
+    cnt = (row['count'] or 0) if row else 0
+    await conn.execute(
+        "INSERT INTO news_pub_paid (user_id, month, count) VALUES (?, ?, ?) "
+        "ON CONFLICT(user_id, month) DO UPDATE SET count = news_pub_paid.count + 1",
+        (user_id, month, cnt + 1))
+    await conn.commit()
+    if cnt >= NEWS_PUBLISH_CAP or user_id in ADMIN_IDS:
+        return False
+    await _cash_from_treasury(user_id, NEWS_PUBLISH_BONUS, "news", "Гонорар за публикацию ГосСМИ")
+    return True
+
+
 # ============ НАЛОГ НА ОТЧЁТЫ ============
 
 async def get_report_tax_percent() -> int:
@@ -3704,7 +3885,9 @@ async def add_wall_post(user_id: int, text: str) -> dict | None:
     if not text or len(text) > WALL_TEXT_MAX_LEN:
         return None
     count = await count_wall_posts_today(user_id)
-    if count >= WALL_REVIEW_TOTAL:
+    # Ачивка «Стена» (писатель): каждый уровень даёт +1 к дневному лимиту.
+    limit = WALL_REVIEW_TOTAL + await get_achievement_level(user_id, "writer")
+    if count >= limit:
         return None
     cost = 0
     if count >= WALL_FREE_PER_DAY:
@@ -5583,19 +5766,31 @@ async def get_award_bonus(user_id: int) -> dict:
     return dict(row)
 
 
-async def shop_price_for(user_id: int, price: int) -> int:
+async def shop_price_for(user_id: int, price: int, category: str = None) -> int:
     """Цена товара для конкретного пилота с учётом скидок от медалей.
 
     ЕДИНСТВЕННОЕ место, где считается итоговая цена: и карточка товара, и
     списание НМ обязаны звать его, иначе покажут одну сумму, а снимут другую.
-    Скидка — в процентах, потолок AWARD_MAX_SHOP_DISCOUNT. Округление вниз,
-    но не ниже 1 НМ: иначе копеечный товар становится бесплатным.
+    Скидка медалей — в процентах, потолок AWARD_MAX_SHOP_DISCOUNT. Округление
+    вниз, но не ниже 1 НМ: иначе копеечный товар становится бесплатным.
+
+    category — категория товара: для «library_card» дополнительно применяется
+    скидка достижения «Стена» (ticket_pct, доступна на 4-м уровне) поверх
+    медальной, без общего потолка.
     """
     from config import AWARD_MAX_SHOP_DISCOUNT
     price = int(price or 0)
     if price <= 0:
         return max(0, price)
     discount = (await get_award_bonus(user_id))['shop_discount']
+    if category == "library_card":
+        ticket = await get_achievement_bonus(user_id, "writer", "ticket_pct")
+        if ticket > 0:
+            discount += ticket
+            # Медальную часть ограничивает общий потолок, часть от достижения — нет.
+            medal_part = min(int(discount - ticket), AWARD_MAX_SHOP_DISCOUNT)
+            price = max(1, price * (100 - medal_part) // 100)
+            return max(1, price * (100 - int(ticket)) // 100)
     if discount <= 0:
         return price
     discount = min(int(discount), AWARD_MAX_SHOP_DISCOUNT)
@@ -6072,6 +6267,46 @@ async def _award_cash_payout(user_id: int, award: dict, amount: int) -> None:
             (TREASURY_ID, user_id, paid, "award",
              f"Награда «{name}»: {paid} НМ из казны (частично)")
         )
+        await conn.commit()
+        await add_salary_debt(user_id, amount - paid)
+    else:
+        await add_salary_debt(user_id, amount)
+
+
+async def _cash_from_treasury(user_id: int, amount: int, tx_type: str,
+                              description: str) -> None:
+    """Выплата ИЗ КАЗНЫ с механизмом долга (тот же, что у зарплат).
+
+    Не создаёт НМ из воздуха: казна списывается, игрок получает на счёт, пишется
+    транзакция. Если казны не хватает — платим чем есть, остаток копится в
+    salary_debt (казна остаётся должна игроку) и догоняется циклом зарплат
+    (см. pay_salaries / get_salaries_due). Универсален для окладов, гонораров
+    за публикации и премий наград.
+    """
+    amount = int(amount or 0)
+    if amount <= 0:
+        return
+    conn = await get_db()
+    balance = await get_treasury_balance()
+    if balance >= amount:
+        paid = amount
+        await conn.execute("UPDATE treasury SET balance = balance - ? WHERE id = 1", (paid,))
+        await conn.execute(
+            "UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?", (paid, user_id))
+        await conn.execute(
+            "INSERT INTO transactions (from_user, to_user, amount, tx_type, description) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (TREASURY_ID, user_id, paid, tx_type, description))
+        await conn.commit()
+    elif balance > 0:
+        paid = balance
+        await conn.execute("UPDATE treasury SET balance = 0 WHERE id = 1")
+        await conn.execute(
+            "UPDATE users SET nordmarks = nordmarks + ? WHERE user_id = ?", (paid, user_id))
+        await conn.execute(
+            "INSERT INTO transactions (from_user, to_user, amount, tx_type, description) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (TREASURY_ID, user_id, paid, tx_type, description + " (частично)"))
         await conn.commit()
         await add_salary_debt(user_id, amount - paid)
     else:
@@ -8173,20 +8408,25 @@ def enemy_encounter_hit(chance: float, roll: float, attempts: int = 0, pity: int
     return roll < float(chance)
 
 
-def roll_enemy_drops(drops: list, rolls: list = None) -> list:
+def roll_enemy_drops(drops: list, rolls: list = None, loot_bonus_pct: float = 0) -> list:
     """Бросок дропов врага: возвращает список выпавших [{item_id, chance, qty}].
 
     Каждый дроп бросается НЕЗАВИСИМО (как в данжах), поэтому редкий предмет
     остаётся достижимым: мясо 70% и жемчужина 2% — разные броски.
     rolls — готовые значения бросков (для тестов), иначе random.random().
     Пустой список = выпало несколько предметов; [] = ничего не выпало.
+    loot_bonus_pct — бонус к шансу дропа (например, «Зверь Севера»): шанс
+    каждого дропа умножается на (1 + pct/100), не выше 1.0.
     """
     picked = []
     for i, d in enumerate(drops or ()):
         if not isinstance(d, dict):
             continue
         roll = rolls[i] if rolls is not None and i < len(rolls) else random.random()
-        if roll < float(d.get('chance') or 0):
+        chance = float(d.get('chance') or 0)
+        if loot_bonus_pct and chance > 0:
+            chance = min(1.0, chance * (1 + loot_bonus_pct / 100.0))
+        if roll < chance:
             picked.append(d)
     return picked
 
@@ -8254,6 +8494,7 @@ async def get_market_slots_info(user_id: int) -> dict:
         except TypeError:
             license_active = False
     total = MARKET_BASE_SLOTS + (MARKET_LICENSE_SLOTS if license_active else 0)
+    total += await get_achievement_bonus(user_id, "trader", "market_slots")
 
     cursor = await conn.execute(
         "SELECT COUNT(*) as c FROM market_fish WHERE seller_id = ?", (user_id,))
@@ -10241,6 +10482,433 @@ async def set_housing_slot(user_id: int, slot_index: int, expansion_type: str = 
             (user_id, slot_index, expansion_type, expansion_level, pd, 1 if embedded else 0)
         )
     await conn.commit()
+
+
+# ---------- Достижения (ачивки) ----------
+# ТЗ владельца (2026-10-08, документ в PLAN.md). Каждая ачивка = 4 уровня
+# (строки `awards`), прогресс ведётся в `user_achievements`. Пороговые бонусы
+# уровней: числа ниже — стартовые значения (в ТЗ заданы точно только наценки
+# торговца), их можно точечно менять в DEF, ensure_achievements() пересинхронизи-
+# рованная описания и бонусы на старте бота.
+
+BONUS_BONUS_LABELS = {
+    "heal_pct": "к лечению",
+    "craft_ap_pct": "скидка ОД крафта",
+    "ap_bonus": "к восстановлению ОД",
+    "loot_pct": "к шансу добычи",
+    "dmg_forest": "к урону по лесным существам",
+    "rarity_pct": "к шансу редких находок",
+    "dmg_dungeon": "к урону в подземельях",
+    "bonus_dodge": "к уклонению",
+    "bonus_fishing": "к шансу рыбалки",
+    "poison_res_pct": "к сопротивлению яду",
+    "markup_pct": "к наценке рынка",
+    "market_slots": "к слотам рынка",
+    "ticket_pct": "скидка на читательский билет",
+    "regen_hp": "постоянная регенерация HP",
+    "super_rare": "доступ к супер-редкой рыбе",
+}
+
+
+def describe_achievement_bonus(bonus: dict) -> str:
+    """Человекочитаемое описание бонусов уровня ачивки для экранов."""
+    parts = []
+    for key, val in (bonus or {}).items():
+        label = BONUS_BONUS_LABELS.get(key)
+        if not label:
+            continue
+        if key in ("super_rare", "regen_hp") and val == 1:
+            parts.append(label)
+        else:
+            parts.append(f"+{val} {label}")
+    return ", ".join(parts) if parts else ""
+
+
+ACHIEVEMENTS_DEF = {
+    "cooking": {
+        "title": "Готовка", "emoji": "🍳", "metric": "приготовлено блюд",
+        "levels": [
+            {"level": 1, "threshold": 10, "name": "Соль белая смерть",
+             "bonus": {"heal_pct": 3}},
+            {"level": 2, "threshold": 50, "name": "Главное вовремя перевернуть",
+             "bonus": {"heal_pct": 6}},
+            {"level": 3, "threshold": 200, "name": "Горячее сырым не бывает",
+             "bonus": {"heal_pct": 10}},
+            {"level": 4, "threshold": 500, "name": "Друг Фьерна",
+             "bonus": {"heal_pct": 15}},
+        ],
+    },
+    "craft": {
+        "title": "Крафт", "emoji": "🔨", "metric": "создано вещей",
+        "levels": [
+            {"level": 1, "threshold": 5, "name": "Я у мамы инженер",
+             "bonus": {"craft_ap_pct": 5}},
+            {"level": 2, "threshold": 25, "name": "Кулибин",
+             "bonus": {"craft_ap_pct": 10}},
+            {"level": 3, "threshold": 100, "name": "Левша",
+             "bonus": {"craft_ap_pct": 15}},
+            {"level": 4, "threshold": 300, "name": "Подмастерье Хрофта",
+             "bonus": {"craft_ap_pct": 20}},
+        ],
+    },
+    "books": {
+        "title": "Библиотека", "emoji": "📚", "metric": "изучено книг",
+        "levels": [
+            {"level": 1, "threshold": 3, "name": "Трёхкнижник", "bonus": {}},
+            {"level": 2, "threshold": 10, "name": "Увлечённый", "bonus": {}},
+            {"level": 3, "threshold": 25, "name": "Буквоед", "bonus": {}},
+            {"level": 4, "threshold": 50, "name": "Библиарий Тиды", "bonus": {}},
+        ],
+    },
+    "mining": {
+        "title": "Шахты", "emoji": "⛏️", "metric": "добыто руды",
+        "levels": [
+            {"level": 1, "threshold": 10, "name": "Осколок", "bonus": {}},
+            {"level": 2, "threshold": 30, "name": "Старатель", "bonus": {}},
+            {"level": 3, "threshold": 50, "name": "Армадило", "bonus": {}},
+            {"level": 4, "threshold": 100, "name": "Глашатай Скади", "bonus": {}},
+        ],
+    },
+    "writer": {
+        "title": "Стена", "emoji": "✍️", "metric": "постов на стене",
+        "levels": [
+            {"level": 1, "threshold": 10, "name": "Словоплёт", "bonus": {}},
+            {"level": 2, "threshold": 40, "name": "Графоман", "bonus": {}},
+            {"level": 3, "threshold": 100, "name": "Чернильная душа", "bonus": {}},
+            {"level": 4, "threshold": 300, "name": "Родственник К. Л. М.",
+             "bonus": {"ticket_pct": 50}},
+        ],
+    },
+    "trader": {
+        "title": "Рынок", "emoji": "🏪", "metric": "выставлено и куплено товаров",
+        "levels": [
+            {"level": 1, "threshold": 10, "name": "Челнок",
+             "bonus": {"markup_pct": 2, "market_slots": 0}},
+            {"level": 2, "threshold": 25, "name": "Лавочник",
+             "bonus": {"markup_pct": 4, "market_slots": 0}},
+            {"level": 3, "threshold": 50, "name": "Купец",
+             "bonus": {"markup_pct": 6, "market_slots": 1}},
+            {"level": 4, "threshold": 150, "name": "Весы Лагума",
+             "bonus": {"markup_pct": 11, "market_slots": 2}},
+        ],
+    },
+    "fountain": {
+        "title": "Фонтан", "emoji": "⛲", "metric": "использований фонтана",
+        "levels": [
+            {"level": 1, "threshold": 10, "name": "Вся эта жизнь",
+             "bonus": {"ap_bonus": 1}},
+            {"level": 2, "threshold": 30, "name": "Это не ложка…",
+             "bonus": {"ap_bonus": 2}},
+            {"level": 3, "threshold": 60, "name": "Взгляд внутрь",
+             "bonus": {"ap_bonus": 3}},
+            {"level": 4, "threshold": 240, "name": "42",
+             "bonus": {"ap_bonus": 4}},
+        ],
+    },
+    "hunter": {
+        "title": "Охота", "emoji": "🐗", "metric": "добыто лесных зверей",
+        "levels": [
+            {"level": 1, "threshold": 10, "name": "Глупец",
+             "bonus": {"loot_pct": 3}},
+            {"level": 2, "threshold": 30, "name": "Смельчак",
+             "bonus": {"loot_pct": 6}},
+            {"level": 3, "threshold": 50, "name": "Храбрец",
+             "bonus": {"loot_pct": 10}},
+            {"level": 4, "threshold": 150, "name": "Зверь Севера",
+             "bonus": {"loot_pct": 15, "dmg_forest": 10}},
+        ],
+    },
+    "mushrooms": {
+        "title": "Грибы", "emoji": "🍄", "metric": "грибов собрано",
+        "levels": [
+            {"level": 1, "threshold": 25, "name": "Любопытный",
+             "bonus": {"rarity_pct": 2}},
+            {"level": 2, "threshold": 75, "name": "Грибник",
+             "bonus": {"rarity_pct": 4}},
+            {"level": 3, "threshold": 300, "name": "Тихий охотник",
+             "bonus": {"rarity_pct": 7}},
+            {"level": 4, "threshold": 600, "name": "Лесник Хельды",
+             "bonus": {"rarity_pct": 10}},
+        ],
+    },
+    "monsters": {
+        "title": "Монстры", "emoji": "👹",
+        "metric": "повержено чудовищ (подземелья и шахты)",
+        "levels": [
+            {"level": 1, "threshold": 15, "name": "Претендент",
+             "bonus": {"dmg_dungeon": 3}},
+            {"level": 2, "threshold": 50, "name": "Ретиарий",
+             "bonus": {"dmg_dungeon": 6}},
+            {"level": 3, "threshold": 120, "name": "Мимик",
+             "bonus": {"dmg_dungeon": 10}},
+            {"level": 4, "threshold": 300, "name": "Монстр",
+             "bonus": {"dmg_dungeon": 15, "bonus_dodge": 2}},
+        ],
+    },
+    "fishing": {
+        "title": "Рыбалка", "emoji": "🎣", "metric": "рыбы поймано",
+        "levels": [
+            {"level": 1, "threshold": 15, "name": "Новичок",
+             "bonus": {"bonus_fishing": 3, "rarity_pct": 2}},
+            {"level": 2, "threshold": 40, "name": "Любитель",
+             "bonus": {"bonus_fishing": 6, "rarity_pct": 4}},
+            {"level": 3, "threshold": 100, "name": "Бывалый",
+             "bonus": {"bonus_fishing": 10, "rarity_pct": 7}},
+            {"level": 4, "threshold": 300, "name": "Друг Инъёрда",
+             "bonus": {"bonus_fishing": 15, "rarity_pct": 10, "super_rare": 1}},
+        ],
+    },
+    "raider": {
+        "title": "Глубины", "emoji": "🏚️",
+        "metric": "побеждено финальных боссов подземелий",
+        "levels": [
+            {"level": 1, "threshold": 10, "name": "Разведчик",
+             "bonus": {"dmg_dungeon": 3}},
+            {"level": 2, "threshold": 25, "name": "Сталкер",
+             "bonus": {"dmg_dungeon": 6}},
+            {"level": 3, "threshold": 60, "name": "Тень",
+             "bonus": {"dmg_dungeon": 10}},
+            {"level": 4, "threshold": 120, "name": "Хранитель подземелий",
+             "bonus": {"dmg_dungeon": 15}},
+        ],
+    },
+    "money": {
+        "title": "Золото", "emoji": "💰",
+        "metric": "средств на счету (единовременный максимум)",
+        "levels": [
+            {"level": 1, "threshold": 500, "name": "Копилка", "bonus": {}},
+            {"level": 2, "threshold": 5000, "name": "Сундук", "bonus": {}},
+            {"level": 3, "threshold": 20000, "name": "Сын дракона", "bonus": {}},
+            {"level": 4, "threshold": 50000, "name": "Золотой запас Севера", "bonus": {}},
+        ],
+    },
+    "reports": {
+        "title": "НИИ", "emoji": "📋", "metric": "рассмотрено обращений в НИИ",
+        "levels": [
+            {"level": 1, "threshold": 1, "name": "Внимательный",
+             "bonus": {}, "reward_nm": 20},
+            {"level": 2, "threshold": 10, "name": "Испытатель",
+             "bonus": {}, "reward_nm": 200},
+            {"level": 3, "threshold": 30, "name": "Наладчик",
+             "bonus": {}, "reward_nm": 500},
+            {"level": 4, "threshold": 60, "name": "Глас Хрофта",
+             "bonus": {}, "reward_nm": 0},
+        ],
+    },
+    "duels": {
+        "title": "Дуэли", "emoji": "⚔️", "metric": "побед в дуэлях",
+        "levels": [
+            {"level": 1, "threshold": 1, "name": "Вызов",
+             "bonus": {"bonus_dodge": 1}},
+            {"level": 2, "threshold": 7, "name": "Клинок",
+             "bonus": {"bonus_dodge": 2}},
+            {"level": 3, "threshold": 30, "name": "Мастер клинка",
+             "bonus": {"bonus_dodge": 3}},
+            {"level": 4, "threshold": 100, "name": "Клык Волка",
+             "bonus": {"bonus_dodge": 3}},
+        ],
+    },
+    "elixir": {
+        "title": "Эликсиры", "emoji": "🧪", "metric": "применений эликсира",
+        "levels": [
+            {"level": 1, "threshold": 5, "name": "Живая вода",
+             "bonus": {"heal_pct": 5}},
+            {"level": 2, "threshold": 20, "name": "Здравница",
+             "bonus": {"heal_pct": 10}},
+            {"level": 3, "threshold": 70, "name": "Неуязвимый",
+             "bonus": {"heal_pct": 15}},
+            {"level": 4, "threshold": 200, "name": "Дар Инъёрда",
+             "bonus": {"regen_hp": 1}},
+        ],
+    },
+    "antidote": {
+        "title": "Антидоты", "emoji": "🛡️", "metric": "применений антидота",
+        "levels": [
+            {"level": 1, "threshold": 5, "name": "Заветы Митридата",
+             "bonus": {"poison_res_pct": 10}},
+            {"level": 2, "threshold": 25, "name": "Чистый",
+             "bonus": {"poison_res_pct": 20}},
+            {"level": 3, "threshold": 60, "name": "Адаптированный",
+             "bonus": {"poison_res_pct": 30}},
+            {"level": 4, "threshold": 200, "name": "Щит Хельды",
+             "bonus": {"poison_res_pct": 40}},
+        ],
+    },
+}
+
+
+async def ensure_achievements():
+    """Идемпотентно засевает награды-уровни достижений и синхронизирует их.
+
+    Строки awards для ачивок живут единым списком с обычными наградами: выдача
+    уровня идёт через grant_award(), ревока — через revoke_award(), так что
+    «Список наград пилота» и бонусы медалей работают как для ручных наград.
+    """
+    conn = await get_db()
+    for akey, spec in ACHIEVEMENTS_DEF.items():
+        for lvl in spec["levels"]:
+            bonus = dict(lvl.get("bonus", {}))
+            bonus_cols = {}
+            for col in ("bonus_dodge", "bonus_fishing"):
+                if col in bonus:
+                    bonus_cols[col] = bonus.pop(col)
+            desc = (f"{spec['metric']} — {lvl['threshold']}. Уровень {lvl['level']}."
+                    + (f" Бонус: {describe_achievement_bonus(lvl.get('bonus', {}))}." if lvl.get("bonus") else ""))
+            await create_award(
+                name=lvl["name"],
+                description=desc,
+                emoji=spec["emoji"],
+                created_by=None,
+                reward_nm=lvl.get("reward_nm", 0),
+                **bonus_cols,
+            )
+            row = await (await conn.execute(
+                "SELECT id FROM awards WHERE name = ?", (lvl["name"],))).fetchone()
+            if row:
+                sql = ("UPDATE awards SET achievement_key = ?, achievement_level = ?, "
+                       "bonus_json = ?, description = ?")
+                params = [akey, lvl["level"], json.dumps(bonus, ensure_ascii=False), desc]
+                if bonus_cols:
+                    sql += ", " + ", ".join(f"{k} = ?" for k in bonus_cols)
+                    params += [bonus_cols[k] for k in bonus_cols]
+                sql += " WHERE id = ?"
+                params.append(row["id"])
+                await conn.execute(sql, params)
+    await conn.commit()
+
+
+async def _achievement_level_progress(conn, user_id: int, akey: str):
+    cursor = await conn.execute(
+        "SELECT level, progress FROM user_achievements WHERE user_id = ? AND akey = ?",
+        (user_id, akey))
+    row = await cursor.fetchone()
+    return (row["level"], row["progress"]) if row else (0, 0)
+
+
+async def _apply_achievement_threshold(conn, user_id: int, akey: str,
+                                       spec: dict, level: int, progress: int):
+    """Повышает уровень ачивки по прогрессу: ревока прошлого уровня и выдача нового."""
+    target = None
+    for lvl in spec["levels"]:
+        if progress >= lvl["threshold"]:
+            target = lvl
+        else:
+            break
+    if not target or target["level"] == level:
+        return None, None, None
+    prev_name = None
+    if level:
+        prev = await (await conn.execute(
+            "SELECT id, name FROM awards WHERE achievement_key = ? AND achievement_level = ?",
+            (akey, level))).fetchone()
+        if prev:
+            prev_name = prev["name"]
+            ua = await (await conn.execute(
+                "SELECT id FROM user_awards WHERE user_id = ? AND award_id = ?",
+                (user_id, prev["id"]))).fetchone()
+            if ua:
+                await revoke_award(ua["id"])
+    await conn.execute(
+        "UPDATE user_achievements SET level = ?, updated_at = datetime('now') "
+        "WHERE user_id = ? AND akey = ?",
+        (target["level"], user_id, akey))
+    await conn.commit()
+    award = await (await conn.execute(
+        "SELECT id FROM awards WHERE achievement_key = ? AND achievement_level = ?",
+        (akey, target["level"]))).fetchone()
+    if award:
+        await grant_award(user_id, award["id"], granted_by=0, comment="Достижение")
+    return target["level"], target["name"], prev_name
+
+
+async def bump_achievement(user_id: int, akey: str, delta: int = 1):
+    """Прибавить delta к прогрессу достижения; при прохождении порога выдаёт уровень.
+
+    Возвращает (новый_уровень, название_нового_уровня, название_отобранного)
+    или (None, None, None), если уровень не сменился. Игровые точки просто
+    вызывают эту функцию после успешного события.
+    """
+    spec = ACHIEVEMENTS_DEF.get(akey)
+    if not spec or delta <= 0:
+        return None, None, None
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO user_achievements (user_id, akey, level, progress, updated_at) "
+        "VALUES (?, ?, 0, ?, datetime('now')) "
+        "ON CONFLICT(user_id, akey) DO UPDATE SET "
+        "progress = progress + ?, updated_at = datetime('now')",
+        (user_id, akey, delta, delta))
+    await conn.commit()
+    level, progress = await _achievement_level_progress(conn, user_id, akey)
+    return await _apply_achievement_threshold(conn, user_id, akey, spec, level, progress)
+
+
+async def set_achievement_progress(user_id: int, akey: str, value: int):
+    """Установить прогресс с сохранением максимума (вверх от текущего).
+
+    Нужен для «единовременных» ачивок вроде money — текущий баланс приходит
+    вниз при тратах, но прогресс никогда не уменьшается.
+    """
+    spec = ACHIEVEMENTS_DEF.get(akey)
+    if not spec or value <= 0:
+        return None, None, None
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO user_achievements (user_id, akey, level, progress, updated_at) "
+        "VALUES (?, ?, 0, ?, datetime('now')) "
+        "ON CONFLICT(user_id, akey) DO UPDATE SET "
+        "progress = MAX(progress, ?), updated_at = datetime('now')",
+        (user_id, akey, value, value))
+    await conn.commit()
+    level, progress = await _achievement_level_progress(conn, user_id, akey)
+    return await _apply_achievement_threshold(conn, user_id, akey, spec, level, progress)
+
+
+async def get_achievement_progress(user_id: int, akey: str):
+    """(level, progress) для конкретной ачивки (0, 0), если ещё не начата."""
+    conn = await get_db()
+    return await _achievement_level_progress(conn, user_id, akey)
+
+
+async def get_achievement_level(user_id: int, akey: str) -> int:
+    level, _ = await get_achievement_progress(user_id, akey)
+    return level
+
+
+async def get_achievement_bonus(user_id: int, akey: str, key: str) -> int:
+    """Точечный бонус текущего уровня ачивки (0, если уровень не открыт)."""
+    level, _ = await get_achievement_progress(user_id, akey)
+    if level <= 0:
+        return 0
+    spec = ACHIEVEMENTS_DEF.get(akey)
+    if not spec:
+        return 0
+    for lvl in spec["levels"]:
+        if lvl["level"] == level:
+            return int(lvl.get("bonus", {}).get(key, 0) or 0)
+    return 0
+
+
+async def get_user_achievements(user_id: int) -> list:
+    """Данные для экрана «Достижения»: по всем ключам — прогресс, уровень, пороги."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT akey, level, progress FROM user_achievements WHERE user_id = ?",
+        (user_id,))
+    rows = {r["akey"]: r for r in await cursor.fetchall()}
+    result = []
+    for akey, spec in ACHIEVEMENTS_DEF.items():
+        r = rows.get(akey)
+        result.append({
+            "akey": akey,
+            "title": spec["title"],
+            "emoji": spec["emoji"],
+            "metric": spec["metric"],
+            "levels": spec["levels"],
+            "level": r["level"] if r else 0,
+            "progress": r["progress"] if r else 0,
+        })
+    return result
 
 
 # ---------- Рецепты ----------

@@ -14,6 +14,7 @@ from aiogram.fsm.state import State, StatesGroup
 from database.db import (
     add_news, get_news, get_latest_news, get_all_news, update_news,
     delete_news, get_news_count_today, get_user, has_library_access,
+    award_news_publication,
 )
 from utils.permissions import has_permission, is_admin
 from utils.helpers import edit_or_replace, edit_message_safe
@@ -27,6 +28,8 @@ NEWS_PER_PAGE = 8
 # Дневные лимиты публикаций по ролям
 JOURNALIST_LIMIT = 2
 EDITOR_LIMIT = 4
+NEWS_PUBLISH_BONUS = 10      # гонорар ГосСМИ за публикацию (НМ)
+NEWS_PUBLISH_CAP = 28        # кап гонорарных публикаций в месяц на игрока
 
 
 class NewsWrite(StatesGroup):
@@ -385,7 +388,11 @@ async def _finish_news(message, state: FSMContext, photo_file_id):
     news_id = await add_news(title, body, user_id, author_name, photo_file_id)
 
     await state.clear()
-    await message.answer(f"✅ Выпуск опубликован!\n\n{fmt_release(await get_news(news_id))}")
+    reply = f"✅ Выпуск опубликован!\n\n{fmt_release(await get_news(news_id))}"
+    # Гонорар ГосСМИ журналисту/редактору (из казны, кап NEWS_PUBLISH_CAP/мес).
+    if author is not None and await award_news_publication(user_id):
+        reply += f"\n\n💰 Гонорар за публикацию: +{NEWS_PUBLISH_BONUS} НМ."
+    await message.answer(reply)
 
 
 # ───────── редактирование и удаление (редактор / суперадмин) ─────────

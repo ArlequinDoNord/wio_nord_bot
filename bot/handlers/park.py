@@ -20,6 +20,7 @@ from database.db import (
     update_park_statue,
     can_enter_location, PARK_TOD_KEYS,
     get_user, add_ap, can_use_fountain, mark_fountain_used, log_activity,
+    bump_achievement, get_achievement_bonus,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import has_permission, log_action
@@ -189,12 +190,19 @@ async def park_fountain_drink(callback: CallbackQuery):
         await add_ap(uid, FOUNTAIN_AP_BONUS, reason="фонтан")
         await mark_fountain_used(uid)
         await log_activity(uid, "fountain_drink", f"+{FOUNTAIN_AP_BONUS} ОД")
+        # Ачивка «Фонтан»: помимо суточного восстановления даёт +ОД за уровень.
+        ap_bonus = await get_achievement_bonus(uid, "fountain", "ap_bonus")
+        if ap_bonus > 0:
+            await add_ap(uid, ap_bonus, reason="фонтан ачивка")
+        await bump_achievement(uid, "fountain", 1)
 
         caption = (
             "💧 *Фонтан*\n\n"
             f"✅ Ты отдохнул у фонтана: +{FOUNTAIN_AP_BONUS} ОД.\n"
-            "Фонтан можно использовать раз в сутки."
         )
+        if ap_bonus > 0:
+            caption += f"{'✨ и ' + str(ap_bonus) + ' ОД от мастерства!'}\n"
+        caption += "Фонтан можно использовать раз в сутки."
         await callback.message.edit_caption(
             caption=caption, reply_markup=fountain_markup(False))
     finally:

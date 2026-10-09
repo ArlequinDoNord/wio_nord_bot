@@ -28,6 +28,7 @@ from database.db import (
     get_source_enemies, get_source_enemy_drops,
     roll_enemy_drops as roll_enemy_drops_db,
     enemy_encounter_hit, remove_ap_or_floor,
+    bump_achievement, get_achievement_bonus,
 )
 from utils.combat import (
     calculate_attack, calculate_enemy_damage, roll_dodge,
@@ -54,6 +55,14 @@ from config import (
     FISH_AP_COST,
 )
 from config import RESERVOIR_AP_COST as RESERVOIR_AP_COST_CFG
+
+
+# Достижения: ачивка «Эликсиры» считает применения зелий лечения (настоек),
+# «Готовка» — бонус к лечению приготовленными блюдами (жареные блюда, пирог).
+# Префиксы блюд продублированы из housing.FOOD_EXPIRY_PREFIXES (чтобы не тянуть
+# целый модуль жилья в данж).
+FOOD_DISH_PREFIXES = ("Жареный ", "Жареная ", "Жареное ", "Жареные ", "Рыбный ")
+ELIXIR_ITEM_NAMES = ("Малая настойка здоровья", "Улучшенная настойка здоровья")
 
 
 def heal_limit_mult(uses: int) -> float:
@@ -373,6 +382,10 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
     stats = await pilot_combat_stats(user_id)
     res = roll_pilot_damage(stats, enemy)
     player_hit = res['damage']
+    # Достижение «Монстры»: урон в водохранилище тоже считается подземельем.
+    dungeon_dmg_pct = await get_achievement_bonus(user_id, "monsters", "dmg_dungeon")
+    if dungeon_dmg_pct and player_hit > 0:
+        player_hit = max(1, round(player_hit * (100 + dungeon_dmg_pct) / 100))
     battle['enemy_hp'] -= player_hit
     if res['dodged']:
         hit_line = "Ты ударил по панцирю — раковина скользнула, моллюск ушёл в глубину.\n\n"
@@ -389,6 +402,7 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
         name = enemy.get('name') or "Мутировавший моллюск"
         loot_line = await _mollusk_loot(user_id, enemy)
         await log_activity(user_id, "dungeon_reservoir", f"Победил: {name}")
+        await bump_achievement(user_id, "monsters", 1)
         text = (
             "🦪 БОЙ С МОЛЮСКОМ\n\n"
             f"{hit_line}"
@@ -1166,6 +1180,8 @@ async def _enemy_defeated(callback, state, bot, run, enemy, player_hp):
     (тики DoT в начале хода игрока). Вызывается с гарантией, что HP врага == 0.
     """
     user_id = callback.from_user.id
+    # Достижения: каждое поверженное чудовище данжа (обычный, капитан или босс).
+    await bump_achievement(user_id, "monsters", 1)
     if enemy['is_boss']:
         reward = enemy['reward_nm'] or 0
         if reward > 0:
@@ -1206,6 +1222,7 @@ async def _enemy_defeated(callback, state, bot, run, enemy, player_hp):
             await state.clear()
             await log_activity(user_id, "dungeon_win",
                                f"Прошёл «{enemy['name']}»/подземелье на {run['floor']} этаже")
+            await bump_achievement(user_id, "raider", 1)
             await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
             pilot = await get_user(user_id)
             await notify(bot, f"🏆 {await player_display(pilot)} прошёл подземелье и победил босса «{enemy['name']}»!", user_id)
@@ -1287,12 +1304,15 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         await state.clear()
         await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
 
-    # Яд (не спадает сам, снимается антидотом).
+    # Яд (не спадает сам, снимается антидотом). Резист от ачивки «Антидоты» —
+    # снижает урон яда за ход (poison_res_pct от базового урона).
     if poison:
-        player_hp = max(0, player_hp - poison)
+        res_pct = await get_achievement_bonus(user_id, "antidote", "poison_res_pct")
+        poison_dmg = max(1, round(poison * (100 - res_pct) / 100)) if res_pct else poison
+        player_hp = max(0, player_hp - poison_dmg)
         await update_run_hp(run['id'], player_hp)
         if player_hp <= 0:
-            await dot_death(f"☠️ Яд погубил тебя (−{poison} HP)")
+            await dot_death(f"☠️ Яд погубил тебя (−{poison_dmg} HP)")
             return
 
     # Кровотечение (спадает через BLEED_TICKS_MAX ходов).
@@ -1345,6 +1365,11 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         enemy_row['dodge'] = enemy_row['dodge_chance']
     res = roll_pilot_damage(stats, enemy_row)
     damage_to_enemy = res['damage']
+    # Достижения «Монстры» и «Глубины»: урон в подземельях прибавляется процентом.
+    dungeon_dmg_pct = (await get_achievement_bonus(user_id, "monsters", "dmg_dungeon")
+                       + await get_achievement_bonus(user_id, "raider", "dmg_dungeon"))
+    if dungeon_dmg_pct and damage_to_enemy > 0:
+        damage_to_enemy = max(1, round(damage_to_enemy * (100 + dungeon_dmg_pct) / 100))
     enemy_dodged = res['dodged']
     enemy_armor_line = (f"\n🛡️ Броня врага поглотила {res['armor_blocked']} урона!"
                         if res['armor_blocked'] else "")
@@ -1638,6 +1663,7 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
 
     if item['cure_poison']:
         await state.update_data(active_poison=None)
+        await bump_achievement(user_id, "antidote", 1)
         text = (
             f"⚗️ {item['name']} применён: отравление снято!\n"
             f"Продолжай бой:"
@@ -1661,7 +1687,14 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
             frozen = bool(data.get('active_frostbite'))
             if frozen:
                 mult *= FROSTBITE_HEAL_MULT
-            heal = max(1, round(item['heal'] * mult))
+            # Достижения: блюда усиливают «Готовка», зелья — «Эликсиры».
+            ach_heal_pct = 0
+            if item['name'].startswith(FOOD_DISH_PREFIXES):
+                ach_heal_pct += await get_achievement_bonus(user_id, "cooking", "heal_pct")
+            if item['name'] in ELIXIR_ITEM_NAMES:
+                ach_heal_pct += await get_achievement_bonus(user_id, "elixir", "heal_pct")
+                await bump_achievement(user_id, "elixir", 1)
+            heal = max(1, round(item['heal'] * mult * (100 + ach_heal_pct) / 100))
             new_hp = min(run['hp_max'], run['hp'] + heal)
             await update_run_hp(run['id'], new_hp)
             hp_note = f"\n❤️ {_hp_bar(new_hp, run['hp_max'])}"
@@ -1669,6 +1702,8 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
                 hp_note += f" (эффективность ×{mult:.0%}: {heal} HP вместо {item['heal']})"
             if frozen:
                 hp_note += "\n🧊 Обморожение снизило лечение."
+            if ach_heal_pct > 0:
+                hp_note += f"\n✨ Мастерство усилило лечение (+{ach_heal_pct}%)."
             rpct = int(row_get(item, 'regen') or 0)
             if rpct > 0:
                 amounts = regen_amounts(heal, rpct)
@@ -1685,7 +1720,14 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         frozen = bool(data.get('active_frostbite'))
         if frozen:
             mult *= FROSTBITE_HEAL_MULT
-        heal = max(1, round(item['heal'] * mult))
+        # Достижения: блюда усиливают «Готовка», зелья — «Эликсиры».
+        ach_heal_pct = 0
+        if item['name'].startswith(FOOD_DISH_PREFIXES):
+            ach_heal_pct += await get_achievement_bonus(user_id, "cooking", "heal_pct")
+        if item['name'] in ELIXIR_ITEM_NAMES:
+            ach_heal_pct += await get_achievement_bonus(user_id, "elixir", "heal_pct")
+            await bump_achievement(user_id, "elixir", 1)
+        heal = max(1, round(item['heal'] * mult * (100 + ach_heal_pct) / 100))
         new_hp = min(run['hp_max'], run['hp'] + heal)
         await update_run_hp(run['id'], new_hp)
         eff = ""
@@ -1693,6 +1735,8 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
             eff = f" (эффективность ×{mult:.0%}: {heal} HP вместо {item['heal']})"
         if frozen:
             eff += "\n🧊 Обморожение снизило лечение."
+        if ach_heal_pct > 0:
+            eff += f" ✨ Мастерство усилило лечение (+{ach_heal_pct}%)."
         regen_note = ""
         rpct = int(row_get(item, 'regen') or 0)
         if rpct > 0:
@@ -2099,6 +2143,8 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                     await add_fish_catch(user_id, item['id'], weight_idx, kind=kind)
                     await log_activity(user_id, "dungeon_reservoir_fish",
                                        f"Поймал «{fish_name}» ({tier['label']}) в водохранилище")
+                    if kind == "fish":
+                        await bump_achievement(user_id, "fishing", 1)
                     if fish_name == "Светящаяся форель":
                         name_line = "\n✨ СВЕТЯЩАЯСЯ ФОРЕЛЬ! Секретный улов, о котором шепчутся в Нордхайме!"
                     elif fish_name == "Искрящийся угорь":
