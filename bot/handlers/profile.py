@@ -495,7 +495,7 @@ async def profile_achievements(callback: CallbackQuery):
     lst = await get_user_achievements(callback.from_user.id)
     if not lst:
         await callback.message.answer(
-            "🏅 Достижения ещё не загружены. Попробуй позже.",
+            "Нет полученных достижений",
             reply_markup=profile_keyboard()
         )
         return
