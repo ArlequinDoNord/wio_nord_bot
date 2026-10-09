@@ -10890,7 +10890,7 @@ async def get_achievement_bonus(user_id: int, akey: str, key: str) -> int:
 
 
 async def get_user_achievements(user_id: int) -> list:
-    """Данные для экрана «Достижения»: по всем ключам — прогресс, уровень, пороги."""
+    """Данные для экрана «Достижения»: показываем только достижения, которые есть у пилота."""
     conn = await get_db()
     cursor = await conn.execute(
         "SELECT akey, level, progress FROM user_achievements WHERE user_id = ?",
@@ -10899,14 +10899,16 @@ async def get_user_achievements(user_id: int) -> list:
     result = []
     for akey, spec in ACHIEVEMENTS_DEF.items():
         r = rows.get(akey)
+        if not r:
+            continue
         result.append({
             "akey": akey,
             "title": spec["title"],
             "emoji": spec["emoji"],
             "metric": spec["metric"],
             "levels": spec["levels"],
-            "level": r["level"] if r else 0,
-            "progress": r["progress"] if r else 0,
+            "level": r["level"],
+            "progress": r["progress"],
         })
     return result
 
