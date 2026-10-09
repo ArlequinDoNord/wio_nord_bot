@@ -103,11 +103,16 @@ RELEASE_NOTES_MAX_WORDS = 7
 
 
 def release_notes_short(notes) -> str:
-    """Короткое описание обновления: первые 7 слов. Если больше — троеточие."""
+    """Суть релиза для оповещения: максимум RELEASE_NOTES_MAX_WORDS слов.
+
+    Длинные заметки обрезаются по границе слова многоточием — в общем чате
+    оповещение должно читаться с одного взгляда, подробности — в /changelog.
+    """
     words = " ".join(str(notes or "").split()).split()
     if len(words) <= RELEASE_NOTES_MAX_WORDS:
         return " ".join(words)
-    return " ".join(words[:RELEASE_NOTES_MAX_WORDS]) + "..."
+    truncated = " ".join(words[:RELEASE_NOTES_MAX_WORDS]).rstrip(".,;:!?")
+    return truncated + "…"
 
 
 def release_update_text(version: str, notes: str) -> str:
@@ -116,14 +121,11 @@ def release_update_text(version: str, notes: str) -> str:
     Без команды-/ссылки `/changelog`: в общем чате Telegram она нерабочая и
     выглядит как сломанная кнопка — подробности смотрят прямо в боте.
     """
-    words = " ".join(str(notes or "").split()).split()
-    short_words = words[:RELEASE_NOTES_MAX_WORDS] if len(words) > RELEASE_NOTES_MAX_WORDS else words
-    short = " ".join(short_words)
-    text = f"🔄 Н.Е.О.К. обновлён - v{version}\n📝 {short}"
-    if len(words) > len(short_words):
-        text += "..."
-    text += "\n📖 Подробности в чате."
-    return text
+    return (
+        f"🔄 Н.О.Р.Д. обновлён — v{version}\n"
+        f"📝 {release_notes_short(notes)}\n"
+        f"📄 Подробности смотри в боте."
+    )
 
 
 async def notify_release_update(bot: Bot) -> bool:

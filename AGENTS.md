@@ -19,6 +19,18 @@ GitHub. Деплой на прод — всегда `git push server main --tags
 HTTPS — авторизация через Windows Credential Manager (учётка `git:https://github.com`
 уже сохранена, работает без интерактива). SSH-ключ нужен только для `server`.
 
+## Правила релиза (обязательно при каждом деплое)
+- `config.VERSION_NOTES` ОБЯЗАН содержать краткое описание изменений **текущей**
+  сборки: оно показывается в `/start` после строки `>> Что нового:` (тизер,
+  `bot/handlers/start.py`, `_version_teaser`) и уходит в общий чат при смене версии.
+  При бампе старую заметку сдвигаем в `PREV_VERSION`/`PREV_VERSION_NOTES`
+  (держим только текущий деплой + один предыдущий).
+- Оповещение о деплое в общий чат (`utils/notify.py`, `notify_release_update`):
+  первые `RELEASE_NOTES_MAX_WORDS` (7) слов `VERSION_NOTES`, при обрезке —
+  многоточие; полное описание — по `/changelog`. Срабатывает только при смене
+  `VERSION` (ключ `last_announced_version` в `settings`).
+- Каждый релиз — запись в `CHANGELOG.md` с тем же текстом сути.
+
 ## Деплой
 - py_compile + smoke → бамп `VERSION`/`VERSION_NOTES`/`PREV_VERSION`/`PREV_VERSION_NOTES` в `config.py`, `CHANGELOG.md` → commit → tag `vX.Y.Z` → два пуша:
   1. `git push server main --tags` — деплой на прод (хук пересобирает контейнер; git-клиент не проходит проверку host key — перед пушем `$env:GIT_SSH_COMMAND = "C:/Windows/System32/OpenSSH/ssh.exe"`);
