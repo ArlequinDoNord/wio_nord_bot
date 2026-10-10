@@ -207,6 +207,18 @@ async def init_db():
             PRIMARY KEY (user_id, month)
         );
 
+        -- v0.22.18: пропорциональные выплаты при досрочном снятии должности.
+        -- Отдельный табель (не role_salary_paid), чтобы частичная выплата при
+        -- снятии НЕ блокировала обычный оклад 28-го по остальным должностям.
+        CREATE TABLE IF NOT EXISTS role_dismissal_paid (
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            month TEXT NOT NULL,
+            amount INTEGER DEFAULT 0,
+            paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, role, month)
+        );
+
         CREATE TABLE IF NOT EXISTS news_pub_paid (
             user_id INTEGER NOT NULL,
             month TEXT NOT NULL,
@@ -701,6 +713,7 @@ async def init_db():
             night_weight INTEGER DEFAULT 0,
             photo_file_id TEXT,
             admin_tuned INTEGER DEFAULT 0,
+            super_rare INTEGER DEFAULT 0,
             UNIQUE(water, item_id)
         );
 
@@ -1228,6 +1241,9 @@ async def init_db():
     # без срока годности, ингредиент). Также тип на записи водоёма.
     await _ensure_column(conn, "fish_catches", "kind", "TEXT DEFAULT 'fish'")
     await _ensure_column(conn, "water_fish", "kind", "TEXT DEFAULT 'fish'")
+    # v0.22.18: супер-редкая рыба — ловится только пилотами с достижением
+    # «Бывалый» 4-го уровня (bonus super_rare). Помечается админом.
+    await _ensure_column(conn, "water_fish", "super_rare", "INTEGER DEFAULT 0")
     # v0.13.7: как называется выросшее растение в кадке (для предметов-семечек).
     # Задаётся админом в мастере создания товара (шаг для категории "seeds").
     await _ensure_column(conn, "items", "plant_name", "TEXT")
@@ -3228,6 +3244,73 @@ async def pay_role_salaries() -> dict:
             paid.append((uid, total))
     await conn.commit()
     return {"paid": paid, "debt": debt, "reserves": reserves, "skipped": skipped}
+
+
+async def pay_role_salary_on_revoke(user_id: int, role: str):
+    """Пропорциональная выплата оклада при досрочном снятии должности.
+
+    Считается маржинальная доля должности в окладной формуле (самая дорогая роль
+    идёт полностью, остальные −50%), умноженная на долю дней текущего месяца, что
+    пилот пробыл в должности (от выдачи до снятия). Если полный оклад за месяц уже
+    выплачен (28-е) — выплаты нет. Повторное снятие в том же месяце не платит снова
+    (табель role_dismissal_paid). Выплата — из казны (нехватка → salary_debt).
+
+    Вызывается ДО удаления строки user_roles. Возвращает
+    {'amount', 'days', 'total_days'} либо None, если платить нечего.
+    """
+    sals = await get_role_salary_map()
+    if sals.get(role, 0) <= 0:
+        return None
+    conn = await get_db()
+    from utils.permissions import get_user_role
+    roles = await get_user_role(user_id)
+    if role not in roles:
+        return None
+    marginal = (_role_pay_out([sals[r] for r in roles if r in sals])
+                - _role_pay_out([sals[r] for r in roles if r in sals and r != role]))
+    if marginal <= 0:
+        return None
+
+    now = datetime.now(MOSCOW_TZ)
+    month = now.strftime("%Y-%m")
+    if await (await conn.execute(
+            "SELECT 1 FROM role_salary_paid WHERE user_id = ? AND month = ?",
+            (user_id, month))).fetchone():
+        return None
+    if await (await conn.execute(
+            "SELECT 1 FROM role_dismissal_paid WHERE user_id = ? AND role = ? AND month = ?",
+            (user_id, role, month))).fetchone():
+        return None
+
+    row = await (await conn.execute(
+        "SELECT created_at FROM user_roles WHERE telegram_id = ? AND role = ?",
+        (user_id, role))).fetchone()
+    import calendar
+    total_days = calendar.monthrange(now.year, now.month)[1]
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    granted = month_start
+    raw = (row or {}).get("created_at")
+    if raw:
+        try:
+            from datetime import timezone
+            g = datetime.strptime(str(raw)[:19], "%Y-%m-%d %H:%M:%S")
+            g = g.replace(tzinfo=timezone.utc).astimezone(MOSCOW_TZ)
+            if g > granted:
+                granted = g
+        except ValueError:
+            pass
+    days = max(1, min((now.date() - granted.date()).days + 1, total_days))
+    payout = int(marginal * days / total_days)
+    if payout <= 0:
+        return None
+    await _cash_from_treasury(
+        user_id, payout, "salary",
+        f"Пропорциональный оклад при снятии должности ({role})")
+    await conn.execute(
+        "INSERT OR IGNORE INTO role_dismissal_paid (user_id, role, month, amount) "
+        "VALUES (?, ?, ?, ?)", (user_id, role, month, payout))
+    await conn.commit()
+    return {"amount": payout, "days": days, "total_days": total_days}
 
 
 async def award_news_publication(user_id: int) -> bool:
@@ -6223,11 +6306,17 @@ async def add_user_role(user_id: int, role: str, granted_by: int = None):
 
 
 async def remove_user_role(user_id: int, role: str):
-    """Снять роль с пилота."""
+    """Снять роль с пилота.
+
+    Окладным должностям перед удалением начисляется пропорциональный оклад за
+    отработанные в текущем месяце дни (см. pay_role_salary_on_revoke).
+    """
+    payout = await pay_role_salary_on_revoke(user_id, role)
     conn = await get_db()
     await conn.execute("DELETE FROM user_roles WHERE telegram_id = ? AND role = ?",
                        (user_id, role))
     await conn.commit()
+    return payout
 
 
 async def _award_cash_payout(user_id: int, award: dict, amount: int) -> None:
@@ -7361,7 +7450,7 @@ async def get_water_fish_rows(water: str):
     conn = await get_db()
     cursor = await conn.execute("""
         SELECT wf.id, wf.water, wf.item_id, wf.day_weight, wf.night_weight,
-               wf.photo_file_id, wf.admin_tuned, wf.kind,
+               wf.photo_file_id, wf.admin_tuned, wf.kind, wf.super_rare,
                i.name, i.sell_price, i.rarity, i.price, i.market_ok
         FROM water_fish wf
         JOIN items i ON i.id = wf.item_id
@@ -7376,7 +7465,7 @@ async def get_water_fish_row(wf_id: int):
     conn = await get_db()
     cursor = await conn.execute("""
         SELECT wf.id, wf.water, wf.item_id, wf.day_weight, wf.night_weight,
-               wf.photo_file_id, wf.admin_tuned, wf.kind,
+               wf.photo_file_id, wf.admin_tuned, wf.kind, wf.super_rare,
                i.name, i.sell_price, i.rarity, i.price, i.market_ok
         FROM water_fish wf
         JOIN items i ON i.id = wf.item_id
@@ -7390,6 +7479,7 @@ async def get_water_fish_pool(water: str):
     conn = await get_db()
     cursor = await conn.execute("""
         SELECT wf.id, wf.item_id, wf.day_weight, wf.night_weight, wf.photo_file_id, wf.kind,
+               wf.super_rare,
                i.name, i.sell_price, i.rarity
         FROM water_fish wf
         JOIN items i ON i.id = wf.item_id
@@ -7444,6 +7534,11 @@ async def update_water_fish_field(wf_id: int, field: str, value) -> bool:
         await conn.execute(
             "UPDATE water_fish SET photo_file_id = ?, admin_tuned = 1 WHERE id = ?",
             (value or None, wf_id)
+        )
+    elif field == "super_rare":
+        await conn.execute(
+            "UPDATE water_fish SET super_rare = ?, admin_tuned = 1 WHERE id = ?",
+            (1 if value else 0, wf_id)
         )
     else:
         return False
@@ -7506,7 +7601,8 @@ async def create_water_fish(water: str, name: str, sell_price: int,
                             day_weight: int = 1, night_weight: int = 1,
                             description: str = None,
                             photo_file_id: str = None,
-                            added_by: int = None) -> tuple:
+                            added_by: int = None,
+                            super_rare: int = 0) -> tuple:
     """Создаёт новую рыбу прямо в водоёме: предмет (категория fishing) +
     запись пула water_fish. Предмет НЕ попадает в магазин (is_available=0) и
     ловится только в этом водоёме; строка помечается admin_tuned, чтобы
@@ -7526,9 +7622,10 @@ async def create_water_fish(water: str, name: str, sell_price: int,
             "UPDATE items SET is_available = 0 WHERE id = ?", (item_id,))
         cursor = await conn.execute(
             """INSERT INTO water_fish (water, item_id, day_weight, night_weight,
-               photo_file_id, admin_tuned)
-               VALUES (?, ?, ?, ?, ?, 1)""",
-            (water, item_id, int(day_weight), int(night_weight), photo_file_id)
+               photo_file_id, admin_tuned, super_rare)
+               VALUES (?, ?, ?, ?, ?, 1, ?)""",
+            (water, item_id, int(day_weight), int(night_weight), photo_file_id,
+             1 if super_rare else 0)
         )
         wf_id = cursor.lastrowid
         await conn.commit()
@@ -10689,10 +10786,11 @@ ACHIEVEMENTS_DEF = {
              "bonus": {}, "reward_nm": 20},
             {"level": 2, "threshold": 10, "name": "Испытатель",
              "bonus": {}, "reward_nm": 200},
-            {"level": 3, "threshold": 30, "name": "Наладчик",
-             "bonus": {}, "reward_nm": 500},
-            {"level": 4, "threshold": 60, "name": "Глас Хрофта",
-             "bonus": {}, "reward_nm": 0},
+             {"level": 3, "threshold": 30, "name": "Наладчик",
+              "bonus": {}, "reward_nm": 500},
+             {"level": 4, "threshold": 60, "name": "Глас Хрофта",
+              "bonus": {}, "reward_nm": 0,
+              "reward_item": "Рецепт высшего качества"},
         ],
     },
     "duels": {
@@ -10754,6 +10852,8 @@ async def ensure_achievements():
                     bonus_cols[col] = bonus.pop(col)
             desc = (f"{spec['metric']} — {lvl['threshold']}. Уровень {lvl['level']}."
                     + (f" Бонус: {describe_achievement_bonus(lvl.get('bonus', {}))}." if lvl.get("bonus") else ""))
+            if lvl.get("reward_item"):
+                desc += f" Награда: предмет «{lvl['reward_item']}»."
             await create_award(
                 name=lvl["name"],
                 description=desc,
@@ -10818,6 +10918,14 @@ async def _apply_achievement_threshold(conn, user_id: int, akey: str,
         (akey, target["level"]))).fetchone()
     if award:
         await grant_award(user_id, award["id"], granted_by=0, comment="Достижение")
+    # Редкий предмет за уровень ачивки (владелец создаёт его сам): ищем по
+    # имени и кладём в инвентарь. Пока предмет не создан — тихо пропускаем.
+    reward_item_name = target.get("reward_item")
+    if reward_item_name:
+        item_row = await (await conn.execute(
+            "SELECT id FROM items WHERE name = ?", (reward_item_name,))).fetchone()
+        if item_row:
+            await add_inventory_item(user_id, item_row["id"], 1)
     return target["level"], target["name"], prev_name
 
 

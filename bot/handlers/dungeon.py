@@ -377,6 +377,15 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
     enemy = battle['enemy']
+    # Ачивка «Эликсиры» lvl4: пассивная регенерация в начале хода игрока.
+    ach_regen = await get_achievement_bonus(user_id, "elixir", "regen_hp")
+    regen_note = ""
+    if ach_regen > 0 and battle['player_hp'] < battle['player_hp_max']:
+        heal = min(battle['player_hp_max'] - battle['player_hp'], ach_regen)
+        if heal > 0:
+            battle['player_hp'] += heal
+            regen_note = f"♻ Регенерация: +{heal} HP.\n\n"
+
     # Твой удар: считается от ТВОЕГО оружия, наград и состояний.
     from utils.combat_model import pilot_combat_stats, roll_pilot_damage
     stats = await pilot_combat_stats(user_id)
@@ -405,7 +414,7 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
         await bump_achievement(user_id, "monsters", 1)
         text = (
             "🦪 БОЙ С МОЛЮСКОМ\n\n"
-            f"{hit_line}"
+            f"{regen_note}{hit_line}"
             "Панцирь хрустнул и раскрылся — в тёмной воде осталось только сияние.\n\n"
             f"{loot_line}"
         )
@@ -434,7 +443,7 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
         await log_activity(user_id, "dungeon_reservoir", f"Проиграл моллюску (−{removed} ОД)")
         text = (
             "🦪 БОЙ С МОЛЮСКОМ\n\n"
-            f"{hit_line}"
+            f"{regen_note}{hit_line}"
             f"{counter_line}Ты срываешься с крючка.\n\n"
             f"Пока ты выбирался из воды, снасть потерялась. Плата за бессмысленный риск: "
             f"−{removed} ОД."
@@ -444,7 +453,7 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
         return
 
     battle['round'] += 1
-    await _show_mollusk_battle(callback, prefix=f"{hit_line}{counter_line}")
+    await _show_mollusk_battle(callback, prefix=f"{regen_note}{hit_line}{counter_line}")
 
 
 @router.callback_query(F.data.regexp(r"^mollusk:flee:\d+$"))
@@ -1294,6 +1303,15 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
             await state.update_data(regen_amounts=list(regen_queue)[1:])
         else:
             await state.update_data(regen_amounts=None)
+
+    # ── Пассивная регенерация от ачивки «Эликсиры» (lvl4, regen_hp): +N HP/ход ──
+    ach_regen = await get_achievement_bonus(user_id, "elixir", "regen_hp")
+    if ach_regen > 0 and player_hp < run['hp_max']:
+        heal_hp = min(run['hp_max'] - player_hp, ach_regen)
+        if heal_hp > 0:
+            player_hp += heal_hp
+            regen_healed += heal_hp
+            await update_run_hp(run['id'], player_hp)
 
     # ── Тики статусов в начале хода игрока (яд, кровотечение, обморожение) ──
     async def dot_death(line):

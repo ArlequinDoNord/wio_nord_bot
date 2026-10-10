@@ -729,6 +729,15 @@ async def forest_battle_hit(callback: CallbackQuery):
         return
     await callback.answer()
 
+    # Ачивка «Эликсиры» lvl4: пассивная регенерация в начале хода игрока.
+    ach_regen = await get_achievement_bonus(user_id, "elixir", "regen_hp")
+    regen_note = ""
+    if ach_regen > 0 and battle['player_hp'] < battle['player_hp_max']:
+        heal = min(battle['player_hp_max'] - battle['player_hp'], ach_regen)
+        if heal > 0:
+            battle['player_hp'] += heal
+            regen_note = f"♻ Регенерация: +{heal} HP.\n\n"
+
     # Твой удар: считается от ТВОЕГО оружия, наград и состояний.
     # Зверь может увернуться; его броня поглощает часть урона.
     from utils.combat_model import pilot_combat_stats, roll_pilot_damage
@@ -781,7 +790,7 @@ async def forest_battle_hit(callback: CallbackQuery):
             result_line = "Зверь повержен, но ничего ценного на этот раз не нашлось."
         text = (
             "🐗 БОЙ С ЗВЕРЕМ\n\n"
-            f"{hit_line}"
+            f"{regen_note}{hit_line}"
             "Зверь споткнулся и рухнул — тишина снова принадлежит лесу.\n\n"
             f"{result_line}"
         )
@@ -815,7 +824,7 @@ async def forest_battle_hit(callback: CallbackQuery):
         await log_activity(user_id, "forest", f"Проиграл зверю в лесу (−{removed} ОД)")
         text = (
             "🐗 БОЙ С ЗВЕРЕМ\n\n"
-            f"{hit_line}"
+            f"{regen_note}{hit_line}"
             f"{counter_line}Ты теряешь сознание.\n\n"
             f"Очнулся ты на {FOREST_AREA_NAME[battle_area].lower()} весь в ссадинах — "
             f"зверь ушёл в чащу. Победа досталась ему ценой твоих сил: −{removed} ОД."
@@ -827,7 +836,7 @@ async def forest_battle_hit(callback: CallbackQuery):
     battle['round'] += 1
     await _show_battle(
         callback,
-        prefix=f"{hit_line}{counter_line}"
+        prefix=f"{regen_note}{hit_line}{counter_line}"
     )
 
 

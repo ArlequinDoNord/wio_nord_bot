@@ -309,12 +309,15 @@ async def _pick_fish(user_id: int) -> str:
     """
     tod = time_of_day_key()
     rarity_pct = await get_achievement_bonus(user_id, "fishing", "rarity_pct")
+    can_super_rare = await get_achievement_bonus(user_id, "fishing", "super_rare") > 0
     pool_rows = await get_water_fish_pool("lake")
     pool = []
     if pool_rows:
         for r in pool_rows:
             w = r['night_weight'] if tod == "night" else r['day_weight']
             if w > 0:
+                if r['super_rare'] and not can_super_rare:
+                    continue
                 rank = int(r['rarity'] or 1)
                 if rarity_pct and rank > 1:
                     w = max(0.0, w * (1 + (rank - 1) * rarity_pct / 100.0))

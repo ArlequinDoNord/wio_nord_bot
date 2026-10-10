@@ -4,7 +4,7 @@
 """
 
 from config import ADMIN_IDS
-from database.db import get_db
+from database.db import get_db, pay_role_salary_on_revoke
 
 # Определение ролей и их прав
 ROLES = {
@@ -277,6 +277,7 @@ async def remove_role(admin_id: int, target_id: int, role: str):
             return False, "У вас нет прав для снятия этой роли"
         return False, "У вас нет прав для удаления ролей"
 
+    payout = await pay_role_salary_on_revoke(target_id, role)
     db = await get_db()
     await db.execute(
         "DELETE FROM user_roles WHERE telegram_id = ? AND role = ?",
@@ -284,7 +285,11 @@ async def remove_role(admin_id: int, target_id: int, role: str):
     )
     await db.commit()
     await log_action(admin_id, 'remove_role', target_id, f'role={role}')
-    return True, f"Роль {role_label(role)} удалена"
+    msg = f"Роль {role_label(role)} удалена"
+    if payout:
+        msg += (f". Начислен пропорциональный оклад: {payout['amount']} НМ "
+                f"за {payout['days']} из {payout['total_days']} дней месяца")
+    return True, msg
 
 
 async def log_action(admin_id: int, action: str, target_id: int = None, details: str = None):

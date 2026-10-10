@@ -197,6 +197,7 @@ class AdminFishing(StatesGroup):
     c_day_weight = State()    # вес днём
     c_night_weight = State()  # вес ночью
     c_photo = State()         # фото
+    c_super_rare = State()    # супер-редкая (только для «Бывалого» 4 ур.)
 
 
 class AdminForest(StatesGroup):
@@ -6298,7 +6299,8 @@ async def _admin_fishing_card(source, wf_id: int, prefix: str = ""):
         f"🌙 Вес ночи: {fish['night_weight']}\n"
         f"🖼 Фото: {photo_state}\n"
         f"💰 Продажа: {fish['sell_price']} НМ\n"
-        f"🏪 Рынок: {market_label}\n\n"
+        f"🏪 Рынок: {market_label}\n"
+        f"⭐ Супер-редкая: {'да' if fish.get('super_rare') else 'нет'}\n\n"
         f"⚠️ После правки стартовая синхронизация больше не перезапишет "
         f"настройки этой рыбы в водоёме.\nЧто изменить?"
     )
@@ -6309,6 +6311,9 @@ async def _admin_fishing_card(source, wf_id: int, prefix: str = ""):
          InlineKeyboardButton(
             text=f"🏪 Рынок: {'✅' if fish.get('market_ok') else '🔒'} →",
             callback_data=f"fishing:market:{wf_id}")],
+        [InlineKeyboardButton(
+            text=f"⭐ Супер-редкая: {'✅' if fish.get('super_rare') else '❌'} →",
+            callback_data=f"fishing:super:{wf_id}")],
         [InlineKeyboardButton(text="☀️ Вес дня", callback_data="fishing_field:day_weight")],
         [InlineKeyboardButton(text="🌙 Вес ночи", callback_data="fishing_field:night_weight")],
         [InlineKeyboardButton(text="🖼 Фото рыбы", callback_data="fishing_field:photo")],
@@ -6525,6 +6530,28 @@ async def admin_fishing_market(callback: CallbackQuery, state: FSMContext):
     await _admin_fishing_card(callback, wf_id)
 
 
+@router.callback_query(F.data.startswith("fishing:super:"))
+async def admin_fishing_super(callback: CallbackQuery, state: FSMContext):
+    """Переключает супер-редкость улова (ловит только «Бывалый» 4 ур.)."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        wf_id = int(callback.data.split(":", 2)[2])
+    except (ValueError, IndexError):
+        return
+    fish = await get_water_fish_row(wf_id)
+    if not fish:
+        await callback.message.answer("❌ Рыба не найдена.")
+        return
+    new_val = 0 if fish.get('super_rare') else 1
+    await update_water_fish_field(wf_id, "super_rare", new_val)
+    await log_action(callback.from_user.id, 'edit_fishing', None,
+                     f"wf_id={wf_id} super_rare={new_val}")
+    await state.update_data(wf_id=wf_id)
+    await _admin_fishing_card(callback, wf_id)
+
+
 @router.callback_query(F.data.startswith("fishing:addlist:"))
 async def admin_fishing_add_list(callback: CallbackQuery, state: FSMContext):
     """Выбор рыбы для добавления в водоём."""
@@ -6618,7 +6645,7 @@ async def admin_fishing_new(callback: CallbackQuery, state: FSMContext):
     await state.set_state(AdminFishing.c_name)
     await callback.message.answer(
         f"✨ Создание рыбы\n🐟 {WATER_LABELS[water]}\n\n"
-        f"Шаг 1/6 — Название рыбы (например «Карась»):",
+        f"Шаг 1/7 — Название рыбы (например «Карась»):",
         reply_markup=cancel_keyboard()
     )
 
@@ -6635,7 +6662,7 @@ async def admin_fishing_new_name(message: Message, state: FSMContext):
         return
     await state.update_data(c_name=name)
     await state.set_state(AdminFishing.c_desc)
-    await message.answer("Шаг 2/6 — Описание рыбы (или «-» если нет):",
+    await message.answer("Шаг 2/7 — Описание рыбы (или «-» если нет):",
                          reply_markup=cancel_keyboard())
 
 
@@ -6644,7 +6671,7 @@ async def admin_fishing_new_desc(message: Message, state: FSMContext):
     text = (message.text or "").strip()
     await state.update_data(c_desc=None if text in ("-", "—") else text[:300])
     await state.set_state(AdminFishing.c_sell_price)
-    await message.answer("Шаг 3/6 — Цена продажи скупщику, Нордмарок (целое число ≥ 0):",
+    await message.answer("Шаг 3/7 — Цена продажи скупщику, Нордмарок (целое число ≥ 0):",
                          reply_markup=cancel_keyboard())
 
 
@@ -6659,7 +6686,7 @@ async def admin_fishing_new_sell_price(message: Message, state: FSMContext):
     await state.update_data(c_sell_price=parsed)
     await state.set_state(AdminFishing.c_day_weight)
     await message.answer(
-        "Шаг 4/6 — Относительный вес рыбы днём (целое число ≥ 0; 0 = не водится днём):",
+        "Шаг 4/7 — Относительный вес рыбы днём (целое число ≥ 0; 0 = не водится днём):",
         reply_markup=cancel_keyboard()
     )
 
@@ -6689,9 +6716,33 @@ async def admin_fishing_new_night_weight(message: Message, state: FSMContext):
                              reply_markup=cancel_keyboard())
         return
     await state.update_data(c_night_weight=parsed)
-    await state.set_state(AdminFishing.c_photo)
+    await state.set_state(AdminFishing.c_super_rare)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     await message.answer(
-        "Шаг 6/6 — Пришли фото рыбы (Telegram-фото) или «-», если фото нет:",
+        "Шаг 6/7 — Супер-редкая рыба?\n"
+        "🐟 Супер-редкую рыбу может поймать только пилот с достижением "
+        "«Бывалый» 4-го уровня (бонус «доступ к супер-редкой рыбе»).\n"
+        "Выбери вариант:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⭐ Да, супер-редкая",
+                                  callback_data="fishing:new_super:1")],
+            [InlineKeyboardButton(text="🐟 Нет, обычная",
+                                  callback_data="fishing:new_super:0")],
+            [InlineKeyboardButton(text="✖️ Отмена", callback_data="back:to_main")],
+        ])
+    )
+
+
+@router.callback_query(F.data.startswith("fishing:new_super:"))
+async def admin_fishing_new_super(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    super_rare = 1 if callback.data.split(":")[2] == "1" else 0
+    await state.update_data(c_super_rare=super_rare)
+    await state.set_state(AdminFishing.c_photo)
+    await callback.message.answer(
+        "Шаг 7/7 — Пришли фото рыбы (Telegram-фото) или «-», если фото нет:",
         reply_markup=cancel_keyboard()
     )
 
@@ -6716,12 +6767,14 @@ async def admin_fishing_new_photo(message: Message, state: FSMContext):
     day_w = int(data.get('c_day_weight', 1))
     night_w = int(data.get('c_night_weight', 1))
     sell_price = int(data.get('c_sell_price', 0))
+    super_rare = 1 if data.get('c_super_rare') else 0
     ok, res = await create_water_fish(
         water=water, name=data['c_name'], sell_price=sell_price,
         day_weight=day_w, night_weight=night_w,
         description=data.get('c_desc'),
         photo_file_id=photo_file_id,
         added_by=message.from_user.id,
+        super_rare=super_rare,
     )
     if not ok:
         await message.answer(f"❌ {res}", reply_markup=cancel_keyboard())
@@ -6730,6 +6783,7 @@ async def admin_fishing_new_photo(message: Message, state: FSMContext):
     await log_action(message.from_user.id, 'edit_fishing', None,
                      f"created water={water} item_id={res['item_id']} "
                      f"sell={sell_price} day={day_w} night={night_w} "
+                     f"super_rare={super_rare} "
                      f"photo={'yes' if photo_file_id else 'no'}")
     await state.clear()
     await state.update_data(water=water, wf_id=wf_id)
