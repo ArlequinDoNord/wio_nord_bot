@@ -186,6 +186,7 @@ def interaction_keyboard(user_id: int):
 LOCATION_BUTTON_EMOJI = {
     "hq": "🎖️",
     "contracts": "📜",
+    "duel_house": "🥊",
 }
 
 

@@ -27,6 +27,7 @@ LOCATION_ACCESS_LINES = {
     "gossmi": "🎙 Вход: только сотрудники ГосСМИ (журналист / редактор)",
     "hq": "🎖 Вход: командование ВВС (приказы авиакрыльям)",
     "contracts": "📜 Вход: только пилоты (контракты на зачистку)",
+    "duel_house": "🥊 Вход: с пилота первого класса",
 }
 
 
@@ -190,3 +191,6 @@ async def location_enter(callback: CallbackQuery, state: FSMContext):
     elif key == "nii":
         from bot.handlers.nii import nii_menu
         await nii_menu(callback)
+    elif key == "duel_house":
+        from bot.handlers.duel import duel_house_menu
+        await duel_house_menu(callback)

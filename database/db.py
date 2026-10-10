@@ -267,6 +267,39 @@ async def init_db():
             FOREIGN KEY (to_user) REFERENCES users(user_id)
         );
 
+        -- Дом Дуэлей (PvP): один активный поединок на игрока.
+        -- status: invited (вызов брошен) | active (бой идёт) | declined |
+        --         finished (есть победитель/ничья) | expired (вызов не принят /
+        --         дуэль зависла и обнулена как void).
+        -- {challenger,opponent}_atk / _def — зоны текущего раунда (NULL = ещё
+        -- не выбрана). Раунд резолвится, когда заполнены все четыре поля.
+        CREATE TABLE IF NOT EXISTS duel_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            challenger_id INTEGER NOT NULL,
+            opponent_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'invited',
+            challenger_hp INTEGER NOT NULL DEFAULT 0,
+            opponent_hp INTEGER NOT NULL DEFAULT 0,
+            challenger_hp_max INTEGER NOT NULL DEFAULT 0,
+            opponent_hp_max INTEGER NOT NULL DEFAULT 0,
+            turn INTEGER NOT NULL DEFAULT 1,
+            challenger_atk TEXT,
+            challenger_def TEXT,
+            opponent_atk TEXT,
+            opponent_def TEXT,
+            winner_id INTEGER,
+            rating_delta INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (challenger_id) REFERENCES users(user_id),
+            FOREIGN KEY (opponent_id) REFERENCES users(user_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_duel_runs_challenger
+            ON duel_runs (challenger_id, status);
+        CREATE INDEX IF NOT EXISTS idx_duel_runs_opponent
+            ON duel_runs (opponent_id, status);
+
         CREATE TABLE IF NOT EXISTS buildings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -1003,6 +1036,10 @@ async def init_db():
     await conn.execute("UPDATE items SET name = 'Энергетик', description = 'Восстанавливает силы: даёт +AP при использовании.' WHERE name = 'Аптечка'")
     await _ensure_column(conn, "users", "ap_restored_day", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "users", "ap_restored_today", "INTEGER DEFAULT 0")
+    # Дом Дуэлей: личный рейтинг и статистика поединков.
+    await _ensure_column(conn, "users", "duel_rating", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "users", "duel_wins", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "users", "duel_losses", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "damage", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "heal", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "dungeon_enemies", "drops", "TEXT DEFAULT '[]'")
@@ -1363,6 +1400,8 @@ async def seed_locations(conn):
          "all", None, ["пьян"], "city/hq"),
         ("contracts", "Доска контрактов", "Доска штаба сухопутных войск: контракты на зачистку подземелий. Вход по пилотскому удостоверению.",
          "all", None, ["пьян"], "city/contracts"),
+        ("duel_house", "Дом Дуэлей", "Арена чести для пилотов: поединки один на один «зона на зону». Вход с пилота первого класса.",
+         "min", "pilot1", ["пьян"], "city/duel_house"),
         ("nii", "НИИ Северной Кибернетики и кремниевых систем", "НИИ Северной Кибернетики и кремниевых систем: здесь пилоты оставляют жалобы и запросы на доработку бота.",
          "all", None, ["пьян"], "city/nii"),
         ("forest", "Лес на окраине", "Тёмный еловый лес на окраине Аркхольма. Здесь водятся грибы и не только: говорят, по опушкам бродит злобный кабан.",
@@ -9080,8 +9119,41 @@ async def ensure_kvp_items():
     )
 
 
+async def ensure_duel_items():
+    """Товары Дома Дуэлей: дуэльные перчатки (отдельный слот) и клубная карта.
+
+    Оба предмета продаются в обычном магазине с доступа с пилота первого класса.
+    Перчатки — экипировка (слот 'duel', категория 'duel_gear', урон 7): работают
+    только в дуэлях, в PvE не учитываются. Карта — членский билет клуба.
+    Идемпотентно: если предмет уже есть, параметры админа не перетираются.
+    """
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id FROM items WHERE name = ?", (config.DUEL_GLOVES_NAME,))
+    if not await cursor.fetchone():
+        await add_item(
+            name=config.DUEL_GLOVES_NAME,
+            description=("Перчатки для дуэлей в Доме Дуэлей. Работают только в "
+                         "поединках на арене, в других боях бесполезны."),
+            price=config.DUEL_GLOVES_PRICE, sell_price=config.DUEL_GLOVES_SELL,
+            rarity=3, category="duel_gear", stock=-1, added_by=0, ap_cost=0,
+            damage=config.DUEL_GLOVES_DAMAGE, heal=0, armor=0,
+            equip_slot="duel", required_status=config.DUEL_ACCESS_TAG,
+        )
+    cursor = await conn.execute(
+        "SELECT id FROM items WHERE name = ?", (config.DUEL_CLUB_CARD_NAME,))
+    if not await cursor.fetchone():
+        await add_item(
+            name=config.DUEL_CLUB_CARD_NAME,
+            description=("Членский билет Дома Дуэлей. Даёт право вызывать "
+                         "пилотов на арену и принимать вызовы."),
+            price=config.DUEL_CLUB_CARD_PRICE, sell_price=config.DUEL_CLUB_CARD_SELL,
+            rarity=2, category="duel_card", stock=-1, added_by=0, ap_cost=0,
+            required_status=config.DUEL_ACCESS_TAG,
+        )
+
+
 async def ensure_kvp_award():
-    """Создаёт награду «Значок В.У.С.П.», если её ещё нет; обновляет описание у существующей."""
     KVP_BADGE_DESCRIPTION = (
         "Выживание, уклонение, сопротивление и побег. Постоянный бонус: "
         "+2% урона и +3% уклонения в подземельях."
@@ -9649,6 +9721,24 @@ async def get_player_weapon_damage(user_id: int) -> int:
     return row['damage'] if row else 0
 
 
+async def get_player_duel_gear_damage(user_id: int) -> int:
+    """Урон дуэльного снаряжения (слот 'duel' в equipment).
+
+    Применяется ТОЛЬКО в дуэлях: обычное оружие на арене не используется.
+    """
+    eq = await get_equipment(user_id)
+    item_id = eq.get('duel')
+    if not item_id:
+        return 0
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT damage FROM items WHERE id = ? AND category = 'duel_gear'",
+        (item_id,)
+    )
+    row = await cursor.fetchone()
+    return row['damage'] if row else 0
+
+
 async def get_equipped_weapon(user_id: int):
     """Полная запись активного оружия игрока (слот 'weapon') или None."""
     eq = await get_equipment(user_id)
@@ -9756,6 +9846,207 @@ async def get_player_armor_with_bonus(user_id: int) -> int:
     return int(round(armor * (1 + bonus['defense'] / 100.0)))
 
 
+# ============ ДОМ ДУЭЛЕЙ (PvP) ============
+
+async def get_user_duel_stats(user_id: int) -> dict:
+    """Личный рейтинг и счётчик побед/поражений игрока."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT duel_rating, duel_wins, duel_losses FROM users WHERE user_id = ?",
+        (user_id,))
+    row = await cursor.fetchone()
+    if not row:
+        return {'rating': 0, 'wins': 0, 'losses': 0}
+    return {
+        'rating': row['duel_rating'] or 0,
+        'wins': row['duel_wins'] or 0,
+        'losses': row['duel_losses'] or 0,
+    }
+
+
+async def get_duel(duel_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM duel_runs WHERE id = ?", (duel_id,))
+    return await cursor.fetchone()
+
+
+async def _expire_duel(duel_id: int):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE duel_runs SET status = 'expired', updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = ?", (duel_id,))
+    await conn.commit()
+
+
+async def get_active_duel(user_id: int):
+    """Незавершённый поединок игрока (invited/active) или None.
+
+    Просроченный вызов и зависший бой лениво переводятся в 'expired', чтобы
+    игрок не остался заблокированным навсегда (см. DUEL_CHALLENGE_TIMEOUT_SEC
+    и DUEL_STALE_SEC).
+    """
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM duel_runs WHERE (challenger_id = ? OR opponent_id = ?) "
+        "AND status IN ('invited', 'active') ORDER BY id DESC LIMIT 1",
+        (user_id, user_id))
+    row = await cursor.fetchone()
+    if row is None:
+        return None
+    ts = _parse_sqlite_ts(row.get('updated_at')) or _parse_sqlite_ts(row.get('created_at'))
+    if ts is not None:
+        limit = (config.DUEL_CHALLENGE_TIMEOUT_SEC
+                 if row['status'] == 'invited' else config.DUEL_STALE_SEC)
+        if time.time() - ts > limit:
+            await _expire_duel(row['id'])
+            return None
+    return row
+
+
+async def create_duel_challenge(challenger_id: int, opponent_id: int):
+    """Бросает вызов на дуэль. None, если у кого-то уже идёт поединок."""
+    if challenger_id == opponent_id:
+        return None
+    if await get_active_duel(challenger_id) or await get_active_duel(opponent_id):
+        return None
+    conn = await get_db()
+    cursor = await conn.execute(
+        "INSERT INTO duel_runs (challenger_id, opponent_id, status) VALUES (?, ?, 'invited')",
+        (challenger_id, opponent_id))
+    await conn.commit()
+    return cursor.lastrowid
+
+
+async def accept_duel(duel_id: int, user_id: int, ch_hp: int, ch_max: int,
+                      op_hp: int, op_max: int) -> bool:
+    """Принимает вызов (только приглашённый). True при успехе."""
+    row = await get_duel(duel_id)
+    if not row or row['status'] != 'invited' or row['opponent_id'] != user_id:
+        return False
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE duel_runs SET status = 'active', challenger_hp = ?, "
+        "challenger_hp_max = ?, opponent_hp = ?, opponent_hp_max = ?, turn = 1, "
+        "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (ch_hp, ch_max, op_hp, op_max, duel_id))
+    await conn.commit()
+    return True
+
+
+async def decline_duel(duel_id: int):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE duel_runs SET status = 'declined', updated_at = CURRENT_TIMESTAMP "
+        "WHERE id = ?", (duel_id,))
+    await conn.commit()
+
+
+async def set_duel_zone(duel_id: int, user_id: int, atk: str, def_zone: str) -> bool:
+    """Запоминает зоны атаки/защиты игрока в текущем раунде."""
+    row = await get_duel(duel_id)
+    if not row or row['status'] != 'active':
+        return False
+    if user_id == row['challenger_id']:
+        col_a, col_d = 'challenger_atk', 'challenger_def'
+    elif user_id == row['opponent_id']:
+        col_a, col_d = 'opponent_atk', 'opponent_def'
+    else:
+        return False
+    conn = await get_db()
+    await conn.execute(
+        f"UPDATE duel_runs SET {col_a} = ?, {col_d} = ?, "
+        "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (atk, def_zone, duel_id))
+    await conn.commit()
+    return True
+
+
+def duel_round_ready(row) -> bool:
+    """Оба участника сделали выбор зон в текущем раунде."""
+    return bool(row['challenger_atk'] and row['challenger_def']
+                and row['opponent_atk'] and row['opponent_def'])
+
+
+async def apply_duel_round(duel_id: int, ch_hp: int, op_hp: int, turn: int):
+    """Фиксирует итог раунда: новые HP, очистка зон, следующий ход."""
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE duel_runs SET challenger_hp = ?, opponent_hp = ?, turn = ?, "
+        "challenger_atk = NULL, challenger_def = NULL, opponent_atk = NULL, "
+        "opponent_def = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (ch_hp, op_hp, turn, duel_id))
+    await conn.commit()
+
+
+async def finish_duel(duel_id: int, winner_id, rating_delta: int):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE duel_runs SET status = 'finished', winner_id = ?, rating_delta = ?, "
+        "updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+        (winner_id, rating_delta, duel_id))
+    await conn.commit()
+
+
+async def apply_duel_result(user_id: int, rating_delta: int, result: str):
+    """result: 'win' | 'loss' | 'draw'. Обновляет рейтинг и счётчики."""
+    conn = await get_db()
+    if result == 'win':
+        await conn.execute(
+            "UPDATE users SET duel_rating = duel_rating + ?, duel_wins = duel_wins + 1 "
+            "WHERE user_id = ?", (rating_delta, user_id))
+    elif result == 'loss':
+        await conn.execute(
+            "UPDATE users SET duel_rating = duel_rating + ?, duel_losses = duel_losses + 1 "
+            "WHERE user_id = ?", (rating_delta, user_id))
+    else:
+        await conn.execute(
+            "UPDATE users SET duel_rating = duel_rating + ? WHERE user_id = ?",
+            (rating_delta, user_id))
+    await conn.commit()
+
+
+async def has_duel_club_card(user_id: int) -> bool:
+    """Есть ли у игрока клубная карта Дома Дуэлей."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT 1 FROM inventory inv JOIN items i ON inv.item_id = i.id "
+        "WHERE inv.user_id = ? AND i.name = ? LIMIT 1",
+        (user_id, config.DUEL_CLUB_CARD_NAME))
+    return await cursor.fetchone() is not None
+
+
+async def get_duel_rating_top(limit: int = 10):
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT user_id, duel_rating, duel_wins, duel_losses FROM users "
+        "WHERE duel_rating != 0 OR duel_wins != 0 OR duel_losses != 0 "
+        "ORDER BY duel_rating DESC, duel_wins DESC LIMIT ?", (limit,))
+    return await cursor.fetchall()
+
+
+async def get_duel_opponents(exclude_id: int, limit: int = 20):
+    """Пилоты, которых можно вызвать: статус не ниже требуемого для арены."""
+    conn = await get_db()
+    req = await (await conn.execute(
+        "SELECT sort_order FROM statuses WHERE access_tag = ?",
+        (config.DUEL_ACCESS_TAG,))).fetchone()
+    if not req:
+        return []
+    cursor = await conn.execute("""
+        SELECT u.user_id, u.username, u.callsign, u.first_name, u.last_name,
+               u.duel_rating, u.duel_wins, u.duel_losses, MAX(s.sort_order) AS top
+        FROM users u
+        JOIN user_statuses us ON us.user_id = u.user_id
+        JOIN statuses s ON us.status_id = s.id
+        WHERE u.user_id != ?
+        GROUP BY u.user_id
+        HAVING top >= ?
+        ORDER BY u.duel_rating DESC, u.duel_wins DESC, u.user_id
+        LIMIT ?
+    """, (exclude_id, req['sort_order'], limit))
+    return await cursor.fetchall()
+
+
 # Слоты снаряжения в users.equipment.
 ARMOR_SLOTS = ("head", "body", "hands", "legs")
 # Дымовая шашка — расходник побега (отдельный слот, до DUNGEON_SMOKE_MAX за забег).
@@ -9771,6 +10062,7 @@ EQUIPMENT_SLOT_LABELS = {
     "potion2": "Активный слот 2",
     "potion3": "Активный слот 3",
     "smoke": "Дымовая шашка",
+    "duel": "🥊 Дуэльное снаряжение",
 }
 # Слоты, которые сейчас заблокированы (откроются позже).
 EQUIPMENT_LOCKED_SLOTS = {"weapon_aux", "potion3"}
@@ -9793,6 +10085,9 @@ def item_fits_slot(item, slot: str) -> bool:
         return category == 'consumable' and item.get('name') != SMOKE_ITEM_NAME
     if slot == 'smoke':
         return category == 'consumable' and item['name'] == SMOKE_ITEM_NAME
+    if slot == 'duel':
+        # Дуэльное снаряжение — только в отдельный слот (в PvE не влияет).
+        return category == 'duel_gear'
     return False
 
 

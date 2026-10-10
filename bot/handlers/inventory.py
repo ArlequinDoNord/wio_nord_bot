@@ -194,6 +194,8 @@ def _slot_emoji(slot: str) -> str:
         return '⚔️'
     if slot == 'smoke':
         return '💨'
+    if slot == 'duel':
+        return '🥊'
     if slot in _ARMOR_SLOT_EMOJI:
         return _ARMOR_SLOT_EMOJI[slot]
     return '⚗️'
@@ -202,6 +204,8 @@ def _slot_emoji(slot: str) -> str:
 def _slot_extra(item, slot: str) -> str:
     if slot == 'weapon' and item['damage']:
         return f" ({item['damage']} ур.)"
+    if slot == 'duel' and item['damage']:
+        return f" ({item['damage']} ур. на арене)"
     if slot in ARMOR_SLOTS and item['armor']:
         return f" ({item['armor']} защ.)"
     return ""
@@ -408,6 +412,8 @@ async def _equipment_view(user_id: int):
     lines.append("• " + slot_line('smoke'))
     if 'potion3' in EQUIPMENT_LOCKED_SLOTS:
         lines.append("• 🔒 Слот 3: заблокирован")
+    lines += ["", "▫️ 🥊 ДУЭЛЬНОЕ СНАРЯЖЕНИЕ"]
+    lines.append("• " + slot_line('duel'))
 
     rows = []
     rows.append([InlineKeyboardButton(text=slot_button('weapon'),
@@ -422,6 +428,9 @@ async def _equipment_view(user_id: int):
                                           callback_data=f"eqslot:{s}")])
     rows.append([InlineKeyboardButton(text=slot_button('smoke'),
                                       callback_data="eqslot:smoke")])
+    rows.append([InlineKeyboardButton(text=slot_button('duel'),
+                                      callback_data="eqslot:duel")])
+
     rows.append([InlineKeyboardButton(text="🔒 Слот 3 — заблокирован",
                                       callback_data="eqlock:potion3")])
     rows.append([InlineKeyboardButton(text="🔙 К категориям", callback_data="inventory:list")])
