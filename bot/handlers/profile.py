@@ -491,7 +491,7 @@ async def profile_awards(callback: CallbackQuery):
 async def profile_achievements(callback: CallbackQuery):
     """Достижения пилота: по всем группам — прогресс, открытый уровень и следующий порог."""
     await callback.answer()
-    from database.db import get_user_achievements
+    from database.db import get_user_achievements, describe_achievement_bonus
     lst = await get_user_achievements(callback.from_user.id)
     if not lst:
         await callback.message.answer(
@@ -516,7 +516,20 @@ async def profile_achievements(callback: CallbackQuery):
         lines.append(
             f"{item['emoji']} {item['title']} — уровень {cur}: {status}"
         )
-    lines.append("\nУровень растёт с набором действий; бонусы — из карточки награды.")
+        # Краткая суть бонуса/награды открытого уровня (или уровня 1, если ещё не открыт).
+        shown = levels[cur - 1] if cur >= 1 else levels[0]
+        perks = []
+        bonus_txt = describe_achievement_bonus(shown.get('bonus', {}))
+        if bonus_txt:
+            perks.append(bonus_txt)
+        if shown.get('reward_nm'):
+            perks.append(f"{shown['reward_nm']} НМ")
+        if shown.get('reward_item'):
+            perks.append(f"предмет «{shown['reward_item']}»")
+        if perks:
+            label = "Получено" if cur >= 1 else "За уровень 1"
+            lines.append(f"    ↳ {label}: {'; '.join(perks)}")
+    lines.append("\nУровень растёт с набором действий; подробности — в карточке награды.")
     await callback.message.answer(
         "\n".join(lines),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[

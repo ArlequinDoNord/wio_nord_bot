@@ -794,8 +794,9 @@ async def forest_battle_hit(callback: CallbackQuery):
             "Зверь споткнулся и рухнул — тишина снова принадлежит лесу.\n\n"
             f"{result_line}"
         )
-        await _boar_paint(callback, text=text,
-                     kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area))
+        await _glade_paint(callback, text=text,
+                     kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area),
+                     area=battle_area)
         return
 
     # Ответный удар зверя: свой диапазон урона, твоя броня поглощает часть.
@@ -829,8 +830,9 @@ async def forest_battle_hit(callback: CallbackQuery):
             f"Очнулся ты на {FOREST_AREA_NAME[battle_area].lower()} весь в ссадинах — "
             f"зверь ушёл в чащу. Победа досталась ему ценой твоих сил: −{removed} ОД."
         )
-        await _boar_paint(callback, text=text,
-                     kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area))
+        await _glade_paint(callback, text=text,
+                     kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area),
+                     area=battle_area)
         return
 
     battle['round'] += 1
