@@ -13,6 +13,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
     add_item, delete_item, delete_item_completely, update_item, get_available_items, get_all_items,
+    get_items_by_category, count_items_by_category,
     get_item, get_all_users, get_pending_reports, approve_report, correct_report_numbers,
     reject_report, add_nordmarks, remove_nordmarks,
     get_approved_reports, count_approved_reports, report_day_value_of, report_tax_percent_for,
@@ -886,7 +887,7 @@ def _storage_pages(total: int):
     return max(1, (total + STORAGE_PER_PAGE - 1) // STORAGE_PER_PAGE)
 
 
-def storage_markup(items, page: int = 0):
+def storage_markup(items, page: int = 0, cat_key: str = "all"):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     total = len(items)
     pages = _storage_pages(total)
@@ -896,7 +897,7 @@ def storage_markup(items, page: int = 0):
 
     rows = []
     for it in chunk:
-        if it['is_available']:
+        if not it['is_hidden']:
             status = "🟢" if it['stock'] != 0 else "🟡"
             marker = f"{status} {it['name']} (ост. {it['stock']})"
         else:
@@ -908,13 +909,27 @@ def storage_markup(items, page: int = 0):
 
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"storage:page:{page-1}"))
+        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"storage:cat:{cat_key}:page:{page-1}"))
     nav.append(InlineKeyboardButton(text=f"{page+1}/{pages}", callback_data="storage:noop"))
     if page < pages - 1:
-        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"storage:page:{page+1}"))
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"storage:cat:{cat_key}:page:{page+1}"))
     if nav:
         rows.append(nav)
 
+    rows.append([InlineKeyboardButton(text="⬅️ К категориям", callback_data="storage:cats")])
+    rows.append([InlineKeyboardButton(text="🔙 Админ-панель", callback_data="admin:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def storage_main_markup(counts: dict | None = None) -> InlineKeyboardMarkup:
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = []
+    rows.append([InlineKeyboardButton(text="➕ Создать предмет", callback_data="storage:create")])
+    counts = counts or {}
+    for key, label in sorted(ITEM_CATEGORIES.items(), key=lambda x: x[1]):
+        c = counts.get(key, 0)
+        rows.append([InlineKeyboardButton(text=f"{label} ({c})", callback_data=f"storage:cat:{key}:page:0")])
+    rows.append([InlineKeyboardButton(text="📦 Все предметы", callback_data=f"storage:cat:all:page:0")])
     rows.append([InlineKeyboardButton(text="🔙 Админ-панель", callback_data="admin:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -925,20 +940,47 @@ async def admin_storage(callback: CallbackQuery):
     if not await has_permission(callback.from_user.id, "can_manage_storage"):
         await callback.message.answer("❌ Раздел доступен только Хранителю.")
         return
-    items = await get_all_items()
-    if not items:
-        await callback.message.edit_text("📦 Хранилище пусто.", reply_markup=storage_markup([]))
-        return
+    counts = await count_items_by_category()
+    total = sum(counts.values())
     text = (f"📦 ХРАНИЛИЩЕ НОРДХАЙМА\n"
-            f"Всего позиций: {len(items)}\n\n"
-            f"🟢 — в продаже, 🟡 — почти распродан, 🔴 — скрыт. "
-            f"Нажми на предмет, чтобы вернуть его в магазин.")
-    await callback.message.edit_text(text, reply_markup=storage_markup(items))
+            f"Всего позиций: {total}\n\n"
+            f"Выбери категорию предметов.")
+    await callback.message.edit_text(text, reply_markup=storage_main_markup(counts))
 
 
 @router.callback_query(F.data == "storage:noop")
 async def storage_noop(callback: CallbackQuery):
     await callback.answer()
+
+
+@router.callback_query(F.data == "storage:cats")
+async def storage_cats(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_storage"):
+        return
+    counts = await count_items_by_category()
+    total = sum(counts.values())
+    await callback.message.edit_text(
+        f"📦 ХРАНИЛИЩЕ НОРДХАЙМА\nВсего позиций: {total}\n\nВыбери категорию предметов.",
+        reply_markup=storage_main_markup(counts)
+    )
+
+
+@router.callback_query(F.data.startswith("storage:cat:"))
+async def storage_category(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_storage"):
+        return
+    parts = callback.data.split(":")
+    cat_key = parts[2] if len(parts) > 2 else "all"
+    page = int(parts[4]) if len(parts) > 4 else int(parts[3]) if len(parts) > 3 else 0
+    items = await get_items_by_category(cat_key)
+    cat_name = ITEM_CATEGORIES.get(cat_key, cat_key) if cat_key != "all" else "Все предметы"
+    await callback.message.edit_text(
+        f"📦 {cat_name}\nВсего: {len(items)}\n\n"
+        "🟢 — в продаже, 🟡 — почти распродан, 🔴 — скрыт. Нажми на предмет для редактирования.",
+        reply_markup=storage_markup(items, page, cat_key=cat_key)
+    )
 
 
 @router.callback_query(F.data.startswith("storage:page:"))
@@ -950,9 +992,8 @@ async def storage_page(callback: CallbackQuery):
     items = await get_all_items()
     await callback.message.edit_text(
         "📦 ХРАНИЛИЩЕ НОРДХАЙМА\n\n"
-        "🟢 — в продаже, 🟡 — почти распродан, 🔴 — скрыт. "
-        "Нажми на предмет, чтобы вернуть его в магазин.",
-        reply_markup=storage_markup(items, page)
+        "🟢 — в продаже, 🟡 — почти распродан, 🔴 — скрыт. Нажми на предмет для редактирования.",
+        reply_markup=storage_markup(items, page, cat_key="all")
     )
 
 
@@ -1008,7 +1049,8 @@ async def storage_item(callback: CallbackQuery, state: FSMContext):
                                       callback_data=f"edit_item:{item_id}")])
     rows.append([InlineKeyboardButton(text="🗑 Удалить из игры насовсем",
                                       callback_data=f"storage:purge:{item_id}")])
-    rows.append([InlineKeyboardButton(text="🔙 К списку", callback_data="admin:storage")])
+    rows.append([InlineKeyboardButton(text="⬅️ К категориям", callback_data="storage:cats")])
+    rows.append([InlineKeyboardButton(text="📦 Хранилище", callback_data="admin:storage")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await callback.message.edit_text(text, reply_markup=kb)
 
@@ -1156,6 +1198,7 @@ async def storage_purge_confirm(message: Message, state: FSMContext):
 
 
 @router.callback_query(F.data == "shop_admin:add")
+@router.callback_query(F.data == "storage:create")
 async def shop_admin_add(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     if not await has_permission(callback.from_user.id, "can_add_items"):

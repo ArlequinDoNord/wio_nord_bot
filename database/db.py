@@ -1890,6 +1890,22 @@ async def get_all_items():
     return await cursor.fetchall()
 
 
+async def get_items_by_category(category: str):
+    """Все предметы в конкретной категории (для хранилища)."""
+    if category == "all":
+        return await get_all_items()
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM items WHERE category = ? ORDER BY name", (category,))
+    return await cursor.fetchall()
+
+
+async def count_items_by_category():
+    conn = await get_db()
+    cursor = await conn.execute("SELECT category, COUNT(*) AS c FROM items GROUP BY category")
+    rows = await cursor.fetchall()
+    return {r['category']: r['c'] for r in rows}
+
+
 async def update_item(item_id: int, **kwargs):
     conn = await get_db()
     sets = ", ".join(f"{k} = ?" for k in kwargs)
