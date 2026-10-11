@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 
 async def run():
-    from config import FOREST_BOAR_SEED
+    from config import FOREST_BOAR_SEED, FOREST_BOAR_CHANCE
     from database.db import (
         init_db, close_db, get_db, add_user, get_user,
         ensure_forest_items, ensure_forest_mushrooms, ensure_recipes,
@@ -84,7 +84,8 @@ async def run():
           boar and (boar['dmg_min'], boar['dmg_max'])
           == (FOREST_BOAR_SEED["dmg_min"], FOREST_BOAR_SEED["dmg_max"]))
     check("кабан: гарантия 1/12", boar and boar['pity_target'] == 12)
-    check("кабан: шанс встречи ≈ 8.33%", boar and 8 < boar['chance'] < 9)
+    check("кабан: базовый шанс из конфига",
+          boar and abs(float(boar['chance']) - FOREST_BOAR_CHANCE) < 0.01)
     check("кабан: включён", boar and boar['enabled'] == 1)
 
     mollusk = await get_source_enemy_by_key("fishing", "mollusk", "reservoir")

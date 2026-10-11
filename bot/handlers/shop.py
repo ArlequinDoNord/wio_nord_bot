@@ -51,6 +51,7 @@ CATEGORIES = [
     "weapon", "consumable", "equipment", "building", "resource",
     "special", "special_dept", "souvenirs", "library_card", "fishing",
     "housing", "furniture", "seeds", "license", "recipes", "market",
+    "duel_gear", "duel_card",
 ]
 PER_PAGE = 6
 

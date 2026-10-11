@@ -139,10 +139,51 @@ async def run():
     check("локация duel_house создана", loc is not None)
     check("локация: доступ с pilot1",
           loc and loc['access_mode'] == 'min' and loc['required_status'] == 'pilot1')
-    from bot.handlers.duel import _hp_bar
+    from bot.handlers.duel import _hp_bar, _battle_view, _floor_strike, _invite_text
     check("4 зоны", len(DUEL_ZONES) == 4)
     check("_hp_bar полный", _hp_bar(100, 100).count('█') == 12)
     check("_hp_bar пустой", _hp_bar(0, 100).count('░') == 12)
+
+    print("\n8. Гарантированный урон и цена входа")
+    from config import DUEL_AP_COST, DUEL_MIN_DAMAGE, DUEL_RATING_FORFEIT
+    check("минимум урона ≥ 1", DUEL_MIN_DAMAGE >= 1)
+    check("попавший удар по броне даёт хотя бы мин. урон",
+          _floor_strike({'damage': 0, 'dodged': False})['damage'] == DUEL_MIN_DAMAGE)
+    check("уклонённый удар остаётся 0",
+          _floor_strike({'damage': 0, 'dodged': True})['damage'] == 0)
+    ch = await get_user(101)
+    check("в вызове видна цена входа в ОД",
+          str(DUEL_AP_COST) in _invite_text({'id': 1}, ch))
+
+    print("\n9. Кнопка «Покинуть дуэль» и штраф")
+    d2 = await create_duel_challenge(101, 102)
+    await accept_duel(d2, 102, 100, 100, 100, 100)
+    row2 = await get_duel(d2)
+    _, kb2 = await _battle_view(row2, 101)
+    datas = [b.callback_data for r in kb2.inline_keyboard for b in r]
+    check("в бою есть кнопка «Покинуть дуэль»",
+          any(d.startswith("duel:leave:") for d in datas))
+    rating_before = (await get_user_duel_stats(101))['rating']
+    await finish_duel(d2, 102, 0)
+    await apply_duel_result(101, DUEL_RATING_FORFEIT, 'loss')
+    rating_after = (await get_user_duel_stats(101))['rating']
+    check("покинувший теряет 1 рейтинга",
+          rating_after == rating_before + DUEL_RATING_FORFEIT)
+
+    print("\n10. Раздел арены в магазине")
+    from bot.handlers.shop import CATEGORIES
+    check("duel_gear в CATEGORIES", "duel_gear" in CATEGORIES)
+    check("duel_card в CATEGORIES", "duel_card" in CATEGORIES)
+    from bot.handlers.shop import visible_items
+    from database.db import get_available_items
+    vis = await visible_items(101, await get_available_items(category="duel_gear"))
+    check("перчатки видны пилоту первого класса",
+          any(it['name'] == DUEL_GLOVES_NAME for it in vis))
+    from keyboards.keyboards import shop_catalog_keyboard
+    kb = shop_catalog_keyboard({"duel_gear": 1, "duel_card": 1})
+    cats = [b.callback_data for r in kb.inline_keyboard for b in r]
+    check("каталог магазина открывает раздел арены",
+          "shopcat:duel_gear" in cats and "shopcat:duel_card" in cats)
 
     await close_db()
 

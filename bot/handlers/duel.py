@@ -19,6 +19,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 from config import (
     DUEL_ZONES, DUEL_ZONE_LABELS, DUEL_ZONE_EMOJI, DUEL_AP_COST,
     DUEL_RATING_WIN, DUEL_RATING_LOSS, DUEL_RATING_DRAW, DUEL_GUARD_REDUCTION,
+    DUEL_MIN_DAMAGE, DUEL_RATING_FORFEIT,
     DUEL_CLUB_CARD_NAME, DUEL_CLUB_CARD_PRICE, DUEL_ACCESS_TAG,
 )
 from database.db import (
@@ -27,7 +28,7 @@ from database.db import (
     create_duel_challenge, accept_duel, decline_duel, set_duel_zone,
     duel_round_ready, apply_duel_round, finish_duel, apply_duel_result,
     get_duel_opponents, get_duel_rating_top, get_player_duel_gear_damage,
-    remove_ap, user_has_status_tag, bump_achievement,
+    remove_ap, user_has_status_tag, bump_achievement, log_activity,
 )
 from utils.combat_model import pilot_combat_stats, roll_pilot_damage
 
@@ -53,8 +54,19 @@ def _grid_kb(callback_prefix: str) -> InlineKeyboardMarkup:
         if len(pair) == 2:
             rows.append(pair)
             pair = []
-    if pair:
+    if len(pair):
         rows.append(pair)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _leave_row(duel_id) -> list:
+    return [InlineKeyboardButton(text="🚪 Покинуть дуэль",
+                                 callback_data=f"duel:leave:{duel_id}")]
+
+
+def _with_leave(kb: InlineKeyboardMarkup, duel_id) -> InlineKeyboardMarkup:
+    """Добавляет к клавиатуре боя кнопку «Покинуть дуэль»."""
+    rows = list(kb.inline_keyboard) + [_leave_row(duel_id)]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -161,7 +173,8 @@ async def _render_menu(callback: CallbackQuery):
         f"🏆 Побед: {stats['wins']}   💀 Поражений: {stats['losses']}\n"
         f"🎫 Клубная карта: {'есть' if has_card else 'нет'}\n"
         f"🥊 Дуэльное снаряжение: {f'+{gear} урона' if gear else 'не надето'}\n"
-        f"💰 Кошелёк: {nm} НМ"
+        f"💰 Кошелёк: {nm} НМ\n"
+        f"⚔️ Старт дуэли: {DUEL_AP_COST} ОД с каждого участника"
     )
     rows = []
     if has_card:
@@ -303,7 +316,8 @@ async def duel_invite(callback: CallbackQuery):
 
 def _invite_text(duel, challenger) -> str:
     return (f"⚔️ ТЕБЯ ВЫЗВАЛИ НА ДУЭЛЬ\n────────────────\n"
-            f"{_pilot_name(challenger)} вызывает тебя на арену!\n\nРешение за тобой.")
+            f"{_pilot_name(challenger)} вызывает тебя на арену!\n\n"
+            f"Старт боя спишет {DUEL_AP_COST} ОД у обоих. Решение за тобой.")
 
 
 def _invite_kb(duel) -> InlineKeyboardMarkup:
@@ -317,7 +331,9 @@ async def _render_invite(callback: CallbackQuery, duel, acting_uid: int):
     if acting_uid == duel['challenger_id']:
         op = await get_user(duel['opponent_id'])
         text = (f"⚔️ ВЫЗОВ БРОШЕН\n────────────────\n"
-                f"Ты вызвал: {_pilot_name(op)}.\nЖдём ответа соперника…")
+                f"Ты вызвал: {_pilot_name(op)}.\n"
+                f"Начало боя спишет {DUEL_AP_COST} ОД у обоих.\n"
+                f"Ждём ответа соперника…")
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🚪 Отменить вызов",
                                   callback_data=f"duel:cancel:{duel['id']}")]])
@@ -402,6 +418,38 @@ async def duel_accept(callback: CallbackQuery):
     await _push_battle(callback, duel, duel['challenger_id'])
 
 
+@router.callback_query(F.data.startswith("duel:leave:"))
+async def duel_leave(callback: CallbackQuery):
+    """Добровольный выход из боя: покинувший теряет 1 рейтинга, соперник —
+    ничего (кроме уже списанных ОД за старт)."""
+    await _ack(callback)
+    duel_id = int(callback.data.split(":")[2])
+    uid = callback.from_user.id
+    duel = await get_duel(duel_id)
+    back_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 В Дом Дуэлей", callback_data="duel:menu")]])
+    if not duel or duel['status'] != 'active' or uid not in (
+            duel['challenger_id'], duel['opponent_id']):
+        await _show(callback, "Дуэль уже завершена.", back_kb)
+        return
+    opp = _other(duel, uid)
+    DUEL_PICK.pop(uid, None)
+    await finish_duel(duel['id'], opp, DUEL_RATING_DRAW)
+    await apply_duel_result(uid, DUEL_RATING_FORFEIT, 'loss')
+    try:
+        await log_activity(uid, "duel",
+                           f"Покинул дуэль #{duel['id']} (раунд {duel['turn']})")
+    except Exception:
+        pass
+    await _show(callback,
+                f"🚪 Ты покинул дуэль. Рейтинг: {DUEL_RATING_FORFEIT}.",
+                back_kb)
+    await _push(callback, opp,
+                "🚪 Соперник покинул дуэль.\n"
+                "Ты не теряешь рейтинг — поединок завершён.",
+                back_kb)
+
+
 # ───────── бой ─────────
 
 async def _duel_stats(user_id: int) -> dict:
@@ -436,9 +484,9 @@ async def _battle_view(duel, uid, note: str = None):
         default = duel[f'{side}_def']
         text += (f"\n\n✅ Ты выбрал: {DUEL_ZONE_EMOJI[atk]} {DUEL_ZONE_LABELS[atk]} "
                  f"(атака), {DUEL_ZONE_LABELS[default]} (защита).\nЖдём соперника…")
-        return text, None
+        return text, InlineKeyboardMarkup(inline_keyboard=[_leave_row(duel['id'])])
     text += "\n\nКуда бьёшь?"
-    return text, _grid_kb(f"duel:atk:{duel['id']}")
+    return text, _with_leave(_grid_kb(f"duel:atk:{duel['id']}"), duel['id'])
 
 
 async def _push_battle(callback: CallbackQuery, duel, target_uid: int, note: str = None):
@@ -458,7 +506,8 @@ async def duel_choose_atk(callback: CallbackQuery):
     DUEL_PICK[uid] = zone
     text = (f"🎯 Бьёшь в: {DUEL_ZONE_EMOJI[zone]} {DUEL_ZONE_LABELS[zone]}.\n"
             f"Теперь выбери, что защищаешь:")
-    await _show(callback, text, _grid_kb(f"duel:def:{duel_id}:{zone}"))
+    await _show(callback, text,
+                _with_leave(_grid_kb(f"duel:def:{duel_id}:{zone}"), int(duel_id)))
 
 
 @router.callback_query(F.data.startswith("duel:def:"))
@@ -493,6 +542,18 @@ async def duel_choose_def(callback: CallbackQuery):
         await _resolve_round(callback, row)
 
 
+def _floor_strike(strike: dict) -> dict:
+    """Гарантирует минимум урона за попавший (не уклонённый) удар.
+
+    Броня соперника может съесть весь базовый урон низкого звания — удар
+    «попадает», но снимает 0. На арене это превращает бой в бесконечность,
+    поэтому любой неуклонённый удар снимает хотя бы DUEL_MIN_DAMAGE HP.
+    """
+    if not strike.get('dodged'):
+        strike['damage'] = max(DUEL_MIN_DAMAGE, int(strike['damage']))
+    return strike
+
+
 async def _resolve_round(callback: CallbackQuery, duel):
     ch_stats = await _duel_stats(duel['challenger_id'])
     op_stats = await _duel_stats(duel['opponent_id'])
@@ -507,6 +568,12 @@ async def _resolve_round(callback: CallbackQuery, duel):
     strike_op['guarded'] = duel['opponent_atk'] == duel['challenger_def']
     if strike_op['guarded']:
         strike_op['damage'] = int(round(strike_op['damage'] * DUEL_GUARD_REDUCTION))
+
+    # Попавший (не уклонённый) удар всегда снимает хотя бы DUEL_MIN_DAMAGE:
+    # иначе пилот низкого звания без перчаток бьёт по броне в 0 урона, и
+    # поединок тянется десятки раундов без прогресса.
+    _floor_strike(strike_ch)
+    _floor_strike(strike_op)
 
     op_hp = max(0, duel['opponent_hp'] - strike_ch['damage'])
     ch_hp = max(0, duel['challenger_hp'] - strike_op['damage'])
@@ -570,6 +637,15 @@ async def _finish_battle(callback: CallbackQuery, duel, ch_hp: int, op_hp: int):
             await bump_achievement(winner, 'duels')
         except Exception:
             pass
+    try:
+        for uid in (duel['challenger_id'], duel['opponent_id']):
+            await log_activity(
+                uid, "duel",
+                f"Дуэль #{duel['id']} завершена за {duel['turn']} р. "
+                f"(HP {ch_hp}/{duel['challenger_hp_max']} vs "
+                f"{op_hp}/{duel['opponent_hp_max']})")
+    except Exception:
+        pass
 
     ch = await get_user(duel['challenger_id'])
     op = await get_user(duel['opponent_id'])

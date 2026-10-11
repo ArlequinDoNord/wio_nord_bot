@@ -8332,10 +8332,21 @@ def _enemy_source_table(source: str) -> str:
 async def ensure_forest_enemies():
     """Идемпотентно засевает врагов леса (кабан) из FOREST_BOAR_SEED.
 
-    Правившие админом строки (admin_tuned=1) не перезаписываются.
+    Правившие админом строки (admin_tuned=1) не перезаписываются. Отдельно
+    мигрируем legacy-шанс: раньше он жёстко равнялся 100/PITY (8.33%) — если
+    значение всё ещё равно этому дефолту, ставим новый базовый шанс
+    (config.FOREST_BOAR_CHANCE), не трогая ручные правки.
     """
     await ensure_forest_items()
-    return await _ensure_source_enemies("forest", FOREST_BOAR_SEED)
+    created = await _ensure_source_enemies("forest", FOREST_BOAR_SEED)
+    conn = await get_db()
+    legacy_chance = round(100 / config.FOREST_BOAR_PITY_TARGET, 2)
+    await conn.execute(
+        "UPDATE forest_enemies SET chance = ? "
+        "WHERE key = 'boar' AND ROUND(chance, 2) = ?",
+        (config.FOREST_BOAR_CHANCE, legacy_chance))
+    await conn.commit()
+    return created
 
 
 async def ensure_fishing_enemies():
