@@ -2,13 +2,13 @@
 
 Проверяет:
 1. Товары арены: «Дуэльные перчатки» (duel_gear, слот duel, урон 7,
-   статус pilot1) и «Клубная карта» (duel_card); идемпотентность сидинга.
+   статус pilot2, v0.23.3) и «Клубная карта» (duel_card); идемпотентность сидинга.
 2. item_fits_slot: перчатки — только слот «duel», обычное оружие туда не встаёт.
 3. get_player_duel_gear_damage: 0 без снаряжения, 7 с перчатками в слоте duel.
 4. has_duel_club_card: False → True после покупки карты в инвентарь.
 5. Жизненный цикл дуэли: вызов → занятость (второй вызов None) → принятие →
    выбор зон → резолв раунда → завершение → рейтинг/счётчики → дуэль неактивна.
-6. Доступ по статусу: pilot1 открывает арену, без статуса — нет.
+6. Доступ по статусу: pilot2 открывает арену, без статуса — нет.
 7. Локация «duel_house» создана; чистая функция _hp_bar.
 
 Запуск: .venv\\Scripts\\python.exe smoke_137.py
@@ -62,11 +62,29 @@ async def run():
     check("перчатки: категория duel_gear", gloves and gloves['category'] == 'duel_gear')
     check("перчатки: слот duel", gloves and gloves['equip_slot'] == 'duel')
     check("перчатки: урон 7", gloves and gloves['damage'] == 7)
-    check("перчатки: статус pilot1", gloves and gloves['required_status'] == 'pilot1')
+    check("перчатки: статус pilot2 (v0.23.3)", gloves and gloves['required_status'] == 'pilot2')
     check("карта создана (duel_card)", card is not None and card['category'] == 'duel_card')
+    check("перчатки: цена 200", gloves and gloves['price'] == 200)
+    check("карта: цена 150", card and card['price'] == 150)
     await ensure_duel_items()
     g2 = await get_item_by_name(DUEL_GLOVES_NAME)
     check("сидинг идемпотентен (перчатки)", g2['id'] == gloves['id'])
+
+    print("\n1b. Миграция старых цен/статуса (v0.23.3)")
+    from database.db import update_item, update_location_access
+    await update_item(gloves['id'], price=400, sell_price=200, required_status='pilot1')
+    await update_item(card['id'], price=300, sell_price=150)
+    loc0 = await get_location_by_key('duel_house')
+    await update_location_access(loc0['id'], required_status='pilot1')
+    await ensure_duel_items()
+    await init_db()
+    g3 = await get_item_by_name(DUEL_GLOVES_NAME)
+    c3 = await get_item_by_name(DUEL_CLUB_CARD_NAME)
+    loc1 = await get_location_by_key('duel_house')
+    check("миграция: перчатки → 200/pilot2",
+          g3['price'] == 200 and g3['required_status'] == 'pilot2')
+    check("миграция: карта 300 → 150", c3['price'] == 150)
+    check("миграция: локация pilot1 → pilot2", loc1['required_status'] == 'pilot2')
 
     print("\n2. item_fits_slot")
     check("перчатки встают в слот duel", item_fits_slot(gloves, 'duel'))
@@ -129,7 +147,7 @@ async def run():
     check("без статуса арена закрыта", not await user_has_status_tag(102, DUEL_ACCESS_TAG))
     st = await get_status_by_tag(DUEL_ACCESS_TAG)
     await grant_status(101, st['id'])
-    check("с pilot1 арена открыта", await user_has_status_tag(101, DUEL_ACCESS_TAG))
+    check("с pilot2 арена открыта", await user_has_status_tag(101, DUEL_ACCESS_TAG))
     opponents = await get_duel_opponents(999)
     check("пилот со статусом в списке соперников",
           any(o['user_id'] == 101 for o in opponents))
@@ -137,8 +155,8 @@ async def run():
     print("\n7. Локация и чистые функции")
     loc = await get_location_by_key('duel_house')
     check("локация duel_house создана", loc is not None)
-    check("локация: доступ с pilot1",
-          loc and loc['access_mode'] == 'min' and loc['required_status'] == 'pilot1')
+    check("локация: доступ с pilot2",
+          loc and loc['access_mode'] == 'min' and loc['required_status'] == 'pilot2')
     from bot.handlers.duel import _hp_bar, _battle_view, _floor_strike, _invite_text
     check("4 зоны", len(DUEL_ZONES) == 4)
     check("_hp_bar полный", _hp_bar(100, 100).count('█') == 12)

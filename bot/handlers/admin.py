@@ -8437,6 +8437,8 @@ ENEMY_FIELDS = {
     "dmg_min": ("🗡 Урон (мин)", "Введи минимальный урон врага (целое ≥ 0):", "int"),
     "dmg_max": ("🗡 Урон (макс)", "Введи максимальный урон врага (целое ≥ 0):", "int"),
     "dodge": ("💨 Уклонение", "Введи шанс уклонения врага, % (0–100):", "percent"),
+    "bleed_chance": ("🩸 Шанс кровотечения", "Введи шанс наложить кровотечение при ударе, % (0–100; 0 = не кровоточит):", "percent"),
+    "bleed_dmg": ("🩸 Урон кровотечения", "Введи урон кровотечения в HP за ход (целое ≥ 0):", "int"),
     "chance": ("🎲 Шанс встречи", "Введи шанс встречи с врагом на одну попытку, % (0–100; 0 = выключить):", "percent"),
     "pity_target": ("🧿 Гарантия", "Введи, через сколько попыток встреча гарантирована (0 = без гарантии):", "int"),
     "loss_ap": ("⚡ Потеря ОД", "Введи, сколько ОД теряет игрок при поражении (целое ≥ 0):", "int"),
@@ -8613,6 +8615,10 @@ async def _source_enemy_send(target, src: str, loc: str, enemy_id: int, edit: bo
         return
     drops = await get_source_enemy_drops(src, enemy_id)
     enabled = enemy.get('enabled', 1)
+    bleed_chance = int(enemy.get('bleed_chance') or 0)
+    bleed_dmg = int(enemy.get('bleed_dmg') or 0)
+    bleed_line = (f"🩸 Кровотечение: {bleed_chance}% на {bleed_dmg} HP/ход\n"
+                  if bleed_chance else "🩸 Кровотечение: нет\n")
     text = (
         f"⚔️ {enemy['name']}\n"
         f"📍 {_enemy_loc_title(src, loc)}\n"
@@ -8621,7 +8627,7 @@ async def _source_enemy_send(target, src: str, loc: str, enemy_id: int, edit: bo
         f"❤️ HP: {enemy['hp']}\n"
         f"🗡 Урон: {enemy['dmg_min']}–{enemy['dmg_max']}\n"
         f"💨 Уклонение: {enemy['dodge']}%\n"
-
+        f"{bleed_line}"
         f"🎲 Шанс встречи: {enemy['chance']}% (за попытку)\n"
         f"🧿 Гарантия: раз в {enemy['pity_target'] or '—'} попыток\n"
         f"⚡ Потеря ОД при поражении: {enemy['loss_ap']}\n"
@@ -8637,6 +8643,8 @@ async def _source_enemy_send(target, src: str, loc: str, enemy_id: int, edit: bo
          _B(text="🗡 Урон", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:dmg_min")],
         [_B(text="🗡 Урон макс", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:dmg_max"),
          _B(text="💨 Уклонение", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:dodge")],
+        [_B(text="🩸 Шанс кровот.", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:bleed_chance"),
+         _B(text="🩸 Урон кровот.", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:bleed_dmg")],
         [_B(text="🎲 Шанс встречи", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:chance"),
          _B(text="🧿 Гарантия", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:pity_target")],
         [_B(text="⚡ Потеря ОД", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:loss_ap"),
@@ -8712,7 +8720,7 @@ async def admin_enemies_field_value(message: Message, state: FSMContext):
         parsed = None if text in ("-", "—") else text[:400]
 
     valid = parsed is not None and (kind != "percent" or parsed <= 100)
-    if valid and field in ("hp", "player_dmg_min", "player_dmg_max") and parsed < 1:
+    if valid and field == "hp" and parsed < 1:
         valid = False
     if not valid:
         await message.answer(f"❌ Неверный формат.\n{ENEMY_FIELDS[field][1]}",
@@ -8805,6 +8813,40 @@ async def admin_enemies_delete(callback: CallbackQuery, state: FSMContext):
 
 # ---------- дропы врага леса/рыбалки ----------
 
+async def _source_enemy_drops_view(message, src, loc, enemy_id, edit: bool = True):
+    """Экран дропов врага леса/рыбалки (кнопки открывают редактор дропа)."""
+    enemy = await get_source_enemy(src, enemy_id)
+    if not enemy:
+        await message.answer("❌ Враг не найден.")
+        return
+    drops = await get_source_enemy_drops(src, enemy_id)
+    lines = [f"💼 ДРОПЫ «{enemy['name']}»\n"]
+    rows = []
+    for n, d in enumerate(drops):
+        item = await get_item(d.get('item_id')) if d.get('item_id') else None
+        name = item['name'] if item else f"#{d.get('item_id')}"
+        ch = float(d.get('chance') or 0)
+        ch_pct = f"{round(ch * 100)}%"
+        qty = int(d.get('qty') or 1)
+        label = f"{name} — {ch_pct}" + (f" ×{qty}" if qty != 1 else "")
+        lines.append(f"{n + 1}. {label}")
+        rows.append([InlineKeyboardButton(text=f"✏️ {label}",
+                     callback_data=f"enemy:dropedit:{src}:{loc}:{enemy_id}:{n}")])
+    if not drops:
+        lines.append("   — дропов нет")
+    lines.append("\nШансы независимые: каждый предмет проверяется отдельно, поэтому "
+                 "за одну победу может выпасть сразу несколько. Пусто — когда не выпал ни один.")
+    rows.append([InlineKeyboardButton(text="➕ Добавить предмет",
+                                      callback_data=f"enemy:dropitem:{src}:{loc}:{enemy_id}:0")])
+    rows.append([InlineKeyboardButton(text="🔙 В карточку врага",
+                                      callback_data=f"enemy:card:{src}:{loc}:{enemy_id}")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    if edit:
+        await message.edit_text("\n".join(lines), reply_markup=kb)
+    else:
+        await message.answer("\n".join(lines), reply_markup=kb)
+
+
 @router.callback_query(F.data.regexp(r"^enemy:drops:"))
 async def admin_enemies_drops(callback: CallbackQuery, state: FSMContext):
     """Экран дропов врага леса/рыбалки."""
@@ -8812,34 +8854,71 @@ async def admin_enemies_drops(callback: CallbackQuery, state: FSMContext):
     if not await has_permission(callback.from_user.id, "can_manage_locations"):
         return
     _, _, src, loc, enemy_id = callback.data.split(":", 4)
-    enemy_id = int(enemy_id)
-    enemy = await get_source_enemy(src, enemy_id)
-    if not enemy:
-        await callback.message.answer("❌ Враг не найден.")
+    await _source_enemy_drops_view(callback.message, src, loc, int(enemy_id), edit=True)
+
+
+@router.callback_query(F.data.regexp(r"^enemy:dropedit:"))
+async def admin_enemies_drop_edit(callback: CallbackQuery, state: FSMContext):
+    """Карточка одного дропа: правка шанса/количества и удаление."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
         return
+    _, _, src, loc, enemy_id, idx = callback.data.split(":", 5)
+    enemy_id, idx = int(enemy_id), int(idx)
+    enemy = await get_source_enemy(src, enemy_id)
     drops = await get_source_enemy_drops(src, enemy_id)
-    lines = [f"💼 ДРОПЫ «{enemy['name']}»\n"]
-    rows = []
-    for idx, d in enumerate(drops):
-        item = await get_item(d['item_id']) if d.get('item_id') else None
-        name = item['name'] if item else (d.get('item') or '?')
-        ch = d.get('chance', 0)
-        ch_pct = f"{int(ch * 100)}%" if ch <= 1 else f"{int(ch)}%"
-        qty = d.get('qty', 1)
-        label = f"{name} — {ch_pct}" + (f" ×{qty}" if qty != 1 else "")
-        lines.append(f"{idx + 1}. {label}")
-        rows.append([InlineKeyboardButton(text=f"🗑 {idx + 1}. {label}",
-                                          callback_data=f"enemy:dropdel:{src}:{loc}:{enemy_id}:{idx}")])
-    if not drops:
-        lines.append("Дропов пока нет.")
-    lines.append("\nШансы независимые: каждый предмет проверяется отдельно, поэтому "
-                 "за одну победу может выпасть сразу несколько. Пусто — когда не выпал ни один.")
-    rows.append([InlineKeyboardButton(text="➕ Добавить предмет",
-                                      callback_data=f"enemy:dropitem:{src}:{loc}:{enemy_id}:0")])
-    rows.append([InlineKeyboardButton(text="🔙 В карточку врага",
-                                      callback_data=f"enemy:card:{src}:{loc}:{enemy_id}")])
-    await callback.message.edit_text("\n".join(lines),
-                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    if not enemy or not 0 <= idx < len(drops):
+        await callback.message.answer("❌ Дроп не найден.")
+        return
+    d = drops[idx]
+    item = await get_item(d.get('item_id')) if d.get('item_id') else None
+    name = item['name'] if item else f"#{d.get('item_id')}"
+    ch = round(float(d.get('chance') or 0) * 100)
+    qty = int(d.get('qty') or 1)
+    text = (
+        f"💼 ДРОП «{name}»\n"
+        f"у врага «{enemy['name']}».\n\n"
+        f"🎲 Шанс: {ch}%\n"
+        f"🔢 Кол-во: {qty}\n\n"
+        "Каждый дроп бросается независимо от остальных."
+    )
+    rows = [
+        [InlineKeyboardButton(text=f"🎲 Шанс: {ch}%",
+                              callback_data=f"enemy:dropch:{src}:{loc}:{enemy_id}:{idx}")],
+        [InlineKeyboardButton(text=f"🔢 Кол-во: {qty}",
+                              callback_data=f"enemy:dropq:{src}:{loc}:{enemy_id}:{idx}")],
+        [InlineKeyboardButton(text="🗑 Удалить из дропов",
+                              callback_data=f"enemy:dropdel:{src}:{loc}:{enemy_id}:{idx}")],
+        [InlineKeyboardButton(text="🔙 К дропам",
+                              callback_data=f"enemy:drops:{src}:{loc}:{enemy_id}")],
+    ]
+    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.regexp(r"^enemy:dropch:"))
+async def admin_enemies_drop_edit_chance(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, src, loc, enemy_id, idx = callback.data.split(":", 5)
+    await state.update_data(enemy_src=src, enemy_loc=loc, enemy_id=int(enemy_id),
+                            drop_index=int(idx), drop_item_id=None)
+    await state.set_state(AdminEnemy.drop_chance)
+    await callback.message.answer("Введи новый шанс выпадения, % (1–100):",
+                                  reply_markup=cancel_keyboard())
+
+
+@router.callback_query(F.data.regexp(r"^enemy:dropq:"))
+async def admin_enemies_drop_edit_qty(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    _, _, src, loc, enemy_id, idx = callback.data.split(":", 5)
+    await state.update_data(enemy_src=src, enemy_loc=loc, enemy_id=int(enemy_id),
+                            drop_index=int(idx))
+    await state.set_state(AdminEnemy.drop_qty)
+    await callback.message.answer("Сколько выпадает? (целое ≥ 1):",
+                                  reply_markup=cancel_keyboard())
 
 
 @router.callback_query(F.data.regexp(r"^enemy:dropdel:"))
@@ -8851,7 +8930,7 @@ async def admin_enemies_drop_del(callback: CallbackQuery, state: FSMContext):
     await remove_source_enemy_drop(src, int(enemy_id), int(idx))
     await log_action(callback.from_user.id, 'edit_enemy', None,
                      f"src={src} id={enemy_id} drop_removed={idx}")
-    await admin_enemies_drops(callback, state)
+    await _source_enemy_drops_view(callback.message, src, loc, int(enemy_id), edit=True)
 
 
 @router.callback_query(F.data.regexp(r"^enemy:dropitem:"))
@@ -8897,7 +8976,7 @@ async def admin_enemies_drop_add_pick(callback: CallbackQuery, state: FSMContext
         return
     _, _, src, loc, enemy_id, item_id = callback.data.split(":", 5)
     await state.update_data(enemy_src=src, enemy_loc=loc, enemy_id=int(enemy_id),
-                            drop_item_id=int(item_id))
+                            drop_item_id=int(item_id), drop_index=None)
     await state.set_state(AdminEnemy.drop_chance)
     await callback.message.answer("Введи шанс выпадения, % (1–100):",
                                   reply_markup=cancel_keyboard())
@@ -8907,10 +8986,22 @@ async def admin_enemies_drop_add_pick(callback: CallbackQuery, state: FSMContext
 async def admin_enemies_drop_chance_value(message: Message, state: FSMContext):
     data = await state.get_data()
     src, loc, enemy_id = data.get('enemy_src'), data.get('enemy_loc'), data.get('enemy_id')
-    item_id = data.get('drop_item_id')
+    item_id, idx = data.get('drop_item_id'), data.get('drop_index')
     text = (message.text or "").strip()
     if not text.isdigit() or not 1 <= int(text) <= 100:
         await message.answer("❌ Нужно целое число 1–100.", reply_markup=cancel_keyboard())
+        return
+    # Правка существующего дропа: меняем только шанс.
+    if idx is not None:
+        drops = await get_source_enemy_drops(src, enemy_id)
+        if 0 <= int(idx) < len(drops):
+            drops[int(idx)]['chance'] = int(text) / 100.0
+            await set_source_enemy_drops(src, enemy_id, drops)
+        await log_action(message.from_user.id, 'edit_enemy', None,
+                         f"src={src} id={enemy_id} drop#{idx} chance={text}%")
+        await state.clear()
+        await message.answer(f"✅ Шанс обновлён: {text}%.")
+        await _source_enemy_drops_view(message, src, loc, enemy_id, edit=False)
         return
     await state.update_data(drop_chance=int(text))
     await state.set_state(AdminEnemy.drop_qty)
@@ -8923,8 +9014,21 @@ async def admin_enemies_drop_qty_value(message: Message, state: FSMContext):
     data = await state.get_data()
     src, loc, enemy_id = data.get('enemy_src'), data.get('enemy_loc'), data.get('enemy_id')
     item_id, chance = data.get('drop_item_id'), int(data.get('drop_chance') or 100)
+    idx = data.get('drop_index')
     text = (message.text or "").strip()
     qty = int(text) if text.isdigit() and int(text) >= 1 else 1
+    # Правка существующего дропа: меняем только количество.
+    if idx is not None:
+        drops = await get_source_enemy_drops(src, enemy_id)
+        if 0 <= int(idx) < len(drops):
+            drops[int(idx)]['qty'] = qty
+            await set_source_enemy_drops(src, enemy_id, drops)
+        await log_action(message.from_user.id, 'edit_enemy', None,
+                         f"src={src} id={enemy_id} drop#{idx} qty={qty}")
+        await state.clear()
+        await message.answer(f"✅ Кол-во обновлено: ×{qty}.")
+        await _source_enemy_drops_view(message, src, loc, enemy_id, edit=False)
+        return
     await add_source_enemy_drop(src, enemy_id, item_id, chance / 100.0, qty)
     await log_action(message.from_user.id, 'edit_enemy', None,
                      f"src={src} id={enemy_id} drop_item={item_id} chance={chance}% qty={qty}")
@@ -9025,7 +9129,7 @@ async def admin_enemies_new_done(message: Message, state: FSMContext):
         src, spot=(loc if src == ENEMY_SRC_FISHING else 'forest'),
         name=data.get('new_name'), hp=data.get('new_hp'),
         dmg_min=data.get('new_dmg_min'), dmg_max=data.get('new_dmg_max'),
-        dodge=data.get('new_dodge'), player_dmg_min=5, player_dmg_max=10,
+        dodge=data.get('new_dodge'),
         loss_ap=int(text), chance=float(data.get('new_chance') or 0),
         pity_target=0, reward_nm=0, drops=[], description=None,
         photo_key=None, enabled=1)

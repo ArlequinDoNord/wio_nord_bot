@@ -30,8 +30,9 @@ from database.db import (
     get_forest_mushroom_pool, get_forest_zone, get_forest_zones, FOREST_AREAS,
     get_forest_setting,
     get_forest_boar_attempts, set_forest_boar_attempts, reset_forest_boar_counter,
+    get_forest_wolf_attempts, set_forest_wolf_attempts, reset_forest_wolf_counter,
     remove_ap_or_floor, user_is_tourist, log_activity,
-    get_source_enemy_by_key, get_source_enemy_drops, roll_enemy_drops,
+    get_source_enemy_by_key, get_source_enemies, get_source_enemy_drops, roll_enemy_drops,
     enemy_encounter_hit,
     get_location_by_key, location_glade_photo, location_clearing_photo, location_photo_for_tod,
     bump_achievement, get_achievement_bonus,
@@ -49,11 +50,21 @@ from config import (
 router = Router()
 
 # Зона по умолчанию при входе в лес.
+# Кровотечение (как в подземельях): урон каждый ход игрока, спадает через N ходов.
+BLEED_TICKS_MAX = 3
+
 FOREST_HOME_AREA = "glade"
 
 # Эмблемы зон для текстов и кнопок.
 FOREST_AREA_EMOJI = {"glade": "🌿", "clearing": "🌲"}
 FOREST_AREA_NAME = {"glade": "ОПУШКА ЛЕСА", "clearing": "ПРОГАЛИНА"}
+
+# Эмодзи зверя по техническому ключу строки forest_enemies (для текстов боя).
+FOREST_BEAST_EMOJI = {"boar": "🐗", "wolf": "🐺"}
+
+
+def _beast_emoji(enemy: dict | None) -> str:
+    return FOREST_BEAST_EMOJI.get((enemy or {}).get('key'), "🐗")
 
 # Почему туристам закрыта поляна: не местные, легко заблудиться.
 AREA_DENY_TEXT = {
@@ -525,20 +536,32 @@ async def forest_cast(callback: CallbackQuery):
         await log_activity(user_id, "forest", f"Поиск грибов: {area_name} ({ap_cost} ОД)")
         await asyncio.sleep(delay)
 
-        # ── встреча с кабаном: только в зонах, где он включён (v0.18.18) ──
-        boar = None
+        # ── встреча со зверем: только в зонах, где звери включены (v0.18.18) ──
+        # Кабана разыгрываем первым — по его шансу и счётчику-гарантии. Если не
+        # выпал, бросаем остальных зверей леса (волк и т.п.). У волка свой
+        # счётчик-гарантия: не реже, чем раз в FOREST_WOLF_PITY_TARGET поисков.
+        beast = None
         if zone.get("boar_enabled"):
             boar = await _boar()
-        counter_before = await get_forest_boar_attempts(user_id)
-        encounter = False
-        if boar:
-            # Шанс и гарантия: настройки зоны перекрывают карточку врага, если заданы.
-            chance = float(zone.get("boar_chance") or 0) or float(boar.get('chance') or 0)
-            pity = int(zone.get("boar_every") or 0) or int(boar.get('pity_target') or 0)
-            encounter = enemy_encounter_hit(
-                chance, random.random() * 100, counter_before, pity)
-        if encounter:
-            await reset_forest_boar_counter(user_id)
+            counter_before = await get_forest_boar_attempts(user_id)
+            wolf_before = await get_forest_wolf_attempts(user_id)
+            if boar:
+                # Шанс и гарантия: настройки зоны перекрывают карточку врага, если заданы.
+                chance = float(zone.get("boar_chance") or 0) or float(boar.get('chance') or 0)
+                pity = int(zone.get("boar_every") or 0) or int(boar.get('pity_target') or 0)
+                if enemy_encounter_hit(chance, random.random() * 100, counter_before, pity):
+                    beast = boar
+            if beast is None:
+                beast = await _roll_extra_beast(user_id)
+        if beast:
+            # У каждого зверя своя гарантия: встретили — обнуляем его счётчик,
+            # а счётчик другого зверя двигаем вперёд (тот так и не встретился).
+            if beast.get('key') == 'boar':
+                await reset_forest_boar_counter(user_id)
+                await set_forest_wolf_attempts(user_id, wolf_before + 1)
+            else:
+                await set_forest_boar_attempts(user_id, counter_before + 1)
+                await reset_forest_wolf_counter(user_id)
             from utils.combat_model import pilot_combat_stats
             stats = await pilot_combat_stats(user_id)
             player_hp = stats['hp_max']
@@ -548,25 +571,32 @@ async def forest_cast(callback: CallbackQuery):
                 "area": area,
                 "player_hp": player_hp,
                 "player_hp_max": player_hp,
-                "boar_hp": int(boar.get('hp') or FOREST_BOAR_HP),
-                "boar_hp_max": int(boar.get('hp') or FOREST_BOAR_HP),
-                "boar_name": boar.get('name') or "Дикий кабан",
-                "dodge": float(boar.get('dodge') or boar.get('dodge_chance') or 0),
-                "armor": int(boar.get('armor') or 0),
-                "crit_chance": int(boar.get('crit_chance') or 0),
-                "crit_mult": float(boar.get('crit_mult') or 1.5),
-                "dmg_min": int(boar.get('dmg_min') or FOREST_BOAR_DMG[0]),
-                "dmg_max": int(boar.get('dmg_max') or FOREST_BOAR_DMG[1]),
-                "loss_ap": int(boar.get('loss_ap') or FOREST_BOAR_LOSS_AP),
-                "boar": boar,
+                "boar_hp": int(beast.get('hp') or FOREST_BOAR_HP),
+                "boar_hp_max": int(beast.get('hp') or FOREST_BOAR_HP),
+                "boar_name": beast.get('name') or "Дикий кабан",
+                "beast_key": beast.get('key') or "boar",
+                "emoji": _beast_emoji(beast),
+                "dodge": float(beast.get('dodge') or beast.get('dodge_chance') or 0),
+                "armor": int(beast.get('armor') or 0),
+                "crit_chance": int(beast.get('crit_chance') or 0),
+                "crit_mult": float(beast.get('crit_mult') or 1.5),
+                "dmg_min": int(beast.get('dmg_min') or FOREST_BOAR_DMG[0]),
+                "dmg_max": int(beast.get('dmg_max') or FOREST_BOAR_DMG[1]),
+                "loss_ap": int(beast.get('loss_ap') or FOREST_BOAR_LOSS_AP),
+                "bleed_chance": int(beast.get('bleed_chance') or 0),
+                "bleed_dmg": int(beast.get('bleed_dmg') or 0),
+                "active_bleed": 0,
+                "bleed_ticks": 0,
+                "boar": beast,
                 "round": 1,
             }
             await _show_battle(callback)
             return
 
-        # Счётчик кабана растёт только там, где кабан есть.
+        # Счётчики гарантии растут только там, где звери вообще есть.
         if zone.get("boar_enabled"):
             await set_forest_boar_attempts(user_id, counter_before + 1)
+            await set_forest_wolf_attempts(user_id, wolf_before + 1)
 
         # ── выбор гриба из пула ЗОНЫ ──
         pool = await get_forest_mushroom_pool(area)
@@ -669,6 +699,28 @@ async def _boar() -> dict | None:
     return dict(row)
 
 
+async def _roll_extra_beast(user_id: int = None, exclude_key: str = "boar") -> dict | None:
+    """Второй зверь леса (волк и другие, кроме кабана).
+
+    Бросаем каждого включённого зверя леса отдельно (по его chance из БД):
+    первый сработавший — встреча. Кабан сюда не входит: у него своя логика с
+    счётчиком-гарантией, которую разыгрываем раньше. У зверя может быть своя
+    гарантия (pity_target): волк обеспечен не реже, чем раз в 24 поиска — его
+    счётчик отдельный от кабаньего.
+    """
+    for row in await get_source_enemies("forest", enabled_only=True):
+        if row.get('key') == exclude_key:
+            continue
+        chance = float(row.get('chance') or 0)
+        if chance <= 0:
+            continue
+        pity = int(row.get('pity_target') or 0)
+        attempts = await get_forest_wolf_attempts(user_id) if (pity > 0 and user_id) else 0
+        if enemy_encounter_hit(chance, random.random() * 100, attempts, pity):
+            return dict(row)
+    return None
+
+
 async def _roll_boar_loot_items(boar: dict, user_id: int) -> list:
     """Добыча из кабана: список названий предметов (может быть пустым).
 
@@ -706,12 +758,17 @@ async def _show_battle(callback: CallbackQuery, prefix: str = ""):
     boar_hp = battle['boar_hp']
     boar_hp_max = battle.get('boar_hp_max') or battle['boar_hp']
     boar_name = battle.get('boar_name') or "Дикий кабан"
+    emoji = battle.get('emoji') or "🐗"
+    bleed = int(battle.get('active_bleed') or 0)
+    bticks = int(battle.get('bleed_ticks') or 0)
+    bleed_line = (f"\n🩸 Кровотечение: −{bleed} HP каждый ход (ещё {bticks} х.)."
+                  if bleed > 0 else "")
     text = (
-        f"{prefix}🐗 {boar_name.upper()}\n\n"
+        f"{prefix}{emoji} {boar_name.upper()}\n\n"
         f"Кусты позади взрываются хрустом — на тебя несётся взбешённый зверь!\n\n"
-        f"🐗 Зверь   HP {_hp_bar(boar_hp, boar_hp_max)} {max(0, boar_hp)}/{boar_hp_max}\n"
+        f"{emoji} Зверь   HP {_hp_bar(boar_hp, boar_hp_max)} {max(0, boar_hp)}/{boar_hp_max}\n"
         f"🧑 Ты     HP {_hp_bar(player_hp, battle['player_hp_max'])} "
-        f"{max(0, player_hp)}/{battle['player_hp_max']}\n\n"
+        f"{max(0, player_hp)}/{battle['player_hp_max']}{bleed_line}\n\n"
         f"Ход {battle['round']}. Ударь зверя — или уноси ноги."
     )
     await _boar_paint(callback, text=text,
@@ -725,9 +782,40 @@ async def forest_battle_hit(callback: CallbackQuery):
     user_id = callback.from_user.id
     battle = FOREST_BATTLE.get(user_id)
     if not battle:
-        await _show_area(callback, FOREST_HOME_AREA, prefix="⏳ Бой с кабаном устарел.\n\n")
+        await _show_area(callback, FOREST_HOME_AREA, prefix="⏳ Бой со зверем устарел.\n\n")
         return
     await callback.answer()
+    emoji = battle.get('emoji') or "🐗"
+
+    # Кровотечение: тикает в начале хода игрока (наложено зверем на прошлом ходу).
+    bleed_note = ""
+    bleed = int(battle.get('active_bleed') or 0)
+    if bleed > 0:
+        battle['player_hp'] = max(0, battle['player_hp'] - bleed)
+        bticks = int(battle.get('bleed_ticks') or 0) - 1
+        if bticks <= 0:
+            battle['active_bleed'] = 0
+            battle['bleed_ticks'] = 0
+            bleed_note = f"🩸 Кровотечение: −{bleed} HP. Кровь остановилась.\n\n"
+        else:
+            battle['bleed_ticks'] = bticks
+            bleed_note = f"🩸 Кровотечение: −{bleed} HP (ещё {bticks} х.).\n\n"
+        if battle['player_hp'] <= 0:
+            battle_area = battle.get('area') or FOREST_HOME_AREA
+            FOREST_BATTLE.pop(user_id, None)
+            removed = await remove_ap_or_floor(
+                user_id, int(battle.get('loss_ap') or FOREST_BOAR_LOSS_AP))
+            await log_activity(user_id, "forest", f"Проиграл зверю в лесу (−{removed} ОД)")
+            text = (
+                f"{emoji} БОЙ С ЗВЕРЕМ\n\n"
+                f"{bleed_note}"
+                "Ты истёк кровью и теряешь сознание.\n\n"
+                f"Зверь уходит, оставив тебя в чаще (−{removed} ОД)."
+            )
+            await _glade_paint(callback, text=text,
+                         kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area),
+                         area=battle_area)
+            return
 
     # Ачивка «Эликсиры» lvl4: пассивная регенерация в начале хода игрока.
     ach_regen = await get_achievement_bonus(user_id, "elixir", "regen_hp")
@@ -789,8 +877,8 @@ async def forest_battle_hit(callback: CallbackQuery):
         else:
             result_line = "Зверь повержен, но ничего ценного на этот раз не нашлось."
         text = (
-            "🐗 БОЙ С ЗВЕРЕМ\n\n"
-            f"{regen_note}{hit_line}"
+            f"{emoji} БОЙ С ЗВЕРЕМ\n\n"
+            f"{bleed_note}{regen_note}{hit_line}"
             "Зверь споткнулся и рухнул — тишина снова принадлежит лесу.\n\n"
             f"{result_line}"
         )
@@ -824,8 +912,8 @@ async def forest_battle_hit(callback: CallbackQuery):
         removed = await remove_ap_or_floor(user_id, int(battle.get('loss_ap') or FOREST_BOAR_LOSS_AP))
         await log_activity(user_id, "forest", f"Проиграл зверю в лесу (−{removed} ОД)")
         text = (
-            "🐗 БОЙ С ЗВЕРЕМ\n\n"
-            f"{regen_note}{hit_line}"
+            f"{emoji} БОЙ С ЗВЕРЕМ\n\n"
+            f"{bleed_note}{regen_note}{hit_line}"
             f"{counter_line}Ты теряешь сознание.\n\n"
             f"Очнулся ты на {FOREST_AREA_NAME[battle_area].lower()} весь в ссадинах — "
             f"зверь ушёл в чащу. Победа досталась ему ценой твоих сил: −{removed} ОД."
@@ -835,10 +923,24 @@ async def forest_battle_hit(callback: CallbackQuery):
                      area=battle_area)
         return
 
+    # Кровотечение: зверь может наложить его ударом (только если попал).
+    bleed_proc_line = ""
+    if not eres['dodged']:
+        bc = int(battle.get('bleed_chance') or 0)
+        bd = int(battle.get('bleed_dmg') or 0)
+        if bc and bd and random.randint(1, 100) <= bc:
+            battle['active_bleed'] = bd
+            battle['bleed_ticks'] = BLEED_TICKS_MAX
+            beast_name = battle.get('boar_name') or "Зверь"
+            bleed_proc_line = (
+                f"🩸 {beast_name} нанёс рвущую рану — кровотечение! "
+                f"−{bd} HP каждый ход ({BLEED_TICKS_MAX} х.).\n\n"
+            )
+
     battle['round'] += 1
     await _show_battle(
         callback,
-        prefix=f"{regen_note}{hit_line}{counter_line}"
+        prefix=f"{bleed_note}{regen_note}{hit_line}{counter_line}{bleed_proc_line}"
     )
 
 
@@ -849,11 +951,11 @@ async def forest_battle_flee(callback: CallbackQuery):
     user_id = callback.from_user.id
     stale = FOREST_BATTLE.pop(user_id, None)
     if not stale:
-        await _show_area(callback, FOREST_HOME_AREA, prefix="⏳ Бой с кабаном устарел.\n\n")
+        await _show_area(callback, FOREST_HOME_AREA, prefix="⏳ Бой со зверем устарел.\n\n")
         return
     flee_area = stale.get('area') or FOREST_HOME_AREA
     await callback.answer()
-    await log_activity(user_id, "forest", "Сбежал от кабана")
+    await log_activity(user_id, "forest", "Сбежал от зверя в лесу")
     await _show_area(
         callback, flee_area,
-        prefix=f"🏃 Ты вырвался из чащи — кабан остался позади.\n\n")
+        prefix=f"🏃 Ты вырвался из чащи — зверь остался позади.\n\n")

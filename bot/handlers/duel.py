@@ -6,7 +6,7 @@
 Дуэль идёт до истощения HP одного из участников; ничья — если оба упали в
 одном раунде. За победу +2 рейтинга, за поражение −3, за ничью 0.
 
-Доступ — с пилота первого класса (location:enter:duel_house). Для дуэлей нужна
+Доступ — с пилота второго класса (location:enter:duel_house). Для дуэлей нужна
 клубная карта; дуэльные перчатки (отдельный слот снаряжения) дают урон на арене
 и в других боях не работают. 15 ОД списываются с обоих при старте боя.
 """
@@ -143,7 +143,7 @@ async def duel_house_menu(callback: CallbackQuery):
     uid = callback.from_user.id
     if not await _has_access(uid):
         await callback.message.answer(
-            "⛔ Дом Дуэлей открыт с «Пилота 1 класса».\n"
+            "⛔ Дом Дуэлей открыт с «Пилота 2 класса».\n"
             "Подрасти в звании — и добро пожаловать на арену.")
         return
     cur = await get_active_duel(uid)
@@ -221,7 +221,7 @@ async def duel_buy_card(callback: CallbackQuery):
     uid = callback.from_user.id
     if not await _has_access(uid):
         await _ack(callback)
-        await callback.message.answer("⛔ Клубная карта доступна с «Пилота 1 класса».")
+        await callback.message.answer("⛔ Клубная карта доступна с «Пилота 2 класса».")
         return
     if await has_duel_club_card(uid):
         await _ack(callback, "У тебя уже есть клубная карта.", show_alert=True)

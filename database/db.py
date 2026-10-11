@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config
 from config import (DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MINUTES,
-                    DUNGEON_RUN_STALE_SEC, FOREST_BOAR_SEED, FOREST_BOAR_HP, MOLLUSK_SEED,
+                    DUNGEON_RUN_STALE_SEC, FOREST_BOAR_SEED, FOREST_WOLF_SEED, FOREST_BOAR_HP, MOLLUSK_SEED,
                     MOLLUSK_ITEM_SEEDS, MOLLUSK_ENEMY_DROPS, PILOT_CRIT_MULT)
 from config import get_effective_rank
 
@@ -781,12 +781,12 @@ async def init_db():
             spot TEXT DEFAULT 'forest',
             name TEXT NOT NULL,
             hp INTEGER DEFAULT 30,
-            dmg_min INTEGER DEFAULT 4,
-            dmg_max INTEGER DEFAULT 7,
+            dmg_min INTEGER DEFAULT 5,
+            dmg_max INTEGER DEFAULT 9,
             dodge INTEGER DEFAULT 0,
-            player_dmg_min INTEGER DEFAULT 5,
-            player_dmg_max INTEGER DEFAULT 9,
             loss_ap INTEGER DEFAULT 0,
+            bleed_chance INTEGER DEFAULT 0,
+            bleed_dmg INTEGER DEFAULT 0,
             chance REAL DEFAULT 0,
             pity_target INTEGER DEFAULT 0,
             reward_nm INTEGER DEFAULT 0,
@@ -797,19 +797,18 @@ async def init_db():
             enabled INTEGER DEFAULT 1,
             admin_tuned INTEGER DEFAULT 0
         );
-
         CREATE TABLE IF NOT EXISTS fishing_enemies (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             key TEXT,
             spot TEXT DEFAULT 'reservoir',
             name TEXT NOT NULL,
             hp INTEGER DEFAULT 30,
-            dmg_min INTEGER DEFAULT 4,
-            dmg_max INTEGER DEFAULT 7,
+            dmg_min INTEGER DEFAULT 5,
+            dmg_max INTEGER DEFAULT 9,
             dodge INTEGER DEFAULT 0,
-            player_dmg_min INTEGER DEFAULT 5,
-            player_dmg_max INTEGER DEFAULT 9,
             loss_ap INTEGER DEFAULT 0,
+            bleed_chance INTEGER DEFAULT 0,
+            bleed_dmg INTEGER DEFAULT 0,
             chance REAL DEFAULT 0,
             pity_target INTEGER DEFAULT 0,
             reward_nm INTEGER DEFAULT 0,
@@ -1060,6 +1059,11 @@ async def init_db():
     await _ensure_column(conn, "forest_enemies", "crit_chance", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "forest_enemies", "crit_mult", "REAL DEFAULT 1.5")
     await _ensure_column(conn, "forest_enemies", "abilities", "TEXT DEFAULT '[]'")
+    # v0.23.3: кровотечение у внешних врагов (волк в лесу и т.п.).
+    await _ensure_column(conn, "forest_enemies", "bleed_chance", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "forest_enemies", "bleed_dmg", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "fishing_enemies", "bleed_chance", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "fishing_enemies", "bleed_dmg", "INTEGER DEFAULT 0")
     # admin_tuned=1 в обычных врагах dungeon не должен мешать: миграции по дропам
     # (ensure_dungeon_enemy_drops / seed_kvp) запускаются только по admin_tuned>0
     await _ensure_column(conn, "dungeon_enemies", "admin_tuned", "INTEGER DEFAULT 0")
@@ -1158,6 +1162,8 @@ async def init_db():
     await _ensure_column(conn, "users", "fish_sold_today", "INTEGER DEFAULT 0")
     # v0.18.15: счётчик попыток сбора грибов с момента последней встречи кабана.
     await _ensure_column(conn, "users", "forest_attempts_since_boar", "INTEGER DEFAULT 0")
+    # v0.23.3: отдельный счётчик для гарантии волка (не реже, чем раз в 24 поиска).
+    await _ensure_column(conn, "users", "forest_attempts_since_wolf", "INTEGER DEFAULT 0")
     # v0.18.16: выкуп грибов казной — суточный лимит НМ на игрока
     # (FOREST_SOLD_DAILY_LIMIT). Счётчик сбрасывается при смене суток МСК.
     await _ensure_column(conn, "users", "forest_sold_day", "TEXT DEFAULT NULL")
@@ -1365,6 +1371,12 @@ async def init_db():
     # v0.15.28: «только лут» — предмет существует как дроп врагов и не попадает
     # в витрину магазина (get_available_items/visible_items его скрывают).
     await _ensure_column(conn, "items", "loot_only", "INTEGER DEFAULT 0")
+    # v0.23.3: player_dmg_min/max — рудимент: урон пилота считается общей
+    # боевой моделью (utils/combat_model), из строки врага он не берётся.
+    # Убираем колонки у старых БД (у свежих их уже нет в CREATE TABLE).
+    for _enemy_table in ("forest_enemies", "fishing_enemies"):
+        await _drop_column(conn, _enemy_table, "player_dmg_min")
+        await _drop_column(conn, _enemy_table, "player_dmg_max")
     await conn.commit()
     await seed_locations(conn)
     # Снятые с игры предметы (T-Меч, T-Броня, учебные машины) — полное удаление.
@@ -1400,8 +1412,8 @@ async def seed_locations(conn):
          "all", None, ["пьян"], "city/hq"),
         ("contracts", "Доска контрактов", "Доска штаба сухопутных войск: контракты на зачистку подземелий. Вход по пилотскому удостоверению.",
          "all", None, ["пьян"], "city/contracts"),
-        ("duel_house", "Дом Дуэлей", "Арена чести для пилотов: поединки один на один «зона на зону». Вход с пилота первого класса.",
-         "min", "pilot1", ["пьян"], "city/duel_house"),
+        ("duel_house", "Дом Дуэлей", "Арена чести для пилотов: поединки один на один «зона на зону». Вход с пилота второго класса.",
+         "min", "pilot2", ["пьян"], "city/duel_house"),
         ("nii", "НИИ Северной Кибернетики и кремниевых систем", "НИИ Северной Кибернетики и кремниевых систем: здесь пилоты оставляют жалобы и запросы на доработку бота.",
          "all", None, ["пьян"], "city/nii"),
         ("forest", "Лес на окраине", "Тёмный еловый лес на окраине Аркхольма. Здесь водятся грибы и не только: говорят, по опушкам бродит злобный кабан.",
@@ -1418,6 +1430,17 @@ async def seed_locations(conn):
         "UPDATE locations SET description = ? WHERE key = 'kvp' AND description = ?",
         ("Курс выживания для пилотов. Набор испытаний для пилотов ВВС Нордхайма.",
          "Тренировочный полигон для пилотов. 8 комнат с препятствиями и босс — Старший сержант.")
+    )
+    # v0.23.3: Дом Дуэлей открыт с «Пилота 2 класса» — снижаем требование
+    # (раньше pilot1) и правим текст, но только если строка ещё со старыми
+    # значениями (ручные правки админа не затираем).
+    await conn.execute(
+        "UPDATE locations SET required_status = 'pilot2' "
+        "WHERE key = 'duel_house' AND required_status = 'pilot1'")
+    await conn.execute(
+        "UPDATE locations SET description = ? WHERE key = 'duel_house' AND description = ?",
+        ("Арена чести для пилотов: поединки один на один «зона на зону». Вход с пилота второго класса.",
+         "Арена чести для пилотов: поединки один на один «зона на зону». Вход с пилота первого класса.")
     )
     await conn.commit()
 
@@ -1496,6 +1519,25 @@ async def _ensure_column(conn, table: str, column: str, coltype: str) -> bool:
         await conn.commit()
         return True
     return False
+
+
+async def _drop_column(conn, table: str, column: str) -> bool:
+    """Удаляет колонку из таблицы, если она есть (нужен SQLite ≥ 3.35).
+
+    Возвращает True, если колонка была удалена. На старых SQLite (или если
+    колонка задействована в индексе/ограничении) молча оставляет как есть —
+    колонка-рудимент просто перестаёт использоваться кодом.
+    """
+    cursor = await conn.execute(f"PRAGMA table_info({table})")
+    cols = [row['name'] for row in await cursor.fetchall()]
+    if column not in cols:
+        return False
+    try:
+        await conn.execute(f"ALTER TABLE {table} DROP COLUMN {column}")
+        await conn.commit()
+        return True
+    except Exception:
+        return False
 
 
 async def add_user(user_id: int, username: str, first_name: str, last_name: str):
@@ -7734,6 +7776,15 @@ FOREST_ITEM_SEEDS = [
     ("Клык кабана",
      "Опасный изогнутый клык старого кабана. Редкая добыча — набитые мастера возьмут такой в работу.",
      100, 40, 4, "resource", 0, 1),
+    ("Мясо волка",
+     "Парное мясо серого волка. В сыром виде есть нельзя — прожарь на кухне.",
+     35, 8, 1, "resource", 0, 1),
+    ("Шкура волка",
+     "Плотная серая шкура волка. Ценится у мастеров-скорняков.",
+     90, 35, 3, "resource", 0, 1),
+    ("Клык волка",
+     "Острый клык старого волка. Редкая добыча — оружейники возьмут такой в работу.",
+     120, 50, 4, "resource", 0, 1),
     ("Жареный опёнок",
      "Поджаренные на углях опята: +12 HP в бою. Срок годности 4 суток.",
      18, 9, 1, "consumable", 12, 1),
@@ -7765,7 +7816,8 @@ FOREST_ITEM_SEEDS = [
 # вне рынка игроков (market_ok=0) и помечена loot_only, чтобы админ видел пометку
 # «Только лут с врагов» и случайно не вернул её в продажу. Продать в казну за
 # деньги по-прежнему можно, крафт и выдача с врагов работают как раньше.
-FOREST_ENEMY_DROPS = ("Мясо кабана", "Шкура кабана", "Клык кабана")
+FOREST_ENEMY_DROPS = ("Мясо кабана", "Шкура кабана", "Клык кабана",
+                      "Мясо волка", "Шкура волка", "Клык волка")
 
 # Цены продажи жареных грибов (v0.18.16, были вдвое выше): имя → (цена, продажа).
 # Синхронизируются при каждом старте, поэтому пересчёт задевает и прод-БД.
@@ -8313,12 +8365,12 @@ ENEMY_SOURCE_TABLES = {"forest": "forest_enemies", "fishing": "fishing_enemies"}
 
 # Поля врага, которые админ правит через бота.
 SOURCE_ENEMY_FIELDS = ("name", "hp", "dmg_min", "dmg_max", "dodge",
-                       "player_dmg_min", "player_dmg_max", "loss_ap", "chance",
+                       "loss_ap", "bleed_chance", "bleed_dmg", "chance",
                        "pity_target", "reward_nm", "description", "image",
                        "photo_key", "enabled", "spot")
 
 ENEMY_SEED_FIELDS = ("key", "spot", "name", "hp", "dmg_min", "dmg_max", "dodge",
-                     "player_dmg_min", "player_dmg_max", "loss_ap", "chance",
+                     "loss_ap", "bleed_chance", "bleed_dmg", "chance",
                      "pity_target", "reward_nm", "description", "photo_key")
 
 
@@ -8330,15 +8382,17 @@ def _enemy_source_table(source: str) -> str:
 
 
 async def ensure_forest_enemies():
-    """Идемпотентно засевает врагов леса (кабан) из FOREST_BOAR_SEED.
+    """Идемпотентно засевает врагов леса (кабан и волк) из FOREST_*_SEED.
 
     Правившие админом строки (admin_tuned=1) не перезаписываются. Отдельно
-    мигрируем legacy-шанс: раньше он жёстко равнялся 100/PITY (8.33%) — если
-    значение всё ещё равно этому дефолту, ставим новый базовый шанс
+    мигрируем legacy-шанс кабана: раньше он жёстко равнялся 100/PITY (8.33%) —
+    если значение всё ещё равно этому дефолту, ставим новый базовый шанс
     (config.FOREST_BOAR_CHANCE), не трогая ручные правки.
     """
     await ensure_forest_items()
-    created = await _ensure_source_enemies("forest", FOREST_BOAR_SEED)
+    created_boar = await _ensure_source_enemies("forest", FOREST_BOAR_SEED)
+    created_wolf = await _ensure_source_enemies("forest", FOREST_WOLF_SEED)
+    created = created_boar or created_wolf
     conn = await get_db()
     legacy_chance = round(100 / config.FOREST_BOAR_PITY_TARGET, 2)
     await conn.execute(
@@ -8601,6 +8655,31 @@ async def set_forest_boar_attempts(user_id: int, attempts: int):
 async def reset_forest_boar_counter(user_id: int):
     """Сброс счётчика после встречи кабана (начало боя)."""
     await set_forest_boar_attempts(user_id, 0)
+
+
+# ─── Лес: счётчик попыток с момента последней встречи волка (гарантия 1/24) ───
+
+async def get_forest_wolf_attempts(user_id: int) -> int:
+    """Число поисков грибов с последней встречи волка (для гарантии 1/24)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT forest_attempts_since_wolf FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    return int(row['forest_attempts_since_wolf']) if row and row['forest_attempts_since_wolf'] else 0
+
+
+async def set_forest_wolf_attempts(user_id: int, attempts: int):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET forest_attempts_since_wolf = ? WHERE user_id = ?",
+        (max(0, int(attempts)), user_id)
+    )
+    await conn.commit()
+
+
+async def reset_forest_wolf_counter(user_id: int):
+    """Сброс счётчика после встречи волка (начало боя)."""
+    await set_forest_wolf_attempts(user_id, 0)
 
 
 async def remove_ap_or_floor(user_id: int, amount: int) -> int:
@@ -9133,7 +9212,7 @@ async def ensure_kvp_items():
 async def ensure_duel_items():
     """Товары Дома Дуэлей: дуэльные перчатки (отдельный слот) и клубная карта.
 
-    Оба предмета продаются в обычном магазине с доступа с пилота первого класса.
+    Оба предмета продаются в обычном магазине с доступа с пилота второго класса.
     Перчатки — экипировка (слот 'duel', категория 'duel_gear', урон 7): работают
     только в дуэлях, в PvE не учитываются. Карта — членский билет клуба.
     Идемпотентно: если предмет уже есть, параметры админа не перетираются.
@@ -9162,6 +9241,24 @@ async def ensure_duel_items():
             rarity=2, category="duel_card", stock=-1, added_by=0, ap_cost=0,
             required_status=config.DUEL_ACCESS_TAG,
         )
+    # v0.23.3: цены предметов снижены и порог доступа опущен до pilot2. Уже
+    # созданные на проде строки правим только пока они на СТАРЫХ значениях —
+    # ручные правки админа (иная цена/статус) не затираются.
+    await conn.execute(
+        "UPDATE items SET price = ?, sell_price = ? "
+        "WHERE name = ? AND price = ? AND sell_price = ?",
+        (config.DUEL_GLOVES_PRICE, config.DUEL_GLOVES_SELL,
+         config.DUEL_GLOVES_NAME, 400, 200))
+    await conn.execute(
+        "UPDATE items SET price = ?, sell_price = ? "
+        "WHERE name = ? AND price = ? AND sell_price = ?",
+        (config.DUEL_CLUB_CARD_PRICE, config.DUEL_CLUB_CARD_SELL,
+         config.DUEL_CLUB_CARD_NAME, 300, 150))
+    await conn.execute(
+        "UPDATE items SET required_status = ? "
+        "WHERE required_status = 'pilot1' AND name IN (?, ?)",
+        (config.DUEL_ACCESS_TAG, config.DUEL_GLOVES_NAME, config.DUEL_CLUB_CARD_NAME))
+    await conn.commit()
 
 
 async def ensure_kvp_award():

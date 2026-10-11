@@ -13,14 +13,13 @@ load_dotenv()
 # При бампе: пишем в VERSION_NOTES только то, что изменилось в этом деплое, а
 # прошлые сдвигаем в PREV_VERSION / PREV_VERSION_NOTES. Больше двух записей не
 # держим — иначе приветствие превращается в простыню из трёх-четырёх деплоев.
-VERSION = "0.23.2"
-VERSION_NOTES = ("В водохранилище картинка моллюска (и другой добычи) из редактора "
-                 "врагов теперь реально показывается, а не подменяется фоном.")
+VERSION = "0.23.3"
+VERSION_NOTES = ("В лесу живёт Серый волк: редкая встреча с гарантией раз в 24 поиска "
+                 "грибов, наносит кровоточащие раны. Дом Дуэлей открыт с «Пилота 2 класса».")
 
-PREV_VERSION = "0.23.1"
-PREV_VERSION_NOTES = ("Дом Дуэлей: видна цена входа в ОД, перчатки и клубная карта в "
-                      "магазине, удары гарантированно наносят урон, кнопка «Покинуть "
-                      "дуэль»; кабан в лесу встречается реже.")
+PREV_VERSION = "0.23.2"
+PREV_VERSION_NOTES = ("В водохранилище картинка моллюска (и другой добычи) из редактора "
+                      "врагов теперь реально показывается, а не подменяется фоном.")
 
 # ── Буклет туриста ─────────────────────────────────────────────────────────────
 TOURIST_BOOKLET_NAME = "Буклет туриста"
@@ -190,14 +189,15 @@ DUEL_CHALLENGE_TIMEOUT_SEC = 120   # сколько живёт неотвече�
 DUEL_STALE_SEC = 1800              # зависшая дуэль авто-завершается как void
 DUEL_GLOVES_NAME = "Дуэльные перчатки"
 DUEL_GLOVES_DAMAGE = 7
-DUEL_GLOVES_PRICE = 400
-DUEL_GLOVES_SELL = 200
+DUEL_GLOVES_PRICE = 200
+DUEL_GLOVES_SELL = 100
 DUEL_CLUB_CARD_NAME = "Клубная карта «Дом Дуэлей»"
-DUEL_CLUB_CARD_PRICE = 300
-DUEL_CLUB_CARD_SELL = 150
+DUEL_CLUB_CARD_PRICE = 150
+DUEL_CLUB_CARD_SELL = 75
 DUEL_CLUB_CARD_DAYS = 30
 # Дуэли доступны с этого статуса (и всем, кто выше по иерархии).
-DUEL_ACCESS_TAG = "pilot1"
+# v0.23.3: порог снижен с «Пилота 1 класса» (pilot1) до «Пилота 2 класса» (pilot2).
+DUEL_ACCESS_TAG = "pilot2"
 
 RARITY_LEVELS = {
     1: "Обычный",
@@ -394,6 +394,29 @@ FOREST_BOAR_LOOT = [
     ("", 20),  # пусто
 ]
 
+# Серый волк — второй зверь леса (v0.23.3). Крепче кабана по HP и больнее бьёт,
+# уклонение то же. Шанс встречи вдвое ниже кабана, но есть своя гарантия:
+# счётчик отдельный от кабана, не реже, чем раз в FOREST_WOLF_PITY_TARGET.
+FOREST_WOLF_HP = 80
+FOREST_WOLF_DMG = (5, 8)
+FOREST_WOLF_DODGE = 20
+# Штраф за проигрыш волку: −15 ОД (до нуля, если не хватает).
+FOREST_WOLF_LOSS_AP = 15
+FOREST_WOLF_CHANCE = FOREST_BOAR_CHANCE / 2
+# Гарантия: если волк не встретился столько поисков подряд — 24-й даёт его
+# принудительно. Счётчик волка независим от кабаньего.
+FOREST_WOLF_PITY_TARGET = 24
+# Кровотечение: шанс наложить при удачном ударе (%) и урон в HP за ход.
+FOREST_WOLF_BLEED_CHANCE = 5
+FOREST_WOLF_BLEED_DMG = 3
+# Добыча за победу (сумма = 100).
+FOREST_WOLF_LOOT = [
+    ("Мясо волка", 35),
+    ("Шкура волка", 17),
+    ("Клык волка", 8),
+    ("", 40),  # пусто
+]
+
 # --- Враги вне подземелья (лес, рыбалка): стартовые значения для БД ---
 # После первой записи параметры правит админ в разделе «⚔️ Враги»;
 # константы нужны только для сида (ensure_forest_enemies / ensure_fishing_enemies).
@@ -407,11 +430,11 @@ FOREST_BOAR_SEED = {
     "dmg_min": FOREST_BOAR_DMG[0],
     "dmg_max": FOREST_BOAR_DMG[1],
     "dodge": FOREST_BOAR_DODGE,
-    "player_dmg_min": 9,
-    "player_dmg_max": 15,
     "loss_ap": FOREST_BOAR_LOSS_AP,
     "chance": FOREST_BOAR_CHANCE,
     "pity_target": FOREST_BOAR_PITY_TARGET,
+    "bleed_chance": 0,
+    "bleed_dmg": 0,
     "reward_nm": 0,
     "photo_key": "city/forest_boar",
     "description": (
@@ -420,6 +443,33 @@ FOREST_BOAR_SEED = {
     ),
     # Дропы: (имя предмета, шанс %). Остальное — «пусто».
     "loot": [("Мясо кабана", 50), ("Шкура кабана", 20), ("Клык кабана", 10)],
+}
+
+# Серый волк — параметры из FOREST_WOLF_* выше, перенесённые в строку сида.
+# Своя гарантия (pity_target=24): встречается вдвое реже кабана по шансу, но не
+# реже, чем раз в 24 поиска. При ударе может вызвать кровотечение.
+FOREST_WOLF_SEED = {
+    "key": "wolf",
+    "spot": "forest",
+    "name": "Серый волк",
+    "hp": FOREST_WOLF_HP,
+    "dmg_min": FOREST_WOLF_DMG[0],
+    "dmg_max": FOREST_WOLF_DMG[1],
+    "dodge": FOREST_WOLF_DODGE,
+    "loss_ap": FOREST_WOLF_LOSS_AP,
+    "chance": FOREST_WOLF_CHANCE,
+    "pity_target": FOREST_WOLF_PITY_TARGET,
+    "bleed_chance": FOREST_WOLF_BLEED_CHANCE,
+    "bleed_dmg": FOREST_WOLF_BLEED_DMG,
+    "reward_nm": 0,
+    "photo_key": "city/forest_wolf",
+    "description": (
+        "Серый волк из глухой чащи: HP 80, урон 5–8, уклонение 20%. "
+        "Может вызвать кровотечение. Победа — мясо, шкура и клык волка, "
+        "поражение — минус 15 ОД."
+    ),
+    # Дропы: (имя предмета, шанс %). Остальное — «пусто».
+    "loot": [("Мясо волка", 35), ("Шкура волка", 17), ("Клык волка", 8)],
 }
 
 # Мутировавший моллюск — редкий боевой улов в подземном водохранилище.
@@ -431,11 +481,11 @@ MOLLUSK_SEED = {
     "dmg_min": 5,
     "dmg_max": 9,
     "dodge": 20,
-    "player_dmg_min": 8,
-    "player_dmg_max": 14,
     "loss_ap": 12,
     "chance": 4,
     "pity_target": 0,
+    "bleed_chance": 0,
+    "bleed_dmg": 0,
     "reward_nm": 0,
     "photo_key": "city/mollusk",
     "description": (
