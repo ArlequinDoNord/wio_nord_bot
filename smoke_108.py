@@ -7,6 +7,8 @@
   * шанс встречи и гарантия (enemy_encounter_hit);
   * независимый ролл дропов — жемчужина 2% реально выпадает (roll_enemy_drops);
   * предметы добычи моллюска + рецепт «Жареное мясо моллюска»;
+  * _resv_answer меняет картинку (edit_media), а не только подпись — картинка
+    моллюска из редактора врагов реально показывается поверх фона водохранилища;
   * опушка — отдельная картинка (фото локации леса её не подменяет).
 
 Запуск: .venv\\Scripts\\python.exe smoke_108.py
@@ -285,6 +287,40 @@ async def run():
         loot_line = await _mollusk_loot(86010, mollusk)
     check("моллюск: победный лут не падает (мена в инвентарь)",
           isinstance(loot_line, str) and "Мясо моллюска" in loot_line)
+
+    # ── 12. _resv_answer: смена картинки подменяет медиа, а не только подпись ──
+    from bot.handlers.dungeon import _resv_answer
+
+    class _Photo:
+        def __init__(self, fid):
+            self.file_id = fid
+
+    class _Msg:
+        def __init__(self, is_photo, fid="reservoir_fid"):
+            self.photo = [_Photo(fid)] if is_photo else None
+            self.calls = []
+        async def edit_caption(self, caption=None, reply_markup=None):
+            self.calls.append("caption"); return self
+        async def edit_media(self, media=None, reply_markup=None):
+            self.calls.append(("media", getattr(media, "media", None))); return self
+        async def delete(self):
+            self.calls.append("delete"); return True
+        async def answer_photo(self, photo=None, caption=None, reply_markup=None):
+            self.calls.append(("send", photo)); return self
+        async def edit_text(self, text, reply_markup=None):
+            self.calls.append("text"); return self
+
+    m = _Msg(True, "reservoir_fid")
+    await _resv_answer(m, "бой", photo_id="mollusk_image_fid")
+    check("_resv_answer: новая картинка подменяет медиа (не только подпись)",
+          ("media", "mollusk_image_fid") in m.calls)
+    m2 = _Msg(True, "mollusk_image_fid")
+    await _resv_answer(m2, "ход 2", photo_id="mollusk_image_fid")
+    check("_resv_answer: та же картинка — хватает edit_caption", m2.calls == ["caption"])
+    m3 = _Msg(False)
+    await _resv_answer(m3, "поклёвка", photo_id="fish_fid")
+    check("_resv_answer: из текста в фото — delete + отправка",
+          m3.calls == ["delete", ("send", "fish_fid")])
 
     await close_db()
     print(f"\nSmoke 108: {passed} passed, {failed} failed")

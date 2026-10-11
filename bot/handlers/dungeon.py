@@ -4,7 +4,7 @@ import json
 import time
 import asyncio
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery, FSInputFile
+from aiogram.types import Message, CallbackQuery, FSInputFile, InputMediaPhoto
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 
@@ -963,21 +963,41 @@ async def post_captain_menu(where, run, state: FSMContext):
     await where.answer(text, reply_markup=post_captain_keyboard(step))
 
 
+def _message_photo_id(where):
+    """file_id последнего фото сообщения (или None)."""
+    photos = getattr(where, 'photo', None)
+    return photos[-1].file_id if photos else None
+
+
 async def _resv_answer(where, text, markup=None, photo=None, photo_id=None):
     """Отправка/редактирование в водохранилище: фото (файл или file_id), иначе текст."""
     if photo or photo_id:
         media = photo_id or FSInputFile(photo)
         if getattr(where, 'photo', None):
+            # Сообщение уже с фото: edit_caption меняет ТОЛЬКО подпись и не
+            # трогает картинку. Поэтому, если нужен другой снимок (моллюск,
+            # рыба, мусор), подменяем медиа через edit_media — иначе старый фон
+            # водохранилища залипал, и картинка из редактора врагов не появлялась.
+            if photo_id and _message_photo_id(where) == photo_id:
+                try:
+                    await where.edit_caption(caption=text, reply_markup=markup)
+                    return
+                except Exception:
+                    pass
+            else:
+                try:
+                    await where.edit_media(
+                        media=InputMediaPhoto(media=media, caption=text),
+                        reply_markup=markup)
+                    return
+                except Exception:
+                    pass
+        else:
             try:
-                await where.edit_caption(caption=text, reply_markup=markup)
-                return
+                await where.delete()
             except Exception:
                 pass
-        try:
-            await where.delete()
-        except Exception:
-            pass
-        # Из text-сообщения в фото: обычный edit невозможен — отправляем новое.
+        # Из text-сообщения в фото (или media-edit не прошёл): отправляем новое.
         try:
             await where.answer_photo(photo=media, caption=text, reply_markup=markup)
         except Exception:
