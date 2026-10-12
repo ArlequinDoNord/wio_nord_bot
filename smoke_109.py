@@ -1,376 +1,376 @@
-"""Smoke 109 — отчётные сутки отчёта, loot-only добыча врагов, силы пилота в регионе,
-суточный кап выкупа грибов.
-
-Проверяет:
-   1. report_day_label_for: подпись суток КОНКРЕТНОГО отчёта (отчёт до 10:00 МСК
-      относится к прошлым суткам, а не к текущим).
-   2. created_at_msk: время сдачи в МСК, не сырой UTC.
-   3. report_payout_context(cycle_day=...) считает лимит и подписывает сутки отчёта.
-   4. correct_report_numbers и approve_report считают по суткам самого отчёта.
-   5. Лут кабана и моллюска: is_available=0, market_ok=0, loot_only=1.
-   6. wing_members_report_farms отдаёт region_troops — «всего» пилота в регионе.
-   7. Листание очереди отчётов (позиция, «Назад»/«Следующий», заворот, продолжение).
-   8. Кап выкупа грибов казной: 250 НМ/сутки, сброс по суткам МСК, грибы vs не грибы.
-"""
-import asyncio
-import os
-import sys
-from datetime import datetime, timedelta, timezone
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-PASS, FAIL = 0, 0
-
-
-def check(name, cond):
-    global PASS, FAIL
-    if cond:
-        PASS += 1
-        print(f"  OK  {name}")
-    else:
-        FAIL += 1
-        print(f"FAIL  {name}")
-
-
-MSK = timezone(timedelta(hours=3))
-
-
-async def main():
-    global DB_PATH
-    import config
-    from config import (
-        REPORT_DAY_START_HOUR, REPORT_DAY_START_MINUTE,
-        MOLLUSK_ENEMY_DROPS,
-    )
-    from database.db import FOREST_ENEMY_DROPS
-    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_test_smoke109.db")
-    for suffix in ("", "-wal", "-shm"):
-        try:
-            os.remove(DB_PATH + suffix)
-        except OSError:
-            pass
-    config.DB_PATH = DB_PATH
-
-    import database.db as db
-    db.DB_PATH = DB_PATH
-    from database.db import (
-        init_db, close_db, add_user, add_report, approve_report, correct_report_numbers,
-        get_db, report_day_label_for, report_day_label, report_day_value_of,
-        created_at_msk, today_report_day, report_payout_context,
-        ensure_forest_items, ensure_mollusk_items, ensure_forest_enemies,
-        ensure_fishing_enemies, wing_members_report_farms,
-    )
-
-    await init_db()
-
-    # ── 1. Подписи суток ──────────────────────────────────────────────────
-    print("\n= Подписи отчётных суток =")
-    check("REPORT_DAY_START = 10:00", (REPORT_DAY_START_HOUR, REPORT_DAY_START_MINUTE) == (10, 0))
-    lbl = report_day_label_for("2026-09-29")
-    check(f"сутки 29.09 = {lbl}", lbl == "29.09 10:00 — 30.09 10:00")
-    lbl_next = report_day_label_for("2026-09-30")
-    check(f"сутки 30.09 = {lbl_next}", lbl_next == "30.09 10:00 — 01.10 10:00")
-    check("отчёт за 29.09 и за 30.09 — разные сутки", lbl != lbl_next)
-    check("report_day_label(-1) — предыдущие сутки",
-          report_day_label(-1) == report_day_label_for(today_report_day())
-          or report_day_label(-1) != report_day_label(0))
-
-    # Граница: отчёт, сданный в 08:40 МСК 30.09, относится к суткам 29.09.
-    created_0840 = "2026-09-30 05:40:00"   # 08:40 МСК = 05:40 UTC
-    day_0840 = report_day_value_of(created_0840)
-    check(f"08:40 МСК 30.09 → сутки {day_0840}", day_0840 == "2026-09-29")
-    check("подпись этих суток — 29.09, а не 30.09",
-          report_day_label_for(day_0840) == "29.09 10:00 — 30.09 10:00")
-
-    # Граница: ровно в 10:00 МСК отчёт уже за новые сутки.
-    day_1000 = report_day_value_of("2026-09-30 07:00:00")   # 10:00 МСК
-    check(f"10:00 МСК 30.09 → сутки {day_1000}", day_1000 == "2026-09-30")
-
-    # ── 2. Время сдачи в МСК ──────────────────────────────────────────────
-    print("\n= Время сдачи =")
-    check("05:40 UTC → 30.09 08:40 МСК", created_at_msk(created_0840) == "30.09 08:40")
-    check("07:00 UTC → 30.09 10:00 МСК", created_at_msk("2026-09-30 07:00:00") == "30.09 10:00")
-    check("пустое время не падает", created_at_msk(None) == "—" and created_at_msk("") == "—")
-
-    # ── 3. Отчёт из прошлых суток: лимит и подпись ────────────────────────
-    print("\n= Отчёт из прошлых суток =")
-    UA = 500001
-    await add_user(UA, "alpha", "Alpha", "Пилот")
-
-    prev_day = today_report_day()
-    # Создаём отчёт «из прошлых суток»: сутки минус один от текущих.
-    old_day = (datetime.strptime(prev_day, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
-    # Сдача внутри суток old_day: 11:40 МСК = 08:40 UTC того же дня (окно 10:00→10:00).
-    old_created = datetime.strptime(old_day, "%Y-%m-%d").replace(
-        hour=8, minute=40).strftime("%Y-%m-%d %H:%M:%S")
-    check(f"подставленное created_at → сутки {report_day_value_of(old_created)}",
-          report_day_value_of(old_created) == old_day)
-
-    conn = await get_db()
-    rid_old, _ = await add_report(UA, "shot", 500, 5000, "7")
-    await conn.execute("UPDATE reports SET created_at = ? WHERE id = ?",
-                       (old_created, rid_old))
-    await conn.commit()
-
-    # Сегодняшний отчёт того же пилота съедает лимит ТЕКУЩИХ суток.
-    rid_today, credited_today = await add_report(UA, "shot", 900, 5900, "7")
-    check("сегодняшний отчёт оплачен по лимиту текущих суток", credited_today == 900)
-
-    ctx_old = await report_payout_context(UA, 800, 6000, exclude_id=rid_old,
-                                          cycle_day=old_day)
-    check(f"подпись суток отчёта: {ctx_old['day_label']}",
-          ctx_old['day_label'] == report_day_label_for(old_day))
-    check("лимит считается по суткам отчёта, а не сегодняшним (assigned_today=0)",
-          ctx_old["assigned_today"] == 0)
-    ctx_now = await report_payout_context(UA, 800, 6000, exclude_id=rid_old)
-    check("без cycle_day подпись — текущие сутки", ctx_now["day_label"] == report_day_label())
-
-    # ── 4. correct_report_numbers: сутки и лимит по отчёту ────────────────
-    print("\n= Правка цифр =")
-    fix = await correct_report_numbers(rid_old, 700, 6100)
-    check("правка не сломалась", not fix.get("error"))
-    check(f"подпись суток при правке: {fix['day_label']}",
-          fix["day_label"] == report_day_label_for(old_day))
-    check("лимит при правке — по суткам отчёта", fix["assigned_today"] == 0)
-
-    # ── 5. Лут врагов — только с врагов ──────────────────────────────────
-    print("\n= Лут только с врагов =")
-    await ensure_forest_items()
-    await ensure_mollusk_items()
-    await ensure_forest_enemies()
-    await ensure_fishing_enemies()
-    conn = await get_db()
-    for name in FOREST_ENEMY_DROPS + MOLLUSK_ENEMY_DROPS:
-        row = await (await conn.execute(
-            "SELECT is_available, market_ok, IFNULL(loot_only, 0) AS lo "
-            "FROM items WHERE name = ?", (name,))).fetchone()
-        ok = row is not None and row['is_available'] == 0 and row['market_ok'] == 0 and row['lo'] == 1
-        check(f"{name}: вне магазина, вне рынка, loot_only", ok)
-
-    from database.db import get_available_items
-    shop_names = {i['name'] for i in await get_available_items()}
-    check("ни один лут врага не в магазине",
-          not (set(FOREST_ENEMY_DROPS) | set(MOLLUSK_ENEMY_DROPS)) & shop_names)
-
-    # Крафт/готовые блюда остаются торгуемыми.
-    for name in ("Жареное мясо кабана", "Жареное мясо моллюска"):
-        row = await (await conn.execute(
-            "SELECT market_ok FROM items WHERE name = ?", (name,))).fetchone()
-        check(f"{name} (крафт) остаётся на рынке", row is not None and row['market_ok'] == 1)
-
-    # Идемпотентность: повторный seed не возвращает дроп в продажу.
-    await conn.execute("UPDATE items SET market_ok = 1, is_available = 1 WHERE name = ?",
-                       (FOREST_ENEMY_DROPS[0],))
-    await conn.commit()
-    await ensure_forest_items()
-    row = await (await conn.execute(
-        "SELECT is_available, market_ok, IFNULL(loot_only, 0) AS lo FROM items WHERE name = ?",
-        (FOREST_ENEMY_DROPS[0],))).fetchone()
-    check("повторный seed чинит лут обратно в loot-only",
-          row['is_available'] == 0 and row['market_ok'] == 0 and row['lo'] == 1)
-
-    # ── 6. Шанс находки гриба ───────────────────────────────────────────
-    print("\n= Шанс находки гриба =")
-    from bot.handlers.forest import pick_forest_mushroom, FOREST_EMPTY_CHANCE
-    from database.db import FOREST_DEFAULTS
-    check("пусто 10% → находка 90%", FOREST_EMPTY_CHANCE == 10)
-    pool = [{"name": n, "chance": c} for n, c, _k in FOREST_DEFAULTS]
-    check("пул из конфига не пуст", len(pool) >= 5)
-    found = sum(1 for i in range(1000)
-                if pick_forest_mushroom(pool, i / 10.0) is not None)
-    check(f"находка ровно 90% (из 1000 бросков: {found})", found == 900)
-    # Веса нормируются: завышенные веса не обрезают хвост пула.
-    fat = [{"name": "A", "chance": 500}, {"name": "B", "chance": 500},
-           {"name": "Хвост", "chance": 1}]
-    last = pick_forest_mushroom(fat, 99.999)
-    check("хвост пула не обрезан даже при завышенных весах",
-          last is not None and last["name"] == "Хвост")
-    check("пусто отрезано до начала пула",
-          pick_forest_mushroom(fat, 0.0) is None and pick_forest_mushroom(fat, 9.99) is None)
-    check("первый гриб начинается ровно после «пусто»",
-          (pick_forest_mushroom(fat, 10.0) or {}).get("name") == "A")
-    check("пустой пул не падает", pick_forest_mushroom([], 50.0) is None)
-    check("веса нуля = пусто", pick_forest_mushroom([{"name": "A", "chance": 0}], 50.0) is None)
-
-    # ── 7. Силы пилота в регионе для командира ───────────────────────────
-    print("\n= Состав формирования =")
-    await conn.execute("UPDATE users SET wing = 'red' WHERE user_id = ?", (UA,))
-    await conn.commit()
-    await approve_report(rid_old, 1)
-    await approve_report(rid_today, 1)
-    members = await wing_members_report_farms("red")
-    me = next((m for m in members if m['user_id'] == UA), None)
-    check("пилот найден в крыле", me is not None)
-    check(f"регион пилота: {me['region'] if me else None}", me and me['region'] == "7")
-    # «Всего» последнего принятого отчёта: у пилота их два (6100 за прошлые сутки
-    # и 5900 за текущие), в силы региона идёт более свежий — 5900.
-    check(f"region_troops = {me['region_troops'] if me else None}",
-          me and me["region_troops"] == 5900)
-    check("сумма за прошлые сутки по крылу не пустая", me and me['prev_farm'] >= 0)
-
-    # ── 8. Листание очереди отчётов («Следующий ▶️») ───────────────────────
-    print("\n= Листание очереди отчётов =")
-    from bot.handlers.admin import show_pending_reports, _queue_index_of
-
-    class _FakeChat:
-        id = 1
-
-    class _FakeMessage:
-        chat = _FakeChat()
-        sent = []
-
-        async def answer(self, text, reply_markup=None, **kw):
-            self.sent.append({"kind": "text", "text": text, "kb": reply_markup})
-
-        async def answer_photo(self, photo=None, caption=None, reply_markup=None, **kw):
-            self.sent.append({"kind": "photo", "photo": photo,
-                              "text": caption, "kb": reply_markup})
-
-    q_ids = []
-    for i in range(3):
-        uid = UA + 10 + i
-        await add_user(uid, f"pilot{i}", f"Пилот{i}", "Пилот")
-        r_id, _ = await add_report(uid, "shot", 100 + i, 1000 + i, "7")
-        q_ids.append(r_id)
-    queue = [r["id"] for r in await db.get_pending_reports()]
-    check(f"в очереди {len(queue)} отчёта", len(queue) == 3)
-
-    async def card(start):
-        msg = _FakeMessage()
-        await show_pending_reports(msg, start=start)
-        return msg.sent[-1]
-
-    def buttons_of(card_data):
-        kb = card_data["kb"]
-        return [b.callback_data for row in kb.inline_keyboard for b in row]
-
-    def shown_id(card_data):
-        for cb in buttons_of(card_data):
-            if cb.startswith("rep_ok:"):
-                return int(cb.split(":")[1])
-        # у тестового юзера может не быть прав can_approve_reports — тогда id
-        # берём из заголовка карточки («📋 ОТЧЁТ #N»).
-        import re as _re
-        m = _re.search(r"ОТЧЁТ #(\d+)", card_data["text"] or "")
-        return int(m.group(1)) if m else None
-
-    c0, c1, c2 = await card(0), await card(1), await card(2)
-    check("стартовая карточка — первый отчёт очереди", shown_id(c0) == queue[0])
-    check("«Следующий» ведёт на второй отчёт, а не на тот же",
-          shown_id(c1) == queue[1] and shown_id(c1) != shown_id(c0))
-    check("второй «Следующий» — третий отчёт", shown_id(c2) == queue[2])
-    check(f"счётчик позиции в карточке: 1..3 ({c0['text'].splitlines()[0][:60]})",
-          "1 из 3" in c0["text"] and "2 из 3" in c1["text"] and "3 из 3" in c2["text"])
-    check("в кнопках назад/вперёд — соседние позиции",
-          "rep:nav:1" in buttons_of(c0) and "rep:nav:2" in buttons_of(c0))
-    check("со второй карточки «Назад» возвращает на первую",
-          "rep:nav:0" in buttons_of(c1))
-    check("с последней карточки «Следующий» заворачивает на первую",
-          "rep:nav:0" in buttons_of(c2) and "rep:nav:1" in buttons_of(c2))
-    check("кнопки решения смотрят на показанный отчёт",
-          shown_id(c2) == queue[2]
-          and (f"rep_no:{queue[2]}" in buttons_of(c2)
-               or not any(cb.startswith("rep_no:") for cb in buttons_of(c2))))
-    c_wrap = await card(7)
-    check("позиция больше длины очереди заворачивается по модулю",
-          shown_id(c_wrap) == queue[1])
-    check("_queue_index_of находит позицию отчёта",
-          await _queue_index_of(queue[2]) == 2 and await _queue_index_of(999999) == 0)
-
-    # Когда отчёт принят, на его позицию встаёт следующий — ревьюер идёт дальше.
-    pos_before = await _queue_index_of(queue[0])
-    await approve_report(queue[0], 1)
-    after = await card(pos_before)
-    check("после «Принять» показан следующий отчёт, а не начало очереди",
-          shown_id(after) == queue[1])
-
-    # ── 9. v0.18.16: суточный кап выкупа грибов ───────────────────────────
-    print("\n= Кап продажи грибов (250 НМ/сутки) =")
-    from config import FOREST_SOLD_DAILY_LIMIT
-    from database.db import (
-        add_forest_sale_amount, forest_sale_daily_left, forest_sold_today,
-        is_forest_mushroom, is_forest_mushroom_name,
-        get_item_by_name, add_inventory_item, remove_inventory_item,
-        get_inventory_item, get_user,
-    )
-    check("FOREST_SOLD_DAILY_LIMIT = 250", FOREST_SOLD_DAILY_LIMIT == 250)
-    UB = 500002
-    await add_user(UB, "beta", "Beta", "Пилот")
-    check("у нового пилота лимит полный", await forest_sale_daily_left(UB) == 250)
-    check("счётчик пуст", await forest_sold_today(UB) == 0)
-
-    await add_forest_sale_amount(UB, 200)
-    check("после продажи на 200 НМ осталось 50", await forest_sale_daily_left(UB) == 50)
-    await add_forest_sale_amount(UB, 100)
-    check("перебор выше лимита обнуляет остаток (не минус)",
-          await forest_sale_daily_left(UB) == 0)
-    check("перебор не уходит в минус", await forest_sold_today(UB) == 300)
-
-    # Смена суток МСК обнуляет счётчик.
-    await conn.execute("UPDATE users SET forest_sold_day = '2000-01-01' WHERE user_id = ?", (UB,))
-    await conn.commit()
-    check("после смены суток лимит снова полный", await forest_sale_daily_left(UB) == 250)
-    check("счётчик сбросился", await forest_sold_today(UB) == 0)
-
-    # Кап распространяется и на сырые грибы, и на жареные, но не на прочее.
-    check("сырой гриб — гриб", is_forest_mushroom_name("Опёнок"))
-    check("ядовитый гриб тоже под капом", is_forest_mushroom_name("Мухомор"))
-    check("жареный гриб под капом", is_forest_mushroom_name("Жареный ежовик гребенчатый"))
-    check("мясо кабана — не гриб", not is_forest_mushroom_name("Мясо кабана"))
-    check("пустое имя — не гриб", not is_forest_mushroom_name(""))
-    opt = await get_item_by_name("Опёнок")
-    fried_opt = await get_item_by_name("Жареный опёнок")
-    meat = await get_item_by_name("Мясо кабана")
-    check("is_forest_mushroom по БД: Опёнок — да", await is_forest_mushroom(opt))
-    check("is_forest_mushroom по БД: жареный — да", await is_forest_mushroom(fried_opt))
-    check("is_forest_mushroom по БД: мясо — нет", not await is_forest_mushroom(meat))
-    check("is_forest_mushroom(None) не падает", not await is_forest_mushroom(None))
-
-    # Сколько грибов влезает в остаток лимита.
-    check("в полный лимит 250 НМ влезает 27 жареных опёнков",
-          250 // fried_opt['sell_price'] == 27)
-    check("в полный лимит 250 НМ влезает 83 сырых Опёнка",
-          250 // opt['sell_price'] == 83)
-
-    # Продажа 100 жареных опёнков (900 НМ) должна урезаться до 27 шт. (243 НМ).
-    await add_forest_sale_amount(UB, 243)
-    check("остаток лимита 7 НМ", await forest_sale_daily_left(UB) == 7)
-    check("7 НМ не хватает даже на 1 жареный опёнок (9 НМ)", 7 // fried_opt['sell_price'] == 0)
-    await add_inventory_item(UB, fried_opt['id'], 1)
-    check("инвентарь: 1 жареный опёнок на месте",
-          (await get_inventory_item(UB, fried_opt['id']))['quantity'] == 1)
-
-    # Лим��т не трогает обычные товары: мясо кабана продаётся без ограничений.
-    await add_inventory_item(UB, meat['id'], 2)
-    check("мясо кабана не под грибным капом", not await is_forest_mushroom(meat))
-
-    await close_db()
-    for suffix in ("", "-wal", "-shm"):
-        try:
-            os.remove(DB_PATH + suffix)
-        except OSError:
-            pass
-
-    print(f"\n=== SMOKE 109: {PASS} passed, {FAIL} failed ===")
-    return 1 if FAIL else 0
-
-
-if __name__ == "__main__":
-    async def _run():
-        try:
-            return await main()
-        finally:
-            # Без закрытия соединения процесс с aiosqlite виснет на выходе.
-            try:
-                from database.db import close_db
-                await close_db()
-            except Exception:
-                pass
-            try:
-                import config
-                for suffix in ("", "-wal", "-shm"):
-                    os.remove(config.DB_PATH + suffix)
-            except OSError:
-                pass
-
-    sys.exit(asyncio.run(_run()))
+"""Smoke 109 — отчётные сутки отчёта, loot-only добыча врагов, силы пилота в регионе,
+суточный кап выкупа грибов.
+
+Проверяет:
+   1. report_day_label_for: подпись суток КОНКРЕТНОГО отчёта (отчёт до 10:00 МСК
+      относится к прошлым суткам, а не к текущим).
+   2. created_at_msk: время сдачи в МСК, не сырой UTC.
+   3. report_payout_context(cycle_day=...) считает лимит и подписывает сутки отчёта.
+   4. correct_report_numbers и approve_report считают по суткам самого отчёта.
+   5. Лут кабана и моллюска: is_available=0, market_ok=0, loot_only=1.
+   6. wing_members_report_farms отдаёт region_troops — «всего» пилота в регионе.
+   7. Листание очереди отчётов (позиция, «Назад»/«Следующий», заворот, продолжение).
+   8. Кап выкупа грибов казной: 250 НМ/сутки, сброс по суткам МСК, грибы vs не грибы.
+"""
+import asyncio
+import os
+import sys
+from datetime import datetime, timedelta, timezone
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+PASS, FAIL = 0, 0
+
+
+def check(name, cond):
+    global PASS, FAIL
+    if cond:
+        PASS += 1
+        print(f"  OK  {name}")
+    else:
+        FAIL += 1
+        print(f"FAIL  {name}")
+
+
+MSK = timezone(timedelta(hours=3))
+
+
+async def main():
+    global DB_PATH
+    import config
+    from config import (
+        REPORT_DAY_START_HOUR, REPORT_DAY_START_MINUTE,
+        MOLLUSK_ENEMY_DROPS,
+    )
+    from database.db import FOREST_ENEMY_DROPS
+    DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_test_smoke109.db")
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            os.remove(DB_PATH + suffix)
+        except OSError:
+            pass
+    config.DB_PATH = DB_PATH
+
+    import database.db as db
+    db.DB_PATH = DB_PATH
+    from database.db import (
+        init_db, close_db, add_user, add_report, approve_report, correct_report_numbers,
+        get_db, report_day_label_for, report_day_label, report_day_value_of,
+        created_at_msk, today_report_day, report_payout_context,
+        ensure_forest_items, ensure_mollusk_items, ensure_forest_enemies,
+        ensure_fishing_enemies, wing_members_report_farms,
+    )
+
+    await init_db()
+
+    # ── 1. Подписи суток ──────────────────────────────────────────────────
+    print("\n= Подписи отчётных суток =")
+    check("REPORT_DAY_START = 10:00", (REPORT_DAY_START_HOUR, REPORT_DAY_START_MINUTE) == (10, 0))
+    lbl = report_day_label_for("2026-09-29")
+    check(f"сутки 29.09 = {lbl}", lbl == "29.09 10:00 — 30.09 10:00")
+    lbl_next = report_day_label_for("2026-09-30")
+    check(f"сутки 30.09 = {lbl_next}", lbl_next == "30.09 10:00 — 01.10 10:00")
+    check("отчёт за 29.09 и за 30.09 — разные сутки", lbl != lbl_next)
+    check("report_day_label(-1) — предыдущие сутки",
+          report_day_label(-1) == report_day_label_for(today_report_day())
+          or report_day_label(-1) != report_day_label(0))
+
+    # Граница: отчёт, сданный в 08:40 МСК 30.09, относится к суткам 29.09.
+    created_0840 = "2026-09-30 05:40:00"   # 08:40 МСК = 05:40 UTC
+    day_0840 = report_day_value_of(created_0840)
+    check(f"08:40 МСК 30.09 → сутки {day_0840}", day_0840 == "2026-09-29")
+    check("подпись этих суток — 29.09, а не 30.09",
+          report_day_label_for(day_0840) == "29.09 10:00 — 30.09 10:00")
+
+    # Граница: ровно в 10:00 МСК отчёт уже за новые сутки.
+    day_1000 = report_day_value_of("2026-09-30 07:00:00")   # 10:00 МСК
+    check(f"10:00 МСК 30.09 → сутки {day_1000}", day_1000 == "2026-09-30")
+
+    # ── 2. Время сдачи в МСК ──────────────────────────────────────────────
+    print("\n= Время сдачи =")
+    check("05:40 UTC → 30.09 08:40 МСК", created_at_msk(created_0840) == "30.09 08:40")
+    check("07:00 UTC → 30.09 10:00 МСК", created_at_msk("2026-09-30 07:00:00") == "30.09 10:00")
+    check("пустое время не падает", created_at_msk(None) == "—" and created_at_msk("") == "—")
+
+    # ── 3. Отчёт из прошлых суток: лимит и подпись ────────────────────────
+    print("\n= Отчёт из прошлых суток =")
+    UA = 500001
+    await add_user(UA, "alpha", "Alpha", "Пилот")
+
+    prev_day = today_report_day()
+    # Создаём отчёт «из прошлых суток»: сутки минус один от текущих.
+    old_day = (datetime.strptime(prev_day, "%Y-%m-%d") - timedelta(days=1)).strftime("%Y-%m-%d")
+    # Сдача внутри суток old_day: 11:40 МСК = 08:40 UTC того же дня (окно 10:00→10:00).
+    old_created = datetime.strptime(old_day, "%Y-%m-%d").replace(
+        hour=8, minute=40).strftime("%Y-%m-%d %H:%M:%S")
+    check(f"подставленное created_at → сутки {report_day_value_of(old_created)}",
+          report_day_value_of(old_created) == old_day)
+
+    conn = await get_db()
+    rid_old, _ = await add_report(UA, "shot", 500, 5000, "7")
+    await conn.execute("UPDATE reports SET created_at = ? WHERE id = ?",
+                       (old_created, rid_old))
+    await conn.commit()
+
+    # Сегодняшний отчёт того же пилота съедает лимит ТЕКУЩИХ суток.
+    rid_today, credited_today = await add_report(UA, "shot", 900, 5900, "7")
+    check("сегодняшний отчёт оплачен по лимиту текущих суток", credited_today == 900)
+
+    ctx_old = await report_payout_context(UA, 800, 6000, exclude_id=rid_old,
+                                          cycle_day=old_day)
+    check(f"подпись суток отчёта: {ctx_old['day_label']}",
+          ctx_old['day_label'] == report_day_label_for(old_day))
+    check("лимит считается по суткам отчёта, а не сегодняшним (assigned_today=0)",
+          ctx_old["assigned_today"] == 0)
+    ctx_now = await report_payout_context(UA, 800, 6000, exclude_id=rid_old)
+    check("без cycle_day подпись — текущие сутки", ctx_now["day_label"] == report_day_label())
+
+    # ── 4. correct_report_numbers: сутки и лимит по отчёту ────────────────
+    print("\n= Правка цифр =")
+    fix = await correct_report_numbers(rid_old, 700, 6100)
+    check("правка не сломалась", not fix.get("error"))
+    check(f"подпись суток при правке: {fix['day_label']}",
+          fix["day_label"] == report_day_label_for(old_day))
+    check("лимит при правке — по суткам отчёта", fix["assigned_today"] == 0)
+
+    # ── 5. Лут врагов — только с врагов ──────────────────────────────────
+    print("\n= Лут только с врагов =")
+    await ensure_forest_items()
+    await ensure_mollusk_items()
+    await ensure_forest_enemies()
+    await ensure_fishing_enemies()
+    conn = await get_db()
+    for name in FOREST_ENEMY_DROPS + MOLLUSK_ENEMY_DROPS:
+        row = await (await conn.execute(
+            "SELECT is_available, market_ok, IFNULL(loot_only, 0) AS lo "
+            "FROM items WHERE name = ?", (name,))).fetchone()
+        ok = row is not None and row['is_available'] == 0 and row['market_ok'] == 0 and row['lo'] == 1
+        check(f"{name}: вне магазина, вне рынка, loot_only", ok)
+
+    from database.db import get_available_items
+    shop_names = {i['name'] for i in await get_available_items()}
+    check("ни один лут врага не в магазине",
+          not (set(FOREST_ENEMY_DROPS) | set(MOLLUSK_ENEMY_DROPS)) & shop_names)
+
+    # Крафт/готовые блюда остаются торгуемыми.
+    for name in ("Жареное мясо кабана", "Жареное мясо моллюска"):
+        row = await (await conn.execute(
+            "SELECT market_ok FROM items WHERE name = ?", (name,))).fetchone()
+        check(f"{name} (крафт) остаётся на рынке", row is not None and row['market_ok'] == 1)
+
+    # Идемпотентность: повторный seed не возвращает дроп в продажу.
+    await conn.execute("UPDATE items SET market_ok = 1, is_available = 1 WHERE name = ?",
+                       (FOREST_ENEMY_DROPS[0],))
+    await conn.commit()
+    await ensure_forest_items()
+    row = await (await conn.execute(
+        "SELECT is_available, market_ok, IFNULL(loot_only, 0) AS lo FROM items WHERE name = ?",
+        (FOREST_ENEMY_DROPS[0],))).fetchone()
+    check("повторный seed чинит лут обратно в loot-only",
+          row['is_available'] == 0 and row['market_ok'] == 0 and row['lo'] == 1)
+
+    # ── 6. Шанс находки гриба ───────────────────────────────────────────
+    print("\n= Шанс находки гриба =")
+    from bot.handlers.forest import pick_forest_mushroom, FOREST_EMPTY_CHANCE
+    from database.db import FOREST_DEFAULTS
+    check("пусто 10% → находка 90%", FOREST_EMPTY_CHANCE == 10)
+    pool = [{"name": n, "chance": c} for n, c, _k in FOREST_DEFAULTS]
+    check("пул из конфига не пуст", len(pool) >= 5)
+    found = sum(1 for i in range(1000)
+                if pick_forest_mushroom(pool, i / 10.0) is not None)
+    check(f"находка ровно 90% (из 1000 бросков: {found})", found == 900)
+    # Веса нормируются: завышенные веса не обрезают хвост пула.
+    fat = [{"name": "A", "chance": 500}, {"name": "B", "chance": 500},
+           {"name": "Хвост", "chance": 1}]
+    last = pick_forest_mushroom(fat, 99.999)
+    check("хвост пула не обрезан даже при завышенных весах",
+          last is not None and last["name"] == "Хвост")
+    check("пусто отрезано до начала пула",
+          pick_forest_mushroom(fat, 0.0) is None and pick_forest_mushroom(fat, 9.99) is None)
+    check("первый гриб начинается ровно после «пусто»",
+          (pick_forest_mushroom(fat, 10.0) or {}).get("name") == "A")
+    check("пустой пул не падает", pick_forest_mushroom([], 50.0) is None)
+    check("веса нуля = пусто", pick_forest_mushroom([{"name": "A", "chance": 0}], 50.0) is None)
+
+    # ── 7. Силы пилота в регионе для командира ───────────────────────────
+    print("\n= Состав формирования =")
+    await conn.execute("UPDATE users SET wing = 'red' WHERE user_id = ?", (UA,))
+    await conn.commit()
+    await approve_report(rid_old, 1)
+    await approve_report(rid_today, 1)
+    members = await wing_members_report_farms("red")
+    me = next((m for m in members if m['user_id'] == UA), None)
+    check("пилот найден в крыле", me is not None)
+    check(f"регион пилота: {me['region'] if me else None}", me and me['region'] == "7")
+    # «Всего» последнего принятого отчёта: у пилота их два (6100 за прошлые сутки
+    # и 5900 за текущие), в силы региона идёт более свежий — 5900.
+    check(f"region_troops = {me['region_troops'] if me else None}",
+          me and me["region_troops"] == 5900)
+    check("сумма за прошлые сутки по крылу не пустая", me and me['prev_farm'] >= 0)
+
+    # ── 8. Листание очереди отчётов («Следующий ▶️») ───────────────────────
+    print("\n= Листание очереди отчётов =")
+    from bot.handlers.admin import show_pending_reports, _queue_index_of
+
+    class _FakeChat:
+        id = 1
+
+    class _FakeMessage:
+        chat = _FakeChat()
+        sent = []
+
+        async def answer(self, text, reply_markup=None, **kw):
+            self.sent.append({"kind": "text", "text": text, "kb": reply_markup})
+
+        async def answer_photo(self, photo=None, caption=None, reply_markup=None, **kw):
+            self.sent.append({"kind": "photo", "photo": photo,
+                              "text": caption, "kb": reply_markup})
+
+    q_ids = []
+    for i in range(3):
+        uid = UA + 10 + i
+        await add_user(uid, f"pilot{i}", f"Пилот{i}", "Пилот")
+        r_id, _ = await add_report(uid, "shot", 100 + i, 1000 + i, "7")
+        q_ids.append(r_id)
+    queue = [r["id"] for r in await db.get_pending_reports()]
+    check(f"в очереди {len(queue)} отчёта", len(queue) == 3)
+
+    async def card(start):
+        msg = _FakeMessage()
+        await show_pending_reports(msg, start=start)
+        return msg.sent[-1]
+
+    def buttons_of(card_data):
+        kb = card_data["kb"]
+        return [b.callback_data for row in kb.inline_keyboard for b in row]
+
+    def shown_id(card_data):
+        for cb in buttons_of(card_data):
+            if cb.startswith("rep_ok:"):
+                return int(cb.split(":")[1])
+        # у тестового юзера может не быть прав can_approve_reports — тогда id
+        # берём из заголовка карточки («📋 ОТЧЁТ #N»).
+        import re as _re
+        m = _re.search(r"ОТЧЁТ #(\d+)", card_data["text"] or "")
+        return int(m.group(1)) if m else None
+
+    c0, c1, c2 = await card(0), await card(1), await card(2)
+    check("стартовая карточка — первый отчёт очереди", shown_id(c0) == queue[0])
+    check("«Следующий» ведёт на второй отчёт, а не на тот же",
+          shown_id(c1) == queue[1] and shown_id(c1) != shown_id(c0))
+    check("второй «Следующий» — третий отчёт", shown_id(c2) == queue[2])
+    check(f"счётчик позиции в карточке: 1..3 ({c0['text'].splitlines()[0][:60]})",
+          "1 из 3" in c0["text"] and "2 из 3" in c1["text"] and "3 из 3" in c2["text"])
+    check("в кнопках назад/вперёд — соседние позиции",
+          "rep:nav:1" in buttons_of(c0) and "rep:nav:2" in buttons_of(c0))
+    check("со второй карточки «Назад» возвращает на первую",
+          "rep:nav:0" in buttons_of(c1))
+    check("с последней карточки «Следующий» заворачивает на первую",
+          "rep:nav:0" in buttons_of(c2) and "rep:nav:1" in buttons_of(c2))
+    check("кнопки решения смотрят на показанный отчёт",
+          shown_id(c2) == queue[2]
+          and (f"rep_no:{queue[2]}" in buttons_of(c2)
+               or not any(cb.startswith("rep_no:") for cb in buttons_of(c2))))
+    c_wrap = await card(7)
+    check("позиция больше длины очереди заворачивается по модулю",
+          shown_id(c_wrap) == queue[1])
+    check("_queue_index_of находит позицию отчёта",
+          await _queue_index_of(queue[2]) == 2 and await _queue_index_of(999999) == 0)
+
+    # Когда отчёт принят, на его позицию встаёт следующий — ревьюер идёт дальше.
+    pos_before = await _queue_index_of(queue[0])
+    await approve_report(queue[0], 1)
+    after = await card(pos_before)
+    check("после «Принять» показан следующий отчёт, а не начало очереди",
+          shown_id(after) == queue[1])
+
+    # ── 9. v0.18.16: суточный кап выкупа грибов ───────────────────────────
+    print("\n= Кап продажи грибов (250 НМ/сутки) =")
+    from config import FOREST_SOLD_DAILY_LIMIT
+    from database.db import (
+        add_forest_sale_amount, forest_sale_daily_left, forest_sold_today,
+        is_forest_mushroom, is_forest_mushroom_name,
+        get_item_by_name, add_inventory_item, remove_inventory_item,
+        get_inventory_item, get_user,
+    )
+    check("FOREST_SOLD_DAILY_LIMIT = 250", FOREST_SOLD_DAILY_LIMIT == 250)
+    UB = 500002
+    await add_user(UB, "beta", "Beta", "Пилот")
+    check("у нового пилота лимит полный", await forest_sale_daily_left(UB) == 250)
+    check("счётчик пуст", await forest_sold_today(UB) == 0)
+
+    await add_forest_sale_amount(UB, 200)
+    check("после продажи на 200 НМ осталось 50", await forest_sale_daily_left(UB) == 50)
+    await add_forest_sale_amount(UB, 100)
+    check("перебор выше лимита обнуляет остаток (не минус)",
+          await forest_sale_daily_left(UB) == 0)
+    check("перебор не уходит в минус", await forest_sold_today(UB) == 300)
+
+    # Смена суток МСК обнуляет счётчик.
+    await conn.execute("UPDATE users SET forest_sold_day = '2000-01-01' WHERE user_id = ?", (UB,))
+    await conn.commit()
+    check("после смены суток лимит снова полный", await forest_sale_daily_left(UB) == 250)
+    check("счётчик сбросился", await forest_sold_today(UB) == 0)
+
+    # Кап распространяется и на сырые грибы, и на жареные, но не на прочее.
+    check("сырой гриб — гриб", is_forest_mushroom_name("Опёнок"))
+    check("ядовитый гриб тоже под капом", is_forest_mushroom_name("Мухомор"))
+    check("жареный гриб под капом", is_forest_mushroom_name("Жареный ежовик гребенчатый"))
+    check("мясо кабана — не гриб", not is_forest_mushroom_name("Мясо кабана"))
+    check("пустое имя — не гриб", not is_forest_mushroom_name(""))
+    opt = await get_item_by_name("Опёнок")
+    fried_opt = await get_item_by_name("Жареный опёнок")
+    meat = await get_item_by_name("Мясо кабана")
+    check("is_forest_mushroom по БД: Опёнок — да", await is_forest_mushroom(opt))
+    check("is_forest_mushroom по БД: жареный — да", await is_forest_mushroom(fried_opt))
+    check("is_forest_mushroom по БД: мясо — нет", not await is_forest_mushroom(meat))
+    check("is_forest_mushroom(None) не падает", not await is_forest_mushroom(None))
+
+    # Сколько грибов влезает в остаток лимита.
+    check("в полный лимит 250 НМ влезает 27 жареных опёнков",
+          250 // fried_opt['sell_price'] == 27)
+    check("в полный лимит 250 НМ влезает 83 сырых Опёнка",
+          250 // opt['sell_price'] == 83)
+
+    # Продажа 100 жареных опёнков (900 НМ) должна урезаться до 27 шт. (243 НМ).
+    await add_forest_sale_amount(UB, 243)
+    check("остаток лимита 7 НМ", await forest_sale_daily_left(UB) == 7)
+    check("7 НМ не хватает даже на 1 жареный опёнок (9 НМ)", 7 // fried_opt['sell_price'] == 0)
+    await add_inventory_item(UB, fried_opt['id'], 1)
+    check("инвентарь: 1 жареный опёнок на месте",
+          (await get_inventory_item(UB, fried_opt['id']))['quantity'] == 1)
+
+    # Лимт не трогает обычные товары: мясо кабана продаётся без ограничений.
+    await add_inventory_item(UB, meat['id'], 2)
+    check("мясо кабана не под грибным капом", not await is_forest_mushroom(meat))
+
+    await close_db()
+    for suffix in ("", "-wal", "-shm"):
+        try:
+            os.remove(DB_PATH + suffix)
+        except OSError:
+            pass
+
+    print(f"\n=== SMOKE 109: {PASS} passed, {FAIL} failed ===")
+    return 1 if FAIL else 0
+
+
+if __name__ == "__main__":
+    async def _run():
+        try:
+            return await main()
+        finally:
+            # Без закрытия соединения процесс с aiosqlite виснет на выходе.
+            try:
+                from database.db import close_db
+                await close_db()
+            except Exception:
+                pass
+            try:
+                import config
+                for suffix in ("", "-wal", "-shm"):
+                    os.remove(config.DB_PATH + suffix)
+            except OSError:
+                pass
+
+    sys.exit(asyncio.run(_run()))
