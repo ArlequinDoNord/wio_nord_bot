@@ -897,7 +897,9 @@ def storage_markup(items, page: int = 0, cat_key: str = "all"):
 
     rows = []
     for it in chunk:
-        if not it['is_hidden']:
+        if it.get('loot_only'):
+            marker = f"🎯 {it['name']} — только лут"
+        elif it.get('is_available'):
             status = "🟢" if it['stock'] != 0 else "🟡"
             marker = f"{status} {it['name']} (ост. {it['stock']})"
         else:
