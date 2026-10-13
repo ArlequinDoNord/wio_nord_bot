@@ -140,6 +140,9 @@ class CbVisitor(ast.NodeVisitor):
         if isinstance(f, ast.Attribute) and f.attr == "startswith" and node.args \
                 and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
             self.prefix_filters[node.args[0].value].append(self._here(node.lineno))
+        if isinstance(f, ast.Attribute) and f.attr == "regexp" and node.args \
+                and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+            self.prefix_filters[node.args[0].value.lstrip("^")].append(self._here(node.lineno))
         self.generic_visit(node)
 
     def visit_Compare(self, node):
