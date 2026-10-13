@@ -338,18 +338,28 @@ async def housing_kitchen_recipes(cb: CallbackQuery):
 
 
 async def _kitchen_recipes(cb, uid, idx, slot, ht, lvl):
-    recipes = await get_learned_recipes(uid, "kitchen", lvl)
+    learned = await get_learned_recipes(uid, "kitchen")
+    available = [r for r in learned if (r["required_level"] or 1) <= lvl]
+    locked = [r for r in learned if (r["required_level"] or 1) > lvl]
     title = _slot_name(slot)
     lines = [f"🍳 *{title}* (слот {idx+1})\n"]
-    if not recipes:
+    if not learned:
         lines.append("Нет выученных рецептов.\nКупи «📜 Рецепты» в Магазине 🏪.")
     else:
-        lines.append("Доступные рецепты:")
-        for r in recipes:
-            lines.append(f"  • {r['name']}")
+        if available:
+            lines.append("Доступные рецепты:")
+            for r in available:
+                lines.append(f"  • {r['name']}")
+        else:
+            lines.append("Рецептов для этого уровня кухни нет.")
+        if locked:
+            lines.append("")
+            lines.append(f"🔒 Выучено, но нужна кухня выше (твоя — {lvl} ур.):")
+            for r in locked:
+                lines.append(f"  • {r['name']} — кухня {r['required_level']} ур.")
 
     rows = []
-    for r in recipes:
+    for r in available:
         rows.append([_inv_row(f"📋 {r['name']}", f"housing:recipe:{idx}:{r['id']}")])
     rows.append([_inv_row("🔙 К кухне", f"housing:room:{idx}")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
@@ -357,17 +367,27 @@ async def _kitchen_recipes(cb, uid, idx, slot, ht, lvl):
 
 
 async def _room_workbench(cb, uid, idx, slot, ht, lvl):
-    recipes = await get_learned_recipes(uid, "workbench", lvl)
+    learned = await get_learned_recipes(uid, "workbench")
+    available = [r for r in learned if (r["required_level"] or 1) <= lvl]
+    locked = [r for r in learned if (r["required_level"] or 1) > lvl]
     lines = [f"🔧 *Верстак* (слот {idx+1})\n"]
-    if not recipes:
+    if not learned:
         lines.append("Нет выученных рецептов.\nКупи «📜 Рецепты» в Магазине 🏪.")
     else:
-        lines.append("Доступные рецепты:")
-        for r in recipes:
-            lines.append(f"  • {r['name']}")
+        if available:
+            lines.append("Доступные рецепты:")
+            for r in available:
+                lines.append(f"  • {r['name']}")
+        else:
+            lines.append("Рецептов для этого уровня верстака нет.")
+        if locked:
+            lines.append("")
+            lines.append(f"🔒 Выучено, но нужен верстак выше (твой — {lvl} ур.):")
+            for r in locked:
+                lines.append(f"  • {r['name']} — верстак {r['required_level']} ур.")
 
     rows = []
-    for r in recipes:
+    for r in available:
         rows.append([_inv_row(f"📋 {r['name']}", f"housing:recipe:{idx}:{r['id']}")])
     rows.append([_inv_row("🛠️ Убрать из слота", f"housing:uninstall:{idx}")])
     rows.append([_inv_row("🔙 К жилью", "housing:menu")])
@@ -800,24 +820,26 @@ async def housing_uninstall(cb: CallbackQuery):
         await cb.answer("⚙️ Это встроено в жильё — убрать нельзя.", show_alert=True)
         return
 
-    # Кадка с растением: спрашиваем подтверждение — растение удалится безвозвратно,
-    # кадка вернётся к обычному состоянию, а повторная установка будет платной.
-    if slot["expansion_type"] == "plant_pot":
+    et = slot["expansion_type"]
+    ht = (await get_player_housing(uid))["housing_type"]
+    installed = await get_housing_expansions_installed(uid)
+    cost = replanning_cost(ht) if installed > 0 else 0
+    if cost:
+        cost_line = (f"\n💸 Повторная установка расширения будет платной "
+                     f"(перепланировка: {cost} НМ).")
+    else:
+        cost_line = "\n💸 Первая установка в это жильё снова будет бесплатной."
+
+    # Кадка с растением: отдельное предупреждение — растение удалится безвозвратно.
+    if et == "plant_pot":
         try:
             data = json.loads(slot.get("plant_data") or "{}")
         except Exception:
             data = {}
         if data.get("seed"):
-            ht = (await get_player_housing(uid))["housing_type"]
             info = plant_stage_info(data, time.time())
             stage_name = PLANT_STAGES[info["stage"]][0]
             plant_name = data.get("plant_name") or PLANT_NAMES.get(data["seed"], data["seed"])
-            installed = await get_housing_expansions_installed(uid)
-            cost = replanning_cost(ht) if installed > 0 else 0
-            cost_line = (f"\n💸 Повторная установка расширения будет платной "
-                         f"(перепланировка: {cost} НМ).") if cost else \
-                        ("\n💸 Первая установка в это жильё по-прежнему будет "
-                         "бесплатной.")
             kb = InlineKeyboardMarkup(inline_keyboard=[
                 [_inv_row("✅ Убрать, растение удалить", f"housing:uninstall_confirm:{idx}")],
                 [_inv_row("❌ Оставить", f"housing:room:{idx}")],
@@ -833,17 +855,20 @@ async def housing_uninstall(cb: CallbackQuery):
             )
             return
 
-    et = slot["expansion_type"]
-    lvl = slot.get("expansion_level", 1)
-    fname = FURNITURE_BY_EXPANSION.get((et, lvl))
-    await set_housing_slot(uid, idx, None)
-    if fname:
-        fi = await get_item_by_name(fname)
-        if fi:
-            await add_inventory_item(uid, fi["id"], 1)
-
-    await cb.answer(f"✅ «{fname}» возвращено в инвентарь.", show_alert=True)
-    await housing_menu(cb)
+    # Любое другое расширение: подтверждение перед снятием, чтобы случайное
+    # нажатие не снимало мебель и не тянуло за собой платную перепланировку.
+    title = _slot_name(slot)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [_inv_row("✅ Убрать из слота", f"housing:uninstall_confirm:{idx}")],
+        [_inv_row("❌ Оставить", f"housing:room:{idx}")],
+    ])
+    await _paint(
+        cb,
+        f"🛠️ *Убрать «{title}» из слота {idx+1}?*\n\n"
+        f"Расширение вернётся в инвентарь.{cost_line}",
+        _housing_photo(ht),
+        kb
+    )
 
 
 @router.callback_query(F.data.startswith("housing:uninstall_confirm:"))

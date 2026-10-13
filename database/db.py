@@ -12484,7 +12484,9 @@ async def ensure_recipe_shop_items():
         item_name = RECIPE_ITEM_PREFIX + r['name']
         item = await get_item_by_name(item_name)
         price = RECIPE_ITEM_PRICES.get(r['name'], 100)
+        exp_label = {"kitchen": "кухня", "workbench": "верстак"}.get(r['exp'], r['exp'])
         desc = (f"📜 Обучает рецепту: {r['name']}.\n"
+                f"Крафтится на: {exp_label} уровня {r['lvl']}.\n"
                 f"{r['desc']}\n"
                 f"Используй из инвентаря, чтобы выучить рецепт и крафтить в жилье.")
         if item:
