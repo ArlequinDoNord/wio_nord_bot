@@ -1039,6 +1039,9 @@ async def init_db():
     await _ensure_column(conn, "users", "duel_rating", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "duel_wins", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "duel_losses", "INTEGER DEFAULT 0")
+    # Время последней активности (epoch, сек). Обновляется middleware при каждом
+    # апдейте игрока и используется для показа статуса онлайна в Доме Дуэлей.
+    await _ensure_column(conn, "users", "last_active", "REAL DEFAULT 0")
     await _ensure_column(conn, "items", "damage", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "heal", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "dungeon_enemies", "drops", "TEXT DEFAULT '[]'")
@@ -10158,7 +10161,8 @@ async def get_duel_opponents(exclude_id: int, limit: int = 20):
         return []
     cursor = await conn.execute("""
         SELECT u.user_id, u.username, u.callsign, u.first_name, u.last_name,
-               u.duel_rating, u.duel_wins, u.duel_losses, MAX(s.sort_order) AS top
+               u.duel_rating, u.duel_wins, u.duel_losses, u.last_active,
+               MAX(s.sort_order) AS top
         FROM users u
         JOIN user_statuses us ON us.user_id = u.user_id
         JOIN statuses s ON us.status_id = s.id
@@ -10169,6 +10173,15 @@ async def get_duel_opponents(exclude_id: int, limit: int = 20):
         LIMIT ?
     """, (exclude_id, req['sort_order'], limit))
     return await cursor.fetchall()
+
+
+async def touch_user_active(user_id: int, ts: float = None):
+    """Отметить время последней активности игрока (epoch, сек)."""
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET last_active = ? WHERE user_id = ?",
+        (time.time() if ts is None else ts, user_id))
+    await conn.commit()
 
 
 # Слоты снаряжения в users.equipment.

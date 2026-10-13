@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 
 from aiogram import Bot, Dispatcher, BaseMiddleware
@@ -28,7 +29,7 @@ from database.db import (
     ensure_forest_enemies, ensure_fishing_enemies, ensure_mollusk_items,
     ensure_recipe_shop_items, ensure_user_recipes_backfill,
     log_activity, prune_activity_log, prune_location_visits, recompute_region_stats,
-    maybe_archive_wall_weekly, maintain_polls,
+    maybe_archive_wall_weekly, maintain_polls, touch_user_active,
 )
 from utils.notify import notify_treasury_shortage
 from utils.chat_guard import ChatGuard
@@ -107,6 +108,33 @@ class MainMenuFSMReset(BaseMiddleware):
                             await state.clear()
                     except Exception:
                         pass
+        return await handler(event, data)
+
+
+# Маркер middleware трекера активности: не чаще раза в минуту на игрока.
+_activity_seen: dict = {}
+
+
+class ActivityTracker(BaseMiddleware):
+    """Отмечает время последней активности игрока (users.last_active).
+
+    Нужно для статуса онлайна в Доме Дуэлей. Пишем в БД не чаще раза в минуту
+    на игрока (in-memory throttle), чтобы не обращаться к базе на каждый апдейт.
+    """
+
+    THROTTLE = 60.0
+
+    async def __call__(self, handler, event, data):
+        user = getattr(event, "from_user", None)
+        uid = user.id if user else None
+        if uid:
+            now = time.monotonic()
+            if now - _activity_seen.get(uid, 0.0) >= self.THROTTLE:
+                _activity_seen[uid] = now
+                try:
+                    await touch_user_active(uid)
+                except Exception:
+                    pass
         return await handler(event, data)
 
 
@@ -530,8 +558,10 @@ async def main():
         r.message.middleware(ChatGuard())
         r.message.middleware(FishingActiveLock())
         r.message.middleware(MainMenuFSMReset())
+        r.message.middleware(ActivityTracker())
         r.callback_query.middleware(ChatGuard())
         r.callback_query.middleware(FishingActiveLock())
+        r.callback_query.middleware(ActivityTracker())
 
     logger.info("Хендлеры зарегистрированы")
 

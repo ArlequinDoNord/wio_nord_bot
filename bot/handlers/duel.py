@@ -12,6 +12,7 @@
 """
 
 import asyncio
+import time
 
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -43,6 +44,30 @@ _RESOLVE_LOCK = asyncio.Lock()
 
 
 # ───────── вспомогательные ─────────
+
+# Пороги статуса онлайна в списке противников:
+#   🟢 — активность была меньше ONLINE секунд назад;
+#   🟡 — «был(а) недавно» (в пределах RECENT);
+#   ⚪ — давно (или нет данных).
+ONLINE_SECONDS = 5 * 60
+RECENT_SECONDS = 60 * 60
+
+
+def _online_icon(last_active) -> str:
+    """Иконка статуса онлайна по времени последней активности (epoch, сек)."""
+    try:
+        la = float(last_active or 0)
+    except (TypeError, ValueError):
+        la = 0.0
+    if la <= 0:
+        return "⚪"
+    delta = time.time() - la
+    if delta < ONLINE_SECONDS:
+        return "🟢"
+    if delta < RECENT_SECONDS:
+        return "🟡"
+    return "⚪"
+
 
 def _grid_kb(callback_prefix: str) -> InlineKeyboardMarkup:
     """Клавиатура выбора зоны 2×2 (компактно)."""
@@ -251,7 +276,7 @@ async def duel_list(callback: CallbackQuery):
     await _ack(callback)
     opponents = await get_duel_opponents(uid)
     rows = [[InlineKeyboardButton(
-        text=f"{_pilot_name(o)} · 🏅{o['duel_rating'] or 0}",
+        text=f"{_online_icon(o['last_active'])} {_pilot_name(o)} · 🏅{o['duel_rating'] or 0}",
         callback_data=f"duel:invite:{o['user_id']}")] for o in opponents]
     if not rows:
         rows.append([InlineKeyboardButton(text="— пока некого вызвать —",
