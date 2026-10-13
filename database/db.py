@@ -9280,6 +9280,43 @@ async def ensure_duel_items():
     await conn.commit()
 
 
+async def cleanup_mojibake_duel_items() -> int:
+    """Удаляет дубли товаров арены, появившиеся до v0.23.6 из-за битой кодировки
+    config (UTF-8, прочитанный как cp1251 и сохранённый обратно как UTF-8).
+
+    Такие строки невалидны и задваивают товары в магазине арены. Возвращает
+    число убранных строк. Если у предмета есть владельцы — прячет его (is_available=0),
+    иначе удаляет.
+    """
+    conn = await get_db()
+    junk_names = []
+    for name in (config.DUEL_GLOVES_NAME, config.DUEL_CLUB_CARD_NAME):
+        try:
+            junk_names.append(name.encode("utf-8").decode("cp1251"))
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            pass
+    if not junk_names:
+        return 0
+    placeholders = ",".join("?" * len(junk_names))
+    cursor = await conn.execute(
+        f"SELECT id FROM items WHERE name IN ({placeholders})", tuple(junk_names))
+    ids = [r['id'] for r in await cursor.fetchall()]
+    if not ids:
+        return 0
+    removed = 0
+    for item_id in ids:
+        cursor = await conn.execute(
+            "SELECT 1 FROM inventory WHERE item_id = ? LIMIT 1", (item_id,))
+        if await cursor.fetchone():
+            await conn.execute(
+                "UPDATE items SET is_available = 0 WHERE id = ?", (item_id,))
+        else:
+            await conn.execute("DELETE FROM items WHERE id = ?", (item_id,))
+        removed += 1
+    await conn.commit()
+    return removed
+
+
 async def ensure_kvp_award():
     KVP_BADGE_DESCRIPTION = (
         "Выживание, уклонение, сопротивление и побег. Постоянный бонус: "
@@ -10028,6 +10065,38 @@ async def get_active_duel(user_id: int):
             await _expire_duel(row['id'])
             return None
     return row
+
+
+async def expire_stale_duels() -> int:
+    """Принудительно гасит все зависшие дуэли: неотвеченный вызов дольше
+    DUEL_CHALLENGE_TIMEOUT_SEC и незавершённый бой дольше DUEL_STALE_SEC.
+
+    Нужно, чтобы брошенные поединки не висели в БД вечно, если ни один из
+    участников не зайдёт в арену (ленивая чистка в get_active_duel тогда не
+    сработает). Возвращает число погашенных строк.
+    """
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id, status, updated_at, created_at FROM duel_runs "
+        "WHERE status IN ('invited', 'active')")
+    rows = await cursor.fetchall()
+    now = time.time()
+    expired = 0
+    for row in rows:
+        ts = (_parse_sqlite_ts(row.get('updated_at'))
+              or _parse_sqlite_ts(row.get('created_at')))
+        if ts is None:
+            continue
+        limit = (config.DUEL_CHALLENGE_TIMEOUT_SEC
+                 if row['status'] == 'invited' else config.DUEL_STALE_SEC)
+        if now - ts > limit:
+            await conn.execute(
+                "UPDATE duel_runs SET status = 'expired', updated_at = CURRENT_TIMESTAMP "
+                "WHERE id = ?", (row['id'],))
+            expired += 1
+    if expired:
+        await conn.commit()
+    return expired
 
 
 async def create_duel_challenge(challenger_id: int, opponent_id: int):

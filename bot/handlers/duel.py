@@ -20,7 +20,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 from config import (
     DUEL_ZONES, DUEL_ZONE_LABELS, DUEL_ZONE_EMOJI, DUEL_AP_COST,
     DUEL_RATING_WIN, DUEL_RATING_LOSS, DUEL_RATING_DRAW, DUEL_GUARD_REDUCTION,
-    DUEL_MIN_DAMAGE, DUEL_RATING_FORFEIT,
+    DUEL_MIN_DAMAGE, DUEL_RATING_FORFEIT, DUEL_RATING_FORFEIT_WIN,
     DUEL_CLUB_CARD_NAME, DUEL_CLUB_CARD_PRICE, DUEL_ACCESS_TAG,
 )
 from database.db import (
@@ -234,6 +234,8 @@ async def duel_help(callback: CallbackQuery):
         f"• Старт боя стоит {DUEL_AP_COST} ОД каждому.\n"
         f"• Рейтинг: победа +{DUEL_RATING_WIN}, поражение {DUEL_RATING_LOSS}, "
         f"ничья {DUEL_RATING_DRAW}.\n"
+        f"• Покинул бой — {DUEL_RATING_FORFEIT} и поражение, сопернику "
+        f"+{DUEL_RATING_FORFEIT_WIN} и победа.\n"
         "• Дуэльные перчатки работают только на арене."
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -445,8 +447,8 @@ async def duel_accept(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("duel:leave:"))
 async def duel_leave(callback: CallbackQuery):
-    """Добровольный выход из боя: покинувший теряет 1 рейтинга, соперник —
-    ничего (кроме уже списанных ОД за старт)."""
+    """Добровольный выход из боя: покинувший теряет 1 рейтинга и получает
+    поражение, соперник — победу и +1 (меньше чистой победы в бою)."""
     await _ack(callback)
     duel_id = int(callback.data.split(":")[2])
     uid = callback.from_user.id
@@ -459,8 +461,13 @@ async def duel_leave(callback: CallbackQuery):
         return
     opp = _other(duel, uid)
     DUEL_PICK.pop(uid, None)
-    await finish_duel(duel['id'], opp, DUEL_RATING_DRAW)
+    await finish_duel(duel['id'], opp, DUEL_RATING_FORFEIT_WIN)
     await apply_duel_result(uid, DUEL_RATING_FORFEIT, 'loss')
+    await apply_duel_result(opp, DUEL_RATING_FORFEIT_WIN, 'win')
+    try:
+        await bump_achievement(opp, 'duels')
+    except Exception:
+        pass
     try:
         await log_activity(uid, "duel",
                            f"Покинул дуэль #{duel['id']} (раунд {duel['turn']})")
@@ -470,8 +477,8 @@ async def duel_leave(callback: CallbackQuery):
                 f"🚪 Ты покинул дуэль. Рейтинг: {DUEL_RATING_FORFEIT}.",
                 back_kb)
     await _push(callback, opp,
-                "🚪 Соперник покинул дуэль.\n"
-                "Ты не теряешь рейтинг — поединок завершён.",
+                "🏆 Соперник покинул дуэль — победа за тобой!\n"
+                f"Рейтинг: +{DUEL_RATING_FORFEIT_WIN}.",
                 back_kb)
 
 

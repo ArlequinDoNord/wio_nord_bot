@@ -10,6 +10,8 @@
    выбор зон → резолв раунда → завершение → рейтинг/счётчики → дуэль неактивна.
 6. Доступ по статусу: pilot2 открывает арену, без статуса — нет.
 7. Локация «duel_house» создана; чистая функция _hp_bar.
+8. Симметричный выход: покинувший −1/поражение, соперник +1/победа.
+9. Уборка: гашение зависших дуэлей и удаление битых дублей товаров арены.
 
 Запуск: .venv\\Scripts\\python.exe smoke_137.py
 """
@@ -163,7 +165,10 @@ async def run():
     check("_hp_bar пустой", _hp_bar(0, 100).count('░') == 12)
 
     print("\n8. Гарантированный урон и цена входа")
-    from config import DUEL_AP_COST, DUEL_MIN_DAMAGE, DUEL_RATING_FORFEIT
+    from config import (
+        DUEL_AP_COST, DUEL_MIN_DAMAGE, DUEL_RATING_FORFEIT,
+        DUEL_RATING_FORFEIT_WIN, DUEL_RATING_WIN,
+    )
     check("минимум урона ≥ 1", DUEL_MIN_DAMAGE >= 1)
     check("попавший удар по броне даёт хотя бы мин. урон",
           _floor_strike({'damage': 0, 'dodged': False})['damage'] == DUEL_MIN_DAMAGE)
@@ -173,7 +178,7 @@ async def run():
     check("в вызове видна цена входа в ОД",
           str(DUEL_AP_COST) in _invite_text({'id': 1}, ch))
 
-    print("\n9. Кнопка «Покинуть дуэль» и штраф")
+    print("\n9. Кнопка «Покинуть дуэль» и симметричный итог")
     d2 = await create_duel_challenge(101, 102)
     await accept_duel(d2, 102, 100, 100, 100, 100)
     row2 = await get_duel(d2)
@@ -181,12 +186,20 @@ async def run():
     datas = [b.callback_data for r in kb2.inline_keyboard for b in r]
     check("в бою есть кнопка «Покинуть дуэль»",
           any(d.startswith("duel:leave:") for d in datas))
-    rating_before = (await get_user_duel_stats(101))['rating']
-    await finish_duel(d2, 102, 0)
+    lr_before = (await get_user_duel_stats(101))['rating']
+    owr_before = (await get_user_duel_stats(102))['rating']
+    lwin_before = (await get_user_duel_stats(102))['wins']
+    await finish_duel(d2, 102, DUEL_RATING_FORFEIT_WIN)
     await apply_duel_result(101, DUEL_RATING_FORFEIT, 'loss')
-    rating_after = (await get_user_duel_stats(101))['rating']
+    await apply_duel_result(102, DUEL_RATING_FORFEIT_WIN, 'win')
     check("покинувший теряет 1 рейтинга",
-          rating_after == rating_before + DUEL_RATING_FORFEIT)
+          (await get_user_duel_stats(101))['rating'] == lr_before + DUEL_RATING_FORFEIT)
+    s_win = await get_user_duel_stats(102)
+    check("соперник получает победу и +1",
+          s_win['rating'] == owr_before + DUEL_RATING_FORFEIT_WIN
+          and s_win['wins'] == lwin_before + 1)
+    check("победа по выходу дешевле чистой победы",
+          DUEL_RATING_FORFEIT_WIN < DUEL_RATING_WIN)
 
     print("\n10. Раздел арены в магазине")
     from bot.handlers.shop import CATEGORIES
@@ -202,6 +215,32 @@ async def run():
     cats = [b.callback_data for r in kb.inline_keyboard for b in r]
     check("каталог магазина открывает раздел арены",
           "shopcat:duel_gear" in cats and "shopcat:duel_card" in cats)
+
+    print("\n11. Уборка: зависшие дуэли и битые дубли товаров")
+    from database.db import (
+        expire_stale_duels, cleanup_mojibake_duel_items, add_item, get_db,
+    )
+    await add_user(201, "gamma", "Гамма", "")
+    await add_user(202, "delta", "Дельта", "")
+    d3 = await create_duel_challenge(201, 202)
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE duel_runs SET updated_at = datetime('now','-4000 seconds') WHERE id = ?",
+        (d3,))
+    await conn.commit()
+    n = await expire_stale_duels()
+    check("зависшая invited-дуэль погашена", n >= 1)
+    check("статус стал expired", (await get_duel(d3))['status'] == 'expired')
+    check("после зачистки арена свободна", await get_active_duel(201) is None)
+
+    junk_name = DUEL_GLOVES_NAME.encode('utf-8').decode('cp1251')
+    await add_item(name=junk_name, description="junk", price=1, sell_price=1,
+                   rarity=1, category="duel_gear", stock=-1, added_by=0)
+    removed = await cleanup_mojibake_duel_items()
+    check("битый дубль удалён", removed >= 1)
+    check("битого дубля больше нет", await get_item_by_name(junk_name) is None)
+    check("правильные перчатки не тронуты",
+          await get_item_by_name(DUEL_GLOVES_NAME) is not None)
 
     await close_db()
 

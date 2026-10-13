@@ -22,6 +22,7 @@ from database.db import (
     ensure_dungeon_reservoir_items, ensure_market_license_item, pay_salaries, payout_reports,
     pay_award_monthly, pay_role_salaries,
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award, ensure_duel_items,
+    cleanup_mojibake_duel_items, expire_stale_duels,
     ensure_achievements,
     ensure_tourist_booklet,
     ensure_water_fish, migrate_legacy_junk,
@@ -458,6 +459,14 @@ async def main():
 
     await ensure_duel_items()
     logger.info("Дом Дуэлей (перчатки, клубная карта) проверены")
+
+    junk = await cleanup_mojibake_duel_items()
+    if junk:
+        logger.info("Дом Дуэлей: убрано битых дублей товаров — %s", junk)
+
+    stale = await expire_stale_duels()
+    if stale:
+        logger.info("Дом Дуэлей: погашено зависших дуэлей — %s", stale)
 
     await ensure_achievements()
     logger.info("Достижения (награды-уровни из ACHIEVEMENTS_DEF) проверены")
