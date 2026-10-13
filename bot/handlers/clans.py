@@ -24,7 +24,7 @@ from database.db import (
     KIND_LABELS,
 )
 from utils.permissions import has_permission, log_action
-from utils.notify import player_display
+from utils.notify import player_display, notify_user
 
 router = Router()
 
@@ -41,6 +41,7 @@ class ClansCreate(StatesGroup):
     kind = State()
     wait_name = State()
     wait_desc = State()
+    wait_photo = State()
 
 
 class ClansEdit(StatesGroup):
@@ -85,12 +86,15 @@ async def _send_ok(uid: int, bot, text: str) -> bool:
 # ----- Список кланов и партий -----
 
 @router.callback_query(F.data == "city:clans")
-async def clans_list_cb(callback: CallbackQuery):
+async def clans_list_cb(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     from database.db import can_enter_location
     if not await can_enter_location(callback.from_user.id, "townhall"):
         await callback.message.answer("🍺 Ты пьян! В Ратушу не пускают. Протрезвей сначала.")
         return
+    # Список — общий «дом» и цель кнопок «Отмена»: сбрасываем незавершённый
+    # ввод (создание/редактирование), чтобы брошенное состояние не сработало.
+    await state.clear()
     await log_location_visit(callback.from_user.id, "townhall")
     await _show_clans_list(callback)
 
@@ -485,6 +489,12 @@ async def clan_leader_set_cb(callback: CallbackQuery):
     await add_user_role(uid, 'clan_leader', granted_by=callback.from_user.id)
     await log_action(callback.from_user.id, 'clan_set_leader', uid, f"clan_id={clan['id']}")
     u = await get_user(uid)
+    await notify_user(callback.bot, uid,
+                      f"👑 Тебя назначили главой {_type_label(clan)} «{clan['name']}».")
+    if old_leader and old_leader != uid:
+        await notify_user(callback.bot, old_leader,
+                          f"👑 Ты больше не глава {_type_label(clan)} «{clan['name']}» — "
+                          f"руководство передано другому пилоту.")
     await callback.message.answer(
         f"👑 Глава {_type_label(clan)} «{clan['name']}» — {await player_display(u) if u else uid}.")
     await _show_manage(callback, clan)
@@ -506,6 +516,8 @@ async def clan_leader_unset_cb(callback: CallbackQuery):
     await update_clan(clan['id'], leader_id=None)
     await remove_user_role(old, 'clan_leader')
     await log_action(callback.from_user.id, 'clan_unset_leader', old, f"clan_id={clan['id']}")
+    await notify_user(callback.bot, old,
+                      f"👑 С тебя снята должность главы {_type_label(clan)} «{clan['name']}».")
     await callback.message.answer(f"👑 Глава снят с {_type_label(clan)} «{clan['name']}».")
     await _show_manage(callback, clan)
 
@@ -549,18 +561,63 @@ async def clan_create_desc(message: Message, state: FSMContext):
     desc = (message.text or "").strip()
     if desc == "-":
         desc = ""
-    data = await state.get_data()
-    kind = data.get('clans_kind', 'clan')
-    name = data.get('clans_name', 'Без названия')
     if desc and len(desc) > 500:
         await message.answer("❌ Описание не длиннее 500 символов:")
         return
-    clan_id = await create_clan(kind, name, desc, message.from_user.id)
-    await log_action(message.from_user.id, 'clan_create', clan_id, f"kind={kind}, name={name}")
-    await state.clear()
+    data = await state.get_data()
+    name = data.get('clans_name', 'Без названия')
+    await state.update_data(clans_desc=desc)
+    await state.set_state(ClansCreate.wait_photo)
     await message.answer(
+        f"🖼 Эмблема для «{name}» — пришли фото (необязательно):",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⏭ Пропустить", callback_data="clans:create_skip")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="city:clans")]]))
+
+
+async def _create_clan_finish(state: FSMContext, owner_id: int, photo_file_id=None) -> str:
+    """Создать объединение по данным FSM и вернуть итоговую строку.
+
+    Объединение создаётся только на последнем шаге (после эмблемы или её
+    пропуска) — так «Отмена» на любом шаге не оставляет пустой записи.
+    """
+    data = await state.get_data()
+    kind = data.get('clans_kind', 'clan')
+    name = data.get('clans_name', 'Без названия')
+    desc = data.get('clans_desc', '') or ''
+    clan_id = await create_clan(kind, name, desc, owner_id)
+    if photo_file_id:
+        await update_clan(clan_id, photo_file_id=photo_file_id)
+    await log_action(owner_id, 'clan_create', clan_id, f"kind={kind}, name={name}")
+    await state.clear()
+    return (
         f"✅ {KIND_EMOJI[kind]} {KIND_LABELS[kind].title()} «{name}» создан!\n"
         f"Дальше: назначь главу и добавь первых членов.")
+
+
+@router.message(ClansCreate.wait_photo, F.photo)
+async def clan_create_photo(message: Message, state: FSMContext):
+    text = await _create_clan_finish(state, message.from_user.id,
+                                     photo_file_id=message.photo[-1].file_id)
+    await message.answer(text)
+
+
+@router.message(ClansCreate.wait_photo)
+async def clan_create_photo_hint(message: Message, state: FSMContext):
+    await message.answer("❌ Пришли эмблему фотографией или нажми «⏭ Пропустить».")
+
+
+@router.callback_query(F.data == "clans:create_skip")
+async def clan_create_skip(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_clans"):
+        return
+    text = await _create_clan_finish(state, callback.from_user.id)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await callback.message.answer(text)
 
 
 # ----- Редактирование (суперадмин) -----
@@ -726,6 +783,9 @@ async def clan_delete_yes_cb(callback: CallbackQuery):
         return
     if clan['leader_id']:
         await remove_user_role(clan['leader_id'], 'clan_leader')
+        await notify_user(callback.bot, clan['leader_id'],
+                          f"🗑 {_type_label(clan).title()} «{clan['name']}» распущено — "
+                          f"ты больше не глава.")
     await delete_clan(clan_id)
     await log_action(callback.from_user.id, 'clan_delete', clan_id, clan['name'])
     await callback.message.answer(f"🗑 {_type_label(clan).title()} «{clan['name']}» удалён.")

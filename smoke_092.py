@@ -54,9 +54,19 @@ class FakeMessage:
         return [b.callback_data for row in markup.inline_keyboard for b in row]
 
 
+class FakeSender:
+    def __init__(self):
+        self.sent = []
+
+    async def send_message(self, chat_id, text, **kw):
+        self.sent.append((chat_id, text))
+        return None
+
+
 class FakeCallbackQuery:
     def __init__(self, data, user_id):
         self.message = FakeMessage()
+        self.bot = FakeSender()
         self.data = data
         self.from_user = type("U", (), {"id": user_id})()
         self.answered = False

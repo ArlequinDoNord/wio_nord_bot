@@ -73,7 +73,7 @@ from utils.permissions import (
 )
 from utils.helpers import plural_nordmark
 from config import RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES, get_effective_rank, VERSION, DRINK_EFFECT_LABELS, AWARD_MAX_SHOP_DISCOUNT, AWARD_MIN_REPORT_TAX
-from utils.notify import notify, player_display, notify_award, notify_report_praise
+from utils.notify import notify, player_display, notify_award, notify_report_praise, notify_user
 
 router = Router()
 
@@ -2790,6 +2790,13 @@ async def roles_apply(callback: CallbackQuery, state: FSMContext):
     else:
         ok, msg = await remove_role(admin, target_id, role)
 
+    if ok:
+        label = role_label(role)
+        if action == "add":
+            await notify_user(callback.bot, target_id, f"🎖 Тебе присвоена должность: «{label}».")
+        else:
+            await notify_user(callback.bot, target_id, f"🎖 С тебя снята должность: «{label}».")
+
     await state.clear()
     await callback.message.answer(("✅ " if ok else "❌ ") + msg)
 
@@ -3217,6 +3224,7 @@ async def status_legioner_toggle(callback: CallbackQuery, state: FSMContext):
         await set_legioner(target_id, False)
         await revoke_status(target_id, st['id'])
         await log_action(callback.from_user.id, 'revoke_legioner', target_id)
+        await notify_user(callback.bot, target_id, "🦅 С тебя снят статус легионера.")
         text = f"🦅 Снят легионерский статус: {name}"
     else:
         await set_legioner(target_id, True)
@@ -3228,6 +3236,7 @@ async def status_legioner_toggle(callback: CallbackQuery, state: FSMContext):
             await callback.message.answer(f"❌ Статус не выдан: {why}")
             return
         await log_action(callback.from_user.id, 'grant_legioner', target_id)
+        await notify_user(callback.bot, target_id, "🦅 Тебе присвоен статус легионера.")
         text = (f"🦅 Пилот — легионер: {name}\n"
                 "Доступы не выше Ветерана, голосовать нельзя.\n"
                 "Статус «🦅 Легионер» игрок выбирает себе сам в профиле.")
@@ -3362,6 +3371,8 @@ async def status_grant_pick(callback: CallbackQuery, state: FSMContext):
     if ok:
         await log_action(callback.from_user.id, 'grant_status', target_id,
                          f"status={s['name'] if s else status_id}")
+        await notify_user(callback.bot, target_id,
+                          f"🎖 Тебе присвоен статус «{s['name'] if s else status_id}».")
     have = await get_user_statuses(target_id)
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     await callback.message.answer(

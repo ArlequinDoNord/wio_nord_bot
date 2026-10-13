@@ -68,10 +68,20 @@ class _State:
         self.data = {}
 
 
+class _Bot:
+    def __init__(self):
+        self.sent = []
+
+    async def send_message(self, chat_id, text, **kw):
+        self.sent.append((chat_id, text))
+        return None
+
+
 class _Cb:
     def __init__(self, data, state, admin_id=999):
         self.data = data
         self.message = _Msg()
+        self.bot = _Bot()
         self.from_user = _Attr(id=admin_id)
         self._state = state
 

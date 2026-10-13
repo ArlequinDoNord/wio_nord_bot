@@ -95,6 +95,25 @@ async def notify(bot: Bot, text: str, user_id: int = None) -> bool:
         return False
 
 
+async def notify_user(bot: Bot, user_id: int, text: str) -> bool:
+    """Личное служебное сообщение пилоту (назначение, статус, должность).
+
+    В отличие от notify() это адресное событие для самого игрока, поэтому оно
+    уходит в личку и НЕ зависит от флага notify_enabled: игрок должен узнать
+    о своём назначении, даже если отключил оповещения о себе в общем чате.
+
+    Ошибка (пилот не начинал диалог с ботом, заблокировал его) гасится молча —
+    сбой личного уведомления не должен ломать основное действие.
+    """
+    if not user_id:
+        return False
+    try:
+        await bot.send_message(user_id, text)
+        return True
+    except Exception:
+        return False
+
+
 # Ключ settings с последней версией, объявленной в общем чате (см. notify_release_update).
 RELEASE_ANNOUNCED_SETTING_KEY = "last_announced_version"
 

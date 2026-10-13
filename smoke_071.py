@@ -66,6 +66,7 @@ class FakeCallback:
     def __init__(self, user_id, data="", message=None):
         self.from_user = SimpleNamespace(id=user_id)
         self.message = message or FakeMessage(user_id)
+        self.bot = self.message.bot
         self.data = data
         self.alerts = []
 
