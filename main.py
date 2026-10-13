@@ -554,7 +554,8 @@ async def main():
               polls_router, poll_archive_router, representative_router, library_router,
               locations_router, park_router,
               fishing_router, forest_router, housing_router, news_router, kvp_router,
-              wall_router, hq_router, clans_router, nii_router, duel_router):
+              wall_router, hq_router, clans_router, nii_router, tourist_booklet_router,
+              duel_router):
         r.message.middleware(ChatGuard())
         r.message.middleware(FishingActiveLock())
         r.message.middleware(MainMenuFSMReset())

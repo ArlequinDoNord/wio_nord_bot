@@ -97,9 +97,9 @@ config.py  <-  все слои (константы)
 | `MainMenuFSMReset` | нажатие reply-кнопки главного меню сбрасывает активное FSM (кроме активного забега в подземелье) |
 | `ActivityTracker` | обновляет `users.last_active` не чаще раза в минуту (троттлинг in-memory) |
 
-> ⚠️ `tourist_booklet_router` подключён (`main.py:549`), но **не входит** в
-> кортеж роутеров middleware-цикла (`main.py:552`). Возможный недочёт — на нём
-> не действуют ChatGuard/ActivityTracker.
+> Все подключённые роутеры (включая `tourist_booklet_router`) входят в кортеж
+> middleware-цикла (`main.py:552`). Раньше буклет был исключён — исправлено в
+> v0.23.9 (регресс-тест `smoke_140.py` проверяет, что `include_router` ⊆ цикл).
 
 ## Планировщик `scheduled_jobs` (`main.py:219`)
 
