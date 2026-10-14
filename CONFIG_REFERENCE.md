@@ -7,7 +7,7 @@
 > (комментариям-разделителям `# ── … ──`). Длинные значения усечены `…`;
 > точное значение — в `config.py` по строке из первой колонки.
 
-Всего констант: **148**; разделов: **10**.
+Всего констант: **150**; разделов: **10**.
 
 ## Без раздела
 
@@ -117,41 +117,43 @@
 | `FOREST_BOAR_DODGE` | `15` |  | :389 |
 | `FOREST_BOAR_LOSS_AP` | `10` |  | :391 |
 | `FOREST_BOAR_LOOT` | `[('Мясо кабана', 50), ('Шкура кабана', 20), ('Клык кабана', 10), ('', 20)]` |  | :393 |
-| `FOREST_WOLF_HP` | `80` |  | :403 |
-| `FOREST_WOLF_DMG` | `(5, 8)` |  | :404 |
-| `FOREST_WOLF_DODGE` | `20` |  | :405 |
-| `FOREST_WOLF_LOSS_AP` | `15` |  | :407 |
-| `FOREST_WOLF_CHANCE` | `FOREST_BOAR_CHANCE / 2` |  | :408 |
-| `FOREST_WOLF_PITY_TARGET` | `24` |  | :411 |
-| `FOREST_WOLF_BLEED_CHANCE` | `5` |  | :413 |
-| `FOREST_WOLF_BLEED_DMG` | `3` |  | :414 |
-| `FOREST_WOLF_LOOT` | `[('Мясо волка', 35), ('Шкура волка', 17), ('Клык волка', 8), ('', 40)]` |  | :416 |
+| `FOREST_WHITE_WOLF_HP` | `120` |  | :405 |
+| `FOREST_WHITE_WOLF_DMG` | `(7, 12)` |  | :406 |
+| `FOREST_WHITE_WOLF_DODGE` | `20` |  | :407 |
+| `FOREST_WHITE_WOLF_LOSS_AP` | `15` |  | :409 |
+| `FOREST_WHITE_WOLF_CHANCE` | `2.0` |  | :410 |
+| `FOREST_WHITE_WOLF_PITY_TARGET` | `36` |  | :413 |
+| `FOREST_WHITE_WOLF_BLEED_CHANCE` | `30` |  | :415 |
+| `FOREST_WHITE_WOLF_BLEED_DMG` | `3` |  | :416 |
+| `FOREST_WHITE_WOLF_AUTOWIN_HP` | `20` |  | :418 |
+| `FOREST_WHITE_WOLF_SMALL_BLESSING` | `'внимание севера'` |  | :420 |
+| `FOREST_WHITE_WOLF_BIG_BLESSING` | `'благословение севера'` |  | :421 |
 | `FOREST_BOAR_SEED` | `{'key': 'boar', 'spot': 'forest', 'name': 'Дикий кабан', 'hp': FOREST_BOAR_HP, 'dmg_min': FOREST_BOAR_DMG[0], 'dmg_max': FOREST_BOAR_DMG[1], 'dodge': FOREST_BOAR_DODGE, 'loss_ap': FOREST_BOAR_LOSS_…` |  | :428 |
-| `FOREST_WOLF_SEED` | `{'key': 'wolf', 'spot': 'forest', 'name': 'Серый волк', 'hp': FOREST_WOLF_HP, 'dmg_min': FOREST_WOLF_DMG[0], 'dmg_max': FOREST_WOLF_DMG[1], 'dodge': FOREST_WOLF_DODGE, 'loss_ap': FOREST_WOLF_LOSS_A…` |  | :454 |
-| `MOLLUSK_SEED` | `{'key': 'mollusk', 'spot': 'reservoir', 'name': 'Мутировавший моллюск', 'hp': 24, 'dmg_min': 5, 'dmg_max': 9, 'dodge': 20, 'loss_ap': 12, 'chance': 4, 'pity_target': 0, 'bleed_chance': 0, 'bleed_dm…` |  | :479 |
-| `MOLLUSK_ITEM_SEEDS` | `[('Мясо моллюска', 'Плотное мясо мутировавшего моллюска. В сыром виде есть нельзя — прожарь на кухне.', 120, 60, 3, 'resource', 0), ('Жемчужина', 'Редчайшая жемчужина из раковины мутировавшего молл…` |  | :504 |
-| `MOLLUSK_ENEMY_DROPS` | `('Мясо моллюска', 'Жемчужина')` |  | :519 |
-| `REPORT_DAILY_LIMIT` | `3` |  | :521 |
-| `REPORT_AUTO_APPROVE_TROOPS` | `100` |  | :522 |
-| `NEWS_PUBLISH_BONUS` | `10` |  | :526 |
-| `NEWS_PUBLISH_CAP` | `28` |  | :527 |
-| `ROLE_SALARY_PAY_DAY` | `28` |  | :530 |
-| `REPORT_DAILY_PAY_CAP` | `4000` |  | :535 |
-| `REPORT_MAX_TROOPS` | `1000000` |  | :536 |
-| `REPORT_MAX_REGION` | `38` | 0 = Столица, 1..38 регионы | :537 |
-| `WALL_TEXT_MAX_LEN` | `40` | лимит символов на одно изречение | :540 |
-| `WALL_FREE_PER_DAY` | `4` | бесплатных сообщений в сутки | :541 |
-| `WALL_PAID_STEPS` | `[(3, 30), (3, 90), (3, 200)]` | далее платные ступени: (кол-во, цена НМ) | :542 |
-| `WALL_REVIEW_TOTAL` | `13` | максимум сообщений в сутки (4 + 3+3+3) | :547 |
-| `WALL_PAGE_SIZE` | `5` | постов на страницу стены | :548 |
-| `WALL_ARCHIVE_PAGE_SIZE` | `8` | записей архива стены на страницу списка | :549 |
-| `POLL_MAX_DAYS` | `10` | максимум дней, сколько живёт опрос. Не закрыл | :552 |
-| `POLL_VISIBLE` | `4` | сколько новейших опросов висит в меню голосования. | :555 |
-| `POLL_ARCHIVE_DAYS_PER_PAGE` | `5` | дней (дат) архива опросов на страницу списка | :558 |
-| `POLL_ARCHIVE_PER_DAY` | `6` | опросов под одним заголовком-днём | :559 |
-| `REP_SPEECH_MAX_LEN` | `100` | лимит символов одного обращения | :562 |
-| `REP_SPEECH_PER_DAY` | `2` | обращений в сутки от представителя | :563 |
-| `AUTO_PROMOTE_MAX_TROOPS` | `4040` |  | :568 |
+| `FOREST_WHITE_WOLF_SEED` | `{'key': 'white_wolf', 'spot': 'forest', 'name': 'Белый Волк Севера', 'hp': FOREST_WHITE_WOLF_HP, 'dmg_min': FOREST_WHITE_WOLF_DMG[0], 'dmg_max': FOREST_WHITE_WOLF_DMG[1], 'dodge': FOREST_WHITE_WOLF…` |  | :455 |
+| `MOLLUSK_SEED` | `{'key': 'mollusk', 'spot': 'reservoir', 'name': 'Мутировавший моллюск', 'hp': 24, 'dmg_min': 5, 'dmg_max': 9, 'dodge': 20, 'loss_ap': 12, 'chance': 4, 'pity_target': 0, 'bleed_chance': 0, 'bleed_dm…` |  | :480 |
+| `MOLLUSK_ITEM_SEEDS` | `[('Мясо моллюска', 'Плотное мясо мутировавшего моллюска. В сыром виде есть нельзя — прожарь на кухне.', 120, 60, 3, 'resource', 0), ('Жемчужина', 'Редчайшая жемчужина из раковины мутировавшего молл…` |  | :505 |
+| `MOLLUSK_ENEMY_DROPS` | `('Мясо моллюска', 'Жемчужина')` |  | :520 |
+| `REPORT_DAILY_LIMIT` | `3` |  | :522 |
+| `REPORT_AUTO_APPROVE_TROOPS` | `100` |  | :523 |
+| `NEWS_PUBLISH_BONUS` | `10` |  | :527 |
+| `NEWS_PUBLISH_CAP` | `28` |  | :528 |
+| `ROLE_SALARY_PAY_DAY` | `28` |  | :531 |
+| `REPORT_DAILY_PAY_CAP` | `4000` |  | :536 |
+| `REPORT_MAX_TROOPS` | `1000000` |  | :537 |
+| `REPORT_MAX_REGION` | `38` | 0 = Столица, 1..38 регионы | :538 |
+| `WALL_TEXT_MAX_LEN` | `40` | лимит символов на одно изречение | :541 |
+| `WALL_FREE_PER_DAY` | `4` | бесплатных сообщений в сутки | :542 |
+| `WALL_PAID_STEPS` | `[(3, 30), (3, 90), (3, 200)]` | далее платные ступени: (кол-во, цена НМ) | :543 |
+| `WALL_REVIEW_TOTAL` | `13` | максимум сообщений в сутки (4 + 3+3+3) | :548 |
+| `WALL_PAGE_SIZE` | `5` | постов на страницу стены | :549 |
+| `WALL_ARCHIVE_PAGE_SIZE` | `8` | записей архива стены на страницу списка | :550 |
+| `POLL_MAX_DAYS` | `10` | максимум дней, сколько живёт опрос. Не закрыл | :553 |
+| `POLL_VISIBLE` | `4` | сколько новейших опросов висит в меню голосования. | :556 |
+| `POLL_ARCHIVE_DAYS_PER_PAGE` | `5` | дней (дат) архива опросов на страницу списка | :559 |
+| `POLL_ARCHIVE_PER_DAY` | `6` | опросов под одним заголовком-днём | :560 |
+| `REP_SPEECH_MAX_LEN` | `100` | лимит символов одного обращения | :563 |
+| `REP_SPEECH_PER_DAY` | `2` | обращений в сутки от представителя | :564 |
+| `AUTO_PROMOTE_MAX_TROOPS` | `4040` |  | :569 |
 
 ## Буклет туриста
 

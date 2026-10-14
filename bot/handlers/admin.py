@@ -5338,6 +5338,7 @@ ENEMY_FIELD_LABELS = {
     "hp": "💙 HP",
     "attack": "⚔️ АТК",
     "dodge": "💨 УКЛ (%)",
+    "armor": "🛡 Броня",
     "poison_chance": "☠️ Шанс яда (%)",
     "poison_dmg": "☠️ Урон яда (HP/ход)",
     "reward_nm": "💰 Награда (НМ)",
@@ -5350,6 +5351,7 @@ ENEMY_INPUT_PROMPTS = {
     "hp": "Введи HP врага (целое число ≥ 0):",
     "attack": "Введи АТК врага (целое число ≥ 0):",
     "dodge": "Введи уклонение врага, % (0–100):",
+    "armor": "Введи броню врага — сколько урона она поглощает за удар (целое число ≥ 0):",
     "poison_chance": "Введи шанс яда при попадании, % (0–100; 0 = нет):",
     "poison_dmg": "Введи урон яда за ход, HP (целое число ≥ 0):",
     "reward_nm": "Введи награду за победу, Нордмарок (целое число ≥ 0):",
@@ -5445,6 +5447,7 @@ async def _enemy_card_send(source, enemy_id: int, edit: bool = False):
         f"💙 HP: {enemy['hp']}\n"
         f"⚔️ АТК: {enemy['attack']}\n"
         f"💨 УКЛ: {enemy.get('dodge', 0)}%\n"
+        f"🛡 Броня: {enemy.get('armor', 0)}\n"
         f"{poison_line}\n"
         f"💰 Награда: {enemy.get('reward_nm', 0)} НМ\n"
         f"🖼 Картинка: {photo_state}\n"
@@ -5458,6 +5461,7 @@ async def _enemy_card_send(source, enemy_id: int, edit: bool = False):
         [InlineKeyboardButton(text="💙 HP", callback_data="enemy_field:hp")],
         [InlineKeyboardButton(text="⚔️ АТК", callback_data="enemy_field:attack")],
         [InlineKeyboardButton(text="💨 УКЛ (%)", callback_data="enemy_field:dodge")],
+        [InlineKeyboardButton(text="🛡 Броня", callback_data="enemy_field:armor")],
         [InlineKeyboardButton(text="☠️ Шанс яда", callback_data="enemy_field:poison_chance")],
         [InlineKeyboardButton(text="☠️ Урон яда (HP/ход)", callback_data="enemy_field:poison_dmg")],
         [InlineKeyboardButton(text="💰 Награда (НМ)", callback_data="enemy_field:reward_nm")],
@@ -5611,7 +5615,7 @@ async def dungeon_enemy_value(message: Message, state: FSMContext):
         await _enemy_card_send(message, enemy_id)
         return
 
-    if field in ("hp", "attack", "poison_dmg", "reward_nm"):
+    if field in ("hp", "attack", "poison_dmg", "reward_nm", "armor"):
         if text.isdigit():
             parsed = int(text)
     elif field in ("dodge", "poison_chance"):
@@ -5623,7 +5627,7 @@ async def dungeon_enemy_value(message: Message, state: FSMContext):
         else:
             parsed = _parse_drops_text(text)
 
-    if field in ("hp", "attack", "poison_dmg", "reward_nm"):
+    if field in ("hp", "attack", "poison_dmg", "reward_nm", "armor"):
         valid = parsed is not None and parsed >= 0
     elif field in ("dodge", "poison_chance"):
         valid = parsed is not None and 0 <= parsed <= 100
@@ -8436,6 +8440,7 @@ ENEMY_FIELDS = {
     "dmg_min": ("🗡 Урон (мин)", "Введи минимальный урон врага (целое ≥ 0):", "int"),
     "dmg_max": ("🗡 Урон (макс)", "Введи максимальный урон врага (целое ≥ 0):", "int"),
     "dodge": ("💨 Уклонение", "Введи шанс уклонения врага, % (0–100):", "percent"),
+    "armor": ("🛡 Броня", "Введи броню врага — сколько урона она поглощает за удар (целое ≥ 0):", "int"),
     "bleed_chance": ("🩸 Шанс кровотечения", "Введи шанс наложить кровотечение при ударе, % (0–100; 0 = не кровоточит):", "percent"),
     "bleed_dmg": ("🩸 Урон кровотечения", "Введи урон кровотечения в HP за ход (целое ≥ 0):", "int"),
     "chance": ("🎲 Шанс встречи", "Введи шанс встречи с врагом на одну попытку, % (0–100; 0 = выключить):", "percent"),
@@ -8626,6 +8631,7 @@ async def _source_enemy_send(target, src: str, loc: str, enemy_id: int, edit: bo
         f"❤️ HP: {enemy['hp']}\n"
         f"🗡 Урон: {enemy['dmg_min']}–{enemy['dmg_max']}\n"
         f"💨 Уклонение: {enemy['dodge']}%\n"
+        f"🛡 Броня: {int(enemy.get('armor') or 0)}\n"
         f"{bleed_line}"
         f"🎲 Шанс встречи: {enemy['chance']}% (за попытку)\n"
         f"🧿 Гарантия: раз в {enemy['pity_target'] or '—'} попыток\n"
@@ -8642,6 +8648,7 @@ async def _source_enemy_send(target, src: str, loc: str, enemy_id: int, edit: bo
          _B(text="🗡 Урон", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:dmg_min")],
         [_B(text="🗡 Урон макс", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:dmg_max"),
          _B(text="💨 Уклонение", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:dodge")],
+        [_B(text="🛡 Броня", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:armor")],
         [_B(text="🩸 Шанс кровот.", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:bleed_chance"),
          _B(text="🩸 Урон кровот.", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:bleed_dmg")],
         [_B(text="🎲 Шанс встречи", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:chance"),

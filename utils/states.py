@@ -62,7 +62,33 @@ STATE_CONF = {
         "hint": "Слишком много водорослей! Нельзя применять расходники (в том числе для восстановления ОД). "
                 "Пройдёт через сутки.",
     },
+    # Благословения Белого Волка Севера (лес). Суточные, положительные: усиливают
+    # бой, лечение и цены. Пока активно любое из них — волк не встречается снова.
+    "внимание севера": {
+        "emoji": "❄️",
+        "title": "Внимание Севера",
+        "default_minutes": 1440,     # 24 часа
+        "attack_mult": 1.05,         # урон +5%
+        "dodge_mult": 1.05,          # уклонение +5%
+        "hint": "Белый Волк Севера заметил тебя и отпустил. +5% к урону и "
+                "уклонению на сутки. Пока действует — волк не придёт снова.",
+    },
+    "благословение севера": {
+        "emoji": "🌟",
+        "title": "Благословение Севера",
+        "default_minutes": 1440,     # 24 часа
+        "attack_mult": 1.10,         # атака +10%
+        "dodge_mult": 1.10,          # уклонение +10%
+        "heal_pct": 5,               # эффективность лечения +5%
+        "shop_discount": 3,          # цены в магазинах −3%
+        "hint": "Боги Нордхайма отметили тебя за встречу с Белым Волком: "
+                "+10% к атаке и уклонению, +5% к лечению, −3% к ценам в магазинах "
+                "на сутки. Пока действует — волк не придёт снова.",
+    },
 }
+
+# Благословения Белого Волка Севера: пока активно любое — волк не встречается.
+BLESSING_STATES = ("внимание севера", "благословение севера")
 
 NORMAL = "нормально"
 
@@ -104,6 +130,41 @@ def combat_multipliers(state_names: list) -> dict:
                 result[key] = result.get(key, 1.0) * conf[key]
     result = {k: v for k, v in result.items() if v != 1.0}
     return result
+
+
+def state_heal_pct(state_names: list) -> int:
+    """Суммарный бонус к эффективности лечения (%) от активных состояний."""
+    total = 0
+    for name in state_names:
+        conf = STATE_CONF.get(name) or {}
+        total += int(conf.get('heal_pct', 0) or 0)
+    return total
+
+
+def state_shop_discount(state_names: list) -> int:
+    """Суммарная скидка в магазинах (%) от активных состояний."""
+    total = 0
+    for name in state_names:
+        conf = STATE_CONF.get(name) or {}
+        total += int(conf.get('shop_discount', 0) or 0)
+    return total
+
+
+def is_blessed(state_names: list) -> bool:
+    """Есть ли у игрока активное благословение Белого Волка Севера."""
+    return any(n in BLESSING_STATES for n in state_names)
+
+
+async def get_heal_bonus_pct(user_id: int) -> int:
+    """Бонус к лечению (%) из активных состояний игрока."""
+    info = await get_state_info(user_id)
+    return state_heal_pct(info['names'])
+
+
+async def get_shop_discount_pct(user_id: int) -> int:
+    """Скидка в магазинах (%) из активных состояний игрока."""
+    info = await get_state_info(user_id)
+    return state_shop_discount(info['names'])
 
 
 def _parse_effects(effects_str):

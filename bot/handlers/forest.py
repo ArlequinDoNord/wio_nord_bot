@@ -45,6 +45,8 @@ from config import (
     FOREST_AP_COST, FOREST_RESULT_DELAY, FOREST_ALLOW_TOURISTS, FOREST_SOLD_DAILY_LIMIT,
     FOREST_BOAR_PITY_TARGET, FOREST_BOAR_HP, FOREST_BOAR_DMG,
     FOREST_BOAR_DODGE, FOREST_BOAR_LOSS_AP, FOREST_BOAR_LOOT,
+    FOREST_WHITE_WOLF_AUTOWIN_HP, FOREST_WHITE_WOLF_LOSS_AP,
+    FOREST_WHITE_WOLF_SMALL_BLESSING, FOREST_WHITE_WOLF_BIG_BLESSING,
 )
 
 router = Router()
@@ -60,7 +62,7 @@ FOREST_AREA_EMOJI = {"glade": "🌿", "clearing": "🌲"}
 FOREST_AREA_NAME = {"glade": "ОПУШКА ЛЕСА", "clearing": "ПРОГАЛИНА"}
 
 # Эмодзи зверя по техническому ключу строки forest_enemies (для текстов боя).
-FOREST_BEAST_EMOJI = {"boar": "🐗", "wolf": "🐺"}
+FOREST_BEAST_EMOJI = {"boar": "🐗", "white_wolf": "🐺"}
 
 
 def _beast_emoji(enemy: dict | None) -> str:
@@ -575,6 +577,7 @@ async def forest_cast(callback: CallbackQuery):
                 "boar_hp_max": int(beast.get('hp') or FOREST_BOAR_HP),
                 "boar_name": beast.get('name') or "Дикий кабан",
                 "beast_key": beast.get('key') or "boar",
+                "is_white_wolf": beast.get('key') == 'white_wolf',
                 "emoji": _beast_emoji(beast),
                 "dodge": float(beast.get('dodge') or beast.get('dodge_chance') or 0),
                 "armor": int(beast.get('armor') or 0),
@@ -700,16 +703,28 @@ async def _boar() -> dict | None:
 
 
 async def _roll_extra_beast(user_id: int = None, exclude_key: str = "boar") -> dict | None:
-    """Второй зверь леса (волк и другие, кроме кабана).
+    """Второй зверь леса (Белый Волк Севера и другие, кроме кабана).
 
     Бросаем каждого включённого зверя леса отдельно (по его chance из БД):
     первый сработавший — встреча. Кабан сюда не входит: у него своя логика с
     счётчиком-гарантией, которую разыгрываем раньше. У зверя может быть своя
-    гарантия (pity_target): волк обеспечен не реже, чем раз в 24 поиска — его
-    счётчик отдельный от кабаньего.
+    гарантия (pity_target): Белый Волк обеспечен не реже, чем раз в 36 поисков —
+    его счётчик отдельный от кабаньего. Пока на пилоте активно благословение
+    волка, сам волк не встречается (ждём окончания суточного баффа).
     """
+    from utils.states import get_state_info, is_blessed
+    blessed = False
+    if user_id:
+        try:
+            info = await get_state_info(user_id)
+            blessed = is_blessed(info['names'])
+        except Exception:
+            blessed = False
     for row in await get_source_enemies("forest", enabled_only=True):
         if row.get('key') == exclude_key:
+            continue
+        # Белый Волк Севера не приходит к тому, кто уже под его благословением.
+        if blessed and row.get('key') == 'white_wolf':
             continue
         chance = float(row.get('chance') or 0)
         if chance <= 0:
@@ -739,6 +754,16 @@ async def _roll_boar_loot_items(boar: dict, user_id: int) -> list:
             return names
     name = roll_boar_loot(random.random() * 100, loot_pct)
     return [name] if name else []
+
+
+def white_wolf_after_hit(hp: int, damage: int, autowin_hp: int) -> tuple:
+    """HP Белого Волка Севера после удара пилота и флаг авто-победы.
+
+    Волка нельзя убить: HP не опускается ниже 1. Если остаток HP <= autowin_hp,
+    волк ярится и побеждает следующим ударом (второй элемент кортежа True).
+    """
+    hp = max(1, int(hp) - int(damage))
+    return hp, hp <= int(autowin_hp)
 
 
 def _battle_markup(token: str):
@@ -775,6 +800,57 @@ async def _show_battle(callback: CallbackQuery, prefix: str = ""):
                  kb=_battle_markup(battle['token']))
 
 
+async def _white_wolf_defeat(callback, user_id, battle, *, big: bool, prefix: str = ""):
+    """Поражение от Белого Волка Севера: пилот теряет ОД и получает благословение.
+
+    big=True — волк «ярится» при HP <= AUTOWIN и побеждает наверняка
+    (Благословение Севера). big=False — обычное поражение по HP пилота или от
+    кровотечения (Внимание Севера). Добычи нет, только суточный бафф.
+    """
+    from utils.states import apply_state_to
+    battle_area = battle.get('area') or FOREST_HOME_AREA
+    FOREST_BATTLE.pop(user_id, None)
+    removed = await remove_ap_or_floor(
+        user_id, int(battle.get('loss_ap') or FOREST_WHITE_WOLF_LOSS_AP))
+    emoji = battle.get('emoji') or "🐺"
+    if big:
+        state_key = FOREST_WHITE_WOLF_BIG_BLESSING
+        bless_line = (
+            "🌟 Волк не тронул тебя — он признал достойного. "
+            "БЛАГОСЛОВЕНИЕ СЕВЕРА снизошло на тебя на сутки:\n"
+            "• +10% к атаке\n"
+            "• +10% к уклонению\n"
+            "• +5% к эффективности лечения\n"
+            "• −3% к ценам в магазинах"
+        )
+        log_tail = "Благословение Севера"
+    else:
+        state_key = FOREST_WHITE_WOLF_SMALL_BLESSING
+        bless_line = (
+            "❄️ Волк отпускает тебя, но ты чувствуешь на себе его взгляд. "
+            "ВНИМАНИЕ СЕВЕРА с тобой на сутки:\n"
+            "• +5% к урону\n"
+            "• +5% к уклонению"
+        )
+        log_tail = "Внимание Севера"
+    await apply_state_to(user_id, state_key, caused_by=user_id,
+                         reason="Белый Волк Севера")
+    await log_activity(user_id, "forest",
+                       f"Поражение от Белого Волка Севера (−{removed} ОД), {log_tail}")
+    text = (
+        f"{emoji} БЕЛЫЙ ВОЛК СЕВЕРА\n\n"
+        f"{prefix}"
+        "Снег взрывается белой тенью — ты не успеваешь даже замахнуться. "
+        "Морозные клыки смыкаются, и сознание гаснет...\n\n"
+        "Очнулся ты в сугробе. Волк сидит рядом и смотрит прямо в душу.\n\n"
+        f"{bless_line}\n\n"
+        f"−{removed} ОД."
+    )
+    await _glade_paint(callback, text=text,
+                       kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area),
+                       area=battle_area)
+
+
 @router.callback_query(F.data.regexp(r"^forest:battle:hit:\d+$"))
 async def forest_battle_hit(callback: CallbackQuery):
     if not await _forest_ok(callback):
@@ -786,6 +862,7 @@ async def forest_battle_hit(callback: CallbackQuery):
         return
     await callback.answer()
     emoji = battle.get('emoji') or "🐗"
+    is_white_wolf = bool(battle.get('is_white_wolf'))
 
     # Кровотечение: тикает в начале хода игрока (наложено зверем на прошлом ходу).
     bleed_note = ""
@@ -801,6 +878,10 @@ async def forest_battle_hit(callback: CallbackQuery):
             battle['bleed_ticks'] = bticks
             bleed_note = f"🩸 Кровотечение: −{bleed} HP (ещё {bticks} х.).\n\n"
         if battle['player_hp'] <= 0:
+            if is_white_wolf:
+                await _white_wolf_defeat(callback, user_id, battle, big=False,
+                                         prefix=bleed_note)
+                return
             battle_area = battle.get('area') or FOREST_HOME_AREA
             FOREST_BATTLE.pop(user_id, None)
             removed = await remove_ap_or_floor(
@@ -842,7 +923,14 @@ async def forest_battle_hit(callback: CallbackQuery):
     dmg_forest_pct = await get_achievement_bonus(user_id, "hunter", "dmg_forest")
     if dmg_forest_pct and player_hit > 0:
         player_hit = max(1, round(player_hit * (100 + dmg_forest_pct) / 100))
+    prev_boar_hp = battle['boar_hp']
     battle['boar_hp'] -= player_hit
+    ww_autowin = False
+    if is_white_wolf:
+        # Белого Волка Севера нельзя убить: HP не падает ниже 1, а низкий
+        # остаток HP означает, что волк ярится и добьёт пилота следующим ударом.
+        battle['boar_hp'], ww_autowin = white_wolf_after_hit(
+            prev_boar_hp, player_hit, FOREST_WHITE_WOLF_AUTOWIN_HP)
     if res['dodged']:
         hit_line = "Ты замахнулся — но зверь увернулся в последний миг.\n\n"
     else:
@@ -853,7 +941,20 @@ async def forest_battle_hit(callback: CallbackQuery):
             extra += "💥 crit! "
         hit_line = f"Ты бьёшь наотмашь: −{player_hit} HP по зверю! {extra}\n\n"
 
-    if battle['boar_hp'] <= 0:
+    # Белый Волк Севера: доведённый до AUTOWIN HP, он ярится (силы, броня и
+    # здоровье словно возвращаются) и добивает пилота следующим ударом.
+    if is_white_wolf and ww_autowin:
+        beast_name = battle.get('boar_name') or "Белый Волк Севера"
+        enrage_note = (
+            f"🐺 {beast_name} припадает к земле — рана на боку затягивается, "
+            "в глазах вспыхивает северное сияние. Зверь словно стал больше и "
+            "страшнее!\n\n"
+        )
+        await _white_wolf_defeat(callback, user_id, battle, big=True,
+                                 prefix=f"{bleed_note}{regen_note}{hit_line}{enrage_note}")
+        return
+
+    if battle['boar_hp'] <= 0 and not is_white_wolf:
         battle_area = battle.get('area') or FOREST_HOME_AREA
         FOREST_BATTLE.pop(user_id, None)
         await log_activity(user_id, "forest", "Победил зверя в лесу")
@@ -907,6 +1008,10 @@ async def forest_battle_hit(callback: CallbackQuery):
         counter_line = f"Зверь бьёт: −{boar_hit} HP. {extra}\n\n"
     battle['player_hp'] -= boar_hit
     if battle['player_hp'] <= 0:
+        if is_white_wolf:
+            await _white_wolf_defeat(callback, user_id, battle, big=False,
+                                     prefix=f"{bleed_note}{regen_note}{hit_line}{counter_line}")
+            return
         battle_area = battle.get('area') or FOREST_HOME_AREA
         FOREST_BATTLE.pop(user_id, None)
         removed = await remove_ap_or_floor(user_id, int(battle.get('loss_ap') or FOREST_BOAR_LOSS_AP))

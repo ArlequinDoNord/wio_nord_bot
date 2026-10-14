@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config
 from config import (DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MINUTES,
-                    DUNGEON_RUN_STALE_SEC, FOREST_BOAR_SEED, FOREST_WOLF_SEED, FOREST_BOAR_HP, MOLLUSK_SEED,
+                    DUNGEON_RUN_STALE_SEC, FOREST_BOAR_SEED, FOREST_WHITE_WOLF_SEED, FOREST_BOAR_HP, MOLLUSK_SEED,
                     MOLLUSK_ITEM_SEEDS, MOLLUSK_ENEMY_DROPS, PILOT_CRIT_MULT)
 from config import get_effective_rank
 
@@ -1067,6 +1067,7 @@ async def init_db():
     await _ensure_column(conn, "forest_enemies", "bleed_dmg", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "fishing_enemies", "bleed_chance", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "fishing_enemies", "bleed_dmg", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "fishing_enemies", "armor", "INTEGER DEFAULT 0")
     # admin_tuned=1 в обычных врагах dungeon не должен мешать: миграции по дропам
     # (ensure_dungeon_enemy_drops / seed_kvp) запускаются только по admin_tuned>0
     await _ensure_column(conn, "dungeon_enemies", "admin_tuned", "INTEGER DEFAULT 0")
@@ -5960,11 +5961,23 @@ async def shop_price_for(user_id: int, price: int, category: str = None) -> int:
     category — категория товара: для «library_card» дополнительно применяется
     скидка достижения «Стена» (ticket_pct, доступна на 4-м уровне) поверх
     медальной, без общего потолка.
+
+    Поверх всего применяется скидка от состояний (например, благословение
+    Белого Волка Севера −3%), у неё отдельного потолка нет.
     """
     from config import AWARD_MAX_SHOP_DISCOUNT
+    from utils.states import get_shop_discount_pct
     price = int(price or 0)
     if price <= 0:
         return max(0, price)
+    # Скидка от состояний (благословение Белого Волка Севера) применяется поверх.
+
+    def _with_state(value: int) -> int:
+        if state_pct > 0:
+            return max(1, value * (100 - state_pct) // 100)
+        return value
+
+    state_pct = await get_shop_discount_pct(user_id) if user_id else 0
     discount = (await get_award_bonus(user_id))['shop_discount']
     if category == "library_card":
         ticket = await get_achievement_bonus(user_id, "writer", "ticket_pct")
@@ -5973,11 +5986,11 @@ async def shop_price_for(user_id: int, price: int, category: str = None) -> int:
             # Медальную часть ограничивает общий потолок, часть от достижения — нет.
             medal_part = min(int(discount - ticket), AWARD_MAX_SHOP_DISCOUNT)
             price = max(1, price * (100 - medal_part) // 100)
-            return max(1, price * (100 - int(ticket)) // 100)
+            return _with_state(max(1, price * (100 - int(ticket)) // 100))
     if discount <= 0:
-        return price
+        return _with_state(price)
     discount = min(int(discount), AWARD_MAX_SHOP_DISCOUNT)
-    return max(1, price * (100 - discount) // 100)
+    return _with_state(max(1, price * (100 - discount) // 100))
 
 
 async def report_tax_percent_for(user_id: int) -> int:
@@ -8383,7 +8396,7 @@ async def get_forest_mushroom_candidates():
 ENEMY_SOURCE_TABLES = {"forest": "forest_enemies", "fishing": "fishing_enemies"}
 
 # Поля врага, которые админ правит через бота.
-SOURCE_ENEMY_FIELDS = ("name", "hp", "dmg_min", "dmg_max", "dodge",
+SOURCE_ENEMY_FIELDS = ("name", "hp", "dmg_min", "dmg_max", "dodge", "armor",
                        "loss_ap", "bleed_chance", "bleed_dmg", "chance",
                        "pity_target", "reward_nm", "description", "image",
                        "photo_key", "enabled", "spot")
@@ -8401,18 +8414,21 @@ def _enemy_source_table(source: str) -> str:
 
 
 async def ensure_forest_enemies():
-    """Идемпотентно засевает врагов леса (кабан и волк) из FOREST_*_SEED.
+    """Идемпотентно засевает врагов леса (кабан и Белый Волк Севера).
 
     Правившие админом строки (admin_tuned=1) не перезаписываются. Отдельно
     мигрируем legacy-шанс кабана: раньше он жёстко равнялся 100/PITY (8.33%) —
     если значение всё ещё равно этому дефолту, ставим новый базовый шанс
-    (config.FOREST_BOAR_CHANCE), не трогая ручные правки.
+    (config.FOREST_BOAR_CHANCE), не трогая ручные правки. Убираем legacy-строку
+    серого волка (key='wolf'): его заменил Белый Волк Севера (key='white_wolf').
     """
     await ensure_forest_items()
-    created_boar = await _ensure_source_enemies("forest", FOREST_BOAR_SEED)
-    created_wolf = await _ensure_source_enemies("forest", FOREST_WOLF_SEED)
-    created = created_boar or created_wolf
     conn = await get_db()
+    await conn.execute("DELETE FROM forest_enemies WHERE key = 'wolf'")
+    await conn.commit()
+    created_boar = await _ensure_source_enemies("forest", FOREST_BOAR_SEED)
+    created_wolf = await _ensure_source_enemies("forest", FOREST_WHITE_WOLF_SEED)
+    created = created_boar or created_wolf
     legacy_chance = round(100 / config.FOREST_BOAR_PITY_TARGET, 2)
     await conn.execute(
         "UPDATE forest_enemies SET chance = ? "
@@ -9625,7 +9641,7 @@ async def get_dungeon_enemies(dungeon_id: int):
 
 
 # Поля врага, которые админ правит через бота.
-ENEMY_EDITABLE_FIELDS = ("hp", "attack", "dodge", "poison_chance",
+ENEMY_EDITABLE_FIELDS = ("hp", "attack", "dodge", "armor", "poison_chance",
                          "poison_dmg", "reward_nm", "drops",
                          "bleed_chance", "bleed_dmg", "frostbite_chance",
                          "description", "image")

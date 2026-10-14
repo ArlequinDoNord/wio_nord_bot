@@ -1732,7 +1732,9 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
             if item['name'] in ELIXIR_ITEM_NAMES:
                 ach_heal_pct += await get_achievement_bonus(user_id, "elixir", "heal_pct")
                 await bump_achievement(user_id, "elixir", 1)
-            heal = max(1, round(item['heal'] * mult * (100 + ach_heal_pct) / 100))
+            from utils.states import get_heal_bonus_pct
+            state_heal_pct = await get_heal_bonus_pct(user_id)
+            heal = max(1, round(item['heal'] * mult * (100 + ach_heal_pct + state_heal_pct) / 100))
             new_hp = min(run['hp_max'], run['hp'] + heal)
             await update_run_hp(run['id'], new_hp)
             hp_note = f"\n❤️ {_hp_bar(new_hp, run['hp_max'])}"
@@ -1742,6 +1744,8 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
                 hp_note += "\n🧊 Обморожение снизило лечение."
             if ach_heal_pct > 0:
                 hp_note += f"\n✨ Мастерство усилило лечение (+{ach_heal_pct}%)."
+            if state_heal_pct > 0:
+                hp_note += f"\n🌟 Благословение Севера усилило лечение (+{state_heal_pct}%)."
             rpct = int(row_get(item, 'regen') or 0)
             if rpct > 0:
                 amounts = regen_amounts(heal, rpct)
@@ -1765,7 +1769,9 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         if item['name'] in ELIXIR_ITEM_NAMES:
             ach_heal_pct += await get_achievement_bonus(user_id, "elixir", "heal_pct")
             await bump_achievement(user_id, "elixir", 1)
-        heal = max(1, round(item['heal'] * mult * (100 + ach_heal_pct) / 100))
+        from utils.states import get_heal_bonus_pct
+        state_heal_pct = await get_heal_bonus_pct(user_id)
+        heal = max(1, round(item['heal'] * mult * (100 + ach_heal_pct + state_heal_pct) / 100))
         new_hp = min(run['hp_max'], run['hp'] + heal)
         await update_run_hp(run['id'], new_hp)
         eff = ""
@@ -1775,6 +1781,8 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
             eff += "\n🧊 Обморожение снизило лечение."
         if ach_heal_pct > 0:
             eff += f" ✨ Мастерство усилило лечение (+{ach_heal_pct}%)."
+        if state_heal_pct > 0:
+            eff += f" 🌟 Благословение Севера усилило лечение (+{state_heal_pct}%)."
         regen_note = ""
         rpct = int(row_get(item, 'regen') or 0)
         if rpct > 0:

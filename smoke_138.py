@@ -1,15 +1,16 @@
-"""Smoke 138 — волк в лесу (v0.23.3) и редактор дропов у врагов.
+"""Smoke 138 — Белый Волк Севера в лесу и редактор дропов у врагов.
 
 Проверяет:
-   1. Сид волка: ключ 'wolf', spot forest, шанс = половина кабана, без гарантии,
-      три дропа (мясо/шкура/клык волка) — все строго loot-only.
-   2. Спавн: _roll_extra_beast бросает зверей кроме кабана (волк может выпасть,
-      кабан сюда не попадает), эмодзи зверя по ключу.
-   3. Админ-редактор дропов источника: экран дропов открывается, кнопка дропа
-      ведёт в редактор (шанс/кол-во/удаление), правка сохраняется, а удаление
-      больше НЕ падает (регресс старого бага с кнопкой-именем лута).
-   4. Рудимент player_dmg_min/max убран: нет в полях/сидах, колонки БД
-      вычищаются (в т.ч. миграцией legacy-БД).
+    1. Сид волка: ключ 'white_wolf', spot forest, шанс 2%, своя гарантия (36),
+       HP 120 / урон 7–12 / уклонение 20 / кровотечение 30%×3, без дропов
+       (волк оставляет только суточные благословения).
+    2. Спавн: _roll_extra_beast бросает зверей кроме кабана (Белый Волк может
+       выпасть, кабан сюда не попадает), эмодзи зверя по ключу.
+    3. Админ-редактор дропов источника: экран дропов открывается, кнопка дропа
+       ведёт в редактор (шанс/кол-во/удаление), правка сохраняется, а удаление
+       больше НЕ падает (регресс старого бага с кнопкой-именем лута).
+    4. Рудимент player_dmg_min/max убран: нет в полях/сидах, колонки БД
+       вычищаются (в т.ч. миграцией legacy-БД).
 
 Запуск: .venv\\Scripts\\python.exe smoke_138.py
 """
@@ -107,8 +108,8 @@ class State:
 
 async def main():
     from config import (
-        FOREST_BOAR_CHANCE, FOREST_WOLF_CHANCE, FOREST_WOLF_PITY_TARGET,
-        FOREST_WOLF_BLEED_CHANCE, FOREST_WOLF_BLEED_DMG,
+        FOREST_WHITE_WOLF_CHANCE, FOREST_WHITE_WOLF_PITY_TARGET,
+        FOREST_WHITE_WOLF_BLEED_CHANCE, FOREST_WHITE_WOLF_BLEED_DMG,
     )
     from database.db import (
         init_db, close_db, ensure_forest_enemies, get_source_enemy_by_key,
@@ -123,31 +124,26 @@ async def main():
 
     print("\n1. Сид волка")
     await ensure_forest_enemies()
-    wolf = await get_source_enemy_by_key("forest", "wolf")
-    check("волк в БД по ключу 'wolf'", bool(wolf))
+    wolf = await get_source_enemy_by_key("forest", "white_wolf")
+    check("волк в БД по ключу 'white_wolf'", bool(wolf))
     check("волк: spot = forest", wolf and wolf['spot'] == "forest")
-    check("волк: шанс = половина кабана (конфиг)",
-          abs(FOREST_WOLF_CHANCE - FOREST_BOAR_CHANCE / 2) < 1e-9)
-    check("волк: шанс из БД = конфиг",
-          wolf and abs(float(wolf['chance']) - FOREST_WOLF_CHANCE) < 0.01)
-    check("волк: своя гарантия = конфиг (24)",
-          wolf and int(wolf['pity_target']) == FOREST_WOLF_PITY_TARGET)
-    check("волк: HP = 80", wolf and int(wolf['hp']) == 80)
-    check("волк: урон 5–8", wolf and int(wolf['dmg_min']) == 5 and int(wolf['dmg_max']) == 8)
+    check("волк: шанс из БД = конфиг (2%)",
+          wolf and abs(float(wolf['chance']) - FOREST_WHITE_WOLF_CHANCE) < 0.01)
+    check("волк: своя гарантия = конфиг (36)",
+          wolf and int(wolf['pity_target']) == FOREST_WHITE_WOLF_PITY_TARGET)
+    check("волк: HP = 120", wolf and int(wolf['hp']) == 120)
+    check("волк: урон 7–12", wolf and int(wolf['dmg_min']) == 7 and int(wolf['dmg_max']) == 12)
     check("волк: уклонение 20%", wolf and int(wolf['dodge']) == 20)
     check("волк: потеря ОД = 15", wolf and int(wolf['loss_ap']) == 15)
     check("волк: шанс кровотечения = конфиг",
-          wolf and int(wolf['bleed_chance']) == FOREST_WOLF_BLEED_CHANCE)
+          wolf and int(wolf['bleed_chance']) == FOREST_WHITE_WOLF_BLEED_CHANCE)
     check("волк: урон кровотечения = конфиг",
-          wolf and int(wolf['bleed_dmg']) == FOREST_WOLF_BLEED_DMG)
+          wolf and int(wolf['bleed_dmg']) == FOREST_WHITE_WOLF_BLEED_DMG)
     check("волк: включён", wolf and wolf['enabled'] == 1)
-    wolf_drops = await get_source_enemy_drops("forest", wolf['id'])
-    got = set()
-    for d in wolf_drops:
-        it = await get_item(d['item_id'])
-        got.add(it['name'] if item_ok(it) else None)
-    check("волк: дропы — мясо/шкура/клык",
-          got == {"Мясо волка", "Шкура волка", "Клык волка"})
+    check("волк: без дропов (только благословения)",
+          len(await get_source_enemy_drops("forest", wolf['id'])) == 0)
+    check("legacy-волк 'wolf' вычищен",
+          (await get_source_enemy_by_key("forest", "wolf")) is None)
 
     print("\n2. Сид идемпотентен")
     check("повторный сид — без дублей", await ensure_forest_enemies() is False)
@@ -163,11 +159,11 @@ async def main():
 
     print("\n4. Спавн и эмодзи")
     check("эмодзи кабана", _beast_emoji({"key": "boar"}) == "🐗")
-    check("эмодзи волка", _beast_emoji({"key": "wolf"}) == "🐺")
+    check("эмодзи волка", _beast_emoji({"key": "white_wolf"}) == "🐺")
     check("эмодзи по умолчанию", _beast_emoji(None) == "🐗")
     with patch("random.random", lambda: 0.0):
         beast = await _roll_extra_beast()
-    check("_roll_extra_beast ловит волка", beast and beast.get('key') == 'wolf')
+    check("_roll_extra_beast ловит Белого Волка", beast and beast.get('key') == 'white_wolf')
     check("_roll_extra_beast НЕ возвращает кабана",
           beast is not None and beast.get('key') != 'boar')
     with patch("random.random", lambda: 0.99):
@@ -175,13 +171,13 @@ async def main():
     check("_roll_extra_beast: высокий бросок — пусто", beast_miss is None)
     await add_user(999001, "wolf_test", "Wolf", "Test")
     check("счётчик волка стартует с нуля", await get_forest_wolf_attempts(999001) == 0)
-    await set_forest_wolf_attempts(999001, FOREST_WOLF_PITY_TARGET - 1)
+    await set_forest_wolf_attempts(999001, FOREST_WHITE_WOLF_PITY_TARGET - 1)
     check("счётчик волка сохраняется",
-          await get_forest_wolf_attempts(999001) == FOREST_WOLF_PITY_TARGET - 1)
+          await get_forest_wolf_attempts(999001) == FOREST_WHITE_WOLF_PITY_TARGET - 1)
     with patch("random.random", lambda: 0.99):
         beast_pity = await _roll_extra_beast(999001)
-    check("гарантия волка: на 24-й поиск ловит даже при высоком броске",
-          beast_pity and beast_pity.get('key') == 'wolf')
+    check("гарантия волка: на 36-й поиск ловит даже при высоком броске",
+          beast_pity and beast_pity.get('key') == 'white_wolf')
     with patch("random.random", lambda: 0.99):
         beast_fresh = await _roll_extra_beast(999002)
     check("гарантия волка не срабатывает раньше срока", beast_fresh is None)
@@ -233,7 +229,7 @@ async def main():
         SOURCE_ENEMY_FIELDS, ENEMY_SEED_FIELDS,
         get_source_enemy, ensure_fishing_enemies,
     )
-    from config import FOREST_BOAR_SEED, FOREST_WOLF_SEED, MOLLUSK_SEED
+    from config import FOREST_BOAR_SEED, FOREST_WHITE_WOLF_SEED, MOLLUSK_SEED
     check("SOURCE_ENEMY_FIELDS без player_dmg_*",
           "player_dmg_min" not in SOURCE_ENEMY_FIELDS
           and "player_dmg_max" not in SOURCE_ENEMY_FIELDS)
@@ -242,7 +238,7 @@ async def main():
           and "player_dmg_max" not in ENEMY_SEED_FIELDS)
     check("сиды леса/рыбалки без player_dmg_*",
           all("player_dmg_min" not in s and "player_dmg_max" not in s
-              for s in (FOREST_BOAR_SEED, FOREST_WOLF_SEED, MOLLUSK_SEED)))
+              for s in (FOREST_BOAR_SEED, FOREST_WHITE_WOLF_SEED, MOLLUSK_SEED)))
     forest_keys = set((await get_source_enemy("forest", bid)).keys())
     check("колонки forest_enemies убраны",
           "player_dmg_min" not in forest_keys and "player_dmg_max" not in forest_keys)
@@ -252,18 +248,31 @@ async def main():
     check("колонки fishing_enemies убраны",
           "player_dmg_min" not in fish_keys and "player_dmg_max" not in fish_keys)
 
-    print("\n9b. Кровотечение (поля/колонки/админка)")
+    print("\n9b. Кровотечение и броня (поля/колонки/админка)")
     check("SOURCE_ENEMY_FIELDS содержит bleed_*",
           "bleed_chance" in SOURCE_ENEMY_FIELDS and "bleed_dmg" in SOURCE_ENEMY_FIELDS)
     check("ENEMY_SEED_FIELDS содержит bleed_*",
           "bleed_chance" in ENEMY_SEED_FIELDS and "bleed_dmg" in ENEMY_SEED_FIELDS)
-    wolf_keys = set((await get_source_enemy_by_key("forest", "wolf")).keys())
-    check("колонки bleed_* есть у wolf",
+    wolf_keys = set((await get_source_enemy_by_key("forest", "white_wolf")).keys())
+    check("колонки bleed_* есть у white_wolf",
           "bleed_chance" in wolf_keys and "bleed_dmg" in wolf_keys)
     check("ENEMY_FIELDS: есть правка шанса кровотечения",
           "bleed_chance" in admin.ENEMY_FIELDS)
     check("ENEMY_FIELDS: есть правка урона кровотечения",
           "bleed_dmg" in admin.ENEMY_FIELDS)
+
+    print("\n9c. Броня у врагов (поля/колонки/админка)")
+    check("SOURCE_ENEMY_FIELDS содержит armor", "armor" in SOURCE_ENEMY_FIELDS)
+    check("ENEMY_FIELDS: есть правка брони", "armor" in admin.ENEMY_FIELDS)
+    check("ENEMY_FIELD_LABELS: есть броня", "armor" in admin.ENEMY_FIELD_LABELS)
+    check("ENEMY_INPUT_PROMPTS: есть броня", "armor" in admin.ENEMY_INPUT_PROMPTS)
+    from database.db import ENEMY_EDITABLE_FIELDS
+    check("ENEMY_EDITABLE_FIELDS (данжи) содержит armor", "armor" in ENEMY_EDITABLE_FIELDS)
+    check("колонка armor есть у white_wolf", "armor" in wolf_keys)
+    await ensure_fishing_enemies()
+    mollusk2 = await get_source_enemy_by_key("fishing", "mollusk", "reservoir")
+    check("колонка armor есть у моллюска (fishing)",
+          "armor" in set(mollusk2.keys()))
 
     # Миграция legacy-БД: колонки были — init_db их вычищает.
     from database.db import get_db, init_db as _init_db
