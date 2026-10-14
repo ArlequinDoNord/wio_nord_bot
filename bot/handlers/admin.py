@@ -22,7 +22,6 @@ from database.db import (
     grant_status, revoke_status, get_user_statuses, citizen_user_ids,
     get_status_by_tag, is_legioner, set_legioner, LEGIONER_ACCESS_TAG,
     get_users_for_rank_promotion, promote_user_rank, get_user,
-    recompute_region_stats, get_region_stats,
     get_daily_spent, add_daily_spent,
     get_treasury_balance, transfer_from_treasury, get_treasury_stats,
     get_report_tax_percent, set_report_tax_percent,
@@ -4562,62 +4561,6 @@ async def get_report_safe(report_id: int):
         if r['id'] == report_id:
             return r
     return {"id": report_id, "user_id": 0, "troops_reported": 0}
-
-
-# ============ СТАТИСТИКА РЕГИОНОВ ============
-
-@router.callback_query(F.data == "admin:region_stats")
-async def admin_region_stats(callback: CallbackQuery):
-    await callback.answer()
-    if not await has_permission(callback.from_user.id, "can_view_reports"):
-        await callback.message.answer("❌ Нет прав для просмотра статистики.")
-        return
-    await show_region_stats(callback.message, refreshed=False, to_edit=callback)
-
-
-@router.callback_query(F.data == "admin:region_stats_refresh")
-async def admin_region_stats_refresh(callback: CallbackQuery):
-    await callback.answer()
-    if not await has_permission(callback.from_user.id, "can_view_reports"):
-        await callback.message.answer("❌ Нет прав для просмотра статистики.")
-        return
-    await recompute_region_stats()
-    await show_region_stats(callback.message, refreshed=True, to_edit=callback)
-
-
-async def show_region_stats(message, refreshed: bool = False, to_edit: CallbackQuery = None):
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    stats = await get_region_stats()
-    text = "📊 СТАТИСТИКА ПО РЕГИОНАМ\n\n"
-    if refreshed:
-        text += "🔄 Пул обновлён.\n\n"
-    elif stats:
-        text += f"🗓 Данные актуальны на {stats[0]['computed_at'][:16] if stats[0] and stats[0]['computed_at'] else '—'}\n\n"
-    else:
-        text += "Данные ещё не рассчитаны.\n\n"
-
-    if stats:
-        text += ("🪖 Силы — сумма показаний «всего» пилотов региона из их последних отчётов.\n"
-                 "👤 Пилотов — кто сейчас в регионе. Переезд меняет оба показателя.\n"
-                 "ℹ️ Это остаток сил на сейчас, а не заработок за сутки: окна времени тут нет.\n\n")
-        for s in stats:
-            region_label = f"Регион {s['region']}"
-            if s['region'] == "0":
-                region_label += " (Столица)"
-            text += (f"🌍 {region_label}\n"
-                     f"   🪖 Силы: {s['troops_total']}\n"
-                     f"   👤 Пилотов: {s['pilots_count']}\n\n")
-    else:
-        text += "Нет данных. Регионы появятся после одобренных отчётов."
-
-    markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Обновить пул", callback_data="admin:region_stats_refresh")],
-        [InlineKeyboardButton(text="👈 Назад", callback_data="admin:menu")],
-    ])
-    if to_edit is not None:
-        await to_edit.message.edit_text(text, reply_markup=markup)
-    else:
-        await message.answer(text, reply_markup=markup)
 
 
 # ============ ПОВЫШЕНИЕ В ЗВАНИИ ============

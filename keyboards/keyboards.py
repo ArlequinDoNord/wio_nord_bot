@@ -39,7 +39,6 @@ def admin_panel_keyboard(permissions: dict):
         buttons.append([InlineKeyboardButton(text="💰 Финансы", callback_data="admin:finance")])
     if permissions.get('can_view_reports') or permissions.get('can_approve_reports'):
         buttons.append([InlineKeyboardButton(text="📋 Отчёты", callback_data="admin:reports")])
-        buttons.append([InlineKeyboardButton(text="📊 Статистика регионов", callback_data="admin:region_stats")])
     if permissions.get('can_manage_admins') or permissions.get('can_assign_mvd_helper'):
         buttons.append([InlineKeyboardButton(text="👑 Управление ролями", callback_data="admin:roles")])
     if permissions.get('can_manage_statuses') or permissions.get('can_grant_statuses') \

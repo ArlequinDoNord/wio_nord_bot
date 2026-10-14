@@ -74,7 +74,6 @@
 | 📜 Менеджер рецептов | `can_manage_shop` | `recadm:menu` |
 | 💰 Финансы | финансы/балансы/валюта | `admin:finance` |
 | 📋 Отчёты | `can_view_reports`/`can_approve_reports` | `admin:reports` |
-| 📊 Статистика регионов | то же | `admin:region_stats` |
 | 👑 Управление ролями | `can_manage_admins`/`can_assign_mvd_helper` | `admin:roles` |
 | 🎖️ Статусы | `can_manage_statuses`/`can_grant_statuses`/`can_grant_citizen_status` | `admin:statuses` |
 | ⭐ Повышение в звании | `can_grant_troops` | `admin:ranks` |
@@ -94,6 +93,30 @@
 | 🪽 Авиакрылья | `can_manage_wing` | `admin:wing` |
 | 📦 Хранилище | `can_manage_storage` | `admin:storage` |
 | 🔙 В меню | — | `back:main` |
+
+## Штаб ВВС (`hq.py`, `hq_menu_markup`)
+
+Вход — из города (локация «Штаб ВВС») или `hq:menu`. Меню собирается под роль:
+командование (`can_send_orders`), командир/заместитель авиаформирования
+(`can_wing_commands`) и штаб ВВС (`can_manage_wing`).
+
+| Кнопка | Кому видно | Колбэк |
+|---|---|---|
+| 📢 Отправить приказ | `can_send_orders` | `hq:send` |
+| 📢 Приказ своему крылу | командир/заместитель | `hq:wingcmd_send` |
+| 🪽 Состав формирования | командир/заместитель | `hq:wingfarm:0` |
+| 📈 Статистика формирований | `can_send_orders`/`can_manage_wing` | `hq:farms` |
+| 📊 Статистика регионов | `can_send_orders`/`can_view_reports`/командир | `hq:region_stats` |
+| ➕ Взять / ➖ Убрать из крыла | командир своего крыла | `hq:wingtake:0`, `hq:wingdrop:0` |
+| 🛡 Заместитель | командир своего крыла | `hq:wingdep:{wing}` |
+| 🪽 Состав ВВС | `can_manage_wing` | `hq:wing` |
+| 🛠 Формирования ВВС | `can_manage_wing` | `hq:wings` |
+| 🏠 В меню города | все | `city:menu` |
+
+«📈 Статистика формирований» открывает выбор авиакрыла (`hq:farms`) и показывает
+по выбранному формированию тот же экран, что командир видит для своего
+(`hq:farms:{wing}:{page}`). «📊 Статистика регионов» перенесена сюда из
+админ-панели — теперь её видят командиры авиаформирований и представитель.
 
 ## Порядок регистрации роутеров (`main.py:523`)
 

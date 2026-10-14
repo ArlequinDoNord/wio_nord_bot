@@ -22,6 +22,7 @@ from database.db import (
     get_wing_staff_wing, get_wing_staff_role, count_unassigned_pilots,
     get_unassigned_pilots, get_wing_member_rows, count_wing_members,
     wing_members_report_farms, report_day_label,
+    get_region_stats, recompute_region_stats,
     citizen_user_ids,
     create_wing, update_wing, delete_wing, get_wing_rows, get_wing_row,
 )
@@ -56,7 +57,8 @@ class HqWingEdit(StatesGroup):
 def hq_menu_markup(roster_ok: bool = False, can_order: bool = True,
                    commander_ok: bool = False, wing_manage_ok: bool = False,
                    wing: str = None, wing_farm_ok: bool = False,
-                   wing_mgmt_ok: bool = False):
+                   wing_mgmt_ok: bool = False, region_stats_ok: bool = False,
+                   farm_all_ok: bool = False):
     rows = []
     if can_order:
         rows.append([InlineKeyboardButton(text="📢 Отправить приказ", callback_data="hq:send")])
@@ -65,6 +67,12 @@ def hq_menu_markup(roster_ok: bool = False, can_order: bool = True,
     if wing_farm_ok:
         rows.append([InlineKeyboardButton(text="🪽 Состав формирования",
                                           callback_data="hq:wingfarm:0")])
+    if farm_all_ok:
+        rows.append([InlineKeyboardButton(text="📈 Статистика формирований",
+                                          callback_data="hq:farms")])
+    if region_stats_ok:
+        rows.append([InlineKeyboardButton(text="📊 Статистика регионов",
+                                          callback_data="hq:region_stats")])
     if wing_manage_ok and wing:
         rows.append([
             InlineKeyboardButton(text="➕ Взять пилота", callback_data="hq:wingtake:0"),
@@ -88,6 +96,22 @@ def hq_target_markup():
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def _can_view_region_stats(user_id: int) -> bool:
+    """Статистику регионов видят командование (can_send_orders), наблюдатели
+    (can_view_reports) и командиры/заместители авиаформирований (can_wing_commands)."""
+    if await has_permission(user_id, "can_view_reports"):
+        return True
+    if await has_permission(user_id, "can_send_orders"):
+        return True
+    return bool(await get_wing_staff_wing(user_id)) and await has_permission(user_id, "can_wing_commands")
+
+
+async def _can_view_all_farms(user_id: int) -> bool:
+    """Статистику любого формирования (как своей) видит командование и штаб ВВС."""
+    return (await has_permission(user_id, "can_send_orders")
+            or await has_permission(user_id, "can_manage_wing"))
+
+
 async def hq_menu_show(msg, user_id: int):
     """Показать меню штаба (используется из hq:menu и входа в локацию «Штаб ВВС»).
     msg — Message или CallbackQuery.message."""
@@ -103,6 +127,10 @@ async def hq_menu_show(msg, user_id: int):
     wing_manage_ok = commander_wing is not None
     # Состав формирования видит и командир, и заместитель (can_wing_commands).
     wing_farm_ok = bool(can_cmd)
+    # Регионы — командованию, наблюдателям и командирам формирований.
+    region_stats_ok = await _can_view_region_stats(user_id)
+    # Любое формирование — командованию и штабу.
+    farm_all_ok = await _can_view_all_farms(user_id)
     await msg.answer(
         "🎖️ ШТАБ ВВС\n\n"
         "Командный центр военно-воздушных сил Нордхайма.\n"
@@ -110,7 +138,9 @@ async def hq_menu_show(msg, user_id: int):
         reply_markup=hq_menu_markup(roster_ok=roster_ok, can_order=can_order,
                                     commander_ok=can_cmd, wing_manage_ok=wing_manage_ok,
                                     wing=commander_wing, wing_farm_ok=wing_farm_ok,
-                                    wing_mgmt_ok=roster_ok)
+                                    wing_mgmt_ok=roster_ok,
+                                    region_stats_ok=region_stats_ok,
+                                    farm_all_ok=farm_all_ok)
     )
     return True
 
@@ -363,22 +393,13 @@ async def hq_wingset(callback: CallbackQuery):
 FARM_PAGE_SIZE = 15
 
 
-@router.callback_query(F.data.startswith("hq:wingfarm:"))
-async def hq_wing_farm_cb(callback: CallbackQuery):
-    """Состав боевого формирования: фарм пилотов крыла за прошлые и текущие сутки.
+async def _wing_farm_view(wing: str, page: int, page_base: str, back: str,
+                          back_label: str):
+    """Текст и клавиатура экрана «Состав боевого формирования» для крыла.
 
-    Доступно командиру и заместителю крыла. Текущие сутки показывают только уже
-    одобренный фарм — отчёт, висящий на проверке, в цифру не входит.
+    page_base — префикс callback для листания (без номера страницы), back/back_label —
+    кнопка возврата. Номера страниц зажимаются в допустимый диапазон.
     """
-    await callback.answer()
-    wing = await get_wing_staff_wing(callback.from_user.id)
-    if not wing or not await has_permission(callback.from_user.id, "can_wing_commands"):
-        await callback.message.answer("❌ Это меню доступно командирам авиакрыльев.")
-        return
-    try:
-        page = int(callback.data.split(":", 2)[2])
-    except (ValueError, IndexError):
-        page = 0
     members = await wing_members_report_farms(wing)
     total = len(members)
     pages = max(1, (total + FARM_PAGE_SIZE - 1) // FARM_PAGE_SIZE)
@@ -411,16 +432,125 @@ async def hq_wing_farm_cb(callback: CallbackQuery):
 
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"hq:wingfarm:{page - 1}"))
+        nav.append(InlineKeyboardButton(text="⬅️", callback_data=f"{page_base}{page - 1}"))
     nav.append(InlineKeyboardButton(text=f"{page + 1}/{pages}", callback_data="hq:noop"))
     if page < pages - 1:
-        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"hq:wingfarm:{page + 1}"))
+        nav.append(InlineKeyboardButton(text="➡️", callback_data=f"{page_base}{page + 1}"))
     rows = [nav] if nav else []
+    rows.append([InlineKeyboardButton(text=back_label, callback_data=back)])
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("hq:wingfarm:"))
+async def hq_wing_farm_cb(callback: CallbackQuery):
+    """Состав боевого формирования: фарм пилотов своего крыла за прошлые и текущие сутки.
+
+    Доступно командиру и заместителю крыла. Текущие сутки показывают только уже
+    одобренный фарм — отчёт, висящий на проверке, в цифру не входит.
+    """
+    await callback.answer()
+    wing = await get_wing_staff_wing(callback.from_user.id)
+    if not wing or not await has_permission(callback.from_user.id, "can_wing_commands"):
+        await callback.message.answer("❌ Это меню доступно командирам авиакрыльев.")
+        return
+    try:
+        page = int(callback.data.split(":", 2)[2])
+    except (ValueError, IndexError):
+        page = 0
+    text, markup = await _wing_farm_view(wing, page, "hq:wingfarm:", "hq:menu", "🔙 В штаб")
+    await callback.message.answer(text, reply_markup=markup)
+
+
+@router.callback_query(F.data == "hq:farms")
+async def hq_farms_pick_cb(callback: CallbackQuery):
+    """Выбор формирования для просмотра статистики (командование и штаб ВВС)."""
+    await callback.answer()
+    if not await _can_view_all_farms(callback.from_user.id):
+        await callback.message.answer("❌ Нет доступа к статистике формирований.")
+        return
+    rows = [[InlineKeyboardButton(text=label, callback_data=f"hq:farms:{key}:0")]
+            for key, label in all_wings().items()]
     rows.append([InlineKeyboardButton(text="🔙 В штаб", callback_data="hq:menu")])
     await callback.message.answer(
-        "\n".join(lines),
+        "📈 СТАТИСТИКА ФОРМИРОВАНИЙ\n\nВыбери авиакрыло:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
+
+
+@router.callback_query(F.data.startswith("hq:farms:"))
+async def hq_farms_view_cb(callback: CallbackQuery):
+    """Статистика выбранного формирования — тот же экран, что у командира для своего."""
+    await callback.answer()
+    if not await _can_view_all_farms(callback.from_user.id):
+        await callback.message.answer("❌ Нет доступа к статистике формирований.")
+        return
+    parts = callback.data.split(":")
+    wing = parts[2] if len(parts) >= 3 else ""
+    if wing not in all_wings():
+        return
+    try:
+        page = int(parts[3]) if len(parts) >= 4 else 0
+    except ValueError:
+        page = 0
+    text, markup = await _wing_farm_view(wing, page, f"hq:farms:{wing}:",
+                                         "hq:farms", "🔙 К формированиям")
+    await callback.message.answer(text, reply_markup=markup)
+
+
+# ----- Статистика войск по регионам -----
+
+
+@router.callback_query(F.data == "hq:region_stats")
+async def hq_region_stats_cb(callback: CallbackQuery):
+    await callback.answer()
+    if not await _can_view_region_stats(callback.from_user.id):
+        await callback.message.answer("❌ Нет доступа к статистике регионов.")
+        return
+    await show_region_stats(callback.message, refreshed=False, to_edit=callback)
+
+
+@router.callback_query(F.data == "hq:region_stats_refresh")
+async def hq_region_stats_refresh_cb(callback: CallbackQuery):
+    await callback.answer()
+    if not await _can_view_region_stats(callback.from_user.id):
+        await callback.message.answer("❌ Нет доступа к статистике регионов.")
+        return
+    await recompute_region_stats()
+    await show_region_stats(callback.message, refreshed=True, to_edit=callback)
+
+
+async def show_region_stats(message, refreshed: bool = False, to_edit: CallbackQuery = None):
+    stats = await get_region_stats()
+    text = "📊 СТАТИСТИКА ПО РЕГИОНАМ\n\n"
+    if refreshed:
+        text += "🔄 Пул обновлён.\n\n"
+    elif stats:
+        text += f"🗓 Данные актуальны на {stats[0]['computed_at'][:16] if stats[0] and stats[0]['computed_at'] else '—'}\n\n"
+    else:
+        text += "Данные ещё не рассчитаны.\n\n"
+
+    if stats:
+        text += ("🪖 Силы — сумма показаний «всего» пилотов региона из их последних отчётов.\n"
+                 "👤 Пилотов — кто сейчас в регионе. Переезд меняет оба показателя.\n"
+                 "ℹ️ Это остаток сил на сейчас, а не заработок за сутки: окна времени тут нет.\n\n")
+        for s in stats:
+            region_label = f"Регион {s['region']}"
+            if s['region'] == "0":
+                region_label += " (Столица)"
+            text += (f"🌍 {region_label}\n"
+                     f"   🪖 Силы: {s['troops_total']}\n"
+                     f"   👤 Пилотов: {s['pilots_count']}\n\n")
+    else:
+        text += "Нет данных. Регионы появятся после одобренных отчётов."
+
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Обновить пул", callback_data="hq:region_stats_refresh")],
+        [InlineKeyboardButton(text="👈 В штаб", callback_data="hq:menu")],
+    ])
+    if to_edit is not None:
+        await to_edit.message.edit_text(text, reply_markup=markup)
+    else:
+        await message.answer(text, reply_markup=markup)
 
 
 @router.callback_query(F.data == "hq:noop")
