@@ -9333,6 +9333,176 @@ async def cleanup_mojibake_duel_items() -> int:
     return removed
 
 
+def _demojibake(text: str):
+    """Восстанавливает строку, дважды перекодированную UTF-8 → cp1251 → UTF-8.
+
+    Возвращает исправленный текст или None, если строка не является mojibake
+    (или не восстанавливается). Надёжный признак: cp1251-байты строки снова
+    читаются как UTF-8. Для корректного русского текста это почти никогда не
+    проходит, поэтому ложных срабатываний практически нет.
+    """
+    if not text:
+        return None
+    try:
+        fixed = text.encode("cp1251").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return None
+    return fixed if fixed and fixed != text else None
+
+
+async def _merge_item_refs(conn, bad_id: int, good_id: int):
+    """Переносит все ссылки на предмет bad_id на предмет good_id (слияние дублей).
+
+    Инвентарь сливается с суммированием количеств; остальные ссылки (снаряжение,
+    дропы, рецепты, лоты, очереди) перепривязываются. Сама строка items удаляется
+    вызывающим кодом.
+    """
+    # Инвентарь: у кого есть оба предмета — складываем количества.
+    await conn.execute(
+        "UPDATE inventory SET quantity = quantity + "
+        "(SELECT b.quantity FROM inventory b WHERE b.user_id = inventory.user_id AND b.item_id = ?) "
+        "WHERE item_id = ? AND EXISTS "
+        "(SELECT 1 FROM inventory b WHERE b.user_id = inventory.user_id AND b.item_id = ?)",
+        (bad_id, good_id, bad_id))
+    await conn.execute(
+        "DELETE FROM inventory WHERE item_id = ? AND EXISTS "
+        "(SELECT 1 FROM inventory g WHERE g.user_id = inventory.user_id AND g.item_id = ?)",
+        (bad_id, good_id))
+    await conn.execute("UPDATE inventory SET item_id = ? WHERE item_id = ?", (good_id, bad_id))
+
+    # Прочие однострочные ссылки на предмет.
+    for table, col in (("player_dungeon_inventory", "item_id"),
+                       ("dungeon_rewards", "item_id"),
+                       ("dungeon_items", "item_id"),
+                       ("resource_sources", "item_id"),
+                       ("fish_catches", "item_id"),
+                       ("market_items", "item_id"),
+                       ("market_fish", "item_id"),
+                       ("water_fish", "item_id"),
+                       ("production_queue", "recipe_item_id"),
+                       ("buildings", "production_item_id")):
+        await conn.execute(f"UPDATE {table} SET {col} = ? WHERE {col} = ?", (good_id, bad_id))
+    await conn.execute("UPDATE trades SET from_item_id = ? WHERE from_item_id = ?", (good_id, bad_id))
+    await conn.execute("UPDATE trades SET to_item_id = ? WHERE to_item_id = ?", (good_id, bad_id))
+
+    # Снаряжение игроков (JSON-слоты).
+    cur = await conn.execute(
+        "SELECT user_id, equipment FROM users WHERE equipment IS NOT NULL AND equipment != '{}'")
+    for row in await cur.fetchall():
+        try:
+            eq = json.loads(row["equipment"])
+        except (ValueError, TypeError):
+            continue
+        changed = False
+        for slot, val in list(eq.items()):
+            if val == bad_id:
+                eq[slot] = good_id
+                changed = True
+        if changed:
+            await conn.execute("UPDATE users SET equipment = ? WHERE user_id = ?",
+                               (json.dumps(eq, ensure_ascii=False), row["user_id"]))
+
+    # Дропы врагов (JSON-список с item_id).
+    cur = await conn.execute(
+        "SELECT id, drops FROM dungeon_enemies WHERE drops IS NOT NULL AND drops != '[]'")
+    for row in await cur.fetchall():
+        try:
+            dlist = json.loads(row["drops"])
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(dlist, list):
+            continue
+        changed = False
+        for d in dlist:
+            if isinstance(d, dict) and d.get("item_id") is not None and int(d["item_id"]) == bad_id:
+                d["item_id"] = good_id
+                changed = True
+        if changed:
+            await conn.execute(
+                "UPDATE dungeon_enemies SET drops = ?, admin_tuned = 1 WHERE id = ?",
+                (json.dumps(dlist, ensure_ascii=False), row["id"]))
+
+    # Ингредиенты рецептов (JSON-список).
+    cur = await conn.execute(
+        "SELECT id, ingredients FROM recipes WHERE ingredients IS NOT NULL AND ingredients != '[]'")
+    for row in await cur.fetchall():
+        try:
+            ing = json.loads(row["ingredients"])
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(ing, list):
+            continue
+        changed = False
+        for e in ing:
+            if isinstance(e, dict) and e.get("item_id") is not None and int(e["item_id"]) == bad_id:
+                e["item_id"] = good_id
+                changed = True
+        if changed:
+            await conn.execute("UPDATE recipes SET ingredients = ? WHERE id = ?",
+                               (json.dumps(ing, ensure_ascii=False), row["id"]))
+
+
+async def repair_mojibake_entities() -> dict:
+    """Чинит записи с битой кодировкой (UTF-8, прочитанный как cp1251).
+
+    Причина: раньше config.py на короткое время был дважды перекодирован, и
+    `ensure_*` засеяли предметы/награды с «крякозябрами» — появлялись дубли товаров
+    (например, «Буклет туриста» и его битый двойник). Здесь:
+      * если у битой записи есть корректный двойник по имени — переносим все ссылки
+        на двойника и удаляем битую строку (слияние);
+      * иначе — восстанавливаем имя/описание на месте.
+    Идемпотентно. Возвращает отчёт по категориям.
+    """
+    conn = await get_db()
+    report = {"items_merged": 0, "items_fixed": 0,
+              "awards_merged": 0, "awards_fixed": 0}
+
+    cur = await conn.execute("SELECT id, name, description FROM items")
+    for row in await cur.fetchall():
+        fixed = _demojibake(row["name"])
+        if not fixed:
+            continue
+        cur2 = await conn.execute(
+            "SELECT id FROM items WHERE name = ? AND id != ?", (fixed, row["id"]))
+        twin = await cur2.fetchone()
+        if twin:
+            await _merge_item_refs(conn, row["id"], twin["id"])
+            await conn.execute("DELETE FROM items WHERE id = ?", (row["id"],))
+            report["items_merged"] += 1
+        else:
+            desc_fixed = _demojibake(row["description"]) or row["description"]
+            await conn.execute(
+                "UPDATE items SET name = ?, description = ? WHERE id = ?",
+                (fixed, desc_fixed, row["id"]))
+            report["items_fixed"] += 1
+
+    cur = await conn.execute("SELECT id, name, description FROM awards")
+    for row in await cur.fetchall():
+        fixed = _demojibake(row["name"])
+        if not fixed:
+            continue
+        cur2 = await conn.execute(
+            "SELECT id FROM awards WHERE name = ? AND id != ?", (fixed, row["id"]))
+        twin = await cur2.fetchone()
+        if twin:
+            await conn.execute(
+                "UPDATE user_awards SET award_id = ? WHERE award_id = ?", (twin["id"], row["id"]))
+            await conn.execute(
+                "UPDATE award_monthly_paid SET award_id = ? WHERE award_id = ?",
+                (twin["id"], row["id"]))
+            await conn.execute("DELETE FROM awards WHERE id = ?", (row["id"],))
+            report["awards_merged"] += 1
+        else:
+            desc_fixed = _demojibake(row["description"]) or row["description"]
+            await conn.execute(
+                "UPDATE awards SET name = ?, description = ? WHERE id = ?",
+                (fixed, desc_fixed, row["id"]))
+            report["awards_fixed"] += 1
+
+    await conn.commit()
+    return report
+
+
 async def ensure_kvp_award():
     KVP_BADGE_DESCRIPTION = (
         "Выживание, уклонение, сопротивление и побег. Постоянный бонус: "

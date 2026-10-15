@@ -22,7 +22,7 @@ from database.db import (
     ensure_dungeon_reservoir_items, ensure_market_license_item, pay_salaries, payout_reports,
     pay_award_monthly, pay_role_salaries,
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award, ensure_duel_items,
-    cleanup_mojibake_duel_items, expire_stale_duels,
+    cleanup_mojibake_duel_items, expire_stale_duels, repair_mojibake_entities,
     ensure_achievements,
     ensure_tourist_booklet,
     ensure_water_fish, migrate_legacy_junk,
@@ -473,6 +473,10 @@ async def main():
 
     await ensure_tourist_booklet()
     logger.info("Буклет туриста (предмет и награда) проверены")
+
+    fixed = await repair_mojibake_entities()
+    if any(fixed.values()):
+        logger.info("Кодировка: починены записи с битой кодировкой — %s", fixed)
 
     bot = Bot(token=BOT_TOKEN)
     # FSM — на диске, рядом с БД (/app/data в контейнере, docker volume): состояния

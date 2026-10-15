@@ -38,6 +38,23 @@ HTTPS — авторизация через Windows Credential Manager (учёт
 - После деплоя проверить прод: VERSION в контейнере (`docker exec -i wio_nord_bot-wio_nord_bot-1 python -u -` → `import config`) и `git ls-remote https://github.com/ArlequinDoNord/wio_nord_bot.git refs/heads/main refs/tags/vX.Y.Z` для зеркала.
 - Прод-БД: `wio_nord_bot-wio_nord_bot-1`:/app/data/nordmark.db (sqlite3 в контейнере нет — использовать `docker exec -i ... python -`).
 
+## Кодировки (обязательно)
+- **Все `*.py`, `*.md` и данные — строго UTF-8 без BOM.** Никогда не «правь» файлы
+  через PowerShell-пайпы, `Out-File`, `Set-Content`, `>` (в PS 5.1 они пишут UTF-16
+  или cp1251) — только редактор/`Write`-инструмент, который сохраняет UTF-8 (LF).
+  Запись файлов с русскими строками: `open(..., encoding="utf-8", newline="\n")`.
+- **Опасность mojibake:** если config-строку прочитать как cp1251 и сохранить обратно
+  как UTF-8, в БД попадают «крякозябры» (напр. `Р‘СѓРєР»РµС‚` вместо `Буклет`), причём
+  `ensure_*` засеет и корректную, и битую строку → дубли товаров/наград. Так уже
+  случалось (v0.23.6, исправлено дуэльное). Восстанавливается
+  `text.encode("cp1251").decode("utf-8")`.
+- **Защита на старте:** `repair_mojibake_entities()` (`database/db.py`, вызов в
+  `main.py` после `ensure_tourist_booklet`) ищет битые имена предметов/наград,
+  сливает дубли (ссылки/инвентарь — на корректного двойника) или чинит имя на месте.
+- При работе с БД на проде через `ssh … docker exec -i … python -` НЕ пиши кириллицу
+  в самих SQL-литералах пайпа (PowerShell→native портит кодировку, запрос молча не
+  находит): фильтруй по ASCII/ID, а кириллицу сравнивай в Python.
+
 ## Пользователи
 - Simargl1 — владелец/супер-админ (Telegram ID 561309060). Подтверждает деплой.
 - 207599548 Platual, 1218849548 victoriya1228 и др. — обычные игроки/тестировщики.

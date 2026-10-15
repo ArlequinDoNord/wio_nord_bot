@@ -575,11 +575,25 @@ async def clan_create_desc(message: Message, state: FSMContext):
             [InlineKeyboardButton(text="❌ Отмена", callback_data="city:clans")]]))
 
 
-async def _create_clan_finish(state: FSMContext, owner_id: int, photo_file_id=None) -> str:
-    """Создать объединение по данным FSM и вернуть итоговую строку.
+def _after_create_markup(kind: str) -> InlineKeyboardMarkup:
+    """Клавиатура после создания объединения: создать ещё / вернуться в раздел."""
+    accent = "ещё один клан" if kind == "clan" else "ещё одну партию"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"{KIND_EMOJI[kind]} Создать {accent}",
+            callback_data=f"clans:create:{kind}")],
+        [InlineKeyboardButton(
+            text="🔙 Вернуться в раздел партий и кланов",
+            callback_data="city:clans")],
+    ])
 
-    Объединение создаётся только на последнем шаге (после эмблемы или её
-    пропуска) — так «Отмена» на любом шаге не оставляет пустой записи.
+
+async def _create_clan_finish(state: FSMContext, owner_id: int, photo_file_id=None) -> tuple:
+    """Создать объединение по данным FSM.
+
+    Возвращает (текст, клавиатура): после создания можно сразу завести ещё одно
+    или вернуться в список. Объединение создаётся только на последнем шаге (после
+    эмблемы или её пропуска) — так «Отмена» на любом шаге не оставляет пустой записи.
     """
     data = await state.get_data()
     kind = data.get('clans_kind', 'clan')
@@ -590,16 +604,17 @@ async def _create_clan_finish(state: FSMContext, owner_id: int, photo_file_id=No
         await update_clan(clan_id, photo_file_id=photo_file_id)
     await log_action(owner_id, 'clan_create', clan_id, f"kind={kind}, name={name}")
     await state.clear()
-    return (
+    text = (
         f"✅ {KIND_EMOJI[kind]} {KIND_LABELS[kind].title()} «{name}» создан!\n"
         f"Дальше: назначь главу и добавь первых членов.")
+    return text, _after_create_markup(kind)
 
 
 @router.message(ClansCreate.wait_photo, F.photo)
 async def clan_create_photo(message: Message, state: FSMContext):
-    text = await _create_clan_finish(state, message.from_user.id,
-                                     photo_file_id=message.photo[-1].file_id)
-    await message.answer(text)
+    text, kb = await _create_clan_finish(state, message.from_user.id,
+                                         photo_file_id=message.photo[-1].file_id)
+    await message.answer(text, reply_markup=kb)
 
 
 @router.message(ClansCreate.wait_photo)
@@ -612,12 +627,12 @@ async def clan_create_skip(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     if not await has_permission(callback.from_user.id, "can_manage_clans"):
         return
-    text = await _create_clan_finish(state, callback.from_user.id)
+    text, kb = await _create_clan_finish(state, callback.from_user.id)
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
-    await callback.message.answer(text)
+    await callback.message.answer(text, reply_markup=kb)
 
 
 # ----- Редактирование (суперадмин) -----

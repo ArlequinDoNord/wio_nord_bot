@@ -303,20 +303,20 @@
 | `kind` | — | — |
 | `wait_name` | `bot/handlers/clans.py:537` `clan_create_start` | `bot/handlers/clans.py:545` `clan_create_name` |
 | `wait_desc` | `bot/handlers/clans.py:552` `clan_create_name` | `bot/handlers/clans.py:560` `clan_create_desc` |
-| `wait_photo` | `bot/handlers/clans.py:570` `clan_create_desc` | `bot/handlers/clans.py:599` `clan_create_photo`<br>`bot/handlers/clans.py:606` `clan_create_photo_hint` |
+| `wait_photo` | `bot/handlers/clans.py:570` `clan_create_desc` | `bot/handlers/clans.py:614` `clan_create_photo`<br>`bot/handlers/clans.py:621` `clan_create_photo_hint` |
 
 ### `ClansEdit` — `bot/handlers/clans.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
 | `field` | — | — |
-| `wait_value` | `bot/handlers/clans.py:664` `clan_edit_field_cb` | `bot/handlers/clans.py:670` `clan_edit_finish_photo`<br>`bot/handlers/clans.py:684` `clan_edit_finish_text` |
+| `wait_value` | `bot/handlers/clans.py:679` `clan_edit_field_cb` | `bot/handlers/clans.py:685` `clan_edit_finish_photo`<br>`bot/handlers/clans.py:699` `clan_edit_finish_text` |
 
 ### `ClansMessage` — `bot/handlers/clans.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `wait_text` | `bot/handlers/clans.py:721` `clan_msg_start` | `bot/handlers/clans.py:729` `clan_msg_send` |
+| `wait_text` | `bot/handlers/clans.py:736` `clan_msg_start` | `bot/handlers/clans.py:744` `clan_msg_send` |
 
 ### `DungeonFSM` — `bot/handlers/dungeon.py`
 
@@ -579,7 +579,7 @@
 - `city:pilots`: `bot/handlers/pilots.py:100`
 - `city:pilots:list`: `bot/handlers/pilots.py:127`
 - `city:vote`: `bot/handlers/polls.py:70`
-- `clans:create_skip`: `bot/handlers/clans.py:610`
+- `clans:create_skip`: `bot/handlers/clans.py:625`
 - `clans:noop`: `bot/handlers/clans.py:410`
 - `contracts:list`: `bot/handlers/dungeon.py:700`
 - `del_item:back`: `bot/handlers/admin.py:1690`
@@ -749,10 +749,10 @@
 - `clans:addset:`: `bot/handlers/clans.py:432`
 - `clans:cancel:`: `bot/handlers/clans.py:231`
 - `clans:create:`: `bot/handlers/clans.py:527`
-- `clans:del:`: `bot/handlers/clans.py:758`
-- `clans:delyes:`: `bot/handlers/clans.py:775`
-- `clans:edit:`: `bot/handlers/clans.py:625`
-- `clans:editf:`: `bot/handlers/clans.py:643`
+- `clans:del:`: `bot/handlers/clans.py:773`
+- `clans:delyes:`: `bot/handlers/clans.py:790`
+- `clans:edit:`: `bot/handlers/clans.py:640`
+- `clans:editf:`: `bot/handlers/clans.py:658`
 - `clans:join:`: `bot/handlers/clans.py:194`
 - `clans:kick:`: `bot/handlers/clans.py:365`
 - `clans:leader:`: `bot/handlers/clans.py:456`
@@ -760,7 +760,7 @@
 - `clans:leaderunset:`: `bot/handlers/clans.py:503`
 - `clans:leave:`: `bot/handlers/clans.py:241`
 - `clans:manage:`: `bot/handlers/clans.py:309`
-- `clans:msg:`: `bot/handlers/clans.py:713`
+- `clans:msg:`: `bot/handlers/clans.py:728`
 - `clans:reqno:`: `bot/handlers/clans.py:292`
 - `clans:reqok:`: `bot/handlers/clans.py:268`
 - `clans:view:`: `bot/handlers/clans.py:139`
