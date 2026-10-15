@@ -1161,6 +1161,9 @@ async def init_db():
     # Фонтан в парке: 1 восстановление ОД в сутки
     await _ensure_column(conn, "users", "fountain_used_day", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "users", "fountain_used_today", "INTEGER DEFAULT 0")
+    # Душевая в жилье: 1 восстановление ОД в сутки (душевая +25, ванна с душем +50)
+    await _ensure_column(conn, "users", "shower_used_day", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "users", "shower_used_today", "INTEGER DEFAULT 0")
     # Выкуп рыбы казной: суточный лимит НМ на игрока (FISH_TREASURY_DAILY_LIMIT)
     await _ensure_column(conn, "users", "fish_sold_day", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "users", "fish_sold_today", "INTEGER DEFAULT 0")
@@ -1746,7 +1749,8 @@ async def _normalize_daily_keys():
     day = today_report_day()
     conn = await get_db()
     for col in ("ap_recovery_day", "ap_restored_day", "seaweed_used_day",
-                "fountain_used_day", "fish_sold_day", "forest_sold_day",
+                "fountain_used_day", "shower_used_day", "fish_sold_day",
+                "forest_sold_day",
                 "alcohol_weak_used_day", "alcohol_strong_used_day"):
         await conn.execute(
             f"UPDATE users SET {col} = ? WHERE {col} IS NOT NULL AND {col} > ?",
@@ -1816,6 +1820,8 @@ async def daily_ap_recovery():
             seaweed_used_day = ?,
             fountain_used_today = CASE WHEN fountain_used_day = ? THEN fountain_used_today ELSE 0 END,
             fountain_used_day = ?,
+            shower_used_today = CASE WHEN shower_used_day = ? THEN shower_used_today ELSE 0 END,
+            shower_used_day = ?,
             fish_sold_today = CASE WHEN fish_sold_day = ? THEN fish_sold_today ELSE 0 END,
             fish_sold_day = ?,
             forest_sold_today = CASE WHEN forest_sold_day = ? THEN forest_sold_today ELSE 0 END,
@@ -1825,7 +1831,7 @@ async def daily_ap_recovery():
             alcohol_strong_used_today = CASE WHEN alcohol_strong_used_day = ? THEN alcohol_strong_used_today ELSE 0 END,
             alcohol_strong_used_day = ?,
             special_fails_today = 0
-    """, (today,) * 14)
+    """, (today,) * 16)
     await conn.commit()
 
 
@@ -10822,6 +10828,10 @@ async def ensure_life_items():
          150, 75, 1, "furniture", -1, 0, "pilot2", 1),
         ("Кадка для растений", "Кадка для выращивания растений. Пустая — в неё сажаются семена.",
          200, 100, 1, "furniture", -1, 0, "pilot2", 1),
+        ("Душевая", "Простая душевая кабина. Раз в сутки можно принять душ: +25 ОД.",
+         450, 225, 1, "furniture", -1, 0, "pilot1", 1),
+        ("Ванная с душем", "Просторная ванная комната с душем. Раз в сутки можно принять ванну: +50 ОД.",
+         950, 475, 2, "furniture", -1, 0, "veteran", 1),
         ("Яблочное семечко", "Семечко яблони. Посади в кадку в жилье — вырастет яблоня.",
          30, 15, 1, "seeds", 10, 0, "pilot2", 1),
         ("Бутылка чистой воды", "Чистая вода из артезианской скважины. Основа для настоек и энергетиков.",
@@ -12236,6 +12246,23 @@ async def mark_fountain_used(user_id: int):
     # почему-то обошёл can_use_fountain. Считаем честно, ограничение — 1/сут.
     used = ((user.get('fountain_used_today') or 0) + 1) if user and user.get('fountain_used_day') == today else 1
     await update_user(user_id, fountain_used_day=today, fountain_used_today=used)
+
+
+# ---------- Душевая (восстановление ОД раз в сутки) ----------
+
+async def can_use_shower(user_id: int) -> bool:
+    user = await get_user(user_id)
+    if not user:
+        return False
+    today = today_report_day()
+    return not (user.get('shower_used_day') == today and (user.get('shower_used_today') or 0) >= 1)
+
+
+async def mark_shower_used(user_id: int):
+    today = today_report_day()
+    user = await get_user(user_id)
+    used = ((user.get('shower_used_today') or 0) + 1) if user and user.get('shower_used_day') == today else 1
+    await update_user(user_id, shower_used_day=today, shower_used_today=used)
 
 
 # ============ ЛОГ АКТИВНОСТИ ИГРОКОВ ============

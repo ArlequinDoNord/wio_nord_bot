@@ -60,6 +60,8 @@
 | `special_blocked_until` | `TEXT DEFAULT NULL` |
 | `fountain_used_day` | `TEXT DEFAULT NULL` |
 | `fountain_used_today` | `INTEGER DEFAULT 0` |
+| `shower_used_day` | `TEXT DEFAULT NULL` |
+| `shower_used_today` | `INTEGER DEFAULT 0` |
 | `fish_sold_day` | `TEXT DEFAULT NULL` |
 | `fish_sold_today` | `INTEGER DEFAULT 0` |
 | `forest_attempts_since_boar` | `INTEGER DEFAULT 0` |

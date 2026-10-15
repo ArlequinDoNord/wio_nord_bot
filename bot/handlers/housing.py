@@ -1,4 +1,4 @@
-"""Жильё пилота: комнаты-расширения (кухня/верстак/кадка), крафт и растение."""
+"""Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение."""
 
 import asyncio
 import json
@@ -20,6 +20,7 @@ from database.db import (
     get_inventory_item, get_inventory_plant_data, set_inventory_plant_data,
     user_has_status_tag, log_activity, log_location_visit,
     remove_nordmarks,
+    can_use_shower, mark_shower_used,
     get_housing_expansions_installed, increment_housing_expansions,
     get_housing_tax_rate, pay_housing_tax, is_housing_tax_paid, pay_housing_debt,
     bump_achievement, get_achievement_bonus,
@@ -36,6 +37,8 @@ FURNITURE_BY_EXPANSION = {
     ("kitchen", 3): "Кухня 3 уровня",
     ("workbench", 1): "Верстак",
     ("plant_pot", 1): "Кадка для растений",
+    ("shower", 1): "Душевая",
+    ("shower", 2): "Ванная с душем",
 }
 FURNITURE_BY_ITEM = {v: k for k, v in FURNITURE_BY_EXPANSION.items()}
 
@@ -43,7 +46,12 @@ EXPANSION_LABELS = {
     "kitchen": "🍳 Кухня",
     "workbench": "🔧 Верстак",
     "plant_pot": "🌱 Кадка для растений",
+    "shower": "🚿 Душевая",
 }
+
+# Душевая: раз в игровые сутки восстанавливает ОД. Душевая (ур. 1) — +25,
+# ванна с душем (ур. 2) — +50. Лимит общий: одна комната, одно применение в сутки.
+SHOWER_AP_BY_LEVEL = {1: 25, 2: 50}
 
 # Встроенная кухня студии (идёт вместе с жильём, не снимается и не возвращается).
 STUDIO_KITCHEN_NAME = "Маленький духовой шкаф, совмещённый с плиткой"
@@ -125,7 +133,7 @@ def _plant_stage_photo(data: dict, ht: str, stage: int):
 
 
 def _slot_icon(et):
-    return {"kitchen": "🍳", "workbench": "🔧", "plant_pot": "🌱"}.get(et, "📦")
+    return {"kitchen": "🍳", "workbench": "🔧", "plant_pot": "🌱", "shower": "🚿"}.get(et, "📦")
 
 
 def _slot_name(slot):
@@ -139,6 +147,8 @@ def _slot_name(slot):
         return "Верстак"
     if et == "plant_pot":
         return "Кадка для растений"
+    if et == "shower":
+        return "Ванная с душем" if lvl >= 2 else "Душевая"
     return "Пустой слот"
 
 
@@ -302,6 +312,8 @@ async def housing_room(cb: CallbackQuery):
         await _room_workbench(cb, uid, idx, slot, ht, lvl)
     elif et == "plant_pot":
         await _room_plant(cb, uid, idx, slot, ht)
+    elif et == "shower":
+        await _room_shower(cb, uid, idx, slot, ht, lvl)
     else:
         kb = InlineKeyboardMarkup(inline_keyboard=[[_inv_row("🔙 К жилью", "housing:menu")]])
         await _paint(cb, "Неизвестное расширение.", _housing_photo(ht), kb)
@@ -393,6 +405,47 @@ async def _room_workbench(cb, uid, idx, slot, ht, lvl):
     rows.append([_inv_row("🔙 К жилью", "housing:menu")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
+
+
+async def _room_shower(cb, uid, idx, slot, ht, lvl):
+    title = _slot_name(slot)
+    ap_gain = SHOWER_AP_BY_LEVEL.get(lvl, 25)
+    can = await can_use_shower(uid)
+    lines = [f"🚿 *{title}* (слот {idx+1})\n"]
+    if can:
+        lines.append(f"Раз в сутки можно освежиться и восстановить +{ap_gain} ОД.")
+    else:
+        lines.append("✅ Сегодня ты уже мылся — приходи завтра.")
+    rows = []
+    if can:
+        rows.append([_inv_row(f"🚿 Принять душ (+{ap_gain} ОД)", f"housing:shower:{idx}")])
+    rows.append([_inv_row("🛠️ Убрать из слота", f"housing:uninstall:{idx}")])
+    rows.append([_inv_row("🔙 К жилью", "housing:menu")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
+
+
+@router.callback_query(F.data.startswith("housing:shower:"))
+async def housing_shower(cb: CallbackQuery):
+    await cb.answer()
+    uid = cb.from_user.id
+    idx = int(cb.data.split(":")[2])
+    slots = await get_housing_slots(uid)
+    slot = slots.get(idx)
+    if not slot or slot.get("expansion_type") != "shower":
+        await cb.answer("❌ Здесь нет душевой.", show_alert=True)
+        return
+    if not await can_use_shower(uid):
+        await cb.answer("🚿 Сегодня ты уже мылся — приходи завтра.", show_alert=True)
+        return
+    lvl = slot.get("expansion_level", 1)
+    ap_gain = SHOWER_AP_BY_LEVEL.get(lvl, 25)
+    await add_ap(uid, ap_gain, reason="душевая")
+    await mark_shower_used(uid)
+    await log_activity(uid, "shower", f"+{ap_gain} ОД")
+    await cb.answer(f"🚿 Освежился: +{ap_gain} ОД!", show_alert=True)
+    ht = (await get_player_housing(uid))["housing_type"]
+    await _room_shower(cb, uid, idx, slot, ht, lvl)
 
 
 async def _room_plant(cb, uid, idx, slot, ht):
@@ -737,13 +790,14 @@ async def housing_install_item(cb: CallbackQuery):
                             show_alert=True)
             return
 
-    # Кухня: замена старой (возврат в инвентарь). Встроенную кухню студии не трогаем.
-    if et == "kitchen":
+    # Кухня/душевая: замена старой версии на более высокий уровень (возврат в
+    # инвентарь). Встроенную кухню студии не трогаем.
+    if et in ("kitchen", "shower"):
         for i, s in sorted(slots.items()):
             if (not s.get("embedded")
-                    and s.get("expansion_type") == "kitchen"
+                    and s.get("expansion_type") == et
                     and s.get("expansion_level", 1) < lvl):
-                old_name = FURNITURE_BY_EXPANSION.get(("kitchen", s["expansion_level"]))
+                old_name = FURNITURE_BY_EXPANSION.get((et, s["expansion_level"]))
                 if cost:
                     await remove_nordmarks(uid, cost, "replanning", f"Перепланировка жилья ({ht})")
                 await set_housing_slot(uid, i, et, lvl)

@@ -63,7 +63,7 @@
 | `park.py` | Городской парк Аркхольма: озеро (статика), фонтан и аллея статуй. | `router` | 7 | 14 | `park:` | `AdminStatue`, `AdminStatueEdit` |
 | `fishing.py` | Рыбалка на Озере в парке. | `router` | 0 | 4 | `fish:` | — |
 | `forest.py` | Лес на окраине: опушка и лесная поляна, сбор грибов и кабан. | `router` | 0 | 4 | `forest:` | — |
-| `housing.py` | Жильё пилота: комнаты-расширения (кухня/верстак/кадка), крафт и растение. | `router` | 0 | 15 | `housing:` | — |
+| `housing.py` | Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение. | `router` | 0 | 16 | `housing:` | — |
 | `news.py` | Новости ГосСМИ: лента, публикация, управление выпусками, архив. | `router` | 6 | 9 | `news:` | `NewsWrite`, `NewsEdit` |
 | `kvp.py` | Курс Выживания для Пилотов (К.В.П.) — тренировочный данж. | `router` | 0 | 6 | `kvp:` | `KvpFSM` |
 | `wall.py` | Стена изречений — доска объявлений города. | `router` | 2 | 7 | `wall:` | `WallWrite` |
@@ -213,11 +213,11 @@
 - Хендлеры: message=0, callback_query=4
 - `F.data.startswith`: `forest:area:\d+:(glade|clearing)$`, `forest:battle:flee:\d+$`, `forest:battle:hit:\d+$`, `forest:cast:\d+(?::(glade|clearing))?$`
 
-### `housing.py` — Жильё пилота: комнаты-расширения (кухня/верстак/кадка), крафт и растение.
+### `housing.py` — Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение.
 
 - Роутеры: `router`
-- Хендлеры: message=0, callback_query=15
-- `F.data.startswith`: `housing:craft:`, `housing:harvest:`, `housing:install:`, `housing:install_item:`, `housing:kitchen:`, `housing:move:`, `housing:plant:`, `housing:recipe:`, `housing:room:`, `housing:uninstall:`, `housing:uninstall_confirm:`
+- Хендлеры: message=0, callback_query=16
+- `F.data.startswith`: `housing:craft:`, `housing:harvest:`, `housing:install:`, `housing:install_item:`, `housing:kitchen:`, `housing:move:`, `housing:plant:`, `housing:recipe:`, `housing:room:`, `housing:shower:`, `housing:uninstall:`, `housing:uninstall_confirm:`
 - `F.data ==`: `housing:menu`, `housing:noop`, `housing:pay_debt`, `housing:pay_tax`
 
 ### `news.py` — Новости ГосСМИ: лента, публикация, управление выпусками, архив.
