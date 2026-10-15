@@ -68,7 +68,7 @@
 | `kvp.py` | Курс Выживания для Пилотов (К.В.П.) — тренировочный данж. | `router` | 0 | 6 | `kvp:` | `KvpFSM` |
 | `wall.py` | Стена изречений — доска объявлений города. | `router` | 2 | 7 | `wall:` | `WallWrite` |
 | `hq.py` | Штаб ВВС: командование рассылает приказы авиакрыльям. | `router` | 7 | 25 | `hq:` | `HqOrder`, `HqWingCreate`, `HqWingEdit` |
-| `clans.py` | Партии и кланы: реестр из Ратуши. | `router` | 7 | 22 | `city:`, `clans:` | `ClansCreate`, `ClansEdit`, `ClansMessage` |
+| `clans.py` | Партии и кланы: реестр из Ратуши. | `router` | 7 | 23 | `city:`, `clans:` | `ClansCreate`, `ClansEdit`, `ClansMessage` |
 | `nii.py` | НИИ Северной Кибернетики и кремниевых систем — здание обратной связи. | `router` | 2 | 7 | `nii:` | `NiiWrite` |
 | `tourist_booklet.py` | Буклет туриста: чек-лист городских локаций и разовая награда. | `router` | 0 | 2 | `booklet:` | — |
 | `duel.py` | Дом Дуэлей — PvP-арена «зона на зону». | `router` | 0 | 12 | `duel:` | — |
@@ -255,9 +255,9 @@
 ### `clans.py` — Партии и кланы: реестр из Ратуши.
 
 - Роутеры: `router`
-- Хендлеры: message=7, callback_query=22
+- Хендлеры: message=7, callback_query=23
 - FSM: `ClansCreate`, `ClansEdit`, `ClansMessage`
-- `F.data.startswith`: `clans:add:`, `clans:addset:`, `clans:cancel:`, `clans:create:`, `clans:del:`, `clans:delyes:`, `clans:edit:`, `clans:editf:`, `clans:join:`, `clans:kick:`, `clans:leader:`, `clans:leaderset:`, `clans:leaderunset:`, `clans:leave:`, `clans:manage:`, `clans:msg:`, `clans:reqno:`, `clans:reqok:`, `clans:view:`
+- `F.data.startswith`: `clans:add:`, `clans:addset:`, `clans:cancel:`, `clans:create:`, `clans:del:`, `clans:delyes:`, `clans:edit:`, `clans:editf:`, `clans:join:`, `clans:kick:`, `clans:leader:`, `clans:leaderset:`, `clans:leaderunset:`, `clans:leave:`, `clans:list:`, `clans:manage:`, `clans:msg:`, `clans:reqno:`, `clans:reqok:`, `clans:view:`
 - `F.data ==`: `city:clans`, `clans:create_skip`, `clans:noop`
 
 ### `nii.py` — НИИ Северной Кибернетики и кремниевых систем — здание обратной связи.

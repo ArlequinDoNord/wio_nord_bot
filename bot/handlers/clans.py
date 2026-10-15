@@ -100,38 +100,64 @@ async def clans_list_cb(callback: CallbackQuery, state: FSMContext):
 
 
 async def _show_clans_list(callback: CallbackQuery):
+    """Сводный экран раздела: только две кнопки-категории (партии / кланы).
+
+    Раньше здесь сразу висел плоский список всех объединений — с ростом числа
+    кнопок раздел становился громоздким. Теперь список каждой категории скрыт за
+    своей кнопкой (`clans:list:<kind>`).
+    """
     clans = await get_clans()
-    lines = ["⚜️ ПАРТИИ И КЛАНЫ\n"]
-    clans_kb = []
-    by_kind = {"clan": [], "party": []}
+    n_clan = sum(1 for c in clans if c['kind'] == 'clan')
+    n_party = sum(1 for c in clans if c['kind'] == 'party')
+    lines = [
+        "⚜️ ПАРТИИ И КЛАНЫ\n",
+        f"{KIND_EMOJI['party']} Партий: {n_party}",
+        f"{KIND_EMOJI['clan']} Кланов: {n_clan}\n",
+        "Выбери раздел:",
+    ]
+    kb = [
+        [InlineKeyboardButton(text=f"{KIND_EMOJI['party']} Список партий ({n_party})",
+                              callback_data="clans:list:party")],
+        [InlineKeyboardButton(text=f"{KIND_EMOJI['clan']} Список кланов ({n_clan})",
+                              callback_data="clans:list:clan")],
+        [InlineKeyboardButton(text="🔙 В Ратушу", callback_data="city:pilots")],
+    ]
+    await _redraw(callback, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=kb))
+
+
+@router.callback_query(F.data.startswith("clans:list:"))
+async def clans_list_kind_cb(callback: CallbackQuery):
+    await callback.answer()
+    kind = callback.data.split(":")[2]
+    if kind not in ("clan", "party"):
+        return
+    await _show_clans_kind(callback, kind)
+
+
+async def _show_clans_kind(callback: CallbackQuery, kind: str):
+    """Список объединений одной категории (партии или кланы)."""
+    clans = await get_clans(kind)
+    plural = KIND_PLURAL.get(kind, KIND_LABELS.get(kind, kind).title() + "ы")
+    lines = [f"{KIND_EMOJI[kind]} {plural.upper()}\n"]
+    kb = []
+    if not clans:
+        lines.append("пока пусто")
     for c in clans:
-        kind = c['kind']
-        if kind in by_kind:
-            by_kind[kind].append(c)
-    for kind in ("clan", "party"):
-        items = by_kind[kind]
-        plural = KIND_PLURAL.get(kind, KIND_LABELS.get(kind, kind).title() + "ы")
-        if not items:
-            lines.append(f"{KIND_EMOJI[kind]} {plural}: пока пусто")
-        else:
-            lines.append(f"{KIND_EMOJI[kind]} {plural}:")
-        for c in items:
-            members = len(await get_clan_member_ids(c['id']))
-            leader = ""
-            if c['leader_id']:
-                lu = await get_user(c['leader_id'])
-                leader = f" — 👑 {await player_display(lu)}" if lu else ""
-            lines.append(f"  • {c['name']} ({members}){leader}")
-            clans_kb.append([InlineKeyboardButton(
-                text=f"{KIND_EMOJI[kind]} {c['name']} ({members})",
-                callback_data=f"clans:view:{c['id']}")])
+        members = len(await get_clan_member_ids(c['id']))
+        leader = ""
+        if c['leader_id']:
+            lu = await get_user(c['leader_id'])
+            leader = f" — 👑 {await player_display(lu)}" if lu else ""
+        lines.append(f"  • {c['name']} ({members}){leader}")
+        kb.append([InlineKeyboardButton(
+            text=f"{KIND_EMOJI[kind]} {c['name']} ({members})",
+            callback_data=f"clans:view:{c['id']}")])
     if await has_permission(callback.from_user.id, "can_manage_clans"):
-        clans_kb.append([
-            InlineKeyboardButton(text="🏰 Создать клан", callback_data="clans:create:clan"),
-            InlineKeyboardButton(text="🏛 Создать партию", callback_data="clans:create:party"),
-        ])
-    clans_kb.append([InlineKeyboardButton(text="🔙 В Ратушу", callback_data="city:pilots")])
-    await _redraw(callback, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=clans_kb))
+        kb.append([InlineKeyboardButton(
+            text=f"➕ Создать {KIND_GENITIVE[kind]}",
+            callback_data=f"clans:create:{kind}")])
+    kb.append([InlineKeyboardButton(text="🔙 К партиям и кланам", callback_data="city:clans")])
+    await _redraw(callback, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=kb))
 
 
 # ----- Карточка объединения -----
