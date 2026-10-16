@@ -45,18 +45,16 @@ async def location_preview(callback: CallbackQuery):
         access_line = LOCATION_ACCESS_LINES[key]
     else:
         access_label = await location_access_label(loc['access_mode'], loc['required_status'])
-        access_line = f"Доступ: {access_label}"
+        # Открытые всем локации: подпись «Доступ: 🌐 Всем» лишняя — не показываем.
+        access_line = None if access_label == "🌐 Всем" else f"Доступ: {access_label}"
 
     # Буклет туриста: просмотр превью засчитывает локацию (только если буклет в
     # инвентаре — ретроспектива не ведётся).
     await mark_booklet_visit(callback.from_user.id, key)
 
-    text = (
-        f"📍 {loc['name']}\n"
-        f"────────────────\n"
-        f"{loc['description'] or ''}\n\n"
-        f"{access_line}"
-    )
+    text = f"📍 {loc['name']}\n────────────────\n{loc['description'] or ''}"
+    if access_line:
+        text += f"\n\n{access_line}"
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔑 Войти", callback_data=f"location:enter:{key}")],
         [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
