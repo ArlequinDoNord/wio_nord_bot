@@ -23,7 +23,7 @@ from database.db import (
     get_player_armor_with_bonus, get_player_dodge, get_equipped_weapon,
     get_player_crit_chance, get_pilot_crit_chance,
     user_is_tourist, UNTRANSFERABLE_ITEMS,
-    bump_achievement,
+    bump_achievement, add_city_storage,
 )
 from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, is_main_menu_text,
@@ -1074,6 +1074,11 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
     await log_activity(user_id, "shop_sale", f"Продал «{item['name']}» x{qty} за {total} НМ")
     if await is_forest_mushroom(item):
         await add_forest_sale_amount(user_id, total)
+
+    # Городские склады: проданные казне ресурсы не исчезают — казна складывает
+    # их на городской склад (позже пойдут на строительство).
+    if (item['category'] or "") == "resource":
+        await add_city_storage(item_id, qty)
 
     # Маркетплейс: товар с ограниченным остатком (не -1 «безлимит») после продажи игроком
     # возвращается в магазин — сколько продали, столько и появилось к покупке.

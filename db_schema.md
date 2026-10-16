@@ -2,7 +2,7 @@
 
 > Сгенерировано из `database/db.py`: SQL из `init_db()` (CREATE TABLE / CREATE INDEX) исполнен в sqlite, плюс колонки, добавляемые через `_ensure_column`.
 
-Всего таблиц: **72**.
+Всего таблиц: **73**.
 
 - **Миграции** — колонки, которых нет в исходном `CREATE TABLE`, но которые добавляются в существующие БД через `_ensure_column`.
 - **UNIQUE** у индекса помечает уникальный индекс.
@@ -736,6 +736,7 @@
 | `glade_photo` | `TEXT DEFAULT NULL` |
 | `clearing_photo` | `TEXT DEFAULT NULL` |
 | `mine_level_photo` | `TEXT DEFAULT NULL` |
+| `storage_photo` | `TEXT DEFAULT NULL` |
 
 ## `park_statues`
 
@@ -885,6 +886,16 @@
 | `updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` |
 
 **Составной PRIMARY KEY:** (user_id, akey)
+
+## `city_storage`
+
+| Колонка |
+|---|
+| `item_id INTEGER PRIMARY KEY` |
+| `qty INTEGER NOT NULL DEFAULT 0` |
+| `updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` |
+
+**FOREIGN KEY:** item_id → items(id)
 
 ## `player_housing`
 

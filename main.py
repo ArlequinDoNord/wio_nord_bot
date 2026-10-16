@@ -55,6 +55,7 @@ from bot.handlers.park import router as park_router
 from bot.handlers.fishing import router as fishing_router
 from bot.handlers.forest import router as forest_router
 from bot.handlers.mine import router as mine_router
+from bot.handlers.storage import router as storage_router
 from bot.handlers.housing import router as housing_router
 from bot.handlers.news import router as news_router
 from bot.handlers.kvp import router as kvp_router
@@ -565,6 +566,7 @@ async def main():
     dp.include_router(fishing_router)
     dp.include_router(forest_router)
     dp.include_router(mine_router)
+    dp.include_router(storage_router)
     dp.include_router(housing_router)
     dp.include_router(news_router)
     dp.include_router(kvp_router)
@@ -579,7 +581,7 @@ async def main():
               inventory_router, reports_router, dungeon_router, pilots_router,
               polls_router, poll_archive_router, representative_router, library_router,
               locations_router, park_router,
-              fishing_router, forest_router, mine_router, housing_router, news_router, kvp_router,
+              fishing_router, forest_router, mine_router, storage_router, housing_router, news_router, kvp_router,
               wall_router, hq_router, clans_router, nii_router, tourist_booklet_router,
               duel_router):
         r.message.middleware(ChatGuard())

@@ -31,15 +31,16 @@
 | 18 | `fishing_router` | `bot/handlers/fishing.py` |
 | 19 | `forest_router` | `bot/handlers/forest.py` |
 | 20 | `mine_router` | `bot/handlers/mine.py` |
-| 21 | `housing_router` | `bot/handlers/housing.py` |
-| 22 | `news_router` | `bot/handlers/news.py` |
-| 23 | `kvp_router` | `bot/handlers/kvp.py` |
-| 24 | `wall_router` | `bot/handlers/wall.py` |
-| 25 | `hq_router` | `bot/handlers/hq.py` |
-| 26 | `clans_router` | `bot/handlers/clans.py` |
-| 27 | `nii_router` | `bot/handlers/nii.py` |
-| 28 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
-| 29 | `duel_router` | `bot/handlers/duel.py` |
+| 21 | `storage_router` | `bot/handlers/storage.py` |
+| 22 | `housing_router` | `bot/handlers/housing.py` |
+| 23 | `news_router` | `bot/handlers/news.py` |
+| 24 | `kvp_router` | `bot/handlers/kvp.py` |
+| 25 | `wall_router` | `bot/handlers/wall.py` |
+| 26 | `hq_router` | `bot/handlers/hq.py` |
+| 27 | `clans_router` | `bot/handlers/clans.py` |
+| 28 | `nii_router` | `bot/handlers/nii.py` |
+| 29 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
+| 30 | `duel_router` | `bot/handlers/duel.py` |
 
 ## Сводка по модулям
 
@@ -49,7 +50,7 @@
 | `changelog.py` | Команда /changelog — «что нового» в боте. | `router` | 1 | 0 | — | — |
 | `profile.py` | — | `router` | 5 | 16 | `prof:`, `prof_sel_status:`, `profile:` | `ProfileStates` |
 | `bank.py` | — | `router` | 5 | 8 | `bank:` | `BankStates` |
-| `admin.py` | Админ-панель: управление магазином, финансами, отчётами, ролями и логами. | `router` | 87 | 213 | `\d+$:`, `act:`, `addreq:`, `admin:`, `aw:`, `aw_comment:`, `aw_confirm:`, `aw_del:`, `aw_edit:`, `aw_ei:`, `aw_kind:`, `aw_pick:`, `awr_grant:`, `back:`, `cancel:`, `cat:`, `confirm_del_photo:`, `del_item:`, `drinksel:`, `dungeon:`, `eddrop:`, `eddrop_del:`, `eddrop_desc:`, `eddrop_photo:`, `eddrop_set_ch:`, `eddrop_set_q:`, `eddrop_stat:`, `eddrop_stats:`, `eddrop_weff:`, `eddrop_weff_set:`, `edit_item:`, `editem_add:`, `editem_new:`, `editem_pick:`, `editset:`, `enemy:`, `enemy_drops:`, `enemy_field:`, `eqpart:`, `field:`, `field_req:`, `fin:`, `finuser:`, `fishing:`, `fishing_field:`, `fishing_j:`, `forest:`, `forest_field:`, `loc:`, `locstat:`, `lootonly:`, `marketok:`, `news:`, `noop:`, `pickuser:`, `prod:`, `rank_pick:`, `rank_promote:`, `rar:`, `rep:`, `rep_fix:`, `rep_no:`, `rep_ok:`, `role:`, `rolop:`, `salary:`, `salary_period:`, `shop_admin:`, `shop_del:`, `shop_edit:`, `st:`, `st_del:`, `st_key:`, `st_op:`, `st_pick:`, `st_rev:`, `storage:`, `treasury:`, `weff:`, `wing_set:` | `AdminAddItem`, `AdminSaleTax`, `AdminSpecialCode`, `AdminEditItem`, `AdminFinance`, `AdminTreasury`, `AdminStorageRestock`, `AdminStorageDelete`, `AdminTax`, `AdminReportAutoApprove`, `AdminReportPayCap`, `AdminReportFix`, `AdminRoles`, `AdminStatuses`, `AdminAwards`, `AdminFishing`, `AdminForest`, `AdminEnemy`, `AdminCallsign`, `AdminWing`, `AdminStates`, `AdminPlayerLog`, `AdminSalary`, `AdminLocation`, `AdminDungeon` |
+| `admin.py` | Админ-панель: управление магазином, финансами, отчётами, ролями и логами. | `router` | 87 | 215 | `\d+$:`, `act:`, `addreq:`, `admin:`, `aw:`, `aw_comment:`, `aw_confirm:`, `aw_del:`, `aw_edit:`, `aw_ei:`, `aw_kind:`, `aw_pick:`, `awr_grant:`, `back:`, `cancel:`, `cat:`, `confirm_del_photo:`, `del_item:`, `drinksel:`, `dungeon:`, `eddrop:`, `eddrop_del:`, `eddrop_desc:`, `eddrop_photo:`, `eddrop_set_ch:`, `eddrop_set_q:`, `eddrop_stat:`, `eddrop_stats:`, `eddrop_weff:`, `eddrop_weff_set:`, `edit_item:`, `editem_add:`, `editem_new:`, `editem_pick:`, `editset:`, `enemy:`, `enemy_drops:`, `enemy_field:`, `eqpart:`, `field:`, `field_req:`, `fin:`, `finuser:`, `fishing:`, `fishing_field:`, `fishing_j:`, `forest:`, `forest_field:`, `loc:`, `locstat:`, `lootonly:`, `marketok:`, `news:`, `noop:`, `pickuser:`, `prod:`, `rank_pick:`, `rank_promote:`, `rar:`, `rep:`, `rep_fix:`, `rep_no:`, `rep_ok:`, `role:`, `rolop:`, `salary:`, `salary_period:`, `shop_admin:`, `shop_del:`, `shop_edit:`, `st:`, `st_del:`, `st_key:`, `st_op:`, `st_pick:`, `st_rev:`, `storage:`, `treasury:`, `weff:`, `wing_set:` | `AdminAddItem`, `AdminSaleTax`, `AdminSpecialCode`, `AdminEditItem`, `AdminFinance`, `AdminTreasury`, `AdminStorageRestock`, `AdminStorageDelete`, `AdminTax`, `AdminReportAutoApprove`, `AdminReportPayCap`, `AdminReportFix`, `AdminRoles`, `AdminStatuses`, `AdminAwards`, `AdminFishing`, `AdminForest`, `AdminEnemy`, `AdminCallsign`, `AdminWing`, `AdminStates`, `AdminPlayerLog`, `AdminSalary`, `AdminLocation`, `AdminDungeon` |
 | `admin_recipes.py` | Менеджер рецептов крафта (v0.22.13): создание, правка и удаление рецептов. | `router` | 17 | 27 | `recadm:` | `RecipeManager` |
 | `shop.py` | Магазин: каталог по категориям, покупка за Нордмарки и AP. | `router` | 3 | 12 | `buy5_nord:`, `buy_housing:`, `buy_housing_cancel:`, `buy_nord:`, `fishbuy:`, `fishoffer:`, `itembuy:`, `itemoffer:`, `shop:`, `shopcat:`, `shopitem:` | `SpecialDeptBuy` |
 | `inventory.py` | Инвентарь: просмотр, использование расходников, продажа и передача предметов. | `router` | 4 | 28 | `eqequip:`, `eqlock:`, `eqslot:`, `equnequip:`, `fishcatch:`, `fishgo:`, `fishmarket:`, `fishprice:`, `fishsell:`, `fishuse:`, `inv_equip:`, `inv_sell:`, `inv_sell_keep1:`, `inv_sell_ok:`, `inv_sellall:`, `inv_sellmore:`, `inv_slot:`, `inv_transfer:`, `inv_unequip:`, `inv_unslot:`, `inv_use:`, `inventory:`, `invitem:`, `itemgo:`, `itemmarket:`, `itemprice:` | `TransferItem` |
@@ -65,6 +66,7 @@
 | `fishing.py` | Рыбалка на Озере в парке. | `router` | 0 | 4 | `fish:` | — |
 | `forest.py` | Лес на окраине: опушка и лесная поляна, сбор грибов и кабан. | `router` | 0 | 4 | `forest:` | — |
 | `mine.py` | Железная копи: ресурсная локация (v0.31.0). | `router` | 0 | 6 | `mine:` | — |
+| `storage.py` | Городские склады: накопление выкупленных казной ресурсов. | `router` | 0 | 1 | `storage:` | — |
 | `housing.py` | Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение. | `router` | 0 | 16 | `housing:` | — |
 | `news.py` | Новости ГосСМИ: лента, публикация, управление выпусками, архив. | `router` | 6 | 9 | `news:` | `NewsWrite`, `NewsEdit` |
 | `kvp.py` | Курс Выживания для Пилотов (К.В.П.) — тренировочный данж. | `router` | 0 | 6 | `kvp:` | `KvpFSM` |
@@ -107,10 +109,10 @@
 ### `admin.py` — Админ-панель: управление магазином, финансами, отчётами, ролями и логами.
 
 - Роутеры: `router`
-- Хендлеры: message=87, callback_query=213
+- Хендлеры: message=87, callback_query=215
 - FSM: `AdminAddItem`, `AdminSaleTax`, `AdminSpecialCode`, `AdminEditItem`, `AdminFinance`, `AdminTreasury`, `AdminStorageRestock`, `AdminStorageDelete`, `AdminTax`, `AdminReportAutoApprove`, `AdminReportPayCap`, `AdminReportFix`, `AdminRoles`, `AdminStatuses`, `AdminAwards`, `AdminFishing`, `AdminForest`, `AdminEnemy`, `AdminCallsign`, `AdminWing`, `AdminStates`, `AdminPlayerLog`, `AdminSalary`, `AdminLocation`, `AdminDungeon`
 - `F.data.startswith`: `\d+$`, `act:`, `addreq:`, `aw_del:`, `aw_edit:`, `aw_ei:`, `aw_kind:`, `aw_pick:`, `awr_grant:`, `cat:`, `confirm_del_photo:`, `del_item:`, `drinksel:`, `dungeon:edit:`, `dungeon:enemy:`, `dungeon:photo_set:`, `eddrop:`, `eddrop_del:`, `eddrop_desc:`, `eddrop_photo:`, `eddrop_set_ch:`, `eddrop_set_q:`, `eddrop_stat:`, `eddrop_stats:`, `eddrop_weff:`, `eddrop_weff_set:`, `edit_item:`, `editem_add:`, `editem_new:`, `editem_pick:`, `editset:drink:`, `editset:weff:`, `enemy:card:`, `enemy:dcard:`, `enemy:del:`, `enemy:dn:\d+$`, `enemy:dropadd:`, `enemy:dropch:`, `enemy:dropdel:`, `enemy:dropedit:`, `enemy:dropitem:`, `enemy:dropq:`, `enemy:drops:`, `enemy:fld:`, `enemy:list:[a-z]+:[\w-]+$`, `enemy:new:`, `enemy:photo:`, `enemy:tog:`, `enemy_drops:`, `enemy_field:`, `eqpart:`, `field:`, `field:required_status`, `field_req:`, `fin:`, `finuser:`, `fishing:addfish:`, `fishing:addlist:`, `fishing:del:`, `fishing:fish:`, `fishing:junk:`, `fishing:kind:`, `fishing:market:`, `fishing:new:`, `fishing:new_super:`, `fishing:super:`, `fishing:water:`, `fishing_field:`, `fishing_j:`, `forest:add:`, `forest:card:`, `forest:del:`, `forest:kind:`, `forest:market:`, `forest:new_kind:`, `forest:zadd:(glade|clearing):\d+$`, `forest:zaddlist:(glade|clearing)$`, `forest:zchance:(glade|clearing):\d+$`, `forest:zdel:(glade|clearing):\d+$`, `forest:zone:(glade|clearing)$`, `forest:zset:(glade|clearing):(\w+)$`, `forest_field:`, `loc:blocking:`, `loc:building:`, `loc:edit:`, `loc:mode:`, `loc:photo_set:`, `loc:req_status:`, `loc:season:(winter|spring|summer|autumn)$`, `loc:season_clear:(winter|spring|summer|autumn)$`, `loc:season_photo_set:(winter|spring|summer|autumn):(dawn|day|sunset|night)$`, `locstat:`, `lootonly:`, `marketok:`, `news:(?:off|(?:dis)?allow:-?\d+|chat:-?\d+:-?\d+|topic:-?\d+:-?\d+)$`, `pickuser:`, `prod:`, `rank_pick:`, `rank_promote:`, `rar:`, `rep:nav:`, `rep_fix:`, `rep_no:`, `rep_ok:`, `role:`, `rolop:`, `salary_period:`, `shop_del:cat:`, `shop_edit:cat:`, `st_del:`, `st_key:`, `st_op:`, `st_pick:`, `st_rev:`, `storage:cat:`, `storage:item:`, `storage:page:`, `storage:purge:`, `storage:restock:`, `weff:`, `wing_set:`
-- `F.data ==`: `admin:awards`, `admin:callsign`, `admin:del_photo`, `admin:dungeons`, `admin:enemies`, `admin:finance`, `admin:fishing`, `admin:forest`, `admin:locations`, `admin:logs`, `admin:menu`, `admin:player_log`, `admin:ranks`, `admin:reports`, `admin:reports_done`, `admin:reports_pending`, `admin:roles`, `admin:salaries`, `admin:saletax`, `admin:shop`, `admin:states`, `admin:statuses`, `admin:storage`, `admin:tax`, `admin:treasury`, `admin:wing`, `aw:ach`, `aw:create`, `aw:delete`, `aw:edit`, `aw:grant`, `aw:list`, `aw:revoke`, `aw_comment:skip`, `aw_confirm`, `back:main`, `cancel`, `del_item:back`, `dungeon:enemies`, `dungeon:photos`, `dungeon:photos:clear`, `enemy:fi`, `field:drink`, `field:loot_only`, `field:market_ok`, `field:photo`, `field:weapon_effect`, `fin:manual`, `forest:addlist`, `forest:new`, `forest:zset:sold_daily_limit`, `loc:building_pick`, `loc:clearing_clear`, `loc:clearing_set`, `loc:create`, `loc:edit_pick`, `loc:glade_clear`, `loc:glade_set`, `loc:mine_clear`, `loc:mine_set`, `loc:photos`, `loc:photos:clear`, `loc:photos:clear_seasons`, `loc:set_blocking`, `loc:set_desc`, `loc:set_mode`, `loc:set_name`, `loc:set_status`, `noop`, `rep:auto_approve_edit`, `rep:next`, `rep:pay_cap_edit`, `salary:choose`, `salary:pay`, `shop_admin:add`, `shop_admin:delete`, `shop_admin:edit`, `shop_admin:special_code`, `shop_del:cats`, `shop_edit:cats`, `st:create`, `st:delete`, `st:grant`, `st:legioner`, `st:list`, `st:more`, `st:revoke`, `storage:cats`, `storage:create`, `storage:noop`, `treasury:debts`, `treasury:give`, `treasury:stats`
+- `F.data ==`: `admin:awards`, `admin:callsign`, `admin:del_photo`, `admin:dungeons`, `admin:enemies`, `admin:finance`, `admin:fishing`, `admin:forest`, `admin:locations`, `admin:logs`, `admin:menu`, `admin:player_log`, `admin:ranks`, `admin:reports`, `admin:reports_done`, `admin:reports_pending`, `admin:roles`, `admin:salaries`, `admin:saletax`, `admin:shop`, `admin:states`, `admin:statuses`, `admin:storage`, `admin:tax`, `admin:treasury`, `admin:wing`, `aw:ach`, `aw:create`, `aw:delete`, `aw:edit`, `aw:grant`, `aw:list`, `aw:revoke`, `aw_comment:skip`, `aw_confirm`, `back:main`, `cancel`, `del_item:back`, `dungeon:enemies`, `dungeon:photos`, `dungeon:photos:clear`, `enemy:fi`, `field:drink`, `field:loot_only`, `field:market_ok`, `field:photo`, `field:weapon_effect`, `fin:manual`, `forest:addlist`, `forest:new`, `forest:zset:sold_daily_limit`, `loc:building_pick`, `loc:clearing_clear`, `loc:clearing_set`, `loc:create`, `loc:edit_pick`, `loc:glade_clear`, `loc:glade_set`, `loc:mine_clear`, `loc:mine_set`, `loc:photos`, `loc:photos:clear`, `loc:photos:clear_seasons`, `loc:set_blocking`, `loc:set_desc`, `loc:set_mode`, `loc:set_name`, `loc:set_status`, `loc:storage_clear`, `loc:storage_set`, `noop`, `rep:auto_approve_edit`, `rep:next`, `rep:pay_cap_edit`, `salary:choose`, `salary:pay`, `shop_admin:add`, `shop_admin:delete`, `shop_admin:edit`, `shop_admin:special_code`, `shop_del:cats`, `shop_edit:cats`, `st:create`, `st:delete`, `st:grant`, `st:legioner`, `st:list`, `st:more`, `st:revoke`, `storage:cats`, `storage:create`, `storage:noop`, `treasury:debts`, `treasury:give`, `treasury:stats`
 
 ### `admin_recipes.py` — Менеджер рецептов крафта (v0.22.13): создание, правка и удаление рецептов.
 
@@ -220,6 +222,12 @@
 - Роутеры: `router`
 - Хендлеры: message=0, callback_query=6
 - `F.data.startswith`: `mine:battle:flee:\d+$`, `mine:battle:hit:\d+$`, `mine:deeper:\d+$`, `mine:dig:\d+$`, `mine:level:\d+$`, `mine:menu:\d+$`
+
+### `storage.py` — Городские склады: накопление выкупленных казной ресурсов.
+
+- Роутеры: `router`
+- Хендлеры: message=0, callback_query=1
+- `F.data ==`: `storage:menu`
 
 ### `housing.py` — Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение.
 

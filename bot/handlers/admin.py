@@ -65,6 +65,7 @@ from database.db import (
     log_activity, get_user_activity, clear_user_photo,
     get_recent_activity, get_activity_like, get_activity_by_action,
     get_location_visit_stats, get_location_visit_totals,
+    location_storage_photo, update_location_storage_photo,
 )
 from keyboards.keyboards import cancel_keyboard
 from utils.permissions import (
@@ -8087,6 +8088,16 @@ async def _loc_photos_pick_send(source, loc_id: int):
         glade_line += (
             f"Уровень 1 шахт: {'своя картинка' if has_level else 'локальный файл по сезону'}\n"
         )
+    # Городские склады — картинка зала склада (таблица ресурсов), отдельная от
+    # картинки входа, задаётся своей кнопкой (как уровень шахт у копи).
+    if loc.get("key") == "storage":
+        has_storage = bool(location_storage_photo(loc))
+        rows.append([InlineKeyboardButton(
+            text=f"{'✅' if has_storage else '—'} 📦 Зал склада (таблица ресурсов)",
+            callback_data="loc:storage_set")])
+        glade_line += (
+            f"Зал склада: {'своя картинка' if has_storage else 'локальный файл по сезону'}\n"
+        )
     rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="loc:building_pick")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     season_line = " | ".join(
@@ -8367,6 +8378,57 @@ async def loc_mine_clear(callback: CallbackQuery, state: FSMContext):
     await _loc_photos_pick_send(callback, loc_id)
 
 
+@router.callback_query(F.data == "loc:storage_set")
+async def loc_storage_set(callback: CallbackQuery, state: FSMContext):
+    """Запрос картинки зала «Городские склады» — отдельной от картинки входа."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    loc = await get_location(loc_id)
+    if not loc or loc.get("key") != "storage":
+        await callback.message.edit_text("❌ Зал склада есть только у локации «Городские склады».")
+        return
+    await state.set_state(AdminLocation.preview)
+    await state.update_data(photo_kind="storage", photo_tod=None, photo_season=None)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="loc:photos")]
+    ])
+    has_photo = bool(location_storage_photo(loc))
+    caption = (f"📦 Зал склада «Городские склады» — сейчас есть картинка.\n"
+               f"Отправь новую (или «-» чтобы убрать и вернуть локальный файл):")
+    if has_photo:
+        try:
+            await callback.message.answer_photo(
+                location_storage_photo(loc), caption=caption, reply_markup=kb)
+            return
+        except Exception:
+            pass
+    await callback.message.edit_text(
+        f"📦 Зал склада «{loc['name']}» "
+        f"(сейчас: {'своя картинка' if has_photo else 'локальный файл'}):\n"
+        f"Отправь фото (или «-» чтобы убрать):",
+        reply_markup=kb
+    )
+
+
+@router.callback_query(F.data == "loc:storage_clear")
+async def loc_storage_clear(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    await update_location_storage_photo(loc_id, None)
+    await _loc_photos_pick_send(callback, loc_id)
+
+
 @router.callback_query(F.data.startswith("loc:photo_set:"))
 async def loc_photo_set(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -8499,6 +8561,13 @@ async def loc_step_photo(message: Message, state: FSMContext):
         await update_location_mine_level_photo(loc_id, file_id)
         await log_action(message.from_user.id, 'edit_location', loc_id,
                          f"mine_level_photo={'file_id' if file_id else 'cleared'}")
+        await state.clear()
+        await _loc_photos_pick_send(message, loc_id)
+        return
+    if data.get('photo_kind') == 'storage':
+        await update_location_storage_photo(loc_id, file_id)
+        await log_action(message.from_user.id, 'edit_location', loc_id,
+                         f"storage_photo={'file_id' if file_id else 'cleared'}")
         await state.clear()
         await _loc_photos_pick_send(message, loc_id)
         return

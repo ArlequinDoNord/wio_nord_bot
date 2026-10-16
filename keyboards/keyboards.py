@@ -187,6 +187,7 @@ LOCATION_BUTTON_EMOJI = {
     "contracts": "📜",
     "duel_house": "🥊",
     "mine": "⛏️",
+    "storage": "📦",
 }
 
 

@@ -707,6 +707,13 @@ async def init_db():
             FOREIGN KEY (user_id) REFERENCES users(user_id)
         );
 
+        CREATE TABLE IF NOT EXISTS city_storage (
+            item_id INTEGER PRIMARY KEY,
+            qty INTEGER NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (item_id) REFERENCES items(id)
+        );
+
         CREATE TABLE IF NOT EXISTS player_housing (
             user_id INTEGER PRIMARY KEY,
             housing_type TEXT DEFAULT 'municipal',
@@ -1473,6 +1480,8 @@ async def seed_locations(conn):
          "all", None, ["пьян"], "city/forest"),
         ("mine", "Железная копи", "Тёплые штольни железных копей Нордхайма. Здесь добывают руду — и не только.",
          "min", "pilot1", ["пьян"], "city/mine"),
+        ("storage", "Городские склады", "Складские ангары Аркхольма: сюда свозят ресурсы, выкупленные казной у пилотов. Вход с «Пилота 1 класса».",
+         "min", "pilot1", ["пьян"], "city/storage"),
     ]
     for key, name, desc, mode, req_status, blocking, preview in base:
         await conn.execute(
@@ -6981,6 +6990,61 @@ async def update_location_mine_level_photo(location_id: int, file_id):
                        (file_id, location_id))
     await conn.commit()
     return True
+
+
+def location_storage_photo(loc):
+    """file_id отдельной картинки зала «Городские склады» (None → локальный файл)."""
+    if not loc:
+        return None
+    if isinstance(loc, dict):
+        return loc.get('storage_photo') or None
+    try:
+        return loc['storage_photo']
+    except Exception:
+        try:
+            return dict(loc).get('storage_photo')
+        except Exception:
+            return None
+
+
+async def update_location_storage_photo(location_id: int, file_id):
+    """Задать (file_id) или убрать (None) картинку зала «Городские склады»."""
+    conn = await get_db()
+    if not await get_location(location_id):
+        return False
+    await conn.execute("UPDATE locations SET storage_photo = ? WHERE id = ?",
+                       (file_id, location_id))
+    await conn.commit()
+    return True
+
+
+async def add_city_storage(item_id: int, qty: int) -> None:
+    """Накопительно кладёт на городской склад qty единиц ресурса.
+
+    Продажа ресурса в казну не «сжигает» его: город копит проданное (руду,
+    самоцветы, а позже дерево/уголь и т.п.). Позже склад пойдёт на строительство.
+    """
+    if not item_id or qty <= 0:
+        return
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO city_storage (item_id, qty, updated_at) "
+        "VALUES (?, ?, CURRENT_TIMESTAMP) "
+        "ON CONFLICT(item_id) DO UPDATE SET "
+        "qty = qty + excluded.qty, updated_at = CURRENT_TIMESTAMP",
+        (item_id, qty))
+    await conn.commit()
+
+
+async def get_city_storage() -> list:
+    """Содержимое городского склада: строки с qty>0, по названию предмета."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT cs.item_id AS item_id, cs.qty AS qty, i.name AS name, "
+        "i.category AS category "
+        "FROM city_storage cs JOIN items i ON i.id = cs.item_id "
+        "WHERE cs.qty > 0 ORDER BY i.name")
+    return await cursor.fetchall()
 
 
 async def user_has_exact_status(user_id: int, tag: str) -> bool:
