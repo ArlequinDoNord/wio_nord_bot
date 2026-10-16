@@ -5942,9 +5942,27 @@ async def create_award(name: str, description: str = None, emoji: str = "🏅",
         return False, "Награда с таким названием уже существует"
 
 
-async def get_all_awards():
+async def get_all_awards(include_achievements: bool = True) -> list:
+    """Все награды. include_achievements=False — без строк-уровней достижений.
+
+    Строки ачивок (awards с заполненным achievement_key) в обычных админ-списках
+    наград лишние: их десятки, они раздувают вывод и путают с медалями.
+    """
     conn = await get_db()
-    cursor = await conn.execute("SELECT * FROM awards ORDER BY id")
+    if include_achievements:
+        cursor = await conn.execute("SELECT * FROM awards ORDER BY id")
+    else:
+        cursor = await conn.execute(
+            "SELECT * FROM awards WHERE achievement_key IS NULL ORDER BY id")
+    return await cursor.fetchall()
+
+
+async def get_achievement_awards() -> list:
+    """Строки-уровни достижений (awards с achievement_key), по ачивке и уровню."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM awards WHERE achievement_key IS NOT NULL "
+        "ORDER BY achievement_key, achievement_level")
     return await cursor.fetchall()
 
 

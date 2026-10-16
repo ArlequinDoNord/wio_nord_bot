@@ -48,6 +48,7 @@ from database.db import (
     get_item_by_name,
     create_award, get_all_awards, get_award, delete_award, grant_award,
     update_award, get_user_awards, revoke_award, MAX_CRIT_CHANCE,
+    get_achievement_awards, ACHIEVEMENTS_DEF,
     get_water_fish_rows, get_water_fish_row, update_water_fish_field,
     set_water_fish_sell_price, add_water_fish, remove_water_fish,
     create_water_fish,
@@ -477,20 +478,11 @@ async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
             reply_markup=_status_revoke_markup(have)
         )
     elif next_step == "awgrant":
-        awards = await get_all_awards()
-        if not awards:
-            await callback.message.answer("❌ Сначала создай хотя бы одну награду.")
-            await state.clear()
-            return
-        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-        rows = []
-        for a in awards:
-            emoji = a['emoji'] or '🏅'
-            rows.append([InlineKeyboardButton(text=f"{emoji} {a['name']}",
-                                              callback_data=f"aw_pick:{a['id']}")])
+        have = await get_user_awards(target['user_id'])
         await callback.message.answer(
-            f"Текущие награды: {', '.join(g['name'] for g in await get_user_awards(target['user_id'])) or 'нет'}\n\nВыбери награду:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+            f"Текущие награды: {', '.join(g['name'] for g in have) or 'нет'}\n\n"
+            "Что выдать — награду или достижение?",
+            reply_markup=_grant_kind_markup()
         )
     elif next_step == "awrevoke":
         have = await get_user_awards(target['user_id'])
@@ -3415,6 +3407,8 @@ async def admin_awards(callback: CallbackQuery):
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     rows = []
+    rows.append([InlineKeyboardButton(text="🎖 Награды", callback_data="aw:list")])
+    rows.append([InlineKeyboardButton(text="🏅 Достижения", callback_data="aw:ach")])
     if await has_permission(callback.from_user.id, "can_manage_awards"):
         rows.append([InlineKeyboardButton(text="➕ Создать награду", callback_data="aw:create")])
         rows.append([InlineKeyboardButton(text="✏️ Редактировать награду", callback_data="aw:edit")])
@@ -3423,30 +3417,60 @@ async def admin_awards(callback: CallbackQuery):
        await has_permission(callback.from_user.id, "can_manage_awards"):
         rows.append([InlineKeyboardButton(text="🎁 Выдать награду игроку", callback_data="aw:grant")])
         rows.append([InlineKeyboardButton(text="🗑 Снять награду у игрока", callback_data="aw:revoke")])
-    rows.append([InlineKeyboardButton(text="📋 Список наград", callback_data="aw:list")])
     rows.append([InlineKeyboardButton(text="🔙 В меню", callback_data="admin:menu")])
     await callback.message.edit_text(
-        "🏅 УПРАВЛЕНИЕ НАГРАДАМИ\n\nВыбери действие:",
+        "🏅 УПРАВЛЕНИЕ НАГРАДАМИ\n\n"
+        "🎖 Награды — медали и ордена командования.\n"
+        "🏅 Достижения — авто-ачивки за игровые действия.\n\n"
+        "Выбери раздел или действие:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
+
+
+def _fit_text(text: str, limit: int = 3800) -> str:
+    """Обрезает длинный список под лимит сообщения Telegram (4096 символов)."""
+    if len(text) <= limit:
+        return text
+    return text[:limit - 1].rstrip() + "…"
 
 
 @router.callback_query(F.data == "aw:list")
 async def awards_list(callback: CallbackQuery):
     await callback.answer()
-    awards = await get_all_awards()
+    awards = await get_all_awards(include_achievements=False)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    back = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 К наградам", callback_data="admin:awards")],
+    ])
     if not awards:
-        await callback.message.edit_text("Награды пока не созданы.", reply_markup=None)
+        await callback.message.edit_text("Награды пока не созданы.", reply_markup=back)
         return
-    lines = ["🏅 ВСЕ НАГРАДЫ:\n"]
+    lines = [f"🎖 НАГРАДЫ ({len(awards)}):\n"]
     for a in awards:
         emoji = a['emoji'] or '🏅'
         lines.append(f"{emoji} {a['name']}")
         if a['description']:
             lines.append(f"    — {a['description']}")
         lines.append("")
-    from keyboards.keyboards import back_to_main
-    await callback.message.edit_text("\n".join(lines), reply_markup=back_to_main())
+    await callback.message.edit_text(_fit_text("\n".join(lines)), reply_markup=back)
+
+
+@router.callback_query(F.data == "aw:ach")
+async def achievements_list(callback: CallbackQuery):
+    """Список достижений (ачивок) — справочный, только для чтения."""
+    await callback.answer()
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    back = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 К наградам", callback_data="admin:awards")],
+    ])
+    lines = ["🏅 ДОСТИЖЕНИЯ\nАвто-ачивки, выдаются за игровые действия.\n----------------"]
+    for akey, spec in ACHIEVEMENTS_DEF.items():
+        lines.append(f"\n{spec.get('emoji', '🏅')} {spec.get('title', akey)} "
+                     f"— {spec.get('metric', '')}")
+        for lvl in spec.get("levels", []):
+            lines.append(f"  • ур.{lvl['level']}: {lvl['name']} "
+                         f"(порог {lvl['threshold']})")
+    await callback.message.edit_text(_fit_text("\n".join(lines)), reply_markup=back)
 
 
 @router.callback_query(F.data == "aw:create")
@@ -3596,7 +3620,7 @@ async def award_delete_menu(callback: CallbackQuery):
     if not await has_permission(callback.from_user.id, "can_manage_awards"):
         await callback.message.answer("❌ Нет прав.")
         return
-    awards = await get_all_awards()
+    awards = await get_all_awards(include_achievements=False)
     if not awards:
         await callback.message.answer("Награды не созданы.")
         return
@@ -3777,7 +3801,7 @@ async def award_edit_list(callback: CallbackQuery):
     if not await has_permission(callback.from_user.id, "can_manage_awards"):
         await callback.message.answer("❌ Нет прав.")
         return
-    awards = await get_all_awards()
+    awards = await get_all_awards(include_achievements=False)
     if not awards:
         await callback.message.answer("Награды не созданы.")
         return
@@ -3890,6 +3914,45 @@ async def award_edit_value(message: Message, state: FSMContext):
     )
 
 
+def _grant_kind_markup():
+    """Выбор слоя при вручении: обычная награда или достижение (ачивка)."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎖 Награда", callback_data="aw_kind:reg")],
+        [InlineKeyboardButton(text="🏅 Достижение", callback_data="aw_kind:ach")],
+        [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:awards")],
+    ])
+
+
+@router.callback_query(F.data.startswith("aw_kind:"))
+async def award_grant_kind(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    kind = callback.data.split(":")[1]
+    data = await state.get_data()
+    target_id = data.get("target_id")
+    if not target_id:
+        await callback.message.answer("❌ Сессия устарела, начни заново.")
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    if kind == "ach":
+        awards = await get_achievement_awards()
+        header = "🏅 Выбери достижение:"
+    else:
+        awards = await get_all_awards(include_achievements=False)
+        header = "🎖 Выбери награду:"
+    if not awards:
+        await callback.message.answer("❌ Список пуст — сначала создай сущность.")
+        return
+    rows = []
+    for a in awards:
+        emoji = a['emoji'] or '🏅'
+        rows.append([InlineKeyboardButton(text=f"{emoji} {a['name']}",
+                                          callback_data=f"aw_pick:{a['id']}")])
+    rows.append([InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:awards")])
+    await callback.message.edit_text(header,
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
 @router.callback_query(F.data == "aw:grant")
 async def award_grant_target(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -3905,20 +3968,10 @@ async def award_grant_target_msg(message: Message, state: FSMContext):
         await message.answer("❌ Игрок не найден. Попробуй ещё раз:")
         return
     await state.update_data(target_id=target['user_id'], target_name=target['first_name'] if 'first_name' in target.keys() else '')
-    awards = await get_all_awards()
-    if not awards:
-        await message.answer("❌ Сначала создай хотя бы одну награду.")
-        await state.clear()
-        return
-    rows = []
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    for a in awards:
-        emoji = a['emoji'] or '🏅'
-        rows.append([InlineKeyboardButton(text=f"{emoji} {a['name']}",
-                                          callback_data=f"aw_pick:{a['id']}")])
     await message.answer(
-        f"Игрок: {target['first_name'] if 'first_name' in target.keys() else ''}\n\nВыбери награду:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
+        f"Игрок: {target['first_name'] if 'first_name' in target.keys() else ''}\n\n"
+        "Что выдать — награду или достижение?",
+        reply_markup=_grant_kind_markup()
     )
 
 
