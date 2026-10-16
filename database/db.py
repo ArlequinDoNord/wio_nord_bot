@@ -9,7 +9,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config
 from config import (DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MINUTES,
                     DUNGEON_RUN_STALE_SEC, FOREST_BOAR_SEED, FOREST_WHITE_WOLF_SEED, FOREST_BOAR_HP, MOLLUSK_SEED,
-                    MOLLUSK_ITEM_SEEDS, MOLLUSK_ENEMY_DROPS, PILOT_CRIT_MULT)
+                    MOLLUSK_ITEM_SEEDS, MOLLUSK_ENEMY_DROPS, PILOT_CRIT_MULT,
+                    MINE_BAT_SEED, MINE_ITEM_SEEDS, MINE_ENEMY_DROPS, MINE_SHOP_ITEMS,
+                    MINE_PICKAXE_NAME, MINE_ORE_NAME, MINE_BAT_SPOT)
 from config import get_effective_rank
 
 logger = logging.getLogger(__name__)
@@ -819,6 +821,31 @@ async def init_db():
             enabled INTEGER DEFAULT 1,
             admin_tuned INTEGER DEFAULT 0
         );
+        -- v0.31.0: Железная копи — враги ресурсной локации (Летучая мышь).
+        -- Набор колонок повторяет forest_enemies/fishing_enemies: единый
+        -- админ-редактор и общие CRUD-функции работают через source='mine'.
+        CREATE TABLE IF NOT EXISTS mine_enemies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT,
+            spot TEXT DEFAULT 'iron',
+            name TEXT NOT NULL,
+            hp INTEGER DEFAULT 30,
+            dmg_min INTEGER DEFAULT 5,
+            dmg_max INTEGER DEFAULT 9,
+            dodge INTEGER DEFAULT 0,
+            loss_ap INTEGER DEFAULT 0,
+            bleed_chance INTEGER DEFAULT 0,
+            bleed_dmg INTEGER DEFAULT 0,
+            chance REAL DEFAULT 0,
+            pity_target INTEGER DEFAULT 0,
+            reward_nm INTEGER DEFAULT 0,
+            drops TEXT DEFAULT '[]',
+            description TEXT,
+            image TEXT,
+            photo_key TEXT,
+            enabled INTEGER DEFAULT 1,
+            admin_tuned INTEGER DEFAULT 0
+        );
 
         CREATE TABLE IF NOT EXISTS wall_posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1068,6 +1095,14 @@ async def init_db():
     await _ensure_column(conn, "fishing_enemies", "bleed_chance", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "fishing_enemies", "bleed_dmg", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "fishing_enemies", "armor", "INTEGER DEFAULT 0")
+    # v0.31.0: Железная копи — те же внешние колонки для mine_enemies.
+    await _ensure_column(conn, "mine_enemies", "armor", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "mine_enemies", "dodge_chance", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "mine_enemies", "crit_chance", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "mine_enemies", "crit_mult", "REAL DEFAULT 1.5")
+    await _ensure_column(conn, "mine_enemies", "abilities", "TEXT DEFAULT '[]'")
+    await _ensure_column(conn, "mine_enemies", "bleed_chance", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "mine_enemies", "bleed_dmg", "INTEGER DEFAULT 0")
     # admin_tuned=1 в обычных врагах dungeon не должен мешать: миграции по дропам
     # (ensure_dungeon_enemy_drops / seed_kvp) запускаются только по admin_tuned>0
     await _ensure_column(conn, "dungeon_enemies", "admin_tuned", "INTEGER DEFAULT 0")
@@ -1171,6 +1206,9 @@ async def init_db():
     await _ensure_column(conn, "users", "forest_attempts_since_boar", "INTEGER DEFAULT 0")
     # v0.23.3: отдельный счётчик для гарантии волка (не реже, чем раз в 24 поиска).
     await _ensure_column(conn, "users", "forest_attempts_since_wolf", "INTEGER DEFAULT 0")
+    # v0.31.0: счётчик попыток добычи руды с последней встречи с Летучей мышью
+    # (гарантия встречи раз в MINE_BAT_PITY_TARGET попыток).
+    await _ensure_column(conn, "users", "mine_attempts_since_bat", "INTEGER DEFAULT 0")
     # v0.18.16: выкуп грибов казной — суточный лимит НМ на игрока
     # (FOREST_SOLD_DAILY_LIMIT). Счётчик сбрасывается при смене суток МСК.
     await _ensure_column(conn, "users", "forest_sold_day", "TEXT DEFAULT NULL")
@@ -1425,6 +1463,8 @@ async def seed_locations(conn):
          "all", None, ["пьян"], "city/nii"),
         ("forest", "Лес на окраине", "Тёмный еловый лес на окраине Аркхольма. Здесь водятся грибы и не только: говорят, по опушкам бродит злобный кабан.",
          "all", None, ["пьян"], "city/forest"),
+        ("mine", "Железная копи", "Тёплые штольни железных копей Нордхайма. Здесь добывают руду — и не только.",
+         "min", "pilot1", ["пьян"], "city/mine"),
     ]
     for key, name, desc, mode, req_status, blocking, preview in base:
         await conn.execute(
@@ -7939,6 +7979,46 @@ async def ensure_forest_items():
     return added
 
 
+async def ensure_mine_items():
+    """Идемпотентно создаёт предметы Железной копи (кирка, руда, самоцветы).
+
+    Кирка — товар магазина (is_available=1), руда — добыча шахты (вне магазина,
+    market_ok=0, но без loot_only: её выкупает казна), самоцветы — прямой лут
+    Летучей мыши (loot_only=1, market_ok=0).
+    """
+    conn = await get_db()
+    added = False
+    for (name, desc, price, sell, rare, category, heal) in MINE_ITEM_SEEDS:
+        cursor = await conn.execute("SELECT id FROM items WHERE name = ?", (name,))
+        row = await cursor.fetchone()
+        is_drop = name in MINE_ENEMY_DROPS
+        in_shop = name in MINE_SHOP_ITEMS
+        if row is None:
+            item_id = await add_item(name=name, description=desc, price=price, sell_price=sell,
+                                     rarity=rare, category=category, stock=-1, added_by=0,
+                                     ap_cost=0, damage=0, heal=heal, market_ok=0)
+            await update_item(item_id, is_available=1 if in_shop else 0,
+                              loot_only=1 if is_drop else 0)
+            added = True
+        else:
+            await conn.execute(
+                "UPDATE items SET is_available = ?, market_ok = 0, loot_only = ?, heal = ? "
+                "WHERE id = ?",
+                (1 if in_shop else 0, 1 if is_drop else 0, heal, row['id']))
+    if added:
+        await conn.commit()
+    return added
+
+
+async def ensure_mine_enemies():
+    """Идемпотентно засевает врагов копи (Летучая мышь) из MINE_BAT_SEED.
+
+    Сначала создаёт предметы добычи, чтобы дропы мыши нашли свои item_id.
+    """
+    await ensure_mine_items()
+    return await _ensure_source_enemies("mine", MINE_BAT_SEED)
+
+
 async def ensure_forest_mushrooms():
     """Идемпотентно засевает пул грибов леса из FOREST_DEFAULTS.
 
@@ -8399,7 +8479,8 @@ async def get_forest_mushroom_candidates():
 # запросы идут через общие функции с ключом источника ('forest' / 'fishing').
 # Враги подземелья остаются в dungeon_enemies — их боевой код не трогаем.
 
-ENEMY_SOURCE_TABLES = {"forest": "forest_enemies", "fishing": "fishing_enemies"}
+ENEMY_SOURCE_TABLES = {"forest": "forest_enemies", "fishing": "fishing_enemies",
+                       "mine": "mine_enemies"}
 
 # Поля врага, которые админ правит через бота.
 SOURCE_ENEMY_FIELDS = ("name", "hp", "dmg_min", "dmg_max", "dodge", "armor",
@@ -8721,6 +8802,31 @@ async def set_forest_wolf_attempts(user_id: int, attempts: int):
 async def reset_forest_wolf_counter(user_id: int):
     """Сброс счётчика после встречи волка (начало боя)."""
     await set_forest_wolf_attempts(user_id, 0)
+
+
+# ─── Железная копи: счётчик попыток с момента последней встречи мыши (1/12) ───
+
+async def get_mine_bat_attempts(user_id: int) -> int:
+    """Число попыток добычи руды с последней встречи Летучей мыши (гарантия 1/12)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT mine_attempts_since_bat FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    return int(row['mine_attempts_since_bat']) if row and row['mine_attempts_since_bat'] else 0
+
+
+async def set_mine_bat_attempts(user_id: int, attempts: int):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET mine_attempts_since_bat = ? WHERE user_id = ?",
+        (max(0, int(attempts)), user_id)
+    )
+    await conn.commit()
+
+
+async def reset_mine_bat_counter(user_id: int):
+    """Сброс счётчика после встречи мыши (начало боя)."""
+    await set_mine_bat_attempts(user_id, 0)
 
 
 async def remove_ap_or_floor(user_id: int, amount: int) -> int:

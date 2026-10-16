@@ -69,8 +69,8 @@ def _fish_groups(catches):
 
 # Порядок категорий в подменю инвентаря (как каталог магазина)
 INV_CATEGORIES = [
-    "weapon", "equipment", "consumable", "resource", "seeds",
-    "fishing", "housing", "furniture", "special", "souvenirs",
+    "weapon", "equipment", "consumable",     "resource", "seeds",
+    "fishing", "mining", "housing", "furniture", "special", "souvenirs",
     "library_card", "building", "recipes",
 ]
 FISH_ALL_KEY = "__fish__"

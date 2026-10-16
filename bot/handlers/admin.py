@@ -8417,6 +8417,7 @@ async def loc_step_photo(message: Message, state: FSMContext):
 
 ENEMY_SRC_FOREST = 'forest'
 ENEMY_SRC_FISHING = 'fishing'
+ENEMY_SRC_MINE = 'mine'
 ENEMY_SRC_DUNGEON = 'dn'
 
 # Человеческие названия источников.
@@ -8424,6 +8425,7 @@ ENEMY_SOURCE_TITLES = {
     ENEMY_SRC_DUNGEON: "🏰 Подземелье",
     ENEMY_SRC_FOREST: "🌲 Лес на окраине",
     ENEMY_SRC_FISHING: "🎣 Рыбалка",
+    ENEMY_SRC_MINE: "⛏️ Железная копи",
 }
 
 # Названия водоёмов рыбалки для меню.
@@ -8494,6 +8496,11 @@ async def _admin_enemies_root(callback: CallbackQuery):
     rows.append([InlineKeyboardButton(
         text="🎣 Рыбалка",
         callback_data=f"enemy:fi")])
+    mine_enemies = await get_source_enemies(ENEMY_SRC_MINE)
+    lines.append(f"\n⛏️ Железная копи — врагов: {len(mine_enemies)}")
+    rows.append([InlineKeyboardButton(
+        text="⛏️ Железная копи",
+        callback_data=_enemy_list_cb(ENEMY_SRC_MINE, 'iron'))])
     rows.append([InlineKeyboardButton(text="🔙 В админ-панель", callback_data="admin:menu")])
     await callback.message.edit_text("".join(lines),
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
@@ -9132,7 +9139,7 @@ async def admin_enemies_new_done(message: Message, state: FSMContext):
     data = await state.get_data()
     src, loc = data.get('enemy_src'), data.get('enemy_loc')
     enemy_id = await add_source_enemy(
-        src, spot=(loc if src == ENEMY_SRC_FISHING else 'forest'),
+        src,         spot=(loc if src in (ENEMY_SRC_FISHING, ENEMY_SRC_MINE) else 'forest'),
         name=data.get('new_name'), hp=data.get('new_hp'),
         dmg_min=data.get('new_dmg_min'), dmg_max=data.get('new_dmg_max'),
         dodge=data.get('new_dodge'),

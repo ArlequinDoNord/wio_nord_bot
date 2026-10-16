@@ -30,15 +30,16 @@
 | 17 | `park_router` | `bot/handlers/park.py` |
 | 18 | `fishing_router` | `bot/handlers/fishing.py` |
 | 19 | `forest_router` | `bot/handlers/forest.py` |
-| 20 | `housing_router` | `bot/handlers/housing.py` |
-| 21 | `news_router` | `bot/handlers/news.py` |
-| 22 | `kvp_router` | `bot/handlers/kvp.py` |
-| 23 | `wall_router` | `bot/handlers/wall.py` |
-| 24 | `hq_router` | `bot/handlers/hq.py` |
-| 25 | `clans_router` | `bot/handlers/clans.py` |
-| 26 | `nii_router` | `bot/handlers/nii.py` |
-| 27 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
-| 28 | `duel_router` | `bot/handlers/duel.py` |
+| 20 | `mine_router` | `bot/handlers/mine.py` |
+| 21 | `housing_router` | `bot/handlers/housing.py` |
+| 22 | `news_router` | `bot/handlers/news.py` |
+| 23 | `kvp_router` | `bot/handlers/kvp.py` |
+| 24 | `wall_router` | `bot/handlers/wall.py` |
+| 25 | `hq_router` | `bot/handlers/hq.py` |
+| 26 | `clans_router` | `bot/handlers/clans.py` |
+| 27 | `nii_router` | `bot/handlers/nii.py` |
+| 28 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
+| 29 | `duel_router` | `bot/handlers/duel.py` |
 
 ## Сводка по модулям
 
@@ -63,6 +64,7 @@
 | `park.py` | Городской парк Аркхольма: озеро (статика), фонтан и аллея статуй. | `router` | 7 | 14 | `park:` | `AdminStatue`, `AdminStatueEdit` |
 | `fishing.py` | Рыбалка на Озере в парке. | `router` | 0 | 4 | `fish:` | — |
 | `forest.py` | Лес на окраине: опушка и лесная поляна, сбор грибов и кабан. | `router` | 0 | 4 | `forest:` | — |
+| `mine.py` | Железная копи: ресурсная локация (v0.31.0). | `router` | 0 | 4 | `mine:` | — |
 | `housing.py` | Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение. | `router` | 0 | 16 | `housing:` | — |
 | `news.py` | Новости ГосСМИ: лента, публикация, управление выпусками, архив. | `router` | 6 | 9 | `news:` | `NewsWrite`, `NewsEdit` |
 | `kvp.py` | Курс Выживания для Пилотов (К.В.П.) — тренировочный данж. | `router` | 0 | 6 | `kvp:` | `KvpFSM` |
@@ -212,6 +214,12 @@
 - Роутеры: `router`
 - Хендлеры: message=0, callback_query=4
 - `F.data.startswith`: `forest:area:\d+:(glade|clearing)$`, `forest:battle:flee:\d+$`, `forest:battle:hit:\d+$`, `forest:cast:\d+(?::(glade|clearing))?$`
+
+### `mine.py` — Железная копи: ресурсная локация (v0.31.0).
+
+- Роутеры: `router`
+- Хендлеры: message=0, callback_query=4
+- `F.data.startswith`: `mine:battle:flee:\d+$`, `mine:battle:hit:\d+$`, `mine:dig:\d+$`, `mine:menu:\d+$`
 
 ### `housing.py` — Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение.
 

@@ -1,7 +1,7 @@
 """Smoke v0.18.15: единый редактор врагов + мутировавший моллюск в водохранилище.
 
 Проверяем:
-  * таблицы forest_enemies / fishing_enemies, сиды кабана и моллюска;
+  * таблицы forest_enemies / fishing_enemies / mine_enemies, сиды кабана, моллюска и мыши;
   * общий CRUD врагов источника (правка полей, дропы, вкл/выкл, создание, удаление);
   * боевые параметры из БД (лес читает кабана из БД, а не из конфига);
   * шанс встречи и гарантия (enemy_encounter_hit);
@@ -63,8 +63,8 @@ async def run():
 
     # ── 1. Таблицы и источники ──
     conn = await get_db()
-    check("источники врагов: лес и рыбалка",
-          set(ENEMY_SOURCE_TABLES) == {"forest", "fishing"})
+    check("источники врагов: лес, рыбалка и копи",
+          set(ENEMY_SOURCE_TABLES) == {"forest", "fishing", "mine"})
     check("forest_enemies — таблица создана",
           bool(await conn.execute("SELECT name FROM sqlite_master "
                                   "WHERE type='table' AND name='forest_enemies'")))

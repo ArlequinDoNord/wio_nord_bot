@@ -66,6 +66,7 @@
 | `fish_sold_today` | `INTEGER DEFAULT 0` |
 | `forest_attempts_since_boar` | `INTEGER DEFAULT 0` |
 | `forest_attempts_since_wolf` | `INTEGER DEFAULT 0` |
+| `mine_attempts_since_bat` | `INTEGER DEFAULT 0` |
 | `forest_sold_day` | `TEXT DEFAULT NULL` |
 | `forest_sold_today` | `INTEGER DEFAULT 0` |
 | `market_license_expires` | `TEXT DEFAULT NULL` |
@@ -1040,6 +1041,41 @@
 | `photo_key TEXT` |
 | `enabled INTEGER DEFAULT 1` |
 | `admin_tuned INTEGER DEFAULT 0` |
+
+## `mine_enemies`
+
+| Колонка |
+|---|
+| `id INTEGER PRIMARY KEY` |
+| `key TEXT` |
+| `spot TEXT DEFAULT 'iron'` |
+| `name TEXT NOT NULL` |
+| `hp INTEGER DEFAULT 30` |
+| `dmg_min INTEGER DEFAULT 5` |
+| `dmg_max INTEGER DEFAULT 9` |
+| `dodge INTEGER DEFAULT 0` |
+| `loss_ap INTEGER DEFAULT 0` |
+| `bleed_chance INTEGER DEFAULT 0` |
+| `bleed_dmg INTEGER DEFAULT 0` |
+| `chance REAL DEFAULT 0` |
+| `pity_target INTEGER DEFAULT 0` |
+| `reward_nm INTEGER DEFAULT 0` |
+| `drops TEXT DEFAULT '[]'` |
+| `description TEXT` |
+| `image TEXT` |
+| `photo_key TEXT` |
+| `enabled INTEGER DEFAULT 1` |
+| `admin_tuned INTEGER DEFAULT 0` |
+
+**Добавлено миграциями (`_ensure_column`):**
+
+| Колонка | Тип |
+|---|---|
+| `armor` | `INTEGER DEFAULT 0` |
+| `dodge_chance` | `INTEGER DEFAULT 0` |
+| `crit_chance` | `INTEGER DEFAULT 0` |
+| `crit_mult` | `REAL DEFAULT 1.5` |
+| `abilities` | `TEXT DEFAULT '[]'` |
 
 ## `wall_posts`
 

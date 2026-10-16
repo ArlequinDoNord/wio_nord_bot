@@ -27,6 +27,7 @@ LOCATION_ACCESS_LINES = {
     "gossmi": "🎙 Вход: только сотрудники ГосСМИ (журналист / редактор)",
     "hq": "🎖 Вход: командование ВВС (приказы авиакрыльям)",
     "contracts": "📜 Вход: только пилоты (контракты на зачистку)",
+    "mine": "⛏️ Вход: с «Пилота 1 класса»",
     "duel_house": "🥊 Вход: с пилота второго класса",
 }
 
@@ -188,6 +189,9 @@ async def location_enter(callback: CallbackQuery, state: FSMContext):
     elif key == "forest":
         from bot.handlers.forest import forest_menu_cb
         await forest_menu_cb(callback)
+    elif key == "mine":
+        from bot.handlers.mine import mine_menu_cb
+        await mine_menu_cb(callback)
     elif key == "nii":
         from bot.handlers.nii import nii_menu
         await nii_menu(callback)
