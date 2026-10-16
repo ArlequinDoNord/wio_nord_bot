@@ -1220,6 +1220,9 @@ async def init_db():
     # входа в лес: опушка — самостоятельная картинка, задаётся админом отдельно.
     await _ensure_column(conn, "locations", "glade_photo", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "locations", "clearing_photo", "TEXT DEFAULT NULL")
+    # v0.32.0: отдельная картинка 1-го уровня шахт (Железная копь) — по аналогии
+    # с опушкой/прогалиной леса: вход в копь и спуск внутрь — разные картинки.
+    await _ensure_column(conn, "locations", "mine_level_photo", "TEXT DEFAULT NULL")
     # v0.18.18: лес разделён на две зоны — опушка (glade) и лесная поляна
     # (clearing). Пул грибов каждой зоны — в forest_zone_pool, сам каталог грибов
     # (forest_mushrooms) остаётся общим: один и тот же гриб может попадать и на
@@ -6919,6 +6922,36 @@ async def update_location_clearing_photo(location_id: int, file_id):
     if not await get_location(location_id):
         return False
     await conn.execute("UPDATE locations SET clearing_photo = ? WHERE id = ?",
+                       (file_id, location_id))
+    await conn.commit()
+    return True
+
+
+def location_mine_level_photo(loc):
+    """file_id отдельной картинки 1-го уровня шахт (None → локальный файл по сезону).
+
+    Уровень шахт намеренно не наследует фото входа в копь: это самостоятельная
+    картинка (место добычи руды), задаётся админом отдельной кнопкой в редакторе.
+    """
+    if not loc:
+        return None
+    if isinstance(loc, dict):
+        return loc.get('mine_level_photo') or None
+    try:
+        return loc['mine_level_photo']
+    except Exception:
+        try:
+            return dict(loc).get('mine_level_photo')
+        except Exception:
+            return None
+
+
+async def update_location_mine_level_photo(location_id: int, file_id):
+    """Задать (file_id) или убрать (None) картинку 1-го уровня шахт."""
+    conn = await get_db()
+    if not await get_location(location_id):
+        return False
+    await conn.execute("UPDATE locations SET mine_level_photo = ? WHERE id = ?",
                        (file_id, location_id))
     await conn.commit()
     return True

@@ -27,7 +27,7 @@ from database.db import (
     enemy_encounter_hit,
     get_mine_bat_attempts, set_mine_bat_attempts, reset_mine_bat_counter,
     remove_ap_or_floor, user_is_tourist, log_activity,
-    get_location_by_key, location_photo_for_tod,
+    get_location_by_key, location_photo_for_tod, location_mine_level_photo,
 )
 from utils.helpers import (
     resolve_image_seasonal, season_key, time_of_day_key, plural_nordmark,
@@ -41,6 +41,7 @@ from config import (
 router = Router()
 
 MINE_HOME_PHOTO = "city/mine"
+MINE_LEVEL_PHOTO = "city/mine_level"
 MINE_BAT_EMOJI = "🦇"
 
 # Пользователи, чья добыча ещё не завершена (защита от повторного клика).
@@ -103,7 +104,7 @@ def _mine_path() -> str:
 
 
 async def _mine_media() -> tuple:
-    """Картинка копи: (photo_id, media_path).
+    """Картинка входа в копь: (photo_id, media_path).
 
     Берём фото локации из админ-редактора (season_photos → photo_<tod>), а без
     него — локальный сезонный файл. Как у опушки леса: картинка задаётся админом.
@@ -114,6 +115,28 @@ async def _mine_media() -> tuple:
         if photo_id:
             return photo_id, None
     return None, _mine_path()
+
+
+def _level_path() -> str:
+    """Картинка 1-го уровня шахт: сезонный локальный файл с фолбэком на вход."""
+    path = resolve_image_seasonal(MINE_LEVEL_PHOTO)
+    if not os.path.isfile(path):
+        path = _mine_path()
+    return path
+
+
+async def _level_media() -> tuple:
+    """Картинка 1-го уровня шахт: (photo_id, media_path).
+
+    Своя картинка из админ-редактора локации (как опушка у леса), иначе —
+    локальный сезонный файл city/mine_level_<сезон>.jpg, иначе картинка входа.
+    """
+    loc = await get_location_by_key("mine")
+    if loc:
+        photo_id = location_mine_level_photo(loc)
+        if photo_id:
+            return photo_id, None
+    return None, _level_path()
 
 
 async def _paint(callback, *, text: str = None, media_path: str = None, photo_id: str = None, kb=None):
@@ -155,6 +178,26 @@ async def _mine_paint(callback, *, text: str, kb=None):
     """Отрисовка окна копи на фоне её картинки."""
     photo_id, media_path = await _mine_media()
     await _paint(callback, text=text, photo_id=photo_id, media_path=media_path, kb=kb)
+
+
+async def _level_paint(callback, *, text: str, kb=None):
+    """Отрисовка окна 1-го уровня шахт (место добычи руды)."""
+    photo_id, media_path = await _level_media()
+    await _paint(callback, text=text, photo_id=photo_id, media_path=media_path, kb=kb)
+
+
+async def _enemy_paint(callback, *, text: str, kb=None, image=None):
+    """Отрисовка боя на фото врага; без него — на картинке уровня.
+
+    image — file_id (фото, загруженное ботом) или локальный путь к файлу.
+    """
+    if image:
+        if os.path.isfile(image):
+            await _paint(callback, text=text, media_path=image, kb=kb)
+        else:
+            await _paint(callback, text=text, photo_id=image, kb=kb)
+        return
+    await _level_paint(callback, text=text, kb=kb)
 
 
 # ───────── чистые функции (тестируются в smoke) ─────────
@@ -216,10 +259,21 @@ def _hp_bar(hp: int, hp_max: int) -> str:
     return "█" * filled + "░" * (10 - filled)
 
 
-def _mine_markup(token: str):
+def _enter_markup(token: str):
+    """Меню входа в копь: спуск на 1-й уровень и выход в город."""
+    rows = [
+        [InlineKeyboardButton(text="⛏ Уровень 1 шахт", callback_data=f"mine:level:{token}")],
+        [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _level_markup(token: str):
+    """Меню 1-го уровня шахт: добыча, спуск глубже, выход из шахты."""
     rows = [
         [InlineKeyboardButton(text="⛏ Добыть руду", callback_data=f"mine:dig:{token}")],
-        [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
+        [InlineKeyboardButton(text="🪜 Спуститься глубже", callback_data=f"mine:deeper:{token}")],
+        [InlineKeyboardButton(text="🚪 Выйти из шахты", callback_data=f"mine:menu:{token}")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -227,7 +281,7 @@ def _mine_markup(token: str):
 def _result_markup(token: str):
     rows = [
         [InlineKeyboardButton(text="⛏ Добыть ещё", callback_data=f"mine:dig:{token}")],
-        [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
+        [InlineKeyboardButton(text="🚪 Выйти из шахты", callback_data=f"mine:menu:{token}")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -273,8 +327,40 @@ async def mine_menu_cb(callback: CallbackQuery):
     token = _new_token()
     MINE_TOKEN[callback.from_user.id] = token
 
-    user = await get_user(callback.from_user.id) or {}
     pickaxe = await _pickaxe_for(callback.from_user.id)
+    if pickaxe:
+        hint = f"⛏ У тебя есть кирка: {pickaxe['name']} — спускайся и бей породу."
+    else:
+        hint = ("⛏ Без кирки в штольню не сунешься: купи «Кирка» "
+                "(магазин → Добыча ресурсов).")
+
+    caption = (
+        "⛏ ЖЕЛЕЗНАЯ КОПЬ\n\n"
+        "Лампы у входа мерцают, из штольни тянет холодом и запахом руды. "
+        "Ворота открыты — но где-то в глубине шелестит крыльями здешняя "
+        "хозяйка.\n\n"
+        f"{hint}\n\n"
+        "Спустись на первый уровень шахт или вернись в город."
+    )
+    await _mine_paint(callback, text=caption, kb=_enter_markup(token))
+
+
+@router.callback_query(F.data.regexp(r"^mine:menu:\d+$"))
+async def mine_menu_again(callback: CallbackQuery):
+    if not await _mine_ok(callback):
+        return
+    await mine_menu_cb(callback)
+
+
+@router.callback_query(F.data.regexp(r"^mine:level:\d+$"))
+async def mine_level_cb(callback: CallbackQuery):
+    """1-й уровень шахт: место добычи руды (своя картинка, кнопки добычи/спуска)."""
+    if not await _mine_ok(callback):
+        return
+    await callback.answer()
+    user_id = callback.from_user.id
+
+    pickaxe = await _pickaxe_for(user_id)
     if pickaxe:
         rank = pickaxe['rarity'] or 1
         chance = mine_ore_chance(rank)
@@ -285,24 +371,28 @@ async def mine_menu_cb(callback: CallbackQuery):
         dig_line = "Без кирки в штольню не сунешься: сначала разживись киркой."
 
     caption = (
-        "⛏ ЖЕЛЕЗНАЯ КОПЬ\n\n"
-        "Тёплый сумрак штолен, запах камня и металла. Свет фонаря выхватывает "
-        "жилы руды в породе — но где-то в глубине шелестит крыльями здешняя "
-        "хозяйка.\n\n"
+        "⛏ УРОВЕНЬ 1 ШАХТ\n\n"
+        "Крепь из подгнивших балок уходит вглубь, под ногами хрустит щебень, "
+        "фонарь выхватывает жилы руды в тёмной породе.\n\n"
         f"{pickaxe_line}\n"
         f"{dig_line}\n\n"
         f"Удар киркой стоит {MINE_AP_COST} ОД, результат через "
         f"{MINE_RESULT_DELAY[0]}–{MINE_RESULT_DELAY[1]} секунд.\n\n"
-        f"{await _ap_line(callback.from_user.id)}"
+        f"{await _ap_line(user_id)}"
     )
-    await _mine_paint(callback, text=caption, kb=_mine_markup(token))
+    await _level_paint(callback, text=caption,
+                       kb=_level_markup(MINE_TOKEN.get(user_id, "")))
 
 
-@router.callback_query(F.data.regexp(r"^mine:menu:\d+$"))
-async def mine_menu_again(callback: CallbackQuery):
+@router.callback_query(F.data.regexp(r"^mine:deeper:\d+$"))
+async def mine_deeper(callback: CallbackQuery):
+    """Спуск на 2-й уровень шахт — пока не обустроен (заглушка)."""
     if not await _mine_ok(callback):
         return
-    await mine_menu_cb(callback)
+    await callback.answer(
+        "🪜 Спуск на второй уровень ещё не обустроен — работы идут.",
+        show_alert=True,
+    )
 
 
 @router.callback_query(F.data.regexp(r"^mine:dig:\d+$"))
@@ -332,24 +422,24 @@ async def mine_dig(callback: CallbackQuery):
 
         pickaxe = await _pickaxe_for(user_id)
         if not pickaxe:
-            await _mine_paint(
+            await _level_paint(
                 callback,
                 text="❌ У тебя нет кирки. Купи «Кирка» в магазине (категория «Добыча ресурсов»).",
-                kb=_mine_markup(MINE_TOKEN.get(user_id, "")),
+                kb=_level_markup(MINE_TOKEN.get(user_id, "")),
             )
             return
 
         if not await remove_ap(user_id, MINE_AP_COST, reason="добыча руды"):
-            await _mine_paint(
+            await _level_paint(
                 callback,
                 text=f"❌ Не хватает ОД: нужно {MINE_AP_COST}, доступно меньше. "
                      "Восстановление — в новые сутки.",
-                kb=_mine_markup(MINE_TOKEN.get(user_id, "")),
+                kb=_level_markup(MINE_TOKEN.get(user_id, "")),
             )
             return
 
         delay = random.randint(*MINE_RESULT_DELAY)
-        await _mine_paint(
+        await _level_paint(
             callback,
             text=(f"⛏ Ты замахиваешься киркой и бьёшь по породе...\n"
                   f"Результат через {delay} секунд. Не шуми — прислушивайся!"),
@@ -408,7 +498,7 @@ async def mine_dig(callback: CallbackQuery):
                 "Удар за ударом — только каменная крошка да серый блеск.\n"
                 "Порода сегодня пуста. Пробуй ещё!"
             ) + ap_block
-        await _mine_paint(callback, text=text, kb=result_kb)
+        await _level_paint(callback, text=text, kb=result_kb)
     finally:
         MINE_CASTING.discard(user_id)
 
@@ -458,7 +548,8 @@ async def _show_battle(callback: CallbackQuery, prefix: str = ""):
         f"{max(0, player_hp)}/{battle['player_hp_max']}\n\n"
         f"Ход {battle['round']}. Бей — или уходи подобру-поздорову."
     )
-    await _mine_paint(callback, text=text, kb=_battle_markup(battle['token']))
+    await _enemy_paint(callback, text=text, kb=_battle_markup(battle['token']),
+                       image=(battle.get('bat') or {}).get('image'))
 
 
 async def _battle_loot(user_id: int, battle: dict) -> list:
@@ -477,14 +568,15 @@ async def mine_battle_hit(callback: CallbackQuery):
     user_id = callback.from_user.id
     battle = MINE_BATTLE.get(user_id)
     if not battle:
-        await _mine_paint(
+        await _level_paint(
             callback,
             text="⏳ Бой с мышью устарел.",
-            kb=_mine_markup(MINE_TOKEN.get(user_id, "")),
+            kb=_level_markup(MINE_TOKEN.get(user_id, "")),
         )
         return
     await callback.answer()
     emoji = battle.get('emoji') or MINE_BAT_EMOJI
+    bat_img = (battle.get('bat') or {}).get('image')
 
     # Твой удар: свой урон/крит, мышь может увернуться, броня поглощает часть.
     from utils.combat_model import pilot_combat_stats, roll_pilot_damage, roll_enemy_damage
@@ -528,8 +620,9 @@ async def mine_battle_hit(callback: CallbackQuery):
             "Мышь с писком падает на каменный пол — в штольне снова тихо.\n\n"
             f"{result_line}"
         )
-        await _mine_paint(callback, text=text,
-                          kb=_result_markup(MINE_TOKEN.get(user_id, "")))
+        await _enemy_paint(callback, text=text,
+                           kb=_result_markup(MINE_TOKEN.get(user_id, "")),
+                           image=bat_img)
         return
 
     # Ответный удар мыши.
@@ -559,8 +652,9 @@ async def mine_battle_hit(callback: CallbackQuery):
             f"Ты приходишь в себя на полу штольни. Мышь улетела — но добычу "
             f"придётся начать заново (−{removed} ОД)."
         )
-        await _mine_paint(callback, text=text,
-                          kb=_result_markup(MINE_TOKEN.get(user_id, "")))
+        await _enemy_paint(callback, text=text,
+                           kb=_result_markup(MINE_TOKEN.get(user_id, "")),
+                           image=bat_img)
         return
 
     battle['round'] += 1
@@ -576,7 +670,7 @@ async def mine_battle_flee(callback: CallbackQuery):
     await callback.answer()
     if battle:
         await log_activity(user_id, "mine", "Сбежал из боя с Летучей мышью")
-    await _mine_paint(
+    await _level_paint(
         callback,
         text=("🏃 Ты отступаешь к выходу из штольни, отмахиваясь от писка крыльев.\n\n"
               "Мышь не преследует — но и добычи не будет. Попробуй ещё раз!"),

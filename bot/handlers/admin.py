@@ -38,6 +38,7 @@ from database.db import (
     location_season_photos_raw, LOCATION_SEASONS,
     location_glade_photo, update_location_glade_photo,
     location_clearing_photo, update_location_clearing_photo,
+    location_mine_level_photo, update_location_mine_level_photo,
     get_all_dungeons, get_dungeon, update_dungeon_photos, DUNGEON_PHOTO_KEYS,
     get_dungeon_enemies, get_enemy, update_enemy_fields, get_floor_enemies,
     get_enemy_drops, set_enemy_drops, add_enemy_drop, remove_enemy_drop,
@@ -8023,6 +8024,16 @@ async def _loc_photos_pick_send(source, loc_id: int):
             f"Опушка: {'своя картинка' if has_glade else 'локальный файл по сезону'}\n"
             f"Прогалина: {'своя картинка' if has_clearing else 'локальный файл по сезону'}\n"
         )
+    # Железная копь — картинка 1-го уровня шахт (место добычи руды), отдельная
+    # от картинки входа в копь, задаётся своей кнопкой (как опушка у леса).
+    if loc.get("key") == "mine":
+        has_level = bool(location_mine_level_photo(loc))
+        rows.append([InlineKeyboardButton(
+            text=f"{'✅' if has_level else '—'} ⛏ Уровень 1 шахт (добыча руды)",
+            callback_data="loc:mine_set")])
+        glade_line += (
+            f"Уровень 1 шахт: {'своя картинка' if has_level else 'локальный файл по сезону'}\n"
+        )
     rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="loc:building_pick")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     season_line = " | ".join(
@@ -8252,6 +8263,57 @@ async def loc_clearing_clear(callback: CallbackQuery, state: FSMContext):
     await _loc_photos_pick_send(callback, loc_id)
 
 
+@router.callback_query(F.data == "loc:mine_set")
+async def loc_mine_set(callback: CallbackQuery, state: FSMContext):
+    """Запрос картинки 1-го уровня шахт — отдельной от картинки входа в копь."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    loc = await get_location(loc_id)
+    if not loc or loc.get("key") != "mine":
+        await callback.message.edit_text("❌ Уровень шахт есть только у локации «Железная копь».")
+        return
+    await state.set_state(AdminLocation.preview)
+    await state.update_data(photo_kind="mine", photo_tod=None, photo_season=None)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="loc:photos")]
+    ])
+    has_photo = bool(location_mine_level_photo(loc))
+    caption = (f"⛏ Уровень 1 шахт «Железная копь» — сейчас есть картинка.\n"
+               f"Отправь новую (или «-» чтобы убрать и вернуть локальный файл по сезону):")
+    if has_photo:
+        try:
+            await callback.message.answer_photo(
+                location_mine_level_photo(loc), caption=caption, reply_markup=kb)
+            return
+        except Exception:
+            pass
+    await callback.message.edit_text(
+        f"⛏ Уровень 1 шахт «{loc['name']}» "
+        f"(сейчас: {'своя картинка' if has_photo else 'локальный файл по сезону'}).\n"
+        f"Отправь фото (или «-» чтобы убрать):",
+        reply_markup=kb
+    )
+
+
+@router.callback_query(F.data == "loc:mine_clear")
+async def loc_mine_clear(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    await update_location_mine_level_photo(loc_id, None)
+    await _loc_photos_pick_send(callback, loc_id)
+
+
 @router.callback_query(F.data.startswith("loc:photo_set:"))
 async def loc_photo_set(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
@@ -8377,6 +8439,13 @@ async def loc_step_photo(message: Message, state: FSMContext):
         await update_location_clearing_photo(loc_id, file_id)
         await log_action(message.from_user.id, 'edit_location', loc_id,
                          f"clearing_photo={'file_id' if file_id else 'cleared'}")
+        await state.clear()
+        await _loc_photos_pick_send(message, loc_id)
+        return
+    if data.get('photo_kind') == 'mine':
+        await update_location_mine_level_photo(loc_id, file_id)
+        await log_action(message.from_user.id, 'edit_location', loc_id,
+                         f"mine_level_photo={'file_id' if file_id else 'cleared'}")
         await state.clear()
         await _loc_photos_pick_send(message, loc_id)
         return

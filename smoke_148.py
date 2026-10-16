@@ -209,6 +209,25 @@ async def run():
     check("INV_CATEGORIES[mining]", "mining" in INV_CATEGORIES)
     check("shop CATEGORIES[mining]", "mining" in CATEGORIES)
 
+    # ── 5b. Картинка 1-го уровня шахт (отдельная от входа) ──
+    from database.db import (
+        get_location, update_location_mine_level_photo, location_mine_level_photo,
+    )
+    check("колонка locations.mine_level_photo есть",
+          mine_loc is not None and "mine_level_photo" in mine_loc.keys())
+    check("уровень 1 без своей картинки → None",
+          location_mine_level_photo(mine_loc) is None)
+    await update_location_mine_level_photo(mine_loc["id"], "LEVEL_FID")
+    fresh = await get_location(mine_loc["id"])
+    check("уровень 1: своя картинка сохранена",
+          location_mine_level_photo(fresh) == "LEVEL_FID")
+    pid_l, path_l = await mm._level_media()
+    check("уровень 1: берётся file_id (media_path=None)", pid_l == "LEVEL_FID" and path_l is None)
+    await update_location_mine_level_photo(mine_loc["id"], None)
+    pid_l, path_l = await mm._level_media()
+    check("уровень 1: откат на локальный файл",
+          pid_l is None and path_l == mm._level_path())
+
     if not pick or not ore or not all(gems):
         await close_db()
         print(f"\nSmoke 148: {passed} passed, {failed} failed")
@@ -239,10 +258,26 @@ async def run():
     await mm.mine_menu_cb(cb_m)
     txt_m, kb_m = last_send(bot_m)
     token = mm.MINE_TOKEN.get(uid, "")
-    check("окно копи: токен выдан", bool(token))
-    check("окно копи: строка кирки", "Кирка" in txt_m)
-    check("окно копи: кнопка добычи", f"mine:dig:{token}" in markup_callbacks(kb_m))
-    check("окно копи: кнопка в город", "city:menu" in markup_callbacks(kb_m))
+    check("вход в копь: токен выдан", bool(token))
+    check("вход в копь: кнопка 1-го уровня", f"mine:level:{token}" in markup_callbacks(kb_m))
+    check("вход в копь: кнопка в город", "city:menu" in markup_callbacks(kb_m))
+
+    # ── 7b. 1-й уровень шахт: свои кнопки (добыча / спуск / выход) ──
+    bot_l = FakeSender()
+    cb_l = FakeCallback(uid, data=f"mine:level:{token}", bot=bot_l)
+    await mm.mine_level_cb(cb_l)
+    txt_l, kb_l = last_send(bot_l)
+    cbs_l = markup_callbacks(kb_l)
+    check("уровень 1: строка кирки", "Кирка" in txt_l)
+    check("уровень 1: кнопка добычи", f"mine:dig:{token}" in cbs_l)
+    check("уровень 1: кнопка спуска глубже", f"mine:deeper:{token}" in cbs_l)
+    check("уровень 1: кнопка выйти из шахты", f"mine:menu:{token}" in cbs_l)
+
+    # ── 7c. Спуск глубже — заблокирован (заглушка) ──
+    cb_d = FakeCallback(uid, data=f"mine:deeper:{token}", bot=FakeSender())
+    await mm.mine_deeper(cb_d)
+    check("спуск глубже: предупреждение",
+          any("не обустроен" in (a or "") for a in cb_d.alerts))
 
     # ── 8. Бой: победа → кэп самоцветов ──
     all_drops = [{"item_id": g["id"], "qty": 1, "chance": 0.01} for g in gems]

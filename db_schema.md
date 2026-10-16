@@ -735,6 +735,7 @@
 | `season_photos` | `TEXT DEFAULT NULL` |
 | `glade_photo` | `TEXT DEFAULT NULL` |
 | `clearing_photo` | `TEXT DEFAULT NULL` |
+| `mine_level_photo` | `TEXT DEFAULT NULL` |
 
 ## `park_statues`
 
