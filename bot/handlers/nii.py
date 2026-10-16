@@ -1,7 +1,7 @@
 """НИИ Северной Кибернетики и кремниевых систем — здание обратной связи.
 
 Любой пилот может оставить жалобу или запрос (до 2 в сутки, до 2000 символов,
-одна картинка). О новом обращении оповещаются Хранители и супер-админы;
+до 2 скриншотов). О новом обращении оповещаются Хранители и супер-админы;
 они же могут прочитать все обращения в здании и закрыть их.
 """
 
@@ -23,6 +23,7 @@ from utils.notify import player_display
 router = Router()
 
 NII_TEXT_MAX_LEN = 2000
+NII_PHOTO_MAX = 2
 
 
 class NiiWrite(StatesGroup):
@@ -86,6 +87,7 @@ async def nii_write_start(callback: CallbackQuery, state: FSMContext):
         )
         return
     await state.set_state(NiiWrite.text)
+    await state.update_data(text="", photos=[])
     await callback.message.answer(
         "📮 НОВОЕ ОБРАЩЕНИЕ\n\n"
         f"Опиши проблему или запрос (до {NII_TEXT_MAX_LEN} символов).\n"
@@ -113,11 +115,11 @@ async def nii_write_text(message: Message, state: FSMContext):
             f"Сократи:"
         )
         return
-    await state.update_data(text=text)
+    await state.update_data(text=text, photos=[])
     await state.set_state(NiiWrite.photo)
     await message.answer(
-        "🖼 Можешь прикрепить одну картинку к обращению.\n"
-        "Отправь фото или нажми «Без фото»:",
+        f"🖼 Можешь прикрепить до {NII_PHOTO_MAX} скриншотов к обращению.\n"
+        "Отправь фото (можно по одному) или нажми «Без фото»:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✅ Без фото", callback_data="nii:no_photo")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")],
@@ -128,7 +130,7 @@ async def nii_write_text(message: Message, state: FSMContext):
 @router.callback_query(F.data == "nii:no_photo")
 async def nii_photo_skip(callback: CallbackQuery, state: FSMContext, bot: Bot):
     await callback.answer()
-    await _nii_finish(callback.from_user.id, callback.message, state, bot, photo_file_id=None)
+    await _nii_finish(callback.from_user.id, callback.message, state, bot)
 
 
 @router.message(NiiWrite.photo)
@@ -137,18 +139,36 @@ async def nii_write_photo(message: Message, state: FSMContext, bot: Bot):
         await state.clear()
         await message.answer("Обращение отменено.")
         return
-    if message.text and message.text.strip() in ("-", "Пропустить"):
-        await _nii_finish(message.from_user.id, message, state, bot, photo_file_id=None)
+    if message.text and message.text.strip() in ("-", "Пропустить", "/done"):
+        await _nii_finish(message.from_user.id, message, state, bot)
         return
     if not message.photo:
         await message.answer("❌ Отправь фото, «-», «Пропустить» или кнопку «Без фото»:")
         return
-    await _nii_finish(message.from_user.id, message, state, bot, photo_file_id=message.photo[-1].file_id)
+    data = await state.get_data()
+    photos = list(data.get("photos") or [])
+    photos.append(message.photo[-1].file_id)
+    photos = photos[:NII_PHOTO_MAX]
+    await state.update_data(photos=photos)
+    if len(photos) < NII_PHOTO_MAX:
+        await message.answer(
+            f"🖼 Скриншот {len(photos)}/{NII_PHOTO_MAX} прикреплён.\n"
+            "Можешь добавить ещё один или нажать «Готово»:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Готово", callback_data="nii:no_photo")],
+                [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel")],
+            ])
+        )
+        return
+    await _nii_finish(message.from_user.id, message, state, bot)
 
 
-async def _nii_finish(user_id: int, message, state: FSMContext, bot: Bot, photo_file_id):
+async def _nii_finish(user_id: int, message, state: FSMContext, bot: Bot):
     data = await state.get_data()
     text = data.get('text') or ""
+    photos = list(data.get("photos") or [])
+    photo_file_id = photos[0] if len(photos) >= 1 else None
+    photo2_file_id = photos[1] if len(photos) >= 2 else None
 
     # Повторная проверка лимита (на случай долгого ввода).
     used = await count_nii_reports_today(user_id)
@@ -166,9 +186,10 @@ async def _nii_finish(user_id: int, message, state: FSMContext, bot: Bot, photo_
         await message.answer("❌ Текст обращения не найден. Начни заново: «✍️ Оставить жалобу / запрос».")
         return
 
-    report_id = await add_nii_report(user_id, text, photo_file_id)
+    report_id = await add_nii_report(user_id, text, photo_file_id, photo2_file_id)
     await log_activity(user_id, "nii_report",
-                       f"Обращение #{report_id} ({len(text)} симв.)")
+                       f"Обращение #{report_id} ({len(text)} симв., "
+                       f"скринов: {len(photos)})")
     await state.clear()
 
     author = await get_user(user_id)
@@ -272,24 +293,23 @@ async def nii_view_report(callback: CallbackQuery):
     if not r:
         await callback.message.answer("❌ Обращение не найдено.")
         return
-    text = await _fmt_report(r, with_text=True)
-    status_btns = [
-        InlineKeyboardButton(
-            text="🟢 Решено",
-            callback_data=f"nii:set:{report_id}:done"),
-        InlineKeyboardButton(
-            text="🔵 Закрыть",
-            callback_data=f"nii:set:{report_id}:closed"),
-    ]
+    text = await _fmt_report(r)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        status_btns,
+        [InlineKeyboardButton(text="🟢 Решено", callback_data=f"nii:set:{report_id}:done"),
+         InlineKeyboardButton(text="🔵 Закрыто", callback_data=f"nii:set:{report_id}:closed")],
         [InlineKeyboardButton(text="🔙 Ко всем", callback_data="nii:all")],
         [InlineKeyboardButton(text="🏠 В меню города", callback_data="city:menu")],
     ])
-    if r['photo_file_id']:
+    photos = [pid for pid in (r['photo_file_id'], r['photo2_file_id']) if pid]
+    if photos:
         try:
-            await callback.message.answer_photo(r['photo_file_id'], caption=text,
+            await callback.message.answer_photo(photos[0], caption=text,
                                                 reply_markup=kb)
+            for extra in photos[1:]:
+                try:
+                    await callback.message.answer_photo(extra)
+                except Exception:
+                    pass
             return
         except Exception:
             pass

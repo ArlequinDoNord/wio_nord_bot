@@ -396,8 +396,8 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `text` | `bot/handlers/nii.py:88` `nii_write_start` | `bot/handlers/nii.py:101` `nii_write_text` |
-| `photo` | `bot/handlers/nii.py:117` `nii_write_text` | `bot/handlers/nii.py:135` `nii_write_photo` |
+| `text` | `bot/handlers/nii.py:89` `nii_write_start` | `bot/handlers/nii.py:103` `nii_write_text` |
+| `photo` | `bot/handlers/nii.py:119` `nii_write_text` | `bot/handlers/nii.py:137` `nii_write_photo` |
 
 ### `AdminStatue` — `bot/handlers/park.py`
 
@@ -650,11 +650,11 @@
 - `news:no_photo`: `bot/handlers/news.py:350`
 - `news:tab`: `bot/handlers/news.py:259`
 - `news:write`: `bot/handlers/news.py:279`
-- `nii:all`: `bot/handlers/nii.py:232`
-- `nii:menu_back`: `bot/handlers/nii.py:226`
-- `nii:mine`: `bot/handlers/nii.py:207`
-- `nii:no_photo`: `bot/handlers/nii.py:128`
-- `nii:write`: `bot/handlers/nii.py:76`
+- `nii:all`: `bot/handlers/nii.py:253`
+- `nii:menu_back`: `bot/handlers/nii.py:247`
+- `nii:mine`: `bot/handlers/nii.py:228`
+- `nii:no_photo`: `bot/handlers/nii.py:130`
+- `nii:write`: `bot/handlers/nii.py:77`
 - `noop`: `bot/handlers/admin.py:4847`
 - `park:admin`: `bot/handlers/park.py:274`
 - `park:admin:add`: `bot/handlers/park.py:289`
@@ -745,7 +745,7 @@
 - `buy_housing_cancel:`: `bot/handlers/shop.py:992`
 - `buy_nord:`: `bot/handlers/shop.py:477`
 - `cat:`: `bot/handlers/admin.py:1275`
-- `city/`: `bot/handlers/locations.py:84`
+- `city/`: `bot/handlers/locations.py:82`
 - `city:pilots:list:`: `bot/handlers/pilots.py:133`
 - `clans:add:`: `bot/handlers/clans.py:441`
 - `clans:addset:`: `bot/handlers/clans.py:458`
@@ -935,7 +935,7 @@
 - `loc:season:(winter|spring|summer|autumn)$`: `bot/handlers/admin.py:8101`
 - `loc:season_clear:(winter|spring|summer|autumn)$`: `bot/handlers/admin.py:8127`
 - `loc:season_photo_set:(winter|spring|summer|autumn):(dawn|day|sunset|night)$`: `bot/handlers/admin.py:8354`
-- `location:enter:`: `bot/handlers/locations.py:104`
+- `location:enter:`: `bot/handlers/locations.py:102`
 - `location:preview:`: `bot/handlers/locations.py:35`
 - `locstat:`: `bot/handlers/admin.py:4813`
 - `lootonly:`: `bot/handlers/admin.py:1528`
@@ -954,8 +954,8 @@
 - `news:delconf:`: `bot/handlers/news.py:495`
 - `news:edit:`: `bot/handlers/news.py:400`
 - `news:view:`: `bot/handlers/news.py:196`
-- `nii:set:`: `bot/handlers/nii.py:299`
-- `nii:view:`: `bot/handlers/nii.py:263`
+- `nii:set:`: `bot/handlers/nii.py:319`
+- `nii:view:`: `bot/handlers/nii.py:284`
 - `page`: `bot/handlers/admin.py:402`
 - `park:admin:del:`: `bot/handlers/park.py:390`
 - `park:admin:delyes:`: `bot/handlers/park.py:408`

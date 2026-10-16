@@ -1169,8 +1169,6 @@ async def init_db():
     await _ensure_column(conn, "wings", "callsign", "TEXT DEFAULT ''")
     await _ensure_column(conn, "wings", "emoji", "TEXT DEFAULT ''")
     await _ensure_column(conn, "wings", "sort_order", "INTEGER DEFAULT 0")
-    # v0.32.1: второе фото в обращениях НИИ (до 2 скриншотов)
-    await _ensure_column(conn, "nii_reports", "photo2_file_id", "TEXT DEFAULT NULL")
     # Счётчик водорослей (для «несварения»: >6 в сутки → запрет расходников на 24 ч)
     await _ensure_column(conn, "users", "seaweed_used_today", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "seaweed_used_day", "TEXT DEFAULT NULL")
