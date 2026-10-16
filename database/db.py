@@ -581,6 +581,7 @@ async def init_db():
             user_id INTEGER NOT NULL,
             text TEXT NOT NULL,
             photo_file_id TEXT,
+            photo2_file_id TEXT,
             status TEXT DEFAULT 'open',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(user_id)
@@ -1158,6 +1159,8 @@ async def init_db():
     await _ensure_column(conn, "awards", "achievement_key", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "awards", "achievement_level", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "awards", "bonus_json", "TEXT DEFAULT '{}'")
+    # v0.32.1: второе фото в обращениях НИИ (до 2 скриншотов)
+    await _ensure_column(conn, "nii_reports", "photo2_file_id", "TEXT DEFAULT NULL")
     # Формирования ВВС (редактор в штабе): поля добавляются на случай старой
     # схемы без них.
     await _ensure_column(conn, "wings", "num", "TEXT DEFAULT ''")
@@ -1166,6 +1169,8 @@ async def init_db():
     await _ensure_column(conn, "wings", "callsign", "TEXT DEFAULT ''")
     await _ensure_column(conn, "wings", "emoji", "TEXT DEFAULT ''")
     await _ensure_column(conn, "wings", "sort_order", "INTEGER DEFAULT 0")
+    # v0.32.1: второе фото в обращениях НИИ (до 2 скриншотов)
+    await _ensure_column(conn, "nii_reports", "photo2_file_id", "TEXT DEFAULT NULL")
     # Счётчик водорослей (для «несварения»: >6 в сутки → запрет расходников на 24 ч)
     await _ensure_column(conn, "users", "seaweed_used_today", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "seaweed_used_day", "TEXT DEFAULT NULL")
@@ -1223,6 +1228,8 @@ async def init_db():
     # v0.32.0: отдельная картинка 1-го уровня шахт (Железная копь) — по аналогии
     # с опушкой/прогалиной леса: вход в копь и спуск внутрь — разные картинки.
     await _ensure_column(conn, "locations", "mine_level_photo", "TEXT DEFAULT NULL")
+    # v0.32.1: внутренняя картинка Городских складов (отдельно от превью)
+    await _ensure_column(conn, "locations", "storage_photo", "TEXT DEFAULT NULL")
     # v0.18.18: лес разделён на две зоны — опушка (glade) и лесная поляна
     # (clearing). Пул грибов каждой зоны — в forest_zone_pool, сам каталог грибов
     # (forest_mushrooms) остаётся общим: один и тот же гриб может попадать и на
@@ -2805,13 +2812,16 @@ async def count_nii_reports_today(user_id: int) -> int:
     return row['cnt'] if row else 0
 
 
-async def add_nii_report(user_id: int, text: str, photo_file_id: str = None) -> int:
+async def add_nii_report(user_id: int, text: str, photo_file_id: str = None,
+                          photo2_file_id: str = None) -> int:
     """Сохранить обращение в НИИ. Возвращает id записи."""
     conn = await get_db()
     cursor = await conn.execute(
-        "INSERT INTO nii_reports (user_id, text, photo_file_id, status, created_at) "
-        "VALUES (?, ?, ?, 'open', ?)",
-        (user_id, text, photo_file_id, datetime.now(MOSCOW_TZ).isoformat())
+        "INSERT INTO nii_reports (user_id, text, photo_file_id, photo2_file_id, "
+        "status, created_at) "
+        "VALUES (?, ?, ?, ?, 'open', ?)",
+        (user_id, text, photo_file_id, photo2_file_id,
+         datetime.now(MOSCOW_TZ).isoformat())
     )
     await conn.commit()
     return cursor.lastrowid
