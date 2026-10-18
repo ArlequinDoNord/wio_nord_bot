@@ -1,11 +1,11 @@
 from aiogram import Router, F
 from aiogram import Bot
-from aiogram.types import Message, CallbackQuery, ContentType
+from aiogram.types import Message, CallbackQuery, ContentType, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from config import REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT
-from database.db import add_report, approve_report, get_user, get_user_reports, report_tax_percent_for, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist, report_payout_context, report_prev_day_total, created_at_msk, report_day_value_of
+from config import REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT, REPORT_ARCHIVE_PAGE
+from database.db import add_report, approve_report, get_user, get_user_reports, get_report_with_user, report_tax_percent_for, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist, report_payout_context, report_prev_day_total, created_at_msk, report_day_value_of
 from utils.helpers import is_main_menu_text
 from utils.notify import notify_report_praise
 from keyboards.keyboards import report_keyboard, cancel_keyboard
@@ -20,6 +20,16 @@ class ReportSubmit(StatesGroup):
     waiting_region = State()
 
 
+async def _report_menu_text(user_id: int) -> str:
+    remaining = REPORT_DAILY_LIMIT - await count_reports_today(user_id)
+    header = "📋 Меню отчётов"
+    if remaining > 0:
+        header += f"\nОсталось отчётов сегодня: {remaining}"
+    else:
+        header += "\n⚠️ Лимит отчётов на сегодня исчерпан (3 из 3)."
+    return header
+
+
 @router.message(F.text == "📝 Сдать отчёт")
 async def report_menu(message: Message):
     if await user_is_tourist(message.from_user.id):
@@ -28,14 +38,18 @@ async def report_menu(message: Message):
             "Статус «Рекрут» выдают после проверки — напиши об этом администраторам."
         )
         return
-    remaining = REPORT_DAILY_LIMIT - await count_reports_today(message.from_user.id)
-    header = "📋 Меню отчётов"
-    if remaining > 0:
-        header += f"\nОсталось отчётов сегодня: {remaining}"
-    else:
-        header += "\n⚠️ Лимит отчётов на сегодня исчерпан (3 из 3)."
     await message.answer(
-        header,
+        await _report_menu_text(message.from_user.id),
+        reply_markup=report_keyboard()
+    )
+
+
+@router.callback_query(F.data == "report:menu")
+async def report_menu_cb(callback: CallbackQuery):
+    """Возврат в меню отчётов из «Моих отчётов» (там только inline-кнопки)."""
+    await callback.answer()
+    await callback.message.answer(
+        await _report_menu_text(callback.from_user.id),
         reply_markup=report_keyboard()
     )
 
@@ -282,30 +296,146 @@ async def report_region_expected(message: Message):
     await message.answer("❌ Введи номер региона цифрой. Например: 0 (Столица)", reply_markup=cancel_keyboard())
 
 
-@router.callback_query(F.data == "report:my_reports")
-async def report_my_reports(callback: CallbackQuery):
+def _row_get(r, key, default=None):
+    """Безопасное чтение поля sqlite3.Row (у Row нет метода .get())."""
+    return r[key] if key in r.keys() else default
+
+
+def report_card_text(r, include_author: bool = True) -> str:
+    """Подпись карточки отчёта (общая для «Моих отчётов» и архива МВД).
+
+    Принимает row из reports (+first_name/username/callsign — при JOIN users).
+    """
+    status_emoji = {"pending": "⏳", "approved": "✅", "rejected": "❌"}
+    emoji = status_emoji.get(r["status"], "❓")
+    when = created_at_msk(r["created_at"]) or str(r["created_at"])[:16]
+    day = report_day_value_of(r["created_at"])
+    day_hint = f" (сутки {day[5:]})" if day else ""
+
+    lines = [f"{emoji} Отчёт №{r['id']}", "────────────────"]
+    if include_author:
+        name = (_row_get(r, "callsign") or _row_get(r, "username")
+                or _row_get(r, "first_name") or "Пилот")
+        lines.append(f"👤 Автор: {name}")
+    lines.append(f"⚔️ За сутки: {r['troops_reported']} | "
+                 f"Всего: {_row_get(r, 'total_troops') or r['troops_reported']}")
+    lines.append(f"🌍 Регион: {r['region'] or '—'}")
+    lines.append(f"📅 Сдан: {when}{day_hint}")
+    if r["status"] == "approved":
+        lines.append("💰 Оплачен: Да" if _row_get(r, "paid") else "💰 Ожидает оплаты")
+    lines.append(f"🏷 Статус: {r['status']}")
+    if _row_get(r, "reviewed_by"):
+        lines.append(f"👮 Проверил: ID {r['reviewed_by']}")
+    return "\n".join(lines)
+
+
+async def report_my_page_cb(callback: CallbackQuery):
+    data = callback.data
+    # report:my:page или report:view:back:page
+    try:
+        parts = data.split(":")
+        # последний элемент — страница
+        page = int(parts[-1])
+    except (ValueError, IndexError):
+        page = 0
+    await show_my_reports(callback, page)
+
+
+async def show_my_reports(callback: CallbackQuery, page: int = 0):
     await callback.answer()
-    reports = await get_user_reports(callback.from_user.id)
-    if not reports:
+    items = await get_user_reports(callback.from_user.id)
+    if not items:
         await callback.message.answer("📋 У тебя пока нет отчётов.")
         return
 
+    total = len(items)
+    per_page = REPORT_ARCHIVE_PAGE
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(0, min(page, total_pages - 1))
+    start = page * per_page
+    end = start + per_page
+    chunk = items[start:end]
+
     status_emoji = {"pending": "⏳", "approved": "✅", "rejected": "❌"}
     lines = []
-    for r in reports[:10]:
+    for r in chunk:
         emoji = status_emoji.get(r["status"], "❓")
-        # Время сдачи — по МСК (created_at в базе UTC). Раньше тут печатался сырой
-        # UTC-день, из-за чего отчёт, сданный в 08:00 МСК, показывался «вчера».
-        when = created_at_msk(r["created_at"]) or r["created_at"][:16]
-        # Сутки отчёта: у отчёта до 10:00 МСК календарная дата одна, а отчётные
-        # сутки начинаются в 10:00 — поэтому день показываем отдельно.
+        when = created_at_msk(r["created_at"]) or str(r["created_at"])[:16]
         day = report_day_value_of(r["created_at"])
         day_hint = f" (сутки {day[5:]})" if day else ""
         lines.append(
-            f"{emoji} #{r['id']} | {r['troops_reported']} войск | "
-            f"{r['region'] or '—'} | {when}{day_hint}"
+            f"{emoji} #{r['id']} | {r['troops_reported']} войск | {r['region'] or '—'} | {when}{day_hint}"
         )
 
-    await callback.message.answer(
-        "📋 Твои отчёты (время по МСК):\n\n" + "\n".join(lines)
-    )
+    text = "📋 Твои отчёты (время по МСК):\n\n" + "\n".join(lines)
+    if total_pages > 1:
+        text += f"\n\nСтраница {page + 1} из {total_pages}"
+
+    kb = []
+    for r in chunk:
+        kb.append([InlineKeyboardButton(text=f"🔍 # {r['id']} — подробнее", callback_data=f"report:view:{r['id']}:{page}")])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"report:my:{page - 1}"))
+    nav.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"report:my:{page + 1}"))
+    if nav:
+        kb.append(nav)
+    kb.append([InlineKeyboardButton(text="🗂 В меню отчётов", callback_data="report:menu")])
+    await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+
+@router.callback_query(F.data.startswith("report:my:"))
+async def report_my_paginate(callback: CallbackQuery):
+    await report_my_page_cb(callback)
+
+
+@router.callback_query(F.data == "report:my_reports")
+async def report_my_reports_redirect(callback: CallbackQuery):
+    """Совместимость: старая кнопка ведёт на первую страницу."""
+    await callback.answer()
+    await show_my_reports(callback, 0)
+
+
+@router.callback_query(F.data.startswith("report:view:"))
+async def report_view_card(callback: CallbackQuery):
+    await callback.answer()
+    # report:view:{id}:{page} или report:view:{id}
+    try:
+        parts = callback.data.split(":")
+        if len(parts) == 4:
+            _, _, rid_str, page_str = parts
+            page = int(page_str)
+        elif len(parts) == 3:
+            _, _, rid_str = parts
+            page = 0
+        else:
+            return
+        rid = int(rid_str)
+    except (ValueError, IndexError):
+        return
+
+    r = await get_report_with_user(rid)
+    if not r:
+        await callback.message.answer("❌ Отчёт не найден.")
+        return
+    # Карточку видит владелец отчёта и проверяющие МВД (архив).
+    from utils.permissions import can_enter_mvd
+    is_owner = (r['user_id'] == callback.from_user.id)
+    if not (is_owner or await can_enter_mvd(callback.from_user.id)):
+        await callback.message.answer("⛔ Нет доступа к карточке этого отчёта.")
+        return
+
+    text = report_card_text(r)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="◀️ К списку", callback_data=f"report:my:{page}")],
+    ])
+    photo = _row_get(r, 'screenshot_file_id')
+    if photo:
+        try:
+            await callback.message.answer_photo(photo=photo, caption=text, reply_markup=kb)
+            return
+        except Exception:
+            pass
+    await callback.message.answer(text, reply_markup=kb)

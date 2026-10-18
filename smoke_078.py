@@ -127,7 +127,7 @@ async def run():
         init_db, close_db, add_user, get_db, get_location_by_key,
         get_all_locations, get_status_by_tag, grant_status, seed_dungeon,
     )
-    from keyboards.keyboards import city_keyboard, cancel_keyboard
+    from keyboards.keyboards import city_keyboard, cancel_keyboard, admin_quarter_keyboard
     from bot.handlers import locations as LOC
 
     await init_db()
@@ -173,13 +173,20 @@ async def run():
     keys = [l['key'] for l in await get_all_locations()]
     check("get_all_locations содержит hq и contracts", "hq" in keys and "contracts" in keys)
 
-    # ── 2. Клавиатура города ──
+    # ── 2. Клавиатура города (с v0.33 штаб в «Административном квартале») ──
     locs = [{"key": "hq", "name": "Штаб ВВС"}, {"key": "contracts", "name": "Доска контрактов"}]
     ck = city_keyboard(is_pilot=True, locations=locs)
     cbs = markup_callbacks(ck)
     texts = markup_button_texts(ck)
-    check("кнопка «🎖️ Штаб ВВС» в городе", "location:preview:hq" in cbs
-          and any("Штаб ВВС" in t for t in texts))
+    check("штаб убран из общего списка города (квартал)",
+          "location:preview:hq" not in cbs)
+    check("в городе есть кнопка «🏢 Административный квартал»",
+          "city:quarter" in cbs)
+    q_ck = admin_quarter_keyboard()
+    q_cbs = markup_callbacks(q_ck)
+    q_texts = markup_button_texts(q_ck)
+    check("кнопка «🎖️ Штаб ВВС» в квартале", "location:preview:hq" in q_cbs
+          and any("Штаб ВВС" in t for t in q_texts))
     check("кнопка «📜 Доска контрактов» в городе", "location:preview:contracts" in cbs
           and any("Доска контрактов" in t for t in texts))
     check("жёстких кнопок hq:menu/contracts:list нет", "hq:menu" not in cbs
@@ -187,9 +194,13 @@ async def run():
     check("Стена изречений и Жильё остались", "wall:view" in cbs and "housing:menu" in cbs)
     ck_t = city_keyboard(is_pilot=False, locations=locs)
     cbs_t = markup_callbacks(ck_t)
-    check("локации видны даже туристу", "location:preview:hq" in cbs_t
+    check("квартал и contracts видны даже туристу",
+          "city:quarter" in cbs_t
           and "location:preview:contracts" in cbs_t
+          and "location:preview:hq" not in cbs_t
           and "housing:menu" not in cbs_t)
+    check("штаб виден туристу через квартал",
+          "location:preview:hq" in markup_callbacks(admin_quarter_keyboard()))
 
     # ── 3. Превью: строка доступа ──
     cb_prev = FakeCallback(uid_tourist, data="location:preview:hq",

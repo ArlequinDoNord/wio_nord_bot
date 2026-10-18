@@ -18,7 +18,8 @@ from database.db import (
     location_photo_for_tod,
 )
 from utils.helpers import resolve_image, resolve_image_seasonal, time_of_day_key, season_key
-from utils.permissions import has_permission, is_admin
+from utils.permissions import has_permission, is_admin, can_enter_mvd
+from keyboards.keyboards import admin_quarter_keyboard
 
 router = Router()
 
@@ -30,6 +31,7 @@ LOCATION_ACCESS_LINES = {
     "mine": "⛏️ Вход: с «Пилота 1 класса»",
     "storage": "📦 Вход: с «Пилота 1 класса»",
     "duel_house": "🥊 Вход: с пилота второго класса",
+    "mvd": "🚔 Вход: сотрудникам МВД, Представителю, Хранителю и администрации",
 }
 
 
@@ -156,6 +158,19 @@ async def location_enter(callback: CallbackQuery, state: FSMContext):
                 ])
             )
             return
+    elif key == "mvd":
+        # Архив отчётов — служебное дело: пускаем только МВД (модератор),
+        # Вице-доминуса, Представителя, Хранителя и владельца (.env).
+        if not await can_enter_mvd(callback.from_user.id):
+            await callback.message.answer(
+                f"⛔ Вход в «{loc['name']}» — только для сотрудников МВД.\n\n"
+                f"Здесь хранится архив сданных отчётов и ведётся их проверка. "
+                f"Свои отчёты смотрай в профиле — «📋 Мои отчёты».",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")]
+                ])
+            )
+            return
 
     # Логируем успешный вход в локацию (для анализа популярности аспектов игры)
     await log_location_visit(callback.from_user.id, key)
@@ -197,6 +212,27 @@ async def location_enter(callback: CallbackQuery, state: FSMContext):
     elif key == "nii":
         from bot.handlers.nii import nii_menu
         await nii_menu(callback)
+    elif key == "mvd":
+        from bot.handlers.mvd import mvd_menu
+        await mvd_menu(callback)
     elif key == "duel_house":
         from bot.handlers.duel import duel_house_menu
         await duel_house_menu(callback)
+
+
+@router.callback_query(F.data == "city:quarter")
+async def city_admin_quarter(callback: CallbackQuery):
+    """Подменю Административного квартала: Банк, Ратуша, Штаб ВВС, МВД.
+
+    Здания убраны из общего списка города (см. ADMIN_QUARTER_KEYS в
+    keyboards.keyboards) и собраны здесь. Кнопка видна всем, но внутрь
+    зданий пускают их собственные правила входа (location_enter).
+    """
+    await callback.answer()
+    text = (
+        "🏢 АДМИНИСТРАТИВНЫЙ КВАРТАЛ\n"
+        "────────────────\n"
+        "Здесь решаются деньги, порядок и приказы: банк, ратуша, штаб ВВС "
+        "и здание МВД."
+    )
+    await callback.message.answer(text, reply_markup=admin_quarter_keyboard())

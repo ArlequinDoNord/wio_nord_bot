@@ -41,6 +41,7 @@
 | 28 | `nii_router` | `bot/handlers/nii.py` |
 | 29 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
 | 30 | `duel_router` | `bot/handlers/duel.py` |
+| 31 | `mvd_router` | `bot/handlers/mvd.py` |
 
 ## Сводка по модулям
 
@@ -54,14 +55,14 @@
 | `admin_recipes.py` | Менеджер рецептов крафта (v0.22.13): создание, правка и удаление рецептов. | `router` | 17 | 27 | `recadm:` | `RecipeManager` |
 | `shop.py` | Магазин: каталог по категориям, покупка за Нордмарки и AP. | `router` | 3 | 12 | `buy5_nord:`, `buy_housing:`, `buy_housing_cancel:`, `buy_nord:`, `fishbuy:`, `fishoffer:`, `itembuy:`, `itemoffer:`, `shop:`, `shopcat:`, `shopitem:` | `SpecialDeptBuy` |
 | `inventory.py` | Инвентарь: просмотр, использование расходников, продажа и передача предметов. | `router` | 4 | 28 | `eqequip:`, `eqlock:`, `eqslot:`, `equnequip:`, `fishcatch:`, `fishgo:`, `fishmarket:`, `fishprice:`, `fishsell:`, `fishuse:`, `inv_equip:`, `inv_sell:`, `inv_sell_keep1:`, `inv_sell_ok:`, `inv_sellall:`, `inv_sellmore:`, `inv_slot:`, `inv_transfer:`, `inv_unequip:`, `inv_unslot:`, `inv_use:`, `inventory:`, `invitem:`, `itemgo:`, `itemmarket:`, `itemprice:` | `TransferItem` |
-| `reports.py` | — | `router` | 9 | 2 | `\d+$:`, `\d{1,7}$:`, `report:` | `ReportSubmit` |
+| `reports.py` | — | `router` | 9 | 5 | `\d+$:`, `\d{1,7}$:`, `report:` | `ReportSubmit` |
 | `dungeon.py` | — | `router` | 0 | 24 | `city:`, `contract:`, `contracts:`, `dungeon:`, `mollusk:`, `resv:` | `DungeonFSM` |
 | `pilots.py` | Ратуша: общественный центр города — голосование, пилоты, партии, речь представителя. | `router` | 0 | 5 | `city:`, `rathaus:`, `rathaus_prof:` | — |
 | `polls.py` | Голосование: показ активных опросов, участие в них и создание новых (Хранитель/Представитель). | `router` | 2 | 8 | `city:`, `vote:` | `PollCreate` |
 | `poll_archive.py` | Архив опросов Ратуши — раздел библиотеки «Опросы». | `router` | 0 | 3 | `pollarch:` | — |
 | `representative.py` | Голос Представителя — ежедневное обращение к городу. | `router` | 1 | 3 | `rep:` | `RepSpeech` |
 | `library.py` | Библиотека Нордхайма: разделы, чтение книг, управление книгами, архив опросов. | `router` | 5 | 11 | `city:`, `lib:`, `libadmin:`, `libadmin_del:`, `libadmin_sec:`, `libbook:`, `libdl:`, `libsec:` | `AdminAddBook` |
-| `locations.py` | Универсальные локации города: превью (всем) + вход (по доступу). | `router` | 0 | 2 | `location:` | — |
+| `locations.py` | Универсальные локации города: превью (всем) + вход (по доступу). | `router` | 0 | 3 | `city:`, `location:` | — |
 | `park.py` | Городской парк Аркхольма: озеро (статика), фонтан и аллея статуй. | `router` | 7 | 14 | `park:` | `AdminStatue`, `AdminStatueEdit` |
 | `fishing.py` | Рыбалка на Озере в парке. | `router` | 0 | 4 | `fish:` | — |
 | `forest.py` | Лес на окраине: опушка и лесная поляна, сбор грибов и кабан. | `router` | 0 | 4 | `forest:` | — |
@@ -76,6 +77,7 @@
 | `nii.py` | НИИ Северной Кибернетики и кремниевых систем — здание обратной связи. | `router` | 2 | 7 | `nii:` | `NiiWrite` |
 | `tourist_booklet.py` | Буклет туриста: чек-лист городских локаций и разовая награда. | `router` | 0 | 2 | `booklet:` | — |
 | `duel.py` | Дом Дуэлей — PvP-арена «зона на зону». | `router` | 0 | 12 | `duel:` | — |
+| `mvd.py` | — | `router` | 0 | 3 | `mvd:` | — |
 
 ## Детально по модулям (точные и префиксные ключи `F.data`)
 
@@ -141,10 +143,10 @@
 ### `reports.py` — —
 
 - Роутеры: `router`
-- Хендлеры: message=9, callback_query=2
+- Хендлеры: message=9, callback_query=5
 - FSM: `ReportSubmit`
-- `F.data.startswith`: `\d+$`, `\d{1,7}$`
-- `F.data ==`: `report:my_reports`, `report:submit`
+- `F.data.startswith`: `\d+$`, `\d{1,7}$`, `report:my:`, `report:view:`
+- `F.data ==`: `report:menu`, `report:my_reports`, `report:submit`
 
 ### `dungeon.py` — —
 
@@ -194,8 +196,9 @@
 ### `locations.py` — Универсальные локации города: превью (всем) + вход (по доступу).
 
 - Роутеры: `router`
-- Хендлеры: message=0, callback_query=2
+- Хендлеры: message=0, callback_query=3
 - `F.data.startswith`: `location:enter:`, `location:preview:`
+- `F.data ==`: `city:quarter`
 
 ### `park.py` — Городской парк Аркхольма: озеро (статика), фонтан и аллея статуй.
 
@@ -296,4 +299,11 @@
 - Хендлеры: message=0, callback_query=12
 - `F.data.startswith`: `duel:accept:`, `duel:atk:`, `duel:cancel:`, `duel:decline:`, `duel:def:`, `duel:invite:`, `duel:leave:`
 - `F.data ==`: `duel:card:buy`, `duel:help`, `duel:list`, `duel:menu`, `duel:top`
+
+### `mvd.py` — —
+
+- Роутеры: `router`
+- Хендлеры: message=0, callback_query=3
+- `F.data.startswith`: `mvd:arch:`, `mvd:archive:`
+- `F.data ==`: `mvd:menu`
 

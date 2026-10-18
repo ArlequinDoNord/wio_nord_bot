@@ -539,6 +539,10 @@
 | `credited_troops` | `INTEGER` |
 | `paid` | `INTEGER DEFAULT 0` |
 
+**Индексы:**
+
+- `idx_reports_created` по (created_at)
+
 ## `resource_sources`
 
 | Колонка |

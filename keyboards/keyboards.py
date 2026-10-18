@@ -188,12 +188,19 @@ LOCATION_BUTTON_EMOJI = {
     "duel_house": "🥊",
     "mine": "⛏️",
     "storage": "📦",
+    "mvd": "🚔",
 }
+
+# Здания, вынесенные из общего списка города в подменю «Административный квартал».
+ADMIN_QUARTER_KEYS = ("townhall", "bank", "hq", "mvd")
+ADMIN_QUARTER_TEXT = "🏢 Административный квартал"
 
 
 def city_keyboard(is_pilot: bool = True, locations: list = None):
-    buttons = []
+    buttons = [[InlineKeyboardButton(text=ADMIN_QUARTER_TEXT, callback_data="city:quarter")]]
     for loc in (locations or []):
+        if loc.get('key') in ADMIN_QUARTER_KEYS:
+            continue
         emoji = LOCATION_BUTTON_EMOJI.get(loc.get('key'), "📍")
         buttons.append([InlineKeyboardButton(
             text=f"{emoji} {loc['name']}",
@@ -202,6 +209,25 @@ def city_keyboard(is_pilot: bool = True, locations: list = None):
     buttons.append([InlineKeyboardButton(text="🧱 Стена изречений", callback_data="wall:view")])
     if is_pilot:
         buttons.append([InlineKeyboardButton(text="🏠 Жильё", callback_data="housing:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def admin_quarter_keyboard():
+    """Подменю Административного квартала: Банк, Ратуша, Штаб ВВС, Здание МВД.
+
+    Порядок — по пожеланию владельца. Кнопки ведут в превью локаций (оттуда
+    «Войти»), поэтому доступ по-прежнему решается в location_enter: кнопка
+    «Здание МВД» видна всем, но внутрь пускают только сотрудники.
+    """
+    entries = (
+        ("bank", "🏦 Банк"),
+        ("townhall", "🏛 Ратуша"),
+        ("hq", "🎖️ Штаб ВВС"),
+        ("mvd", "🚔 Здание МВД"),
+    )
+    buttons = [[InlineKeyboardButton(text=text, callback_data=f"location:preview:{key}")]
+               for key, text in entries]
+    buttons.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

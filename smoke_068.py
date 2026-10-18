@@ -139,7 +139,7 @@ async def run():
     )
     from utils.wings import WINGS, wing_label, wing_display
     from utils.permissions import ROLES, has_permission
-    from keyboards.keyboards import city_keyboard, admin_panel_keyboard
+    from keyboards.keyboards import city_keyboard, admin_panel_keyboard, admin_quarter_keyboard
     from bot.handlers import profile as PF
     from bot.handlers import admin as AM
     from bot.handlers import hq as HQQ
@@ -271,14 +271,18 @@ async def run():
     check("representative не получает can_manage_wing",
           not await has_permission(uid3, 'can_manage_wing'))
 
-    # ── 6. Штаб ВВС (локация «Штаб ВВС» в городе, видна всем) ──
+    # ── 6. Штаб ВВС (с v0.33 — кнопка в «Административном квартале») ──
     hq_loc = [{"key": "hq", "name": "Штаб ВВС"}]
     ck = city_keyboard(is_pilot=False, locations=hq_loc)
-    check("в городе кнопка «Штаб ВВС» (локация, видна всем)",
-          "location:preview:hq" in markup_callbacks(ck))
+    check("штаб убран из общего списка города (квартал)",
+          "location:preview:hq" not in markup_callbacks(ck))
+    check("в городе есть кнопка «Административный квартал»",
+          "city:quarter" in markup_callbacks(ck))
     ck_pilot = city_keyboard(is_pilot=True, locations=hq_loc)
-    check("у пилота кнопка штаба тоже есть",
-          "location:preview:hq" in markup_callbacks(ck_pilot))
+    check("штаб убран и у пилота", "location:preview:hq" not in markup_callbacks(ck_pilot))
+    q_ck = admin_quarter_keyboard()
+    check("квартал: кнопка «Штаб ВВС» (видна всем)",
+          "location:preview:hq" in markup_callbacks(q_ck))
     check("жёстких кнопок hq:menu/contracts:list в городе больше нет",
           "hq:menu" not in markup_callbacks(ck)
           and "contracts:list" not in markup_callbacks(ck_pilot))

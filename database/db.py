@@ -443,6 +443,7 @@ async def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(user_id)
         );
+        CREATE INDEX IF NOT EXISTS idx_reports_created ON reports(created_at);
 
         CREATE TABLE IF NOT EXISTS resource_sources (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1482,6 +1483,11 @@ async def seed_locations(conn):
          "min", "pilot1", ["пьян"], "city/mine"),
         ("storage", "Городские склады", "Складские ангары Аркхольма: сюда свозят ресурсы, выкупленные казной у пилотов. Вход с «Пилота 1 класса».",
          "min", "pilot1", ["пьян"], "city/storage"),
+        # Доступ в МВД — не через access_mode/required_status, а хардкодом в
+        # location_enter (как ГосСМИ и Штаб ВВС): роли МВД/Вице-доминуса/
+        # Представителя/Хранителя либо статус «Хранитель» (keeper).
+        ("mvd", "Здание МВД", "Здание Министерства внутренних дел Нордхайма. Здесь хранится архив сданных отчётов и ведётся проверка пилотской отчётности.",
+         "all", None, ["пьян"], "city/mvd"),
     ]
     for key, name, desc, mode, req_status, blocking, preview in base:
         await conn.execute(
@@ -5211,6 +5217,68 @@ async def get_user_reports(user_id: int):
         (user_id,)
     )
     return await cursor.fetchall()
+
+
+async def count_reports_all() -> int:
+    """Сколько отчётов сдано за всё время (счётчик архива Здания МВД)."""
+    conn = await get_db()
+    cur = await conn.execute("SELECT COUNT(*) AS n FROM reports")
+    row = await cur.fetchone()
+    return row['n'] if row else 0
+
+
+async def get_reports_page(offset: int, limit: int) -> list:
+    """Страница архива отчётов (Здание МВД): новые сверху, с автором.
+
+    Как в get_pending_reports: второй ключ ORDER BY (r.id) обязателен —
+    у отчётов в одну секунду created_at совпадает, и порядок «плавает».
+    """
+    conn = await get_db()
+    cursor = await conn.execute(
+        """SELECT r.*, u.first_name, u.username, u.callsign FROM reports r
+           JOIN users u ON r.user_id = u.user_id
+           ORDER BY r.created_at DESC, r.id DESC LIMIT ? OFFSET ?""",
+        (limit, offset)
+    )
+    return await cursor.fetchall()
+
+
+async def get_report_with_user(report_id: int):
+    """Один отчёт с данными автора — карточка архива Здания МВД."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        """SELECT r.*, u.first_name, u.username, u.callsign FROM reports r
+           JOIN users u ON r.user_id = u.user_id WHERE r.id = ?""",
+        (report_id,)
+    )
+    return await cursor.fetchone()
+
+
+async def get_report_neighbors(report_id: int):
+    """Соседи отчёта в порядке архива (новые сверху): (prev_id, next_id).
+
+    prev — более новый отчёт (выше в списке), next — более старый (ниже).
+    Порядок тот же, что у get_reports_page (created_at DESC, id DESC), поэтому
+    сравнение идёт по паре (created_at, id) — иначе отчёты одной секунды «плывут».
+    """
+    conn = await get_db()
+    cur_prev = await conn.execute(
+        """SELECT id FROM reports
+           WHERE (created_at, id) > (SELECT created_at, id FROM reports WHERE id = ?)
+           ORDER BY created_at ASC, id ASC LIMIT 1""",
+        (report_id,)
+    )
+    prev_row = await cur_prev.fetchone()
+    cur_next = await conn.execute(
+        """SELECT id FROM reports
+           WHERE (created_at, id) < (SELECT created_at, id FROM reports WHERE id = ?)
+           ORDER BY created_at DESC, id DESC LIMIT 1""",
+        (report_id,)
+    )
+    next_row = await cur_next.fetchone()
+    return (prev_row['id'] if prev_row else None,
+            next_row['id'] if next_row else None)
+
 
 
 async def recompute_region_stats():

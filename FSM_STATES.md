@@ -6,7 +6,7 @@
 > Назначение: единый обзор всех `StatesGroup`, где они ставятся и где ловятся,
 > а также реестр `callback_data` — чтобы не допускать конфликтов меню/хендлеров.
 
-Всего классов состояний: **48**; полей-состояний: **209**; уникальных `callback_data`: **247**.
+Всего классов состояний: **48**; полей-состояний: **209**; уникальных `callback_data`: **250**.
 
 ## 1. Классы состояний по модулям
 
@@ -436,10 +436,10 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `waiting_photo` | `bot/handlers/reports.py:88` `report_submit_start` | `bot/handlers/reports.py:97` `report_receive_photo`<br>`bot/handlers/reports.py:116` `report_photo_expected` |
-| `waiting_daily_troops` | `bot/handlers/reports.py:103` `report_receive_photo` | `bot/handlers/reports.py:121` `report_receive_daily_troops`<br>`bot/handlers/reports.py:146` `report_daily_troops_expected` |
-| `waiting_total_troops` | `bot/handlers/reports.py:133` `report_receive_daily_troops` | `bot/handlers/reports.py:151` `report_receive_total_troops`<br>`bot/handlers/reports.py:182` `report_total_troops_expected` |
-| `waiting_region` | `bot/handlers/reports.py:160` `report_receive_total_troops` | `bot/handlers/reports.py:187` `report_receive_region`<br>`bot/handlers/reports.py:281` `report_region_expected` |
+| `waiting_photo` | `bot/handlers/reports.py:102` `report_submit_start` | `bot/handlers/reports.py:111` `report_receive_photo`<br>`bot/handlers/reports.py:130` `report_photo_expected` |
+| `waiting_daily_troops` | `bot/handlers/reports.py:117` `report_receive_photo` | `bot/handlers/reports.py:135` `report_receive_daily_troops`<br>`bot/handlers/reports.py:160` `report_daily_troops_expected` |
+| `waiting_total_troops` | `bot/handlers/reports.py:147` `report_receive_daily_troops` | `bot/handlers/reports.py:165` `report_receive_total_troops`<br>`bot/handlers/reports.py:196` `report_total_troops_expected` |
+| `waiting_region` | `bot/handlers/reports.py:174` `report_receive_total_troops` | `bot/handlers/reports.py:201` `report_receive_region`<br>`bot/handlers/reports.py:295` `report_region_expected` |
 
 ### `RepSpeech` — `bot/handlers/representative.py`
 
@@ -501,6 +501,7 @@
 | `loc:` | 20 | `loc:blocking:done`, `loc:blocking:none`, `loc:building_pick`, `loc:clearing_set`, `loc:create`, `loc:edit_pick`, `loc:glade_set`, `loc:mine_set`, `loc:mode:all`, `loc:mode:exact`, `loc:mode:min`, `loc:photos`, `loc:photos:clear`, `loc:photos:clear_seasons`, `loc:set_blocking`, `loc:set_desc`, `loc:set_mode`, `loc:set_name`, `loc:set_status`, `loc:storage_set` |
 | `lootonly:` | 2 | `lootonly:no`, `lootonly:yes` |
 | `marketok:` | 2 | `marketok:no`, `marketok:yes` |
+| `mvd:` | 2 | `mvd:archive:0`, `mvd:menu` |
 | `news:` | 5 | `news:archive`, `news:no_photo`, `news:off`, `news:tab`, `news:write` |
 | `nii:` | 5 | `nii:all`, `nii:menu_back`, `nii:mine`, `nii:no_photo`, `nii:write` |
 | `noop:` | 1 | `noop` |
@@ -511,6 +512,7 @@
 | `profile:` | 5 | `profile`, `profile:awards`, `profile:callsign_buy`, `profile:callsign_cancel`, `profile:open` |
 | `recadm:` | 10 | `recadm:cancel`, `recadm:create`, `recadm:ing_done`, `recadm:list`, `recadm:menu`, `recadm:no_photo`, `recadm:noop`, `recadm:res_existing`, `recadm:res_new`, `recadm:save` |
 | `rep:` | 5 | `rep:auto_approve_edit`, `rep:pay_cap_edit`, `rep:speech`, `rep:speech:delete`, `rep:speech:write` |
+| `report:` | 1 | `report:menu` |
 | `rolop:` | 2 | `rolop:add`, `rolop:remove` |
 | `salary:` | 2 | `salary:choose`, `salary:pay` |
 | `salary_period:` | 2 | `salary_period:30`, `salary_period:7` |
@@ -580,6 +582,7 @@
 - `city:menu`: `bot/handlers/start.py:158`
 - `city:pilots`: `bot/handlers/pilots.py:100`
 - `city:pilots:list`: `bot/handlers/pilots.py:127`
+- `city:quarter`: `bot/handlers/locations.py:223`
 - `city:vote`: `bot/handlers/polls.py:70`
 - `clans:create_skip`: `bot/handlers/clans.py:651`
 - `clans:noop`: `bot/handlers/clans.py:436`
@@ -650,6 +653,7 @@
 - `loc:set_status`: `bot/handlers/admin.py:7809`
 - `loc:storage_clear`: `bot/handlers/admin.py:8419`
 - `loc:storage_set`: `bot/handlers/admin.py:8381`
+- `mvd:menu`: `bot/handlers/mvd.py:29`
 - `news:archive`: `bot/handlers/news.py:132`
 - `news:no_photo`: `bot/handlers/news.py:350`
 - `news:tab`: `bot/handlers/news.py:259`
@@ -700,8 +704,9 @@
 - `rep:speech`: `bot/handlers/representative.py:77`
 - `rep:speech:delete`: `bot/handlers/representative.py:109`
 - `rep:speech:write`: `bot/handlers/representative.py:89`
-- `report:my_reports`: `bot/handlers/reports.py:285`
-- `report:submit`: `bot/handlers/reports.py:43`
+- `report:menu`: `bot/handlers/reports.py:47`
+- `report:my_reports`: `bot/handlers/reports.py:394`
+- `report:submit`: `bot/handlers/reports.py:57`
 - `salary:choose`: `bot/handlers/admin.py:5076`
 - `salary:pay`: `bot/handlers/admin.py:5088`
 - `shop:catalog`: `bot/handlers/shop.py:228`
@@ -733,8 +738,8 @@
 
 ### По префиксу (`F.data.startswith("...")`)
 
-- `\d+$`: `bot/handlers/admin.py:1347`; `bot/handlers/admin.py:5011`; `bot/handlers/admin.py:7222`; `bot/handlers/reports.py:186`
-- `\d{1,7}$`: `bot/handlers/reports.py:120`; `bot/handlers/reports.py:150`
+- `\d+$`: `bot/handlers/admin.py:1347`; `bot/handlers/admin.py:5011`; `bot/handlers/admin.py:7222`; `bot/handlers/reports.py:200`
+- `\d{1,7}$`: `bot/handlers/reports.py:134`; `bot/handlers/reports.py:164`
 - `act:`: `bot/handlers/admin.py:4808`
 - `addreq:`: `bot/handlers/admin.py:1546`
 - `aw_del:`: `bot/handlers/admin.py:3639`
@@ -751,7 +756,7 @@
 - `buy_housing_cancel:`: `bot/handlers/shop.py:992`
 - `buy_nord:`: `bot/handlers/shop.py:477`
 - `cat:`: `bot/handlers/admin.py:1268`
-- `city/`: `bot/handlers/locations.py:83`
+- `city/`: `bot/handlers/locations.py:85`
 - `city:pilots:list:`: `bot/handlers/pilots.py:133`
 - `clans:add:`: `bot/handlers/clans.py:441`
 - `clans:addset:`: `bot/handlers/clans.py:458`
@@ -941,8 +946,8 @@
 - `loc:season:(winter|spring|summer|autumn)$`: `bot/handlers/admin.py:8165`
 - `loc:season_clear:(winter|spring|summer|autumn)$`: `bot/handlers/admin.py:8191`
 - `loc:season_photo_set:(winter|spring|summer|autumn):(dawn|day|sunset|night)$`: `bot/handlers/admin.py:8469`
-- `location:enter:`: `bot/handlers/locations.py:103`
-- `location:preview:`: `bot/handlers/locations.py:36`
+- `location:enter:`: `bot/handlers/locations.py:105`
+- `location:preview:`: `bot/handlers/locations.py:38`
 - `locstat:`: `bot/handlers/admin.py:4867`
 - `lootonly:`: `bot/handlers/admin.py:1521`
 - `marketok:`: `bot/handlers/admin.py:1499`
@@ -954,6 +959,8 @@
 - `mine:menu:\d+$`: `bot/handlers/mine.py:348`
 - `mollusk:flee:\d+$`: `bot/handlers/dungeon.py:459`
 - `mollusk:hit:\d+$`: `bot/handlers/dungeon.py:365`
+- `mvd:arch:`: `bot/handlers/mvd.py:95`
+- `mvd:archive:`: `bot/handlers/mvd.py:45`
 - `news:(?:off|(?:dis)?allow:-?\d+|chat:-?\d+:-?\d+|topic:-?\d+:-?\d+)$`: `bot/handlers/admin.py:2855`
 - `news:arch:\d+$`: `bot/handlers/news.py:179`
 - `news:del:`: `bot/handlers/news.py:473`
@@ -1000,6 +1007,8 @@
 - `rep_fix:`: `bot/handlers/admin.py:4384`
 - `rep_no:`: `bot/handlers/admin.py:4570`
 - `rep_ok:`: `bot/handlers/admin.py:4501`
+- `report:my:`: `bot/handlers/reports.py:389`
+- `report:view:`: `bot/handlers/reports.py:401`
 - `resv:bait:\d+$`: `bot/handlers/dungeon.py:2013`
 - `resv:bait:set:\d+:[a-z]+$`: `bot/handlers/dungeon.py:2061`
 - `resv:cast:\d+$`: `bot/handlers/dungeon.py:2080`

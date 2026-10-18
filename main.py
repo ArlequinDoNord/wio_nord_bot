@@ -65,6 +65,7 @@ from bot.handlers.clans import router as clans_router
 from bot.handlers.nii import router as nii_router
 from bot.handlers.tourist_booklet import router as tourist_booklet_router
 from bot.handlers.duel import router as duel_router
+from bot.handlers.mvd import router as mvd_router
 from bot.handlers.changelog import router as changelog_router
 
 load_dotenv()
@@ -576,6 +577,7 @@ async def main():
     dp.include_router(nii_router)
     dp.include_router(tourist_booklet_router)
     dp.include_router(duel_router)
+    dp.include_router(mvd_router)
 
     for r in (start_router, changelog_router, profile_router, bank_router, admin_router, admin_recipes_router, shop_router,
               inventory_router, reports_router, dungeon_router, pilots_router,
@@ -583,7 +585,7 @@ async def main():
               locations_router, park_router,
               fishing_router, forest_router, mine_router, storage_router, housing_router, news_router, kvp_router,
               wall_router, hq_router, clans_router, nii_router, tourist_booklet_router,
-              duel_router):
+              duel_router, mvd_router):
         r.message.middleware(ChatGuard())
         r.message.middleware(FishingActiveLock())
         r.message.middleware(MainMenuFSMReset())

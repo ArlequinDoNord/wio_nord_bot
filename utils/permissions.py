@@ -4,7 +4,7 @@
 """
 
 from config import ADMIN_IDS
-from database.db import get_db, pay_role_salary_on_revoke
+from database.db import get_db, pay_role_salary_on_revoke, user_has_status_tag
 
 # Определение ролей и их прав
 ROLES = {
@@ -224,6 +224,25 @@ async def get_user_role(telegram_id: int) -> list:
     cursor = await db.execute("SELECT role FROM user_roles WHERE telegram_id = ?", (telegram_id,))
     roles = [row['role'] for row in await cursor.fetchall()]
     return roles if roles else ['user']
+
+
+# Доступ в Здание МВД (архив отчётов): роли МВД/Вице-доминуса, Представителя
+# и Хранителя + отдельный статус «Хранитель» (keeper), который держит владелец.
+MVD_ACCESS_ROLES = {'moderator', 'mvd_helper', 'representative', 'super_admin'}
+MVD_ACCESS_STATUS_TAG = 'keeper'
+
+
+async def can_enter_mvd(telegram_id: int) -> bool:
+    """Пускают ли в Здание МВД (архив и проверка отчётов).
+
+    is_admin() тут НЕ подходит: он истинен для любой роли (журналист, глава
+    клана), а внутрь пускаем только перечисленных. Владелец из ADMIN_IDS
+    покрыт: get_user_role для него возвращает ['super_admin'].
+    """
+    roles = set(await get_user_role(telegram_id))
+    if roles & MVD_ACCESS_ROLES:
+        return True
+    return await user_has_status_tag(telegram_id, MVD_ACCESS_STATUS_TAG)
 
 
 # Роли, которые умеет назначать не только суперадмин, а профильный руководитель.
