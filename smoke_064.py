@@ -1,9 +1,9 @@
 """Smoke v0.13.15: «Стена изречений» — доска объявлений.
 
-Проверяет:
+Проверяет (с v0.35.0: лимиты 2 бесплатных, всего 11 постов):
 1. add_wall_post: первый пост бесплатный, tier 0/cost 0, created_day по МСК.
-2. Лимиты: 4 бесплатных → 5-й за 30 НМ (списание с баланса), tier по цене.
-3. 8-й за 90 НМ; 13-й (последний) за 200 НМ; 14-й — стоп (None).
+2. Лимиты: 2 бесплатных → 3-й за 30 НМ (списание с баланса), tier по цене.
+3. 6-й за 90 НМ; 11-й (последний) за 200 НМ; 12-й — стоп (None).
 4. Не хватает НМ → need_nm.
 5. get_wall_posts пагинация: свежие сверху, страницы.
 6. delete_wall_post: платное → возврат автору ⅓, бесплатное → возврата нет.
@@ -147,18 +147,16 @@ async def run():
     check("пост 1: tier 0", r1 and r1['tier'] == 0)
     check("пост 1: created_day по МСК", _wall_today_key() == _wall_today_key())
 
-    # ── 2. 4 бесплатных ──
+    # ── 2. 2 бесплатных (WALL_FREE_PER_DAY = 2 с v0.35.0) ──
     r2 = await add_wall_post(uid, "Второе")
-    r3 = await add_wall_post(uid, "Третье")
-    r4 = await add_wall_post(uid, "Четвёртое")
-    check("посты 2-4: бесплатные", all(x and x['cost'] == 0 for x in (r1, r2, r3, r4)))
-    check("count сегодня = 4", await count_wall_posts_today(uid) == 4)
+    check("посты 1-2: бесплатные", all(x and x['cost'] == 0 for x in (r1, r2)))
+    check("count сегодня = 2", await count_wall_posts_today(uid) == 2)
 
-    # ── 3. 5-й за 30 НМ ──
+    # ── 3. 3-й за 30 НМ ──
     bal_before = (await get_user(uid))['nordmarks']
-    r5 = await add_wall_post(uid, "Пятое за 30")
-    check("пост 5: cost 30", r5 and r5['cost'] == 30)
-    check("пост 5: tier 1", r5 and r5['tier'] == 1)
+    r3 = await add_wall_post(uid, "Третье за 30")
+    check("пост 3: cost 30", r3 and r3['cost'] == 30)
+    check("пост 3: tier 1", r3 and r3['tier'] == 1)
     bal_after = (await get_user(uid))['nordmarks']
     check("списано 30 НМ", bal_before - bal_after == 30)
 
@@ -166,43 +164,43 @@ async def run():
     uid2 = 999803
     await add_user(uid2, "poor", "Бедный", "Игрок")
     await update_user(uid2, nordmarks=5)
-    for i in range(4):
+    for i in range(2):
         await add_wall_post(uid2, f"бесплатный {i}")
-    check("uid2: 4 бесплатных сделано", await count_wall_posts_today(uid2) == 4)
-    r6 = await add_wall_post(uid2, "Пятое, но нет денег")
-    check("пост 6 при нехватке: need_nm", r6 and r6.get('need_nm') is True and r6['cost'] == 30)
-    check("пост 6: не создан", r6 and r6['post_id'] is None)
+    check("uid2: 2 бесплатных сделано", await count_wall_posts_today(uid2) == 2)
+    r6 = await add_wall_post(uid2, "Третье, но нет денег")
+    check("пост 3 при нехватке: need_nm", r6 and r6.get('need_nm') is True and r6['cost'] == 30)
+    check("пост 3: не создан", r6 and r6['post_id'] is None)
     check("не списано при нехватке", (await get_user(uid2))['nordmarks'] == 5)
 
-    # ── 5. Доходим до 13-го (200 НМ) и стоп ──
+    # ── 5. Доходим до 11-го (последний, 200 НМ) и стоп ──
+    # 1-2: 0 НМ; 3-5: 30; 6-8: 90; 9-11: 200 (WALL_REVIEW_TOTAL = 11).
     await update_user(uid, nordmarks=2000)
-    r6 = await add_wall_post(uid, "Шестое")       # #6: 30 НМ
-    r7 = await add_wall_post(uid, "Седьмое")       # #7: 30 НМ
-    r8 = await add_wall_post(uid, "Восьмое за 90")  # #8: 90 НМ
-    r9 = await add_wall_post(uid, "Девятое")       # #9: 90 НМ
-    r10 = await add_wall_post(uid, "Десятое")      # #10: 90 НМ
-    check("пост #5: cost 30", r5['cost'] == 30)
-    check("пост #8: cost 90", r8 and r8['cost'] == 90)
-    check("пост #10: cost 90", r10 and r10['cost'] == 90)
-    r11 = await add_wall_post(uid, "Одиннадцатое за 200")  # #11: 200 НМ
-    check("пост #11: cost 200", r11 and r11['cost'] == 200)
-    r12 = await add_wall_post(uid, "Двенадцатое")  # #12: 200 НМ
-    r13 = await add_wall_post(uid, "Тринадцатое — последнее")  # #13: 200 НМ
-    check("счётчик = 13", await count_wall_posts_today(uid) == 13)
-    r14 = await add_wall_post(uid, "Четырнадцатое — стоп")
-    check("14-й: стоп (None)", r14 is None)
+    r4 = await add_wall_post(uid, "Четвёртое")       # #4: 30 НМ
+    r5 = await add_wall_post(uid, "Пятое")           # #5: 30 НМ
+    check("пост #4: cost 30", r4 and r4['cost'] == 30)
+    check("пост #5: cost 30", r5 and r5['cost'] == 30)
+    r6b = await add_wall_post(uid, "Шестое")         # #6: 90 НМ
+    r7 = await add_wall_post(uid, "Седьмое")         # #7: 90 НМ
+    check("пост #6: cost 90", r6b and r6b['cost'] == 90)
+    r8 = await add_wall_post(uid, "Восьмое")         # #8: 90 НМ
+    r9 = await add_wall_post(uid, "Девятое за 200")  # #9: 200 НМ
+    check("пост #9: cost 200", r9 and r9['cost'] == 200)
+    r10 = await add_wall_post(uid, "Десятое")        # #10: 200 НМ
+    check("пост #10: cost 200", r10 and r10['cost'] == 200)
+    r11 = await add_wall_post(uid, "Одиннадцатое — последнее")  # #11: 200 НМ
+    check("счётчик = 11", await count_wall_posts_today(uid) == 11)
+    r12 = await add_wall_post(uid, "Двенадцатое — стоп")
+    check("12-й: стоп (None)", r12 is None)
 
     # ── 6. Пагинация записей ──
     total = await count_wall_posts()
-    check("всего постов = 17 (13 uid + 4 uid2)", total == 17)
+    check("всего постов = 13 (11 uid + 2 uid2)", total == 13)
     page1 = await get_wall_posts(0, 5)
     page2 = await get_wall_posts(1, 5)
     page3 = await get_wall_posts(2, 5)
-    page4 = await get_wall_posts(3, 5)
     check("страница 1: 5 постов", len(page1) == 5)
     check("страница 2: 5 постов", len(page2) == 5)
-    check("страница 3: 5 постов", len(page3) == 5)
-    check("страница 4: 2 поста", len(page4) == 2)
+    check("страница 3: 3 поста", len(page3) == 3)
     check("свежие сверху (страница 1 первая)", page1[0]['id'] > page2[0]['id'])
     check("автор подписан (username/callsign)", "wal" in str(page1[0].get('username') or "").lower()
           or page1[0].get('callsign'))

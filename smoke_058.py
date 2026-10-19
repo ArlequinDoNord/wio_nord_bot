@@ -17,9 +17,42 @@ os.environ["DATABASE_PATH"] = _TEST_DB
 sys.path.insert(0, os.path.dirname(__file__))
 
 
+class FakeBot:
+    def __init__(self):
+        self.calls = []
+        self._next = 1000
+
+    async def edit_message_caption(self, *a, **kw):
+        self.calls.append(("caption", a))
+        return SimpleNamespace(message_id=a[1] if len(a) > 1 else 0)
+
+    async def edit_message_media(self, *a, **kw):
+        self.calls.append(("media", a))
+        return SimpleNamespace(message_id=a[1] if len(a) > 1 else 0)
+
+    async def edit_message_text(self, *a, **kw):
+        self.calls.append(("text", a))
+        return SimpleNamespace(message_id=a[1] if len(a) > 1 else 0)
+
+    async def delete_message(self, *a, **kw):
+        self.calls.append(("delete", a))
+
+    async def send_photo(self, *a, **kw):
+        self._next += 1
+        return SimpleNamespace(message_id=self._next)
+
+    async def send_message(self, *a, **kw):
+        self._next += 1
+        return SimpleNamespace(message_id=self._next)
+
+
 class FakeMessage:
     def __init__(self):
         self.sent = []
+        self.chat = SimpleNamespace(id=1)
+        self.message_id = 1
+        self.photo = None
+        self.bot = FakeBot()
 
     async def answer(self, *a, **kw):
         self.sent.append(("answer", a, kw))
@@ -43,6 +76,7 @@ class FakeCallback:
     def __init__(self, user_id, data=""):
         self.from_user = SimpleNamespace(id=user_id)
         self.message = FakeMessage()
+        self.bot = self.message.bot
         self.data = data
         self.alerts = []
 

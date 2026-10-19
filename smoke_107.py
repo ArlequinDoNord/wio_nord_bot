@@ -41,7 +41,7 @@ async def main():
 
     # ── 1. Сид legacy-формирований + кэш из БД ──────────────────────────────
     cur = await conn.execute("SELECT COUNT(*) AS n FROM wings")
-    check("в wings 4 legacy-формирования", (await cur.fetchone())['n'] == 4)
+    check("в wings 4 legacy + Резерв", (await cur.fetchone())['n'] == 5)
     check("ключи legacy сохранены ('1'..'4'), метка по шаблону",
           W.WINGS_SHORT.get('1') == '🐺 1 АК')
     check("полная метка с позывным", W.WINGS.get('1') == '🐺 1 АК «Небесные Волки»')

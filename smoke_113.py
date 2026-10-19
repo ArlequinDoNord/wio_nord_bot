@@ -136,6 +136,7 @@ async def main():
         get_archived_polls_by_day, count_archived_polls_by_day, count_archived_polls,
         add_rep_speech, update_rep_speech, get_latest_rep_speech, get_rep_speech,
         count_rep_speeches_today, activate_library_card, set_news_chat,
+        grant_status, get_status_by_tag,
     )
     from utils.permissions import has_permission, add_role
 
@@ -152,6 +153,11 @@ async def main():
     await conn.execute(
         "INSERT INTO user_roles (telegram_id, role) VALUES (?, 'journalist')", (PILOT,))
     await conn.commit()
+    # С v0.35.0 голосование доступно с «Пилота 2 класса» — выдаём статус
+    # голосующим акторам теста.
+    _p2 = await get_status_by_tag("pilot2")
+    await grant_status(PILOT, _p2['id'], 0)
+    await grant_status(REP, _p2['id'], 0)
 
     # ── 1. Срок жизни опроса ─────────────────────────────────────────────
     print("\n= 1. Срок опроса (10 суток) =")

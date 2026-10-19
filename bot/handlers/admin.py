@@ -545,8 +545,8 @@ async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
         cur_wing = (target.get('wing') or '') if 'wing' in target.keys() else ''
         cur_label = WINGS.get(cur_wing, '🚫 нет крыла')
         rows = [[InlineKeyboardButton(text=label, callback_data=f"wing_set:{key}")]
-                for key, label in WINGS.items()]
-        rows.append([InlineKeyboardButton(text="🚫 Снять крыло", callback_data="wing_set:none")])
+                for key, label in WINGS.items() if key != 'reserve']
+        rows.append([InlineKeyboardButton(text="🪖 В Резерв", callback_data="wing_set:none")])
         rows.append([InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:menu")])
         await callback.message.answer(
             f"🪽 Установка авиакрыла\nИгрок: {target['first_name'] if 'first_name' in target.keys() else ''} "
@@ -826,7 +826,7 @@ async def admin_wing_set_cb(callback: CallbackQuery, state: FSMContext):
         return
     await set_wing(target_id, value)
     from utils.wings import WINGS
-    label = "🚫 снято крыло" if value is None else WINGS.get(value, "неизвестное крыло")
+    label = WINGS.get('reserve', '🪖 Резерв') if value is None else WINGS.get(value, "неизвестное крыло")
     await log_action(callback.from_user.id, 'set_wing', target_id, f"wing={value or None}")
     await state.clear()
     u = await get_user(target_id)
@@ -3366,6 +3366,13 @@ async def status_grant_pick(callback: CallbackQuery, state: FSMContext):
                          f"status={s['name'] if s else status_id}")
         await notify_user(callback.bot, target_id,
                           f"🎖 Тебе присвоен статус «{s['name'] if s else status_id}».")
+        # v0.35.0: первый пилотский статус без формирования → «Резерв» (🪖):
+        # командиры набирают пилотов из Резерва.
+        if s and (s['access_tag'] or '') in ('pilot2', 'pilot1', 'veteran',
+                                             'master_pilot', 'ace'):
+            _u = await get_user(target_id)
+            if _u is not None and not (_u['wing'] if 'wing' in _u.keys() else None):
+                await set_wing(target_id, 'reserve')
     have = await get_user_statuses(target_id)
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     await callback.message.answer(

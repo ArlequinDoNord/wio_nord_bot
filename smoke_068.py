@@ -185,8 +185,8 @@ async def run():
     check("get_wing_members() (все крылья) = [uid1, uid2]",
           set(await get_wing_members()) == {uid1, uid2})
     await set_wing(uid1, None)
-    check("set_wing(uid1, None) снимает крыло",
-          (await get_user(uid1)).get('wing') is None)
+    check("set_wing(uid1, None) → Резерв (с v0.35.0)",
+          (await get_user(uid1)).get('wing') == 'reserve')
     await set_wing(uid1, "1")  # вернуть для дальше
 
     # ── 3. Профиль: строка «Авиакрыло» ──
@@ -200,13 +200,13 @@ async def run():
     cap3, _ = await PF._profile_caption(uid3, owner=True)
     check("у пилота без крыла строка «— не назначено»",
           cap3 is not None and "не назначено" in cap3)
-    check("метки крыльев: 4 штуки и полные названия",
+    check("метки крыльев: 4 штуки + Резерв и полные названия",
           wing_label("1") == "🐺 1 АК «Небесные Волки»"
           and wing_label("2") == "🦉 2 АК «Полярные Совы»"
           and wing_label("3") == "🌑 3 АК «Тени Нордхама»"
           and wing_label("4") == "❄️ 4 СО «Polaris» (спец отряд)"
           and wing_display(None) == "— не назначено"
-          and set(WINGS.keys()) == {"1", "2", "3", "4"})
+          and set(WINGS.keys()) == {"1", "2", "3", "4", "reserve"})
 
     # ── 4. Права ──
     check("super_admin: can_manage_wing", ROLES['super_admin'].get('can_manage_wing'))

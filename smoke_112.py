@@ -225,7 +225,7 @@ async def main():
     await load_wings_cache()
     check("wing_label в hq даёт Polaris", hq.wing_label("4") == "❄️ 4 СО «Polaris» (спец отряд)")
     check("wing_short в hq даёт «❄️ 4 СО»", hq.wing_short("4") == "❄️ 4 СО")
-    check("all_wings отдаёт свежие 4 метки", len(hq.all_wings()) == 4)
+    check("all_wings отдаёт свежие 4 метки + Резерв", len(hq.all_wings()) == 5)
     check("all_wings тоже с Polaris", "Polaris" in hq.all_wings()["4"])
 
     # Переименование в БД сразу видно в приказе (без перезапуска бота).

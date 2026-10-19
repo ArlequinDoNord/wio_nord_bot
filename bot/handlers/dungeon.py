@@ -36,7 +36,7 @@ from utils.combat import (
     _hp_bar,
 )
 from utils.helpers import (
-    time_of_day_key, edit_or_replace, resolve_image,
+    time_of_day_key, resolve_image,
     plural_nordmark, fish_weight_tier, fish_sell_price, item_local_photo,
 )
 from bot.handlers.fishing import (
@@ -197,7 +197,8 @@ def _reservoir_photo() -> str:
 async def _pick_reservoir_fish() -> str:
     """Случайная рыба водохранилища по весам из БД (water_fish).
 
-    Светятся день и ночь одинаково, поэтому берём day_weight.
+    Подземное водохранилище: рыба светится день и ночь одинаково, поэтому
+    берём day_weight (night_weight для этого водоёма не используется).
     Откат на константу RESERVOIR_FISH_POOL, если таблица пуста.
     """
     pool_rows = await get_water_fish_pool("reservoir")
@@ -292,7 +293,7 @@ async def _show_mollusk_battle(callback, prefix: str = ""):
         f"Ход {battle['round']}. Ударь моллюска или сними снасть."
     )
     photo_id, photo = await _mollusk_media(enemy)
-    await _resv_answer(callback.message, text, _mollusk_markup(battle['token']),
+    await _resv_answer(callback.from_user.id, callback.message, text, _mollusk_markup(battle['token']),
                        photo=photo, photo_id=photo_id)
 
 
@@ -351,15 +352,16 @@ async def _mollusk_loot(user_id: int, enemy: dict) -> str:
 
 async def _reservoir_answer_result(callback, text, markup, enemy: dict | None = None):
     """Ответ с картинкой врага, если она есть, иначе — фон водохранилища."""
+    user_id = callback.from_user.id
     if enemy and enemy.get('image'):
-        await _resv_answer(callback.message, text, markup, photo_id=enemy['image'])
+        await _resv_answer(user_id, callback.message, text, markup, photo_id=enemy['image'])
         return
     if enemy:
         path = resolve_image(enemy.get('photo_key') or "city/mollusk")
         if os.path.isfile(path):
-            await _resv_answer(callback.message, text, markup, photo=path)
+            await _resv_answer(user_id, callback.message, text, markup, photo=path)
             return
-    await _resv_answer(callback.message, text, markup, photo=_reservoir_photo())
+    await _resv_answer(user_id, callback.message, text, markup, photo=_reservoir_photo())
 
 
 @router.callback_query(F.data.regexp(r"^mollusk:hit:\d+$"))
@@ -969,41 +971,96 @@ def _message_photo_id(where):
     return photos[-1].file_id if photos else None
 
 
-async def _resv_answer(where, text, markup=None, photo=None, photo_id=None):
-    """Отправка/редактирование в водохранилище: фото (файл или file_id), иначе текст."""
-    if photo or photo_id:
-        media = photo_id or FSInputFile(photo)
-        if getattr(where, 'photo', None):
-            # Сообщение уже с фото: edit_caption меняет ТОЛЬКО подпись и не
-            # трогает картинку. Поэтому, если нужен другой снимок (моллюск,
-            # рыба, мусор), подменяем медиа через edit_media — иначе старый фон
-            # водохранилища залипал, и картинка из редактора врагов не появлялась.
-            if photo_id and _message_photo_id(where) == photo_id:
-                try:
-                    await where.edit_caption(caption=text, reply_markup=markup)
-                    return
-                except Exception:
-                    pass
-            else:
-                try:
-                    await where.edit_media(
-                        media=InputMediaPhoto(media=media, caption=text),
-                        reply_markup=markup)
-                    return
-                except Exception:
-                    pass
-        else:
+# ───────── Окно водохранилища: одно сообщение на игрока ─────────
+# Как у озера (fishing.FISH_MSG): все экраны — меню, заброс, результат, бой с
+# моллюском — рисуются в одном и том же сообщении. Без трекера надпись
+# «Ты забрасываешь удочку… Ждёшь…» уходила отдельным сообщением (edit_text по
+# фото-окну падал) и её никто не удалял — чат забивался мусором.
+# Значение: user_id -> (chat_id, message_id, media_key); media_key —
+# "fid:<file_id>" для фото, "path:<путь>" для локального файла, None для текста.
+RESV_MSG: dict = {}
+
+
+async def close_reservoir_window(user_id: int, bot: Bot):
+    """Убирает окно водохранилища из чата (спуск на этаж 2 / выход из подземелья)."""
+    entry = RESV_MSG.pop(user_id, None)
+    if not entry:
+        return
+    try:
+        await bot.delete_message(entry[0], entry[1])
+    except Exception:
+        pass
+
+
+async def _resv_paint(user_id: int, where, text, markup=None, photo=None, photo_id=None):
+    """Единая отрисовка окна водохранилища в одном сообщении на игрока.
+
+    photo_id — Telegram file_id (фото врага/рыбы из редактора), photo — путь к
+    локальному файлу (фон водохранилища). Если тип сообщения меняется
+    (фото <-> текст) или редактирование не прошло — старое окно удаляется,
+    чтобы в чате не копились осиротевшие сообщения.
+    """
+    bot = where.bot
+    chat_id = where.chat.id
+
+    entry = RESV_MSG.get(user_id)
+    if entry and entry[0] == chat_id:
+        mid, cur_key = entry[1], entry[2]
+    else:
+        mid = where.message_id
+        fid = _message_photo_id(where)
+        cur_key = f"fid:{fid}" if fid else None
+
+    want_key = f"fid:{photo_id}" if photo_id else (f"path:{photo}" if photo else None)
+
+    # Фото -> фото, та же картинка: правим только подпись.
+    if want_key is not None and want_key == cur_key:
+        try:
+            await bot.edit_message_caption(chat_id, mid, caption=text, reply_markup=markup)
+            RESV_MSG[user_id] = (chat_id, mid, cur_key)
+            return
+        except Exception:
+            pass
+    # Фото -> фото, другая картинка: подмена медиа (тип сообщения не меняется).
+    if want_key is not None and cur_key is not None:
+        try:
+            await bot.edit_message_media(
+                chat_id, mid,
+                media=InputMediaPhoto(media=photo_id or FSInputFile(photo), caption=text),
+                reply_markup=markup)
+            RESV_MSG[user_id] = (chat_id, mid, want_key)
+            return
+        except Exception:
+            pass
+    # Текст -> текст.
+    if want_key is None and cur_key is None:
+        try:
+            await bot.edit_message_text(chat_id, mid, text=text, reply_markup=markup)
+            RESV_MSG[user_id] = (chat_id, mid, None)
+            return
+        except Exception:
+            pass
+
+    # Смена типа сообщения (фото <-> текст) или неудачный edit: убираем старое
+    # окно (в т.ч. сообщение с нажатой кнопкой) и шлём новое.
+    for old in {mid, getattr(where, 'message_id', None)}:
+        if old:
             try:
-                await where.delete()
+                await bot.delete_message(chat_id, old)
             except Exception:
                 pass
-        # Из text-сообщения в фото (или media-edit не прошёл): отправляем новое.
-        try:
-            await where.answer_photo(photo=media, caption=text, reply_markup=markup)
-        except Exception:
-            await where.edit_text(text, reply_markup=markup)
-        return
-    await edit_or_replace(where, text, markup)
+    if photo_id:
+        sent = await bot.send_photo(chat_id, photo_id, caption=text, reply_markup=markup)
+    elif photo:
+        sent = await bot.send_photo(chat_id, FSInputFile(photo), caption=text, reply_markup=markup)
+    else:
+        sent = await bot.send_message(chat_id, text, reply_markup=markup)
+    RESV_MSG[user_id] = (chat_id, sent.message_id, want_key)
+
+
+async def _resv_answer(user_id: int, where, text, markup=None, photo=None, photo_id=None):
+    """Отрисовка экрана водохранилища в едином окне (см. _resv_paint)."""
+    await _resv_paint(user_id, where, text, markup, photo, photo_id)
 
 
 async def show_reservoir(where, user_id: int, state: FSMContext):
@@ -1059,7 +1116,7 @@ async def show_reservoir(where, user_id: int, state: FSMContext):
     photo = _reservoir_photo()
     if photo and not os.path.isfile(photo):
         photo = None
-    await _resv_answer(where, text, reservoir_keyboard(step), photo=photo)
+    await _resv_answer(user_id, where, text, reservoir_keyboard(step), photo=photo)
 
 
 async def resume_dungeon(where, run, user_id: int, state: FSMContext):
@@ -2054,7 +2111,7 @@ async def resv_bait_menu(callback: CallbackQuery, state: FSMContext):
         f"⚠️ Без наживки рыба не клюёт: со дна только мусор "
         f"{await junk_hint('reservoir')}."
     )
-    await edit_or_replace(callback.message, text, _reservoir_bait_markup(
+    await _resv_answer(user_id, callback.message, text, _reservoir_bait_markup(
         chosen, worms_qty, spider_qty, combined_qty, step=int(parts[2])))
 
 
@@ -2136,13 +2193,14 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
         # Пока идёт ожидание улова — держим лок: выйти, продолжить путь и
         # повторный заброс блокируются (middleware FishingActiveLock + гарды ниже).
         bait_part = f" с наживкой «{bait_name}»" if bait_name else " без наживки"
-        try:
-            await callback.message.edit_text(
-                f"🎣 Ты забрасываешь удочку{bait_part} в тёмную воду подземного водохранилища...\n"
-                "Поплавок замер неподвижно. Ждёшь..."
-            )
-        except Exception:
-            await callback.message.answer("🎣 Забрасываешь удочку...")
+        cast_photo = _reservoir_photo()
+        if cast_photo and not os.path.isfile(cast_photo):
+            cast_photo = None
+        await _resv_answer(
+            user_id, callback.message,
+            f"🎣 Ты забрасываешь удочку{bait_part} в тёмную воду подземного водохранилища...\n"
+            "Поплавок замер неподвижно. Ждёшь...",
+            photo=cast_photo)
 
         await asyncio.sleep(random.uniform(4, 7))
 
@@ -2151,7 +2209,8 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
         run = await get_active_run(user_id)
         if not run or await state.get_state() != DungeonFSM.in_reservoir.state:
             try:
-                await edit_or_replace(callback.message, "🌊 Вода в водохранилище снова гладкая…", None)
+                await _resv_answer(user_id, callback.message,
+                                   "🌊 Вода в водохранилище снова гладкая…", None)
             except Exception:
                 pass
             return
@@ -2207,8 +2266,9 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                     ) + ap_block
                     wf_photo = await get_water_fish_photo_by_name("reservoir", fish_name)
                     local_photo = item_local_photo(fish_name) if not wf_photo else None
-                    await _resv_answer(callback.message, result, _reservoir_result_markup(next_step),
-                                       photo=local_photo, photo_id=wf_photo)
+                    await _resv_answer(user_id, callback.message, result, _reservoir_result_markup(next_step),
+                                       photo=local_photo or (None if wf_photo else _reservoir_photo()),
+                                       photo_id=wf_photo)
                     return
             else:
                 result = (
@@ -2238,15 +2298,17 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                     ) + ap_block
                     jphoto = await junk_photo("reservoir", junk_name)
                     if jphoto:
-                        await _resv_answer(callback.message, result, _reservoir_result_markup(next_step),
+                        await _resv_answer(user_id, callback.message, result, _reservoir_result_markup(next_step),
                                            photo_id=jphoto)
                         return
                     local_photo = item_local_photo(junk_name)
                     if local_photo:
-                        await _resv_answer(callback.message, result, _reservoir_result_markup(next_step),
+                        await _resv_answer(user_id, callback.message, result, _reservoir_result_markup(next_step),
                                            photo=local_photo)
                     else:
-                        await edit_or_replace(callback.message, result, _reservoir_result_markup(next_step))
+                        await _resv_answer(user_id, callback.message, result,
+                                           _reservoir_result_markup(next_step),
+                                           photo=_reservoir_photo())
                     return
                 else:
                     result = "🎣 Рыбалка\n\n👢 Что-то выловил, но предмет потерялся. Сообщи хранителю."
@@ -2257,7 +2319,9 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                     "с дна достаётся только мусор. Попробуй с наживкой!"
                 )
         result += ap_block
-        await edit_or_replace(callback.message, result, _reservoir_result_markup(next_step))
+        await _resv_answer(user_id, callback.message, result,
+                           _reservoir_result_markup(next_step),
+                           photo=_reservoir_photo())
     finally:
         FISHING_CASTING.discard(user_id)
 
@@ -2288,6 +2352,7 @@ async def resv_deeper(callback: CallbackQuery, state: FSMContext):
     await state.set_state(DungeonFSM.in_dungeon)
     run = await get_active_run(user_id)
     await log_activity(user_id, "dungeon_floor", "Спустился на 2-й этаж (лог Короля крыс)")
+    await close_reservoir_window(user_id, callback.bot)
     await callback.message.answer(
         "⬇️ Ты спускаешься по скрипучей лестнице во мрак. Здесь пахнет сыростью, "
         "плесенью и старой королевской гордостью.\n"
@@ -2331,7 +2396,7 @@ async def _resv_eq_view(where, user_id: int, state: FSMContext):
         [InlineKeyboardButton(text="🔄 Слот 2", callback_data=f"resv:eqslot:potion2:{step}")],
         [InlineKeyboardButton(text="🔙 К водохранилищу", callback_data=f"resv:menu:{step}")],
     ]
-    await edit_or_replace(where, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows))
+    await _resv_answer(user_id, where, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 @router.callback_query(F.data.regexp(r"^resv:eqslot:[a-z0-9_]+:\d+$"))
@@ -2377,7 +2442,7 @@ async def resv_eqslot(callback: CallbackQuery, state: FSMContext):
             text=f"{marker}{it['name']} x{it['quantity']}",
             callback_data=f"resv:eqset:{slot}:{it['id']}:{step}")])
     rows.append([InlineKeyboardButton(text="🔙 К снаряжению", callback_data=f"resv:eq:{step}")])
-    await edit_or_replace(callback.message, text, InlineKeyboardMarkup(inline_keyboard=rows))
+    await _resv_answer(user_id, callback.message, text, InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 @router.callback_query(F.data.regexp(r"^resv:eqset:[a-z0-9_]+:\d+:\d+$"))
@@ -2502,6 +2567,11 @@ async def dungeon_exit_confirm(callback: CallbackQuery, state: FSMContext):
     else:
         text = "Ты покидаешь подземелье ни с чем."
 
+    await close_reservoir_window(user_id, callback.bot)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
     await callback.message.answer(text + "\n\nВойти снова?", reply_markup=dungeon_start_keyboard())
     await state.clear()
 
@@ -2516,4 +2586,10 @@ async def dungeon_exit_cancel(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("❌ Подземелье не найдено.")
         await state.clear()
         return
+    # Промежуточный запрос на выход больше не нужен — убираем его, чтобы
+    # рядом с окном водохранилища не оставалось второго сообщения с кнопками.
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
     await resume_dungeon(callback.message, run, user_id, state)

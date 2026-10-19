@@ -7,7 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
     get_poll, get_poll_results, get_poll_vote_option,
-    user_voted, vote_poll, create_poll, close_poll, user_is_tourist, is_legioner,
+    user_voted, vote_poll, create_poll, close_poll, user_has_status_tag, is_legioner,
     get_polls_created_today, get_visible_polls, maintain_polls,
 )
 from config import ADMIN_IDS, POLL_MAX_DAYS, POLL_VISIBLE
@@ -61,9 +61,9 @@ async def _require_pilot(callback: CallbackQuery) -> bool:
     if await is_legioner(callback.from_user.id):
         await callback.answer("⛔ Легионер не голосует.", show_alert=True)
         return False
-    if not await user_is_tourist(callback.from_user.id):
+    if await user_has_status_tag(callback.from_user.id, "pilot2"):
         return True
-    await callback.answer("⛔ Голосовать могут только рекруты и пилоты.", show_alert=True)
+    await callback.answer("⛔ Голосовать можно с «Пилота 2 класса».", show_alert=True)
     return False
 
 

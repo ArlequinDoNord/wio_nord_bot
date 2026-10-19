@@ -164,7 +164,7 @@ async def run():
     # ── 7. Убрать пилота из своего крыла ──
     cb = FakeCallbackQuery(f"hq:wingdrop:do:{W1}:{P2}", CMD)
     await hq_wing_drop_cb(cb)
-    check("командир убрал пилота", not (await get_user(P2))['wing'])
+    check("командир убрал пилота → Резерв", (await get_user(P2))['wing'] == 'reserve')
     check("после удаления пилот снова свободен", P2 in {u['user_id'] for u in await get_unassigned_pilots()})
     check("состав крыла уменьшился", await count_wing_members(W1) == 1)
     rows = await get_wing_member_rows(W1)

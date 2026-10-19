@@ -207,7 +207,7 @@ async def run():
     await hq_wing_cb(cb_wing)
     wing_txt = sent_text(cb_wing.message)
     check("сводка ВВС содержит «Полярные»", "Полярные" in wing_txt or "2 АК" in wing_txt)
-    check("сводка считает безкрылых", "Без крыла" in wing_txt)
+    check("сводка считает Резерв (безкрылых)", "Резерв" in wing_txt)
 
     # Список пилотов hq:roster — где наш пилот с меткой крыла.
     cb_list = FakeCallback(admin, data="hq:roster:0", message=FakeMessage(admin))

@@ -103,7 +103,7 @@ def markup_callbacks(markup):
 async def run():
     from database.db import (
         init_db, close_db, add_user, get_db, seed_kvp, update_dungeon_photos,
-        get_kvp_dungeon, add_wall_post,
+        get_kvp_dungeon, add_wall_post, update_user,
     )
     from bot.handlers.kvp import answer_course_photo, kvp_menu_cb
     from bot.handlers import wall as W
@@ -191,6 +191,8 @@ async def run():
     await add_user(uid3, "scribe", "Писарь", "")
 
     posts = []
+    # С v0.35.0 бесплатных 2/сутки: на 4-й пост uid2 нужны НМ (30+30).
+    await update_user(uid2, nordmarks=500)
     for i, (u, t) in enumerate([
         (uid2, "Первый полёт — лучший полёт"),
         (uid2, "Небо любит смелых"),

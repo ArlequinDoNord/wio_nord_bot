@@ -7,8 +7,10 @@
   * шанс встречи и гарантия (enemy_encounter_hit);
   * независимый ролл дропов — жемчужина 2% реально выпадает (roll_enemy_drops);
   * предметы добычи моллюска + рецепт «Жареное мясо моллюска»;
-  * _resv_answer меняет картинку (edit_media), а не только подпись — картинка
-    моллюска из редактора врагов реально показывается поверх фона водохранилища;
+  * _resv_answer рисует все экраны водохранилища в одном сообщении: смена
+    картинки подменяет медиа (edit_media), из текста в фото — delete + отправка;
+    картинка моллюска из редактора врагов реально показывается поверх фона
+    водохранилища, а осиротевшие сообщения в чате не копятся;
   * опушка — отдельная картинка (фото локации леса её не подменяет).
 
 Запуск: .venv\\Scripts\\python.exe smoke_108.py
@@ -16,6 +18,7 @@
 import asyncio
 import os
 import sys
+from types import SimpleNamespace
 
 _TEST_DB = os.path.join(os.path.dirname(__file__), "_test_smoke108.db")
 if os.path.exists(_TEST_DB):
@@ -288,39 +291,76 @@ async def run():
     check("моллюск: победный лут не падает (мена в инвентарь)",
           isinstance(loot_line, str) and "Мясо моллюска" in loot_line)
 
-    # ── 12. _resv_answer: смена картинки подменяет медиа, а не только подпись ──
-    from bot.handlers.dungeon import _resv_answer
+    # ── 12. _resv_answer: все экраны водохранилища — в одном сообщении ──
+    from bot.handlers.dungeon import _resv_answer, RESV_MSG
 
     class _Photo:
         def __init__(self, fid):
             self.file_id = fid
 
-    class _Msg:
-        def __init__(self, is_photo, fid="reservoir_fid"):
-            self.photo = [_Photo(fid)] if is_photo else None
+    class _Bot:
+        def __init__(self):
             self.calls = []
-        async def edit_caption(self, caption=None, reply_markup=None):
-            self.calls.append("caption"); return self
-        async def edit_media(self, media=None, reply_markup=None):
-            self.calls.append(("media", getattr(media, "media", None))); return self
-        async def delete(self):
-            self.calls.append("delete"); return True
-        async def answer_photo(self, photo=None, caption=None, reply_markup=None):
-            self.calls.append(("send", photo)); return self
-        async def edit_text(self, text, reply_markup=None):
-            self.calls.append("text"); return self
+            self._next = 900
 
-    m = _Msg(True, "reservoir_fid")
-    await _resv_answer(m, "бой", photo_id="mollusk_image_fid")
-    check("_resv_answer: новая картинка подменяет медиа (не только подпись)",
-          ("media", "mollusk_image_fid") in m.calls)
-    m2 = _Msg(True, "mollusk_image_fid")
-    await _resv_answer(m2, "ход 2", photo_id="mollusk_image_fid")
-    check("_resv_answer: та же картинка — хватает edit_caption", m2.calls == ["caption"])
-    m3 = _Msg(False)
-    await _resv_answer(m3, "поклёвка", photo_id="fish_fid")
+        async def edit_message_caption(self, chat_id, mid, caption=None, reply_markup=None):
+            self.calls.append(("caption", mid))
+            return SimpleNamespace(message_id=mid)
+
+        async def edit_message_media(self, chat_id, mid, media=None, reply_markup=None):
+            self.calls.append(("media", getattr(media, "media", None), mid))
+            return SimpleNamespace(message_id=mid)
+
+        async def edit_message_text(self, chat_id, mid, text=None, reply_markup=None):
+            self.calls.append(("text", mid))
+            return SimpleNamespace(message_id=mid)
+
+        async def delete_message(self, chat_id, mid):
+            self.calls.append(("delete", mid))
+
+        async def send_photo(self, chat_id, photo, caption=None, reply_markup=None):
+            self._next += 1
+            self.calls.append(("send_photo", getattr(photo, "path", photo)))
+            return SimpleNamespace(message_id=self._next)
+
+        async def send_message(self, chat_id, text, reply_markup=None):
+            self._next += 1
+            self.calls.append(("send_text",))
+            return SimpleNamespace(message_id=self._next)
+
+    class _Where:
+        def __init__(self, bot, mid, fid=None):
+            self.bot = bot
+            self.message_id = mid
+            self.chat = SimpleNamespace(id=1)
+            self.photo = [_Photo(fid)] if fid else None
+
+    RESV_MSG.clear()
+    bot = _Bot()
+    # окно уже фото; просим другую картинку — подмена медиа на месте
+    RESV_MSG[86010] = (1, 400, "fid:reservoir_fid")
+    await _resv_answer(86010, _Where(bot, 400, "reservoir_fid"), "бой",
+                       photo_id="mollusk_image_fid")
+    check("_resv_answer: новая картинка подменяет медиа на месте",
+          ("media", "mollusk_image_fid", 400) in bot.calls)
+    check("_resv_answer: окно осталось тем же сообщением",
+          RESV_MSG[86010][1] == 400)
+
+    # та же картинка — достаточно правки подписи
+    bot.calls.clear()
+    await _resv_answer(86010, _Where(bot, 400, "reservoir_fid"), "ход 2",
+                       photo_id="mollusk_image_fid")
+    check("_resv_answer: та же картинка — хватает edit_caption",
+          bot.calls == [("caption", 400)])
+
+    # из текстового окна в фото — старое окно удаляется, шлётся новое
+    bot.calls.clear()
+    RESV_MSG[86010] = (1, 401, None)
+    await _resv_answer(86010, _Where(bot, 401), "поклёвка", photo_id="fish_fid")
     check("_resv_answer: из текста в фото — delete + отправка",
-          m3.calls == ["delete", ("send", "fish_fid")])
+          bot.calls[0] == ("delete", 401) and bot.calls[1][0] == "send_photo")
+    check("_resv_answer: трекер переведён на новое сообщение",
+          RESV_MSG[86010][1] == bot._next)
 
     await close_db()
     print(f"\nSmoke 108: {passed} passed, {failed} failed")

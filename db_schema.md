@@ -613,6 +613,9 @@
 | `emoji TEXT NOT NULL DEFAULT ''` |
 | `sort_order INTEGER DEFAULT 0` |
 
+Сид (в коде): `1`–`4` (крылья/спецотряд) + `reserve` («🪖 Резерв», sort_order 99) —
+пилоты без формирования (`users.wing` NULL → `reserve`, миграция `mig_reserve_wing`).
+
 ## `admin_logs`
 
 | Колонка |

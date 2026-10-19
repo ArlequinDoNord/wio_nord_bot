@@ -512,7 +512,8 @@ async def init_db():
             ('1', '1', 'АК', 'Авиакрыло', 'Небесные Волки', '🐺', 1),
             ('2', '2', 'АК', 'Авиакрыло', 'Полярные Совы', '🦉', 2),
             ('3', '3', 'АК', 'Авиакрыло', 'Тени Нордхама', '🌑', 3),
-            ('4', '4', 'СО', 'Спец отряд', 'Polaris', '❄️', 4);
+            ('4', '4', 'СО', 'Спец отряд', 'Polaris', '❄️', 4),
+            ('reserve', '', 'Резерв', 'Резерв', 'Свободные пилоты', '🪖', 99);
 
     CREATE TABLE IF NOT EXISTS admin_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1445,6 +1446,26 @@ async def init_db():
     # v0.18.13: казна платит награды → исторические выплаты значков списываем
     # с казны задним числом; формирования ВВС читаем в кэш штаба/профиля.
     await load_wings_cache()
+    # v0.35.0: формирование «Резерв» — все пилоты (с гражданством) без крыла
+    # переводятся в 'reserve'; при снятии крыла set_wing(None) тоже пишет 'reserve'.
+    mig_reserve = await (await conn.execute(
+        "SELECT value FROM settings WHERE key = 'mig_reserve_wing'")).fetchone()
+    if not mig_reserve:
+        # Граждане (user_statuses с access_tag пилотского уровня и выше, кроме
+        # легионеров и туристов) — wing IS NULL → 'reserve'.
+        await conn.execute("""
+            UPDATE users SET wing = 'reserve'
+            WHERE wing IS NULL
+              AND user_id IN (
+                  SELECT us.user_id FROM user_statuses us
+                  JOIN statuses st ON st.id = us.status_id
+                  WHERE st.access_tag IN ('pilot2','pilot1','veteran','master_pilot','ace')
+              )
+              AND COALESCE(legioner, 0) = 0
+        """)
+        await conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('mig_reserve_wing', '1')")
+        await conn.commit()
     await _balance_legacy_booklet_payouts()
     # v0.22.8: единые игровые сутки (10:00 МСК) — прижать «опережающие» ключи.
     await _normalize_daily_keys()
@@ -6192,10 +6213,14 @@ async def get_callsign_free_used(user_id: int) -> bool:
 
 
 async def set_wing(user_id: int, wing: str = None):
-    """Устанавливает авиакрыло пилота ('1'/'2'/'3'); None — снять крыло."""
+    """Устанавливает авиакрыло пилота ('1'/'2'/'3'); None — перевести в «Резерв».
+
+    Пилот без формирования (или при снятии крыла) попадает в крыло 'reserve'
+    (🪖 Резерв): командиры набирают себе пилотов именно оттуда.
+    """
     conn = await get_db()
     await conn.execute("UPDATE users SET wing = ? WHERE user_id = ?",
-                       (wing if wing else None, user_id))
+                       (wing if wing else 'reserve', user_id))
     await conn.commit()
 
 
@@ -6445,10 +6470,13 @@ async def count_unassigned_pilots(citizens_only: bool = False) -> int:
 
 async def get_unassigned_pilots(limit: int = None, offset: int = 0,
                                 citizens_only: bool = False) -> list:
-    """Пилоты без крыла — их командир может принять в своё крыло."""
+    """Пилоты в Резерве (wing='reserve') — их командир может принять в крыло.
+
+    Старые NULL/'' трактуем как Резерв тоже (переходный период до миграции).
+    """
     conn = await get_db()
     sql = ("SELECT user_id, username, first_name, last_name, wing FROM users "
-           "WHERE (wing IS NULL OR wing = '' OR wing = 'none')")
+           "WHERE (wing IS NULL OR wing = '' OR wing = 'none' OR wing = 'reserve')")
     if citizens_only:
         sql += " AND " + _citizens_sql()
     sql += " ORDER BY user_id"

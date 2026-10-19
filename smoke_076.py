@@ -83,7 +83,7 @@ async def run():
           wing_label("1") == "🐺 1 АК «Небесные Волки»"
           and wing_label("2") == "🦉 2 АК «Полярные Совы»"
           and wing_label("3") == "🌑 3 АК «Тени Нордхама»"
-          and set(WINGS.keys()) == {"1", "2", "3", "4"})
+          and set(WINGS.keys()) == {"1", "2", "3", "4", "reserve"})
     check("wing_display(None)", wing_display(None) == "— не назначено")
 
     # ── 3. Казна и долги ──
