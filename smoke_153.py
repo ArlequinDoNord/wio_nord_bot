@@ -100,7 +100,7 @@ async def run():
     from utils.permissions import can_enter_mvd
     from keyboards.keyboards import (
         city_keyboard, admin_quarter_keyboard, ADMIN_QUARTER_KEYS,
-        LOCATION_BUTTON_EMOJI,
+        BUSINESS_QUARTER_KEYS, COUNTRYSIDE_KEYS, LOCATION_BUTTON_EMOJI,
     )
     from bot.handlers import locations as locs
     from bot.handlers import mvd as mvdh
@@ -221,8 +221,15 @@ async def run():
             check(f"город: нет кнопки location:preview:{k}",
                   f"location:preview:{k}" not in city_cbs)
         check("город: есть кнопка квартала city:quarter", "city:quarter" in city_cbs)
-        check("город: обычные локации на месте (парк/лес)",
-              "location:preview:park" in city_cbs and "location:preview:forest" in city_cbs)
+        for k in BUSINESS_QUARTER_KEYS + COUNTRYSIDE_KEYS:
+            check(f"город: нет кнопки location:preview:{k} (подменю, v0.34)",
+                  f"location:preview:{k}" not in city_cbs)
+        check("город: kvp остался в общем списке",
+              "location:preview:kvp" in city_cbs)
+        check("город: стена и жильё убраны (v0.34)",
+              "wall:view" not in city_cbs and "housing:menu" not in city_cbs)
+        check("город: кнопки «Деловой квартал» и «Загородные территории»",
+              "city:business" in city_cbs and "city:countryside" in city_cbs)
 
         q_cbs = markup_callbacks(admin_quarter_keyboard())
         check("квартал: 4 здания (Банк, Ратуша, Штаб, МВД)",

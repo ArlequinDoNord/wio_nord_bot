@@ -62,13 +62,13 @@
 | `poll_archive.py` | Архив опросов Ратуши — раздел библиотеки «Опросы». | `router` | 0 | 3 | `pollarch:` | — |
 | `representative.py` | Голос Представителя — ежедневное обращение к городу. | `router` | 1 | 3 | `rep:` | `RepSpeech` |
 | `library.py` | Библиотека Нордхайма: разделы, чтение книг, управление книгами, архив опросов. | `router` | 5 | 11 | `city:`, `lib:`, `libadmin:`, `libadmin_del:`, `libadmin_sec:`, `libbook:`, `libdl:`, `libsec:` | `AdminAddBook` |
-| `locations.py` | Универсальные локации города: превью (всем) + вход (по доступу). | `router` | 0 | 3 | `city:`, `location:` | — |
+| `locations.py` | Универсальные локации города: превью (всем) + вход (по доступу). | `router` | 0 | 5 | `city:`, `location:` | — |
 | `park.py` | Городской парк Аркхольма: озеро (статика), фонтан и аллея статуй. | `router` | 7 | 14 | `park:` | `AdminStatue`, `AdminStatueEdit` |
 | `fishing.py` | Рыбалка на Озере в парке. | `router` | 0 | 4 | `fish:` | — |
 | `forest.py` | Лес на окраине: опушка и лесная поляна, сбор грибов и кабан. | `router` | 0 | 4 | `forest:` | — |
 | `mine.py` | Железная копи: ресурсная локация (v0.31.0). | `router` | 0 | 6 | `mine:` | — |
 | `storage.py` | Городские склады: накопление выкупленных казной ресурсов. | `router` | 0 | 1 | `storage:` | — |
-| `housing.py` | Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение. | `router` | 0 | 16 | `housing:` | — |
+| `housing.py` | Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение. | `router` | 1 | 16 | `housing:` | — |
 | `news.py` | Новости ГосСМИ: лента, публикация, управление выпусками, архив. | `router` | 6 | 9 | `news:` | `NewsWrite`, `NewsEdit` |
 | `kvp.py` | Курс Выживания для Пилотов (К.В.П.) — тренировочный данж. | `router` | 0 | 6 | `kvp:` | `KvpFSM` |
 | `wall.py` | Стена изречений — доска объявлений города. | `router` | 2 | 7 | `wall:` | `WallWrite` |
@@ -196,9 +196,9 @@
 ### `locations.py` — Универсальные локации города: превью (всем) + вход (по доступу).
 
 - Роутеры: `router`
-- Хендлеры: message=0, callback_query=3
+- Хендлеры: message=0, callback_query=5
 - `F.data.startswith`: `location:enter:`, `location:preview:`
-- `F.data ==`: `city:quarter`
+- `F.data ==`: `city:business`, `city:countryside`, `city:quarter`
 
 ### `park.py` — Городской парк Аркхольма: озеро (статика), фонтан и аллея статуй.
 
@@ -235,7 +235,7 @@
 ### `housing.py` — Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение.
 
 - Роутеры: `router`
-- Хендлеры: message=0, callback_query=16
+- Хендлеры: message=1, callback_query=16
 - `F.data.startswith`: `housing:craft:`, `housing:harvest:`, `housing:install:`, `housing:install_item:`, `housing:kitchen:`, `housing:move:`, `housing:plant:`, `housing:recipe:`, `housing:room:`, `housing:shower:`, `housing:uninstall:`, `housing:uninstall_confirm:`
 - `F.data ==`: `housing:menu`, `housing:noop`, `housing:pay_debt`, `housing:pay_tax`
 

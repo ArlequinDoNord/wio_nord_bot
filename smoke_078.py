@@ -2,8 +2,10 @@
 
 Проверяет:
 1. Сид: локации hq и contracts созданы (name/access), есть в get_all_locations.
-2. city_keyboard: кнопки локаций «🎖️ Штаб ВВС» и «📜 Доска контрактов» (всем),
-   жёстких кнопок hq:menu/contracts:list в городе больше нет; Стена и Жильё остались.
+2. city_keyboard: «🎖️ Штаб ВВС» ушёл в «Административный квартал»,
+   «📜 Доска контрактов» и «🌳 Городской парк» — в «Деловой квартал»,
+   «🌲 Лес на окраине» — в «Загородные территории»; «🧱 Стена изречений»
+   и «🏠 Жильё» больше не рисуются в городе (остались в главном меню).
 3. Превью: строка доступа для штаба (командование) и доски (только пилоты).
 4. Вход «Штаб ВВС»: без права — отказ; с правом (модератор) — меню штаба.
 5. Вход «Доска контрактов»: туристу — отказ; пилоту — список контрактов.
@@ -127,7 +129,10 @@ async def run():
         init_db, close_db, add_user, get_db, get_location_by_key,
         get_all_locations, get_status_by_tag, grant_status, seed_dungeon,
     )
-    from keyboards.keyboards import city_keyboard, cancel_keyboard, admin_quarter_keyboard
+    from keyboards.keyboards import (
+        city_keyboard, cancel_keyboard, admin_quarter_keyboard,
+        business_quarter_keyboard, countryside_keyboard,
+    )
     from bot.handlers import locations as LOC
 
     await init_db()
@@ -173,8 +178,11 @@ async def run():
     keys = [l['key'] for l in await get_all_locations()]
     check("get_all_locations содержит hq и contracts", "hq" in keys and "contracts" in keys)
 
-    # ── 2. Клавиатура города (с v0.33 штаб в «Административном квартале») ──
-    locs = [{"key": "hq", "name": "Штаб ВВС"}, {"key": "contracts", "name": "Доска контрактов"}]
+    # ── 2. Клавиатура города (с v0.33 штаб в «Административном квартале»,
+    #    с v0.34 — «Деловой квартал» и «Загородные территории», стена и жильё
+    #    убраны отсюда) ──
+    locs = [{"key": "hq", "name": "Штаб ВВС"}, {"key": "contracts", "name": "Доска контрактов"},
+            {"key": "park", "name": "Городской парк"}, {"key": "forest", "name": "Лес на окраине"}]
     ck = city_keyboard(is_pilot=True, locations=locs)
     cbs = markup_callbacks(ck)
     texts = markup_button_texts(ck)
@@ -182,23 +190,49 @@ async def run():
           "location:preview:hq" not in cbs)
     check("в городе есть кнопка «🏢 Административный квартал»",
           "city:quarter" in cbs)
+    check("в городе есть кнопка «💼 Деловой квартал»",
+          "city:business" in cbs)
+    check("в городе есть кнопка «🌲 Загородные территории»",
+          "city:countryside" in cbs)
+    check("тексты кнопок подменю на месте",
+          any("Деловой квартал" in t for t in texts)
+          and any("Загородные территории" in t for t in texts))
     q_ck = admin_quarter_keyboard()
     q_cbs = markup_callbacks(q_ck)
     q_texts = markup_button_texts(q_ck)
     check("кнопка «🎖️ Штаб ВВС» в квартале", "location:preview:hq" in q_cbs
           and any("Штаб ВВС" in t for t in q_texts))
-    check("кнопка «📜 Доска контрактов» в городе", "location:preview:contracts" in cbs
-          and any("Доска контрактов" in t for t in texts))
+    b_ck = business_quarter_keyboard()
+    b_cbs = markup_callbacks(b_ck)
+    b_texts = markup_button_texts(b_ck)
+    check("кнопка «📜 Доска контрактов» в Деловом квартале",
+          "location:preview:contracts" in b_cbs
+          and any("Доска контрактов" in t for t in b_texts)
+          and "location:preview:contracts" not in cbs)
+    check("«Городской парк» убран из города (Деловой квартал)",
+          "location:preview:park" not in cbs
+          and "location:preview:park" in b_cbs)
+    c_ck = countryside_keyboard()
+    c_cbs = markup_callbacks(c_ck)
+    check("«Лес на окраине» убран из города (Загородные территории)",
+          "location:preview:forest" not in cbs
+          and "location:preview:forest" in c_cbs)
     check("жёстких кнопок hq:menu/contracts:list нет", "hq:menu" not in cbs
           and "contracts:list" not in cbs)
-    check("Стена изречений и Жильё остались", "wall:view" in cbs and "housing:menu" in cbs)
+    check("Стена изречений и Жильё убраны из города",
+          "wall:view" not in cbs and "housing:menu" not in cbs)
+    check("«В город» есть в обоих новых подменю",
+          "city:menu" in b_cbs and "city:menu" in c_cbs)
     ck_t = city_keyboard(is_pilot=False, locations=locs)
     cbs_t = markup_callbacks(ck_t)
-    check("квартал и contracts видны даже туристу",
+    check("три подменю видны даже туристу",
           "city:quarter" in cbs_t
-          and "location:preview:contracts" in cbs_t
+          and "city:business" in cbs_t
+          and "city:countryside" in cbs_t
           and "location:preview:hq" not in cbs_t
-          and "housing:menu" not in cbs_t)
+          and "location:preview:contracts" not in cbs_t
+          and "housing:menu" not in cbs_t
+          and "wall:view" not in cbs_t)
     check("штаб виден туристу через квартал",
           "location:preview:hq" in markup_callbacks(admin_quarter_keyboard()))
 

@@ -122,11 +122,13 @@ async def run():
     check("old name Кадка с растением count = 0", old_count == 0)
     check("new name Кадка для растений count >= 1", new_count >= 1)
 
-    # ── 5. housing.city:menu ──
-    from bot.handlers.housing import housing_menu
+    # ── 5. housing: экран + reply-кнопка «🏠 Жильё» главного меню ──
+    from bot.handlers import housing as H
     import inspect
-    src = inspect.getsource(housing_menu)
-    check("city:menu in housing_menu", "city:menu" in src)
+    src = inspect.getsource(H._housing_screen)
+    check("city:menu in housing screen", "city:menu" in src)
+    check("reply-кнопка «🏠 Жильё» обработана",
+          'F.text == "🏠 Жильё"' in inspect.getsource(H.housing_menu_reply))
 
     # ── 6. fishing token guard ──
     from bot.handlers import fishing as F

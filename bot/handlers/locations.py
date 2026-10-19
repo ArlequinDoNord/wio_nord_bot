@@ -19,7 +19,9 @@ from database.db import (
 )
 from utils.helpers import resolve_image, resolve_image_seasonal, time_of_day_key, season_key
 from utils.permissions import has_permission, is_admin, can_enter_mvd
-from keyboards.keyboards import admin_quarter_keyboard
+from keyboards.keyboards import (
+    admin_quarter_keyboard, business_quarter_keyboard, countryside_keyboard,
+)
 
 router = Router()
 
@@ -236,3 +238,36 @@ async def city_admin_quarter(callback: CallbackQuery):
         "и здание МВД."
     )
     await callback.message.answer(text, reply_markup=admin_quarter_keyboard())
+
+
+@router.callback_query(F.data == "city:business")
+async def city_business_quarter(callback: CallbackQuery):
+    """Подменю Делового квартала: библиотека, парк, ГосСМИ, контракты,
+    дом дуэлей, НИИ и городские склады.
+
+    Здания убраны из общего списка города (см. BUSINESS_QUARTER_KEYS в
+    keyboards.keyboards) и собраны здесь. Кнопка видна всем, но внутрь
+    зданий пускают их собственные правила входа (location_enter).
+    """
+    await callback.answer()
+    text = (
+        "💼 ДЕЛОВОЙ КВАРТАЛ\n"
+        "────────────────\n"
+        "Знаешь, где в Аркхольме ищут знания, работу и ресурсы: библиотека, "
+        "городской парк, ГосСМИ, доска контрактов, дом дуэлей, НИИ и "
+        "городские склады."
+    )
+    await callback.message.answer(text, reply_markup=business_quarter_keyboard())
+
+
+@router.callback_query(F.data == "city:countryside")
+async def city_countryside(callback: CallbackQuery):
+    """Подменю Загородных территорий: Лес на окраине и Железная копи."""
+    await callback.answer()
+    text = (
+        "🌲 ЗАГОРОДНЫЕ ТЕРРИТОРИИ\n"
+        "────────────────\n"
+        "За пределами Аркхольма: тёмный еловый лес на окраине и тёплые "
+        "штольни железных копей."
+    )
+    await callback.message.answer(text, reply_markup=countryside_keyboard())

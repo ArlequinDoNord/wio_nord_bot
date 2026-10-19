@@ -4,13 +4,13 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 def main_menu_keyboard(is_admin: bool = False, is_pilot: bool = True):
     keyboard = [
         [KeyboardButton(text="Профиль")],
+        [KeyboardButton(text="📝 Сдать отчёт")],
         [KeyboardButton(text="Инвентарь"), KeyboardButton(text="Магазин")],
+        [KeyboardButton(text="🏠 Жильё")],
         [KeyboardButton(text="Город")],
         [KeyboardButton(text="📰 Новости Нордхайма")],
         [KeyboardButton(text="🧱 Стена изречений")],
     ]
-    if is_pilot:
-        keyboard.append([KeyboardButton(text="📝 Сдать отчёт")])
     if is_admin:
         keyboard.append([KeyboardButton(text="👑 Админ-панель")])
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
@@ -189,26 +189,80 @@ LOCATION_BUTTON_EMOJI = {
     "mine": "⛏️",
     "storage": "📦",
     "mvd": "🚔",
+    "library": "📚",
+    "park": "🌳",
+    "gossmi": "📰",
+    "forest": "🌲",
+    "kvp": "🧭",
+    "nii": "🔬",
 }
 
 # Здания, вынесенные из общего списка города в подменю «Административный квартал».
 ADMIN_QUARTER_KEYS = ("townhall", "bank", "hq", "mvd")
 ADMIN_QUARTER_TEXT = "🏢 Административный квартал"
 
+# Здания, вынесенные в подменю «Деловой квартал».
+BUSINESS_QUARTER_KEYS = (
+    "library", "park", "gossmi", "contracts", "duel_house", "nii", "storage",
+)
+BUSINESS_QUARTER_TEXT = "💼 Деловой квартал"
+
+# Зоны, вынесенные в подменю «Загородные территории».
+COUNTRYSIDE_KEYS = ("forest", "mine")
+COUNTRYSIDE_TEXT = "🌲 Загородные территории"
+
+# Все локации, скрытые из общего списка города (живут в подменю кварталов).
+QUARTER_HIDDEN_KEYS = ADMIN_QUARTER_KEYS + BUSINESS_QUARTER_KEYS + COUNTRYSIDE_KEYS
+
 
 def city_keyboard(is_pilot: bool = True, locations: list = None):
-    buttons = [[InlineKeyboardButton(text=ADMIN_QUARTER_TEXT, callback_data="city:quarter")]]
+    buttons = [
+        [InlineKeyboardButton(text=BUSINESS_QUARTER_TEXT, callback_data="city:business")],
+        [InlineKeyboardButton(text=ADMIN_QUARTER_TEXT, callback_data="city:quarter")],
+        [InlineKeyboardButton(text=COUNTRYSIDE_TEXT, callback_data="city:countryside")],
+    ]
     for loc in (locations or []):
-        if loc.get('key') in ADMIN_QUARTER_KEYS:
+        if loc.get('key') in QUARTER_HIDDEN_KEYS:
             continue
         emoji = LOCATION_BUTTON_EMOJI.get(loc.get('key'), "📍")
         buttons.append([InlineKeyboardButton(
             text=f"{emoji} {loc['name']}",
             callback_data=f"location:preview:{loc['key']}"
         )])
-    buttons.append([InlineKeyboardButton(text="🧱 Стена изречений", callback_data="wall:view")])
-    if is_pilot:
-        buttons.append([InlineKeyboardButton(text="🏠 Жильё", callback_data="housing:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def business_quarter_keyboard():
+    """Подменю Делового квартала: библиотека, парк, ГосСМИ, контракты,
+    дом дуэлей, НИИ и городские склады.
+
+    Порядок — по пожеланию владельца. Кнопки ведут в превью локаций (оттуда
+    «Войти»), поэтому доступ по-прежнему решается в location_enter.
+    """
+    entries = (
+        ("library", "📚 Библиотека"),
+        ("park", "🌳 Городской парк"),
+        ("gossmi", "📰 ГосСМИ"),
+        ("contracts", "📜 Доска контрактов"),
+        ("duel_house", "🥊 Дом Дуэлей"),
+        ("nii", "🔬 НИИ Северной Кибернетики"),
+        ("storage", "📦 Городские склады"),
+    )
+    buttons = [[InlineKeyboardButton(text=text, callback_data=f"location:preview:{key}")]
+               for key, text in entries]
+    buttons.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def countryside_keyboard():
+    """Подменю Загородных территорий: Лес на окраине и Железная копь."""
+    entries = (
+        ("forest", "🌲 Лес на окраине"),
+        ("mine", "⛏️ Железная копи"),
+    )
+    buttons = [[InlineKeyboardButton(text=text, callback_data=f"location:preview:{key}")]
+               for key, text in entries]
+    buttons.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

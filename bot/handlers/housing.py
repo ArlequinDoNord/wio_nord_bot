@@ -6,7 +6,7 @@ import os
 import time
 
 from aiogram import Router, F
-from aiogram.types import CallbackQuery, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import CallbackQuery, Message, FSInputFile, InlineKeyboardMarkup, InlineKeyboardButton
 
 from database.db import (
     get_user, get_player_housing, set_player_housing, get_housing_slots, set_housing_slot,
@@ -179,14 +179,12 @@ def _inv_row(btn_text, cb_data):
 
 # ───────── главный экран ─────────
 
-@router.callback_query(F.data == "housing:menu")
-async def housing_menu(cb: CallbackQuery):
-    await cb.answer()
-    uid = cb.from_user.id
-    if not await user_has_status_tag(uid, "recruit"):
-        await cb.answer("❌ Жильё доступно только рекрутам и пилотам.", show_alert=True)
-        return
-    await log_location_visit(uid, "housing")
+async def _housing_screen(uid: int):
+    """Собирает главный экран жилья: (текст, фото, клавиатура).
+
+    Вынесено из housing_menu, чтобы экран рисовался и из callback-кнопки,
+    и из reply-кнопки «🏠 Жильё» главного меню.
+    """
     h = await get_player_housing(uid)
     ht = h["housing_type"]
     info = HOUSING_TYPES[ht]
@@ -245,8 +243,56 @@ async def housing_menu(cb: CallbackQuery):
         elif not tax_paid:
             rows.insert(-1, [_inv_row(f"💳 Оплатить налог ({tax_rate} НМ)", "housing:pay_tax")])
 
-    kb = InlineKeyboardMarkup(inline_keyboard=rows)
-    await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
+    return "\n".join(lines), _housing_photo(ht), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _open_housing_screen(uid: int, chat_id: int, bot):
+    """Отрисовка экрана жилья новым сообщением (трекинг старого — как в _paint)."""
+    text, photo, kb = await _housing_screen(uid)
+    tracked = _HMSG.get(uid)
+    if tracked:
+        try:
+            await bot.edit_message_reply_markup(
+                chat_id=tracked[0], message_id=tracked[1], reply_markup=None)
+        except Exception:
+            pass
+    if photo and os.path.isfile(photo):
+        msg = await bot.send_photo(chat_id, FSInputFile(photo),
+                                   caption=text, reply_markup=kb)
+    else:
+        msg = await bot.send_message(chat_id, text, reply_markup=kb)
+    _HMSG[uid] = (chat_id, msg.message_id)
+
+
+async def _housing_access_denied(uid: int) -> str:
+    if not await user_has_status_tag(uid, "recruit"):
+        return "❌ Жильё доступно только рекрутам и пилотам."
+    return None
+
+
+@router.callback_query(F.data == "housing:menu")
+async def housing_menu(cb: CallbackQuery):
+    await cb.answer()
+    uid = cb.from_user.id
+    denied = await _housing_access_denied(uid)
+    if denied:
+        await cb.answer(denied, show_alert=True)
+        return
+    await log_location_visit(uid, "housing")
+    text, photo, kb = await _housing_screen(uid)
+    await _paint(cb, text, photo, kb)
+
+
+@router.message(F.text == "🏠 Жильё")
+async def housing_menu_reply(message: Message):
+    """Открытие жилья из reply-кнопки главного меню."""
+    uid = message.from_user.id
+    denied = await _housing_access_denied(uid)
+    if denied:
+        await message.answer(denied)
+        return
+    await log_location_visit(uid, "housing")
+    await _open_housing_screen(uid, message.chat.id, message.bot)
 
 
 def _month_word(n: int) -> str:
