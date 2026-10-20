@@ -38,6 +38,7 @@ from database.db import (
     location_season_photos_raw, LOCATION_SEASONS,
     location_glade_photo, update_location_glade_photo,
     location_clearing_photo, update_location_clearing_photo,
+    location_logging_photo, update_location_logging_photo,
     location_mine_level_photo, update_location_mine_level_photo,
     get_all_dungeons, get_dungeon, update_dungeon_photos, DUNGEON_PHOTO_KEYS,
     get_dungeon_enemies, get_enemy, update_enemy_fields, get_floor_enemies,
@@ -8075,15 +8076,20 @@ async def _loc_photos_pick_send(source, loc_id: int):
     if loc.get("key") == "forest":
         has_glade = bool(location_glade_photo(loc))
         has_clearing = bool(location_clearing_photo(loc))
+        has_logging = bool(location_logging_photo(loc))
         rows.append([InlineKeyboardButton(
             text=f"{'✅' if has_glade else '—'} 🌿 Опушка (сбор грибов)",
             callback_data="loc:glade_set")])
         rows.append([InlineKeyboardButton(
             text=f"{'✅' if has_clearing else '—'} 🌲 Прогалина (вглубь леса)",
             callback_data="loc:clearing_set")])
+        rows.append([InlineKeyboardButton(
+            text=f"{'✅' if has_logging else '—'} 🪓 Лесозаготовка (рубка деревьев)",
+            callback_data="loc:logging_set")])
         glade_line = (
             f"Опушка: {'своя картинка' if has_glade else 'локальный файл по сезону'}\n"
             f"Прогалина: {'своя картинка' if has_clearing else 'локальный файл по сезону'}\n"
+            f"Лесозаготовка: {'своя картинка' if has_logging else 'локальный файл по сезону'}\n"
         )
     # Железная копь — картинка 1-го уровня шахт (место добычи руды), отдельная
     # от картинки входа в копь, задаётся своей кнопкой (как опушка у леса).
@@ -8334,6 +8340,58 @@ async def loc_clearing_clear(callback: CallbackQuery, state: FSMContext):
     await _loc_photos_pick_send(callback, loc_id)
 
 
+@router.callback_query(F.data == "loc:logging_set")
+async def loc_logging_set(callback: CallbackQuery, state: FSMContext):
+    """Запрос картинки Лесозаготовки — фона окна рубки (отдельно от опушки)."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    loc = await get_location(loc_id)
+    if not loc or loc.get("key") != "forest":
+        await callback.message.edit_text(
+            "❌ Лесозаготовка есть только у локации «Лес на окраине».")
+        return
+    await state.set_state(AdminLocation.preview)
+    await state.update_data(photo_kind="logging", photo_tod=None, photo_season=None)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="loc:photos")]
+    ])
+    has_photo = bool(location_logging_photo(loc))
+    caption = (f"🪓 Лесозаготовка (лес на окраине) — сейчас есть картинка.\n"
+               f"Отправь новую (или «-» чтобы убрать и вернуть локальный файл):")
+    if has_photo:
+        try:
+            await callback.message.answer_photo(
+                location_logging_photo(loc), caption=caption, reply_markup=kb)
+            return
+        except Exception:
+            pass
+    await callback.message.edit_text(
+        f"🪓 Лесозаготовка «{loc['name']}» "
+        f"(сейчас: {'своя картинка' if has_photo else 'локальный файл'}).\n"
+        f"Отправь фото (или «-» чтобы убрать):",
+        reply_markup=kb
+    )
+
+
+@router.callback_query(F.data == "loc:logging_clear")
+async def loc_logging_clear(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    await update_location_logging_photo(loc_id, None)
+    await _loc_photos_pick_send(callback, loc_id)
+
+
 @router.callback_query(F.data == "loc:mine_set")
 async def loc_mine_set(callback: CallbackQuery, state: FSMContext):
     """Запрос картинки 1-го уровня шахт — отдельной от картинки входа в копь."""
@@ -8561,6 +8619,14 @@ async def loc_step_photo(message: Message, state: FSMContext):
         await update_location_clearing_photo(loc_id, file_id)
         await log_action(message.from_user.id, 'edit_location', loc_id,
                          f"clearing_photo={'file_id' if file_id else 'cleared'}")
+        await state.clear()
+        await _loc_photos_pick_send(message, loc_id)
+        return
+    # v0.37.1: слот «Лесозаготовка» — своя картинка окна рубки.
+    if data.get('photo_kind') == 'logging':
+        await update_location_logging_photo(loc_id, file_id)
+        await log_action(message.from_user.id, 'edit_location', loc_id,
+                         f"logging_photo={'file_id' if file_id else 'cleared'}")
         await state.clear()
         await _loc_photos_pick_send(message, loc_id)
         return

@@ -29,6 +29,7 @@ from database.db import (
     get_logging_snake_attempts, set_logging_snake_attempts, reset_logging_snake_counter,
     get_logging_owl_attempts, set_logging_owl_attempts, reset_logging_owl_counter,
     remove_ap_or_floor, user_is_tourist, log_activity,
+    get_location_by_key, location_logging_photo,
 )
 from utils.helpers import (
     resolve_image_seasonal, season_key, time_of_day_key, plural_nordmark,
@@ -112,6 +113,15 @@ def _logging_path() -> str:
     return path
 
 
+async def _logging_photo_id():
+    """Своя картинка Лесозаготовки из админ-редактора (слот в картинках леса)."""
+    try:
+        loc = await get_location_by_key("forest")
+        return location_logging_photo(loc)
+    except Exception:
+        return None
+
+
 async def _paint(callback, *, text: str = None, media_path: str = None,
                  photo_id: str = None, kb=None):
     """Единая отрисовка окна в одном сообщении на игрока (как в копи)."""
@@ -150,8 +160,12 @@ async def _paint(callback, *, text: str = None, media_path: str = None,
 
 
 async def _logging_paint(callback, *, text: str, kb=None):
-    """Отрисовка окна на фоне картинки Лесозаготовки."""
-    await _paint(callback, text=text, media_path=_logging_path(), kb=kb)
+    """Отрисовка окна: своя картинка из админ-редактора, иначе локальный фон."""
+    photo_id = await _logging_photo_id()
+    if photo_id:
+        await _paint(callback, text=text, photo_id=photo_id, kb=kb)
+    else:
+        await _paint(callback, text=text, media_path=_logging_path(), kb=kb)
 
 
 # ───────── чистые функции (тестируются в smoke) ─────────
@@ -499,8 +513,8 @@ async def _show_battle(callback: CallbackQuery, prefix: str = ""):
         f"{max(0, player_hp)}/{battle['player_hp_max']}{poison_line}\n\n"
         f"Ход {battle['round']}. {tail}"
     )
-    await _paint(callback, text=text, media_path=_logging_path(),
-                 kb=_battle_markup(battle['token']))
+    await _logging_paint(callback, text=text,
+                         kb=_battle_markup(battle['token']))
 
 
 async def _battle_loot(user_id: int, battle: dict) -> list:
@@ -605,8 +619,8 @@ async def logging_battle_hit(callback: CallbackQuery):
             "и растворяется в сумерках. Ты победил!\n\n"
             f"{result_line}"
         )
-        await _paint(callback, text=text, media_path=_logging_path(),
-                     kb=_result_markup(LOGGING_TOKEN.get(user_id, "")))
+        await _logging_paint(callback, text=text,
+                             kb=_result_markup(LOGGING_TOKEN.get(user_id, "")))
         return
 
     # ── Змея повержена (обычный враг, убиваема) ──
@@ -633,8 +647,8 @@ async def logging_battle_hit(callback: CallbackQuery):
             "Змея дёргается и замирает — подлесок снова затихает.\n\n"
             f"{result_line}"
         )
-        await _paint(callback, text=text, media_path=_logging_path(),
-                     kb=_result_markup(LOGGING_TOKEN.get(user_id, "")))
+        await _logging_paint(callback, text=text,
+                             kb=_result_markup(LOGGING_TOKEN.get(user_id, "")))
         return
 
     # Ответный удар врага.
@@ -714,8 +728,8 @@ async def _battle_defeat(callback: CallbackQuery, user_id: int, battle: dict,
             f"Очнулся ты у сторожки, тяжело дыша. Змея уползла в подлесок "
             f"(−{removed} ОД)."
         )
-    await _paint(callback, text=text, media_path=_logging_path(),
-                 kb=_result_markup(LOGGING_TOKEN.get(user_id, "")))
+    await _logging_paint(callback, text=text,
+                         kb=_result_markup(LOGGING_TOKEN.get(user_id, "")))
 
 
 @router.callback_query(F.data.regexp(r"^logsite:battle:flee:\d+$"))

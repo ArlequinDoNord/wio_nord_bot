@@ -1274,6 +1274,10 @@ async def init_db():
     await _ensure_column(conn, "locations", "mine_level_photo", "TEXT DEFAULT NULL")
     # v0.32.1: внутренняя картинка Городских складов (отдельно от превью)
     await _ensure_column(conn, "locations", "storage_photo", "TEXT DEFAULT NULL")
+    # v0.37.1: внутренняя картинка Лесозаготовки (фон окна рубки) — по аналогии
+    # с опушкой/прогалиной леса: задаётся в картинках локации «Лес», хранится на
+    # строке леса; без неё окно берёт сезонный локальный файл (city/logging).
+    await _ensure_column(conn, "locations", "logging_photo", "TEXT DEFAULT NULL")
     # v0.18.18: лес разделён на две зоны — опушка (glade) и лесная поляна
     # (clearing). Пул грибов каждой зоны — в forest_zone_pool, сам каталог грибов
     # (forest_mushrooms) остаётся общим: один и тот же гриб может попадать и на
@@ -7146,6 +7150,36 @@ async def update_location_storage_photo(location_id: int, file_id):
     if not await get_location(location_id):
         return False
     await conn.execute("UPDATE locations SET storage_photo = ? WHERE id = ?",
+                       (file_id, location_id))
+    await conn.commit()
+    return True
+
+
+def location_logging_photo(loc):
+    """file_id картинки Лесозаготовки (None → сезонный локальный файл).
+
+    Как и опушка с прогалиной, Лесозаготовка — самостоятельная картинка,
+    задаётся админом отдельной кнопкой в редакторе картинок локации «Лес».
+    """
+    if not loc:
+        return None
+    if isinstance(loc, dict):
+        return loc.get('logging_photo') or None
+    try:
+        return loc['logging_photo']
+    except Exception:
+        try:
+            return dict(loc).get('logging_photo')
+        except Exception:
+            return None
+
+
+async def update_location_logging_photo(location_id: int, file_id):
+    """Задать (file_id) или убрать (None) картинку Лесозаготовки."""
+    conn = await get_db()
+    if not await get_location(location_id):
+        return False
+    await conn.execute("UPDATE locations SET logging_photo = ? WHERE id = ?",
                        (file_id, location_id))
     await conn.commit()
     return True

@@ -746,6 +746,7 @@
 | `clearing_photo` | `TEXT DEFAULT NULL` |
 | `mine_level_photo` | `TEXT DEFAULT NULL` |
 | `storage_photo` | `TEXT DEFAULT NULL` |
+| `logging_photo` | `TEXT DEFAULT NULL` |
 
 ## `park_statues`
 

@@ -13,6 +13,9 @@
 8. Бой: змея убиваема + яд; неясыть отлетает при HP ≤ 20 (победа, лут),
    ослепление накладывается; поражение от змеи −10 ОД.
 9. Ратуша: в подписи есть «Пилот 2 класса».
+10. Картинка Лесозаготовки: колонка/слот в картинках леса, сохранение и
+    очистка через админ-обработчик, фон окна берёт свою картинку (photo_id)
+    иначе — локальный файл.
 
 Запуск: .venv\\Scripts\\python.exe smoke_156.py
 """
@@ -132,6 +135,7 @@ async def run():
         get_logging_snake_attempts, set_logging_snake_attempts, reset_logging_snake_counter,
         get_logging_owl_attempts, set_logging_owl_attempts, reset_logging_owl_counter,
         get_status_by_tag, grant_status,
+        get_location_by_key, location_logging_photo, update_location_logging_photo,
     )
     from utils.states import STATE_CONF
     from bot.handlers import logging_site as ls
@@ -287,6 +291,80 @@ async def run():
     check("ENEMY_SRC_LOGGING = logging", ENEMY_SRC_LOGGING == "logging")
     check("заголовок источника есть", "Лесозаготовка" in ENEMY_SOURCE_TITLES[ENEMY_SRC_LOGGING])
     check("_enemy_loc_title(logging)", "Лесозаготовка" in _enemy_loc_title("logging", "logging"))
+
+    # ── 8b. Картинка Лесозаготовки (слот в картинках леса) ──
+    import bot.handlers.admin as admin_mod
+    loc_forest = await get_location_by_key("forest")
+    check("локация «Лес» есть", loc_forest is not None)
+    check("колонка locations.logging_photo есть",
+          loc_forest is not None and "logging_photo" in loc_forest.keys())
+    await update_location_logging_photo(loc_forest["id"], "LOG_FID")
+    loc_ref = await get_location_by_key("forest")
+    check("сеттер сохранил картинку", location_logging_photo(loc_ref) == "LOG_FID")
+    check("logging_site видит свою картинку", await ls._logging_photo_id() == "LOG_FID")
+
+    picked = {}
+
+    async def _pick_answer(text=None, reply_markup=None, **kw):
+        picked["text"] = text
+        picked["markup"] = reply_markup
+
+    await admin_mod._loc_photos_pick_send(
+        SimpleNamespace(answer=_pick_answer), loc_forest["id"])
+    check("пикер картинок леса: кнопка «Лесозаготовка»",
+          "loc:logging_set" in markup_callbacks(picked.get("markup")))
+    check("пикер: статус слота в тексте", "Лесозаготовка" in (picked.get("text") or ""))
+
+    class _State:
+        def __init__(self, data):
+            self._d = dict(data)
+
+        async def get_data(self):
+            return dict(self._d)
+
+        async def clear(self):
+            self._d = {}
+
+    class _PhotoMsg:
+        def __init__(self, uid, photo_id=None, text=None):
+            self.from_user = SimpleNamespace(id=uid)
+            self.photo = [SimpleNamespace(file_id=photo_id)] if photo_id else None
+            self.text = text
+            self.answers = []
+
+        async def answer(self, *a, **kw):
+            self.answers.append(a)
+
+    await admin_mod.loc_step_photo(
+        _PhotoMsg(uid, photo_id="LOG_PHOTO_FID"),
+        _State({"target_id": loc_forest["id"], "photo_kind": "logging"}))
+    loc_ref = await get_location_by_key("forest")
+    check("админ-сохранение картинки (loc_step_photo)",
+          location_logging_photo(loc_ref) == "LOG_PHOTO_FID")
+
+    captured = {}
+    orig_paint = ls._paint
+
+    async def _fake_paint(callback, *, text=None, media_path=None,
+                          photo_id=None, kb=None):
+        captured.update(photo_id=photo_id, media_path=media_path)
+
+    ls._paint = _fake_paint
+    try:
+        await ls._logging_paint(SimpleNamespace(), text="T")
+        check("фон окна: своя картинка → photo_id",
+              captured.get("photo_id") == "LOG_PHOTO_FID" and not captured.get("media_path"))
+    finally:
+        ls._paint = orig_paint
+
+    await admin_mod.loc_step_photo(
+        _PhotoMsg(uid, text="-"),
+        _State({"target_id": loc_forest["id"], "photo_kind": "logging"}))
+    loc_ref = await get_location_by_key("forest")
+    check("очистка «-» вернула локальный фон",
+          location_logging_photo(loc_ref) is None)
+    check("после очистки logging_site без photo_id",
+          await ls._logging_photo_id() is None)
 
     # ── 9. Вход: турист заблокирован ──
     await ensure_base_statuses()
