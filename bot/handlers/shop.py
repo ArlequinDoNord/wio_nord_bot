@@ -148,6 +148,7 @@ def fish_offer_items(offers) -> list:
             "__offer__": True,
             "__offer_type__": "fish",
             "id": o["id"],
+            "seller_id": o["seller_id"],
             "name": o["name"],
             "rarity": o["rarity"],
             "price": o["price"],
@@ -167,6 +168,7 @@ def item_offer_items(offers) -> list:
             "__offer__": True,
             "__offer_type__": "item",
             "id": o["id"],
+            "seller_id": o["seller_id"],
             "name": o["name"],
             "rarity": o["rarity"],
             "price": o["price"],
@@ -275,14 +277,18 @@ async def items_page_markup(items, category, page: int, user_id: int = None):
     buttons = []
     for it in chunk:
         if isinstance(it, dict) and it.get("__offer__"):
+            # Своё объявление помечаем в ленте — иначе его сложно найти, а без
+            # этого кнопка снятия с продажи была бы недостижима.
+            tag = (" 👤 твоё"
+                   if user_id is not None and it.get("seller_id") == user_id else "")
             if it.get("__offer_type__") == "item":
                 buttons.append([InlineKeyboardButton(
-                    text=f"📦 {it['name']} — {it['price']} НМ",
+                    text=f"📦 {it['name']} — {it['price']} НМ{tag}",
                     callback_data=f"itemoffer:{it['id']}"
                 )])
             else:
                 buttons.append([InlineKeyboardButton(
-                    text=f"🐟 {it['name']} — {it['price']} НМ",
+                    text=f"🐟 {it['name']} — {it['price']} НМ{tag}",
                     callback_data=f"fishoffer:{it['id']}"
                 )])
             continue
@@ -761,12 +767,23 @@ async def fish_offer_view(callback: CallbackQuery):
         f"Срок годности в магазине заморожен — продолжится у покупателя."
     )
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text=f"💰 Купить за {offer['price']} {plural_nordmark(offer['price'])}",
-            callback_data=f"fishbuy:{offer['id']}")],
-        [InlineKeyboardButton(text="🔙 Рынок", callback_data="shopcat:market")],
-    ])
+    back_row = [InlineKeyboardButton(text="🔙 Рынок", callback_data="shopcat:market")]
+    if offer['seller_id'] == callback.from_user.id:
+        # Своё объявление: покупать у себя нельзя, вместо этого — снятие с продажы
+        # (слот освобождается, улов возвращается в «Улов» со свежестью, что была).
+        text += "\n\n👤 Это твоё объявление — можно снять с продажи."
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔕 Снять с продажи",
+                                  callback_data=f"offercancel:fish:{offer['id']}")],
+            back_row,
+        ])
+    else:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"💰 Купить за {offer['price']} {plural_nordmark(offer['price'])}",
+                callback_data=f"fishbuy:{offer['id']}")],
+            back_row,
+        ])
 
     photo_id = item['photo_file_id'] if item and 'photo_file_id' in item.keys() else None
     local_photo = None if photo_id else (item_local_photo(offer['name'])
@@ -797,7 +814,8 @@ async def fish_buy(callback: CallbackQuery):
         await edit_or_replace(callback.message, "❌ Этот улов уже продан.", None)
         return
     if offer['seller_id'] == user_id:
-        await callback.message.answer("❌ Это твой собственный улов — купить его нельзя.")
+        await callback.answer("❌ Это твой собственный улов — сними его с продажи кнопкой "
+                              "«🔕 Снять с продажи».", show_alert=True)
         return
 
     user = await get_user(user_id)
@@ -876,12 +894,20 @@ async def item_offer_view(callback: CallbackQuery):
         f"📊 База (скупщик): {offer['sell_price'] or 0} НМ\n\n"
         f"💰 Цена: {offer['price']} {plural_nordmark(offer['price'])}"
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text=f"💰 Купить за {offer['price']} {plural_nordmark(offer['price'])}",
-            callback_data=f"itembuy:{offer['id']}")],
-        [InlineKeyboardButton(text="🔙 Рынок", callback_data="shopcat:market")],
-    ])
+    if offer['seller_id'] == callback.from_user.id:
+        text += "\n\n👤 Это твоё объявление — можно снять с продажи."
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔕 Снять с продажи",
+                                  callback_data=f"offercancel:item:{offer['id']}")],
+            [InlineKeyboardButton(text="🔙 Рынок", callback_data="shopcat:market")],
+        ])
+    else:
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"💰 Купить за {offer['price']} {plural_nordmark(offer['price'])}",
+                callback_data=f"itembuy:{offer['id']}")],
+            [InlineKeyboardButton(text="🔙 Рынок", callback_data="shopcat:market")],
+        ])
 
     photo_id = item['photo_file_id'] if item and 'photo_file_id' in item.keys() else None
     local_photo = None if photo_id else (item_local_photo(offer['name'])
@@ -912,7 +938,8 @@ async def item_buy(callback: CallbackQuery):
         await edit_or_replace(callback.message, "❌ Этот предмет уже продан.", None)
         return
     if offer['seller_id'] == user_id:
-        await callback.message.answer("❌ Это твоё собственное объявление — купить его нельзя.")
+        await callback.answer("❌ Это твоё собственное объявление — сними его кнопкой "
+                              "«🔕 Снять с продажи».", show_alert=True)
         return
 
     user = await get_user(user_id)
@@ -943,6 +970,71 @@ async def item_buy(callback: CallbackQuery):
         f"✅ Куплено: {offer['name']} за {price} {plural_nordmark(price)}!\n"
         f"🎒 Предмет уже в твоём инвентаре."
     )
+
+
+# ───────── Рынок: снятие своего объявления с продажи ─────────
+
+@router.callback_query(F.data.startswith("offercancel:fish:"))
+async def fish_offer_cancel(callback: CallbackQuery):
+    await _cancel_offer(callback, "fish", int(callback.data.rsplit(":", 1)[1]))
+
+
+@router.callback_query(F.data.startswith("offercancel:item:"))
+async def item_offer_cancel(callback: CallbackQuery):
+    await _cancel_offer(callback, "item", int(callback.data.rsplit(":", 1)[1]))
+
+
+async def _cancel_offer(callback: CallbackQuery, kind: str, offer_id: int):
+    """Снятие своего объявления: товар возвращается владельцу, слот освобождается.
+
+    Обычный предмет уходит обратно в инвентарь, улов — в «Улов» с той же
+    заморозкой свежести, что была на витрине (как у покупателя). Чужие
+    объявления снять нельзя.
+    """
+    user_id = callback.from_user.id
+    offer = await get_fish_offer(offer_id) if kind == "fish" else await get_item_offer(offer_id)
+    if not offer:
+        await callback.answer("❌ Объявления уже нет — его купили или сняли.",
+                              show_alert=True)
+        return
+    if offer['seller_id'] != user_id:
+        await callback.answer("❌ Снять с продажи можно только своё объявление.",
+                              show_alert=True)
+        return
+
+    item = await get_item(offer['item_id'])
+    name = item['name'] if item else f"предмет #{offer['item_id']}"
+    rows = []
+
+    if kind == "item":
+        await remove_item_offer(offer_id)
+        await add_inventory_item(user_id, offer['item_id'], 1)
+        back_line = "🎒 Предмет вернулся в инвентарь."
+        rows.append([InlineKeyboardButton(
+            text="🎒 Посмотреть предмет", callback_data=f"invitem:{offer['item_id']}")])
+    else:
+        await remove_fish_offer(offer_id)
+        rem = max(1, int(offer['remaining_sec'] or 1))
+        is_fish = bool(item) and item.get('category') == 'fishing'
+        expires_at = str(int(time.time()) + rem) if is_fish else None
+        await add_fish_catch(user_id, offer['item_id'], offer['weight'] or 1,
+                             kind="fish" if is_fish else "resource",
+                             expires_at=expires_at)
+        back_line = "🧺 Улов вернулся в «Улов» — свежесть продолжается."
+        rows.append([InlineKeyboardButton(
+            text="🧺 Посмотреть улов",
+            callback_data=f"fishcatch:{offer['item_id']}:{offer['weight'] or 1}")])
+
+    rows.append([InlineKeyboardButton(text="🏪 Рынок", callback_data="shopcat:market")])
+    await log_activity(user_id, "market_cancel",
+                       f"Снял с рынка «{name}» за {offer['price']} НМ")
+    await callback.answer("🔕 Снят с продажи")
+    await edit_or_replace(
+        callback.message,
+        f"🔕 «{name}» снят с продажы.\n\n"
+        f"{back_line}\n"
+        f"💳 Нордмарки за покупку не придут — товар снова твой.",
+        InlineKeyboardMarkup(inline_keyboard=rows))
 
 
 async def decrement_stock(item_id: int):

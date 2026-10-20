@@ -53,7 +53,7 @@
 | `bank.py` | — | `router` | 5 | 8 | `bank:` | `BankStates` |
 | `admin.py` | Админ-панель: управление магазином, финансами, отчётами, ролями и логами. | `router` | 87 | 215 | `\d+$:`, `act:`, `addreq:`, `admin:`, `aw:`, `aw_comment:`, `aw_confirm:`, `aw_del:`, `aw_edit:`, `aw_ei:`, `aw_kind:`, `aw_pick:`, `awr_grant:`, `back:`, `cancel:`, `cat:`, `confirm_del_photo:`, `del_item:`, `drinksel:`, `dungeon:`, `eddrop:`, `eddrop_del:`, `eddrop_desc:`, `eddrop_photo:`, `eddrop_set_ch:`, `eddrop_set_q:`, `eddrop_stat:`, `eddrop_stats:`, `eddrop_weff:`, `eddrop_weff_set:`, `edit_item:`, `editem_add:`, `editem_new:`, `editem_pick:`, `editset:`, `enemy:`, `enemy_drops:`, `enemy_field:`, `eqpart:`, `field:`, `field_req:`, `fin:`, `finuser:`, `fishing:`, `fishing_field:`, `fishing_j:`, `forest:`, `forest_field:`, `loc:`, `locstat:`, `lootonly:`, `marketok:`, `news:`, `noop:`, `pickuser:`, `prod:`, `rank_pick:`, `rank_promote:`, `rar:`, `rep:`, `rep_fix:`, `rep_no:`, `rep_ok:`, `role:`, `rolop:`, `salary:`, `salary_period:`, `shop_admin:`, `shop_del:`, `shop_edit:`, `st:`, `st_del:`, `st_key:`, `st_op:`, `st_pick:`, `st_rev:`, `storage:`, `treasury:`, `weff:`, `wing_set:` | `AdminAddItem`, `AdminSaleTax`, `AdminSpecialCode`, `AdminEditItem`, `AdminFinance`, `AdminTreasury`, `AdminStorageRestock`, `AdminStorageDelete`, `AdminTax`, `AdminReportAutoApprove`, `AdminReportPayCap`, `AdminReportFix`, `AdminRoles`, `AdminStatuses`, `AdminAwards`, `AdminFishing`, `AdminForest`, `AdminEnemy`, `AdminCallsign`, `AdminWing`, `AdminStates`, `AdminPlayerLog`, `AdminSalary`, `AdminLocation`, `AdminDungeon` |
 | `admin_recipes.py` | Менеджер рецептов крафта (v0.22.13): создание, правка и удаление рецептов. | `router` | 17 | 27 | `recadm:` | `RecipeManager` |
-| `shop.py` | Магазин: каталог по категориям, покупка за Нордмарки и AP. | `router` | 3 | 12 | `buy5_nord:`, `buy_housing:`, `buy_housing_cancel:`, `buy_nord:`, `fishbuy:`, `fishoffer:`, `itembuy:`, `itemoffer:`, `shop:`, `shopcat:`, `shopitem:` | `SpecialDeptBuy` |
+| `shop.py` | Магазин: каталог по категориям, покупка за Нордмарки и AP. | `router` | 3 | 14 | `buy5_nord:`, `buy_housing:`, `buy_housing_cancel:`, `buy_nord:`, `fishbuy:`, `fishoffer:`, `itembuy:`, `itemoffer:`, `offercancel:`, `shop:`, `shopcat:`, `shopitem:` | `SpecialDeptBuy` |
 | `inventory.py` | Инвентарь: просмотр, использование расходников, продажа и передача предметов. | `router` | 4 | 28 | `eqequip:`, `eqlock:`, `eqslot:`, `equnequip:`, `fishcatch:`, `fishgo:`, `fishmarket:`, `fishprice:`, `fishsell:`, `fishuse:`, `inv_equip:`, `inv_sell:`, `inv_sell_keep1:`, `inv_sell_ok:`, `inv_sellall:`, `inv_sellmore:`, `inv_slot:`, `inv_transfer:`, `inv_unequip:`, `inv_unslot:`, `inv_use:`, `inventory:`, `invitem:`, `itemgo:`, `itemmarket:`, `itemprice:` | `TransferItem` |
 | `reports.py` | — | `router` | 9 | 5 | `\d+$:`, `\d{1,7}$:`, `report:` | `ReportSubmit` |
 | `dungeon.py` | — | `router` | 0 | 24 | `city:`, `contract:`, `contracts:`, `dungeon:`, `mollusk:`, `resv:` | `DungeonFSM` |
@@ -127,9 +127,9 @@
 ### `shop.py` — Магазин: каталог по категориям, покупка за Нордмарки и AP.
 
 - Роутеры: `router`
-- Хендлеры: message=3, callback_query=12
+- Хендлеры: message=3, callback_query=14
 - FSM: `SpecialDeptBuy`
-- `F.data.startswith`: `buy5_nord:`, `buy_housing:`, `buy_housing_cancel:`, `buy_nord:`, `fishbuy:`, `fishoffer:`, `itembuy:`, `itemoffer:`, `shopcat:[^:]+$`, `shopcat:[^:]+:\d+$`, `shopitem:`
+- `F.data.startswith`: `buy5_nord:`, `buy_housing:`, `buy_housing_cancel:`, `buy_nord:`, `fishbuy:`, `fishoffer:`, `itembuy:`, `itemoffer:`, `offercancel:fish:`, `offercancel:item:`, `shopcat:[^:]+$`, `shopcat:[^:]+:\d+$`, `shopitem:`
 - `F.data ==`: `shop:catalog`
 
 ### `inventory.py` — Инвентарь: просмотр, использование расходников, продажа и передача предметов.
