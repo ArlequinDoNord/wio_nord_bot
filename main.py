@@ -29,6 +29,7 @@ from database.db import (
     ensure_forest_items, ensure_forest_mushrooms, ensure_forest_zones,
     ensure_forest_enemies, ensure_fishing_enemies, ensure_mollusk_items,
     ensure_mine_items, ensure_mine_enemies,
+    ensure_logging_items, ensure_logging_enemies,
     ensure_recipe_shop_items, ensure_user_recipes_backfill,
     log_activity, prune_activity_log, prune_location_visits, recompute_region_stats,
     maybe_archive_wall_weekly, maintain_polls, touch_user_active,
@@ -55,6 +56,7 @@ from bot.handlers.park import router as park_router
 from bot.handlers.fishing import router as fishing_router
 from bot.handlers.forest import router as forest_router
 from bot.handlers.mine import router as mine_router
+from bot.handlers.logging_site import router as logging_site_router
 from bot.handlers.storage import router as storage_router
 from bot.handlers.housing import router as housing_router
 from bot.handlers.news import router as news_router
@@ -99,11 +101,13 @@ class MainMenuFSMReset(BaseMiddleware):
             from bot.handlers.fishing import deactivate_fishing
             from bot.handlers.forest import deactivate_forest
             from bot.handlers.mine import deactivate_mine
+            from bot.handlers.logging_site import deactivate_logging_site
             if is_main_menu_text(event.text) or event.text.startswith("/"):
                 try:
                     await deactivate_fishing(event.from_user.id)
                     await deactivate_forest(event.from_user.id)
                     await deactivate_mine(event.from_user.id)
+                    await deactivate_logging_site(event.from_user.id)
                 except Exception:
                     pass
             if is_main_menu_text(event.text):
@@ -454,6 +458,14 @@ async def main():
     if mine_enemy_seeded:
         logger.info("Враг копи (Летучая мышь) добавлен в mine_enemies")
 
+    logging_items_seeded = await ensure_logging_items()
+    if logging_items_seeded:
+        logger.info("Предметы лесозаготовки (топор, бревна, дропы) добавлены")
+
+    logging_enemy_seeded = await ensure_logging_enemies()
+    if logging_enemy_seeded:
+        logger.info("Враги лесозаготовки (змея, неясыть) добавлены в logging_enemies")
+
     license_seeded = await ensure_market_license_item()
     if license_seeded:
         logger.info("Торговая лицензия добавлена в магазин")
@@ -567,6 +579,7 @@ async def main():
     dp.include_router(fishing_router)
     dp.include_router(forest_router)
     dp.include_router(mine_router)
+    dp.include_router(logging_site_router)
     dp.include_router(storage_router)
     dp.include_router(housing_router)
     dp.include_router(news_router)
@@ -583,7 +596,8 @@ async def main():
               inventory_router, reports_router, dungeon_router, pilots_router,
               polls_router, poll_archive_router, representative_router, library_router,
               locations_router, park_router,
-              fishing_router, forest_router, mine_router, storage_router, housing_router, news_router, kvp_router,
+              fishing_router, forest_router, mine_router, logging_site_router,
+              storage_router, housing_router, news_router, kvp_router,
               wall_router, hq_router, clans_router, nii_router, tourist_booklet_router,
               duel_router, mvd_router):
         r.message.middleware(ChatGuard())

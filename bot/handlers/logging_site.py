@@ -1,0 +1,740 @@
+"""Лесозаготовка: ресурсная локация в лесу (v0.37.0).
+
+Пилот входит кнопкой «🪓 Лесозаготовка» с Лесной поляны (лес → опушка → поляна)
+и рубит деревья («🪓 Рубить дерево»): 15 ОД за попытку, результат через 7–15
+секунд. Без топора рубить нельзя. Шанс успеха — база 35% плюс надбавка за
+ступень топора (базовый топор ранг 1 → +15%, итого 50%), не выше
+LOGGING_CHANCE_CAP.
+
+Врагов двое, как в лесу с двумя зверями: встреча бросается ПЕРЕД находкой
+бревен и заменяет её. Сначала — Лесная змея (обычный враг: убиваема, может
+отравить ядом), потом — Неясыть (реже и сильнее): убить её нельзя — при HP
+не выше LOGGING_OWL_FLEE_HP она отлетает (победа = редкое Совиное перо), а
+ударом может наложить «ослепление». Поражение в бою — минус loss_ap ОД.
+"""
+
+import asyncio
+import os
+import random
+
+from aiogram import Router, F
+from aiogram.types import CallbackQuery, FSInputFile
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+from database.db import (
+    get_user, remove_ap, get_active_run, add_inventory_item,
+    get_item, get_item_by_name, get_inventory_item,
+    get_source_enemy_by_key, get_source_enemy_drops, roll_enemy_drops,
+    enemy_encounter_hit,
+    get_logging_snake_attempts, set_logging_snake_attempts, reset_logging_snake_counter,
+    get_logging_owl_attempts, set_logging_owl_attempts, reset_logging_owl_counter,
+    remove_ap_or_floor, user_is_tourist, log_activity,
+)
+from utils.helpers import (
+    resolve_image_seasonal, season_key, time_of_day_key, plural_nordmark,
+)
+from utils.states import apply_state_to
+from config import (
+    LOGGING_AP_COST, LOGGING_BASE_CHANCE, LOGGING_AXE_BONUS_PER_RANK,
+    LOGGING_CHANCE_CAP, LOGGING_RESULT_DELAY, LOGGING_AXE_NAME, LOGGING_WOOD_NAME,
+    LOGGING_SNAKE_KEY, LOGGING_OWL_KEY, LOGGING_SPOT, LOGGING_SNAKE_SEED,
+    LOGGING_OWL_SEED, LOGGING_OWL_FLEE_HP, LOGGING_OWL_BLIND_CHANCE,
+)
+
+router = Router()
+
+LOGGING_HOME_PHOTO = "city/logging"
+SNAKE_EMOJI = "🐍"
+OWL_EMOJI = "🦉"
+
+# Яд Змеи: урон каждый ход игрока, спадает через N ходов (как кровотечение
+# кабана в лесу, но с ядовитым «уколом» вместо рвущей раны).
+POISON_TICKS_MAX = 3
+
+# Пользователи, чья рубка ещё не завершена (защита от повторного клика).
+LOGGING_CASTING = set()
+
+# Отслеживаемое сообщение окна Лесозаготовки: user_id -> (chat_id, message_id).
+LOGGING_MSG: dict = {}
+
+# Токен текущего окна: уход в другое меню инвалидирует старые кнопки.
+LOGGING_TOKEN: dict = {}
+
+# Активные бои: user_id -> {token, player_hp, enemy_hp, round, kind, ...}.
+LOGGING_BATTLE: dict = {}
+
+
+def _new_token() -> str:
+    return str(random.randint(100000, 999999))
+
+
+async def deactivate_logging_site(user_id: int):
+    """Инвалидация окна Лесозаготовки при уходе в другое меню."""
+    LOGGING_TOKEN.pop(user_id, None)
+    LOGGING_MSG.pop(user_id, None)
+    LOGGING_CASTING.discard(user_id)
+    LOGGING_BATTLE.pop(user_id, None)
+
+
+def _callback_token(data: str) -> str:
+    """Токен окна из callback_data (последний числовой сегмент)."""
+    for part in reversed(data.split(":")[1:]):
+        if part.isdigit():
+            return part
+    return ""
+
+
+async def _logging_ok(callback) -> bool:
+    """Step-guard: callback должен приходить из текущего окна Лесозаготовки."""
+    token = _callback_token(callback.data)
+    if LOGGING_TOKEN.get(callback.from_user.id) != token:
+        try:
+            await log_activity(callback.from_user.id, "stale_button",
+                               "лесозаготовка: устаревшее окно")
+        except Exception:
+            pass
+        await callback.answer(
+            "⏳ Это окно устарело — открой Лесозаготовку заново "
+            "(Лес → Поляна → 🪓 Лесозаготовка).",
+            show_alert=True,
+        )
+        return False
+    return True
+
+
+def _logging_path() -> str:
+    """Картинка Лесозаготовки: сезонный локальный файл с фолбэками на лес/парк."""
+    path = resolve_image_seasonal(LOGGING_HOME_PHOTO)
+    if not os.path.isfile(path):
+        path = resolve_image_seasonal("city/forest")
+    if not os.path.isfile(path):
+        path = resolve_image_seasonal("city/park")
+    return path
+
+
+async def _paint(callback, *, text: str = None, media_path: str = None,
+                 photo_id: str = None, kb=None):
+    """Единая отрисовка окна в одном сообщении на игрока (как в копи)."""
+    bot = callback.message.bot
+    chat_id = callback.message.chat.id
+    user_id = callback.from_user.id
+    entry = LOGGING_MSG.get(user_id)
+    target_id = entry[1] if entry and entry[0] == chat_id else None
+
+    if target_id is not None:
+        try:
+            if media_path or photo_id:
+                from aiogram.types import InputMediaPhoto
+                await bot.edit_message_media(
+                    chat_id, target_id,
+                    media=InputMediaPhoto(media=photo_id or FSInputFile(media_path), caption=text),
+                    reply_markup=kb,
+                )
+            else:
+                await bot.edit_message_text(chat_id, target_id, text=text, reply_markup=kb)
+            return
+        except Exception:
+            pass
+
+    if target_id is not None and target_id != callback.message.message_id:
+        try:
+            await bot.delete_message(chat_id, target_id)
+        except Exception:
+            pass
+    if media_path or photo_id:
+        sent = await bot.send_photo(chat_id, photo_id or FSInputFile(media_path),
+                                    caption=text, reply_markup=kb)
+    else:
+        sent = await bot.send_message(chat_id, text, reply_markup=kb)
+    LOGGING_MSG[user_id] = (chat_id, sent.message_id)
+
+
+async def _logging_paint(callback, *, text: str, kb=None):
+    """Отрисовка окна на фоне картинки Лесозаготовки."""
+    await _paint(callback, text=text, media_path=_logging_path(), kb=kb)
+
+
+# ───────── чистые функции (тестируются в smoke) ─────────
+
+def logging_wood_chance(axe_rank: int, logging_bonus: int = 0) -> int:
+    """Шанс успешной рубки дерева, % : база + надбавка топора + бонус наград.
+
+    axe_rank — ступень топора (ранг = редкость предмета); линейно повышает
+    шанс на LOGGING_AXE_BONUS_PER_RANK за ступень. Итог не выше LOGGING_CHANCE_CAP.
+    """
+    rank = max(1, int(axe_rank or 1))
+    chance = LOGGING_BASE_CHANCE + LOGGING_AXE_BONUS_PER_RANK * rank + int(logging_bonus or 0)
+    return min(LOGGING_CHANCE_CAP, max(0, chance))
+
+
+def owl_after_hit(hp: int, damage: int, flee_hp: int) -> tuple:
+    """HP Неясыти после удара пилота и флаг «отлетела».
+
+    Неясыть нельзя убить: при HP <= flee_hp она бросает бой и улетает
+    (второй элемент кортежа True — это победа пилота).
+    """
+    hp = int(hp) - max(0, int(damage))
+    return hp, hp <= int(flee_hp)
+
+
+async def _axe_for(user_id: int):
+    """Топор игрока (предмет + наличие в инвентаре) или None."""
+    item = await get_item_by_name(LOGGING_AXE_NAME)
+    if not item:
+        return None
+    inv = await get_inventory_item(user_id, item['id'])
+    if not inv or inv['quantity'] < 1:
+        return None
+    return item
+
+
+async def _snake():
+    """Строка Лесной змеи из БД (или None)."""
+    return await get_source_enemy_by_key("logging", LOGGING_SNAKE_KEY, spot=LOGGING_SPOT)
+
+
+async def _owl():
+    """Строка Неясыти из БД (или None)."""
+    return await get_source_enemy_by_key("logging", LOGGING_OWL_KEY, spot=LOGGING_SPOT)
+
+
+def _snake_fallback() -> dict:
+    """Параметры змеи из конфига — если строки в БД ещё нет (до сида)."""
+    return dict(LOGGING_SNAKE_SEED)
+
+
+def _owl_fallback() -> dict:
+    """Параметры неясыти из конфига — если строки в БД ещё нет (до сида)."""
+    return dict(LOGGING_OWL_SEED)
+
+
+def _enemy_emoji(kind: str) -> str:
+    return OWL_EMOJI if kind == "owl" else SNAKE_EMOJI
+
+
+def _hp_bar(hp: int, hp_max: int) -> str:
+    hp = max(0, int(hp))
+    hp_max = max(1, int(hp_max))
+    filled = round(10 * hp / hp_max)
+    return "█" * filled + "░" * (10 - filled)
+
+
+def _enter_markup(token: str):
+    """Меню входа: рубка деревьев и возврат в лес."""
+    rows = [
+        [InlineKeyboardButton(text="🪓 Рубить дерево", callback_data=f"logsite:chop:{token}")],
+        [InlineKeyboardButton(text="🔙 К лесу", callback_data="logsite:back")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _result_markup(token: str):
+    rows = [
+        [InlineKeyboardButton(text="🪓 Рубить ещё", callback_data=f"logsite:chop:{token}")],
+        [InlineKeyboardButton(text="🔙 К лесу", callback_data="logsite:back")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _battle_markup(token: str):
+    rows = [
+        [InlineKeyboardButton(text="⚔️ Ударить", callback_data=f"logsite:battle:hit:{token}")],
+        [InlineKeyboardButton(text="🏃 Сбежать", callback_data=f"logsite:battle:flee:{token}")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _ap_line(user_id: int) -> str:
+    """Строка остатка ОД для окна Лесозаготовки."""
+    fresh = await get_user(user_id) or {}
+    ap = fresh.get('ap', 0) or 0
+    ap_max = fresh.get('ap_max', ap) or ap
+    line = f"⚡ ОД: {ap}/{ap_max}"
+    if ap < LOGGING_AP_COST:
+        line += f" — на следующий удар топора не хватит ({LOGGING_AP_COST} ОД)"
+    else:
+        line += " — можно рубить ещё"
+    return line
+
+
+@router.callback_query(F.data == "logsite:enter")
+async def logging_menu_cb(callback: CallbackQuery):
+    """Вход в Лесозаготовку (кнопка с Лесной поляны)."""
+    await callback.answer()
+
+    if await user_is_tourist(callback.from_user.id):
+        await callback.message.answer(
+            "⛔ На лесозаготовку не пускают туристов — это работа настоящих пилотов."
+        )
+        return
+
+    if await get_active_run(callback.from_user.id):
+        await callback.message.answer(
+            "⛔ Ты сейчас проходишь подземелье — рубить деревья нельзя.\n"
+            "Выйди из подземелья, а потом возвращайся."
+        )
+        return
+
+    token = _new_token()
+    LOGGING_TOKEN[callback.from_user.id] = token
+
+    axe = await _axe_for(callback.from_user.id)
+    if axe:
+        rank = axe['rarity'] or 1
+        chance = logging_wood_chance(rank)
+        hint = (f"🪓 Топор: {axe['name']} (ступень {rank}, шанс рубки {chance}%) — "
+                "за работу!")
+    else:
+        hint = ("🪓 Без топора сюда не пускают: купи «Топор» "
+                "(магазин → Добыча ресурсов).")
+
+    caption = (
+        "🪓 ЛЕСОЗАГОТОВКА\n\n"
+        "За дальнейшей опушкой, там, где тропа уходит в самый глухой подлесок, "
+        "стоит сторожка лесорубов. Здесь пахнет свежими стружками и хвоей — "
+        "и отсюда редко кто возвращается с пустыми руками. Или вообще "
+        "не возвращается.\n\n"
+        f"{hint}\n\n"
+        f"Рубка дерева стоит {LOGGING_AP_COST} ОД, результат через "
+        f"{LOGGING_RESULT_DELAY[0]}–{LOGGING_RESULT_DELAY[1]} секунд.\n\n"
+        f"{await _ap_line(callback.from_user.id)}"
+    )
+    await _logging_paint(callback, text=caption, kb=_enter_markup(token))
+
+
+@router.callback_query(F.data.regexp(r"^logsite:menu:\d+$"))
+async def logging_menu_again(callback: CallbackQuery):
+    if not await _logging_ok(callback):
+        return
+    await logging_menu_cb(callback)
+
+
+@router.callback_query(F.data == "logsite:back")
+async def logging_back(callback: CallbackQuery):
+    """Возврат из Лесозаготовки в лес (открываем опушку)."""
+    from bot.handlers.forest import forest_menu_cb
+    await deactivate_logging_site(callback.from_user.id)
+    await forest_menu_cb(callback)
+
+
+@router.callback_query(F.data.regexp(r"^logsite:chop:\d+$"))
+async def logging_chop(callback: CallbackQuery):
+    if not await _logging_ok(callback):
+        return
+    user_id = callback.from_user.id
+
+    if await user_is_tourist(user_id):
+        await callback.answer("⛔ На лесозаготовку туристов не пускают.", show_alert=True)
+        return
+    if user_id in LOGGING_CASTING:
+        await callback.answer("Ты уже замахнулся топором — дождись результата!",
+                              show_alert=True)
+        return
+
+    # Лок ставим сразу, до первого await: иначе двойной тап проходит дважды.
+    LOGGING_CASTING.add(user_id)
+    try:
+        if await get_active_run(user_id):
+            await callback.answer("⛔ Ты в подземелье — рубить деревья нельзя!",
+                                  show_alert=True)
+            return
+
+        user = await get_user(user_id)
+        if not user:
+            await callback.answer("Сначала нажми /start", show_alert=True)
+            return
+
+        axe = await _axe_for(user_id)
+        if not axe:
+            await _logging_paint(
+                callback,
+                text="❌ У тебя нет топора. Купи «Топор» в магазине "
+                     "(категория «Добыча ресурсов»).",
+                kb=_enter_markup(LOGGING_TOKEN.get(user_id, "")),
+            )
+            return
+
+        if not await remove_ap(user_id, LOGGING_AP_COST, reason="рубка деревьев"):
+            await _logging_paint(
+                callback,
+                text=f"❌ Не хватает ОД: нужно {LOGGING_AP_COST}, доступно меньше. "
+                     "Восстановление — в новые сутки.",
+                kb=_enter_markup(LOGGING_TOKEN.get(user_id, "")),
+            )
+            return
+
+        delay = random.randint(*LOGGING_RESULT_DELAY)
+        await _logging_paint(
+            callback,
+            text=(f"🪓 Ты размахиваешься топором и рубишь дерево...\n"
+                  f"Результат через {delay} секунд. Не поранься — и не дремли: "
+                  "в подлеске что-то шевелится!"),
+            kb=None,
+        )
+        await log_activity(user_id, "logging", f"Рубка деревьев ({LOGGING_AP_COST} ОД)")
+        await asyncio.sleep(delay)
+
+        # ── встреча со Змеёй: бросок ПЕРЕД находкой бревен ──
+        snake = await _snake()
+        if snake and snake.get('enabled', 1):
+            attempts = await get_logging_snake_attempts(user_id)
+            chance = float(snake.get('chance') or 0)
+            pity = int(snake.get('pity_target') or 0)
+            if enemy_encounter_hit(chance, random.random() * 100, attempts, pity):
+                await reset_logging_snake_counter(user_id)
+                await _start_battle(callback, user_id, snake, "snake")
+                return
+            await set_logging_snake_attempts(user_id, attempts + 1)
+
+        # ── встреча с Неясытью: реже, но опаснее ──
+        owl = await _owl()
+        if owl and owl.get('enabled', 1):
+            attempts = await get_logging_owl_attempts(user_id)
+            chance = float(owl.get('chance') or 0)
+            pity = int(owl.get('pity_target') or 0)
+            if enemy_encounter_hit(chance, random.random() * 100, attempts, pity):
+                await reset_logging_owl_counter(user_id)
+                await _start_battle(callback, user_id, owl, "owl")
+                return
+            await set_logging_owl_attempts(user_id, attempts + 1)
+
+        # ── находка бревен ──
+        rank = axe['rarity'] or 1
+        chance = logging_wood_chance(rank)
+        head = "🪓 ЛЕСОЗАГОТОВКА"
+        ap_block = f"\n\n{await _ap_line(user_id)}"
+        result_kb = _result_markup(LOGGING_TOKEN.get(user_id, ""))
+        if random.random() * 100 < chance:
+            wood = await get_item_by_name(LOGGING_WOOD_NAME)
+            if wood:
+                await add_inventory_item(user_id, wood['id'], 1)
+                await log_activity(user_id, "logging", f"Срубил «{wood['name']}»")
+                sell_line = ""
+                if wood['sell_price'] > 0:
+                    sell_line = (f"\nКазна выкупает бревна по {wood['sell_price']} "
+                                 f"{plural_nordmark(wood['sell_price'])} за штуку.")
+                text = (
+                    f"{head}\n\n"
+                    "Топор звонко вгрызается в древесину — с ровным треском "
+                    "падает свежесрубленное бревно!\n\n"
+                    f"🎒 Добыча: «{wood['name']}» — в инвентарь.{sell_line}"
+                ) + ap_block
+            else:
+                text = (f"{head}\n\n🌲 Срубил что-то, но предмет потерялся. "
+                        "Сообщи хранителю.") + ap_block
+        else:
+            text = (
+                f"{head}\n\n"
+                "Удар за ударом — стружка летит, но сук топор не берёт: сучковатое "
+                "дерево уходито на дрова.\n"
+                "Пробуй ещё!"
+            ) + ap_block
+        await _logging_paint(callback, text=text, kb=result_kb)
+    finally:
+        LOGGING_CASTING.discard(user_id)
+
+
+async def _start_battle(callback: CallbackQuery, user_id: int, enemy: dict, kind: str):
+    """Начало мини-боя со Змеёй или Неясытью."""
+    from utils.combat_model import pilot_combat_stats
+    if not enemy:
+        enemy = _owl_fallback() if kind == "owl" else _snake_fallback()
+    stats = await pilot_combat_stats(user_id)
+    player_hp = stats['hp_max']
+    token = LOGGING_TOKEN.get(user_id, "")
+    enemy_hp = int(enemy.get('hp') or (LOGGING_OWL_SEED if kind == "owl" else LOGGING_SNAKE_SEED)['hp'])
+    LOGGING_BATTLE[user_id] = {
+        "token": token,
+        "kind": kind,
+        "player_hp": player_hp,
+        "player_hp_max": player_hp,
+        "enemy_hp": enemy_hp,
+        "enemy_hp_max": enemy_hp,
+        "enemy_name": enemy.get('name') or ("Неясыть" if kind == "owl" else "Лесная змея"),
+        "emoji": _enemy_emoji(kind),
+        "dodge": float(enemy.get('dodge') or 0),
+        "armor": int(enemy.get('armor') or 0),
+        "dmg_min": int(enemy.get('dmg_min') or (LOGGING_OWL_SEED if kind == "owl" else LOGGING_SNAKE_SEED)['dmg_min']),
+        "dmg_max": int(enemy.get('dmg_max') or (LOGGING_OWL_SEED if kind == "owl" else LOGGING_SNAKE_SEED)['dmg_max']),
+        "loss_ap": int(enemy.get('loss_ap') or (LOGGING_OWL_SEED if kind == "owl" else LOGGING_SNAKE_SEED)['loss_ap']),
+        # Яд змеи: шанс и урон из полей кровотечения (админ правит как кровотечение,
+        # в текстах боя это «яд»).
+        "poison_chance": int(enemy.get('bleed_chance') or 0),
+        "poison_dmg": int(enemy.get('bleed_dmg') or 0),
+        "active_poison": 0,
+        "poison_ticks": 0,
+        "enemy": enemy,
+        "round": 1,
+    }
+    await _show_battle(callback)
+
+
+async def _show_battle(callback: CallbackQuery, prefix: str = ""):
+    battle = LOGGING_BATTLE.get(callback.from_user.id)
+    if not battle:
+        await logging_menu_cb(callback)
+        return
+    player_hp = battle['player_hp']
+    enemy_hp = battle['enemy_hp']
+    enemy_hp_max = battle.get('enemy_hp_max') or battle['enemy_hp']
+    enemy_name = battle.get('enemy_name') or "Враг"
+    emoji = battle.get('emoji') or SNAKE_EMOJI
+    poison = int(battle.get('active_poison') or 0)
+    pticks = int(battle.get('poison_ticks') or 0)
+    poison_line = (f"\n🐍 Яд: −{poison} HP каждый ход (ещё {pticks} х.)."
+                   if poison > 0 else "")
+    if battle.get('kind') == "owl":
+        flavor = ("Из чащи вылетает тяжёлый силуэт — Неясыть! Совиный глаз "
+                  "прикован к тебе.\n\n")
+        tail = "Сову нельзя убить — она сама решит, когда отступить."
+    else:
+        flavor = ("Из-под валуна с шипением выползает длинная тень — Лесная "
+                  "змея!\n\n")
+        tail = "Ударь змею — или уноси ноги."
+    text = (
+        f"{prefix}{emoji} {enemy_name.upper()}\n\n"
+        f"{flavor}"
+        f"{emoji} Враг   HP {_hp_bar(enemy_hp, enemy_hp_max)} {max(0, enemy_hp)}/{enemy_hp_max}\n"
+        f"🧑 Ты     HP {_hp_bar(player_hp, battle['player_hp_max'])} "
+        f"{max(0, player_hp)}/{battle['player_hp_max']}{poison_line}\n\n"
+        f"Ход {battle['round']}. {tail}"
+    )
+    await _paint(callback, text=text, media_path=_logging_path(),
+                 kb=_battle_markup(battle['token']))
+
+
+async def _battle_loot(user_id: int, battle: dict) -> list:
+    """Лут за победу: дропы врага из БД (для змеи — с кэпом один предмет)."""
+    drops = await get_source_enemy_drops("logging", (battle.get('enemy') or {}).get('id'))
+    if not drops:
+        return []
+    picked = roll_enemy_drops(drops)
+    # Кэп один предмет за бой (как за самоцветами мыши): яд/перо/кожа редкие,
+    # множить их случайными проходами не нужно.
+    return picked[:1]
+
+
+@router.callback_query(F.data.regexp(r"^logsite:battle:hit:\d+$"))
+async def logging_battle_hit(callback: CallbackQuery):
+    if not await _logging_ok(callback):
+        return
+    user_id = callback.from_user.id
+    battle = LOGGING_BATTLE.get(user_id)
+    if not battle:
+        await _logging_paint(
+            callback,
+            text="⏳ Бой устарел.",
+            kb=_enter_markup(LOGGING_TOKEN.get(user_id, "")),
+        )
+        return
+    await callback.answer()
+    emoji = battle.get('emoji') or SNAKE_EMOJI
+    kind = battle.get('kind') or "snake"
+    enemy_img = (battle.get('enemy') or {}).get('image')
+
+    # Яд: тикает в начале хода игрока (наложен змеёй на прошлом ходу).
+    poison_note = ""
+    poison = int(battle.get('active_poison') or 0)
+    if poison > 0:
+        battle['player_hp'] = max(0, battle['player_hp'] - poison)
+        pticks = int(battle.get('poison_ticks') or 0) - 1
+        if pticks <= 0:
+            battle['active_poison'] = 0
+            battle['poison_ticks'] = 0
+            poison_note = f"🐍 Яд: −{poison} HP. Яд отпустил!\n\n"
+        else:
+            battle['poison_ticks'] = pticks
+            poison_note = f"🐍 Яд: −{poison} HP (ещё {pticks} х.).\n\n"
+        if battle['player_hp'] <= 0:
+            await _battle_defeat(callback, user_id, battle, prefix=poison_note)
+            return
+
+    # Твой удар: свой урон/крит, враг может увернуться, броня поглощает часть.
+    from utils.combat_model import pilot_combat_stats, roll_pilot_damage, roll_enemy_damage
+    stats = await pilot_combat_stats(user_id)
+    res = roll_pilot_damage(stats, {
+        'dodge': battle.get('dodge') or 0,
+        'armor': battle.get('armor') or 0,
+    })
+    player_hit = res['damage']
+    prev_hp = battle['enemy_hp']
+    enemy_fled = False
+    if kind == "owl":
+        # Неясыть нельзя убить: при низком HP отлетает — это победа.
+        battle['enemy_hp'], enemy_fled = owl_after_hit(
+            prev_hp, player_hit, LOGGING_OWL_FLEE_HP)
+    else:
+        battle['enemy_hp'] = prev_hp - player_hit
+    if res['dodged']:
+        hit_line = "Ты бьёшь — но змея уходит в сторону, словно сквозь тень.\n\n" \
+            if kind == "snake" else \
+            "Ты бьёшь — но неясыть отклоняется в воздухе, хлопая крылом.\n\n"
+    else:
+        extra = ""
+        if res['armor_blocked']:
+            extra += f"🛡️ {res['armor_blocked']} урона поглотила чешуя. " if kind == "snake" \
+                else f"🛡️ {res['armor_blocked']} урона поглотило оперение. "
+        if res['crit']:
+            extra += "💥 crit! "
+        hit_line = f"Ты бьёшь наотмашь: −{player_hit} HP по врагу! {extra}\n\n"
+
+    # ── Неясыть отлетает (победа) ──
+    if kind == "owl" and enemy_fled:
+        LOGGING_BATTLE.pop(user_id, None)
+        await log_activity(user_id, "logging", "Неясыть отлетела (победа над неясытью)")
+        loot = await _battle_loot(user_id, battle)
+        got = []
+        for entry in loot:
+            item = await get_item(int(entry.get('item_id'))) if entry.get('item_id') else None
+            if not item:
+                continue
+            await add_inventory_item(user_id, item['id'], int(entry.get('qty') or 1))
+            await log_activity(user_id, "logging", f"Добыча: {item['name']}")
+            got.append(item['name'])
+        if got:
+            loot_list = "\n".join(f"• «{name}»" for name in got)
+            result_line = (f"Из-под крыла, которым неясыть прикрывала гнездо, "
+                           f"падает:\n{loot_list}\n\nПоложено в инвентарь.")
+        else:
+            result_line = ("Сова улетела, не роняя ничего — на этот раз обошлось "
+                           "без трофеев.")
+        text = (
+            f"{emoji} НЕЯСЫТЬ\n\n"
+            f"{poison_note}{hit_line}"
+            "Раненая неясыть бросает бой: тяжёлый силуэт вздымается над кронами "
+            "и растворяется в сумерках. Ты победил!\n\n"
+            f"{result_line}"
+        )
+        await _paint(callback, text=text, media_path=_logging_path(),
+                     kb=_result_markup(LOGGING_TOKEN.get(user_id, "")))
+        return
+
+    # ── Змея повержена (обычный враг, убиваема) ──
+    if kind == "snake" and battle['enemy_hp'] <= 0:
+        LOGGING_BATTLE.pop(user_id, None)
+        await log_activity(user_id, "logging", "Победил Лесную змею")
+        loot = await _battle_loot(user_id, battle)
+        got = []
+        for entry in loot:
+            item = await get_item(int(entry.get('item_id'))) if entry.get('item_id') else None
+            if not item:
+                continue
+            await add_inventory_item(user_id, item['id'], int(entry.get('qty') or 1))
+            await log_activity(user_id, "logging", f"Добыча: {item['name']}")
+            got.append(item['name'])
+        if got:
+            loot_list = "\n".join(f"• «{name}»" for name in got)
+            result_line = f"Из-под поверженной змеи ты забираешь:\n{loot_list}\n\nПоложено в инвентарь."
+        else:
+            result_line = "Змея повержена, но ничего ценного на этот раз не нашлось."
+        text = (
+            f"{emoji} БОЙ СО ЗМЕЁЙ\n\n"
+            f"{poison_note}{hit_line}"
+            "Змея дёргается и замирает — подлесок снова затихает.\n\n"
+            f"{result_line}"
+        )
+        await _paint(callback, text=text, media_path=_logging_path(),
+                     kb=_result_markup(LOGGING_TOKEN.get(user_id, "")))
+        return
+
+    # Ответный удар врага.
+    eres = roll_enemy_damage(stats, {
+        'dmg_min': battle.get('dmg_min') or LOGGING_SNAKE_SEED['dmg_min'],
+        'dmg_max': battle.get('dmg_max') or LOGGING_SNAKE_SEED['dmg_max'],
+    })
+    enemy_hit = eres['damage']
+    if eres['dodged']:
+        counter_line = "💨 Ты уклоняешься от выпада! (−0 HP)\n\n"
+    else:
+        extra = ""
+        if eres['armor_blocked']:
+            extra += f"🛡️ Броня поглотила {eres['armor_blocked']}. "
+        if eres['crit']:
+            extra += "💥 crit! "
+        counter_line = (f"Змея бьёт: −{enemy_hit} HP. {extra}\n\n" if kind == "snake"
+                        else f"Неясыть бьёт когтем: −{enemy_hit} HP. {extra}\n\n")
+    battle['player_hp'] -= enemy_hit
+    if battle['player_hp'] <= 0:
+        await _battle_defeat(callback, user_id, battle,
+                             prefix=f"{poison_note}{hit_line}{counter_line}")
+        return
+
+    # Наложение эффектов ответным ударом (только если попал).
+    proc_line = ""
+    if not eres['dodged']:
+        if kind == "snake":
+            pc = int(battle.get('poison_chance') or 0)
+            pd = int(battle.get('poison_dmg') or 0)
+            if pc and pd and random.randint(1, 100) <= pc:
+                battle['active_poison'] = pd
+                battle['poison_ticks'] = POISON_TICKS_MAX
+                proc_line = (
+                    f"🐍 Змея впивается клыками — яд! Ощущаешь, как горячая "
+                    f"струя расходится по жилам: −{pd} HP каждый ход "
+                    f"({POISON_TICKS_MAX} х.).\n\n"
+                )
+        elif kind == "owl":
+            if random.randint(1, 100) <= LOGGING_OWL_BLIND_CHANCE:
+                await apply_state_to(user_id, "ослеплён", caused_by=user_id,
+                                     reason="Неясыть")
+                proc_line = (
+                    "🌑 Неясыть хлопает крылом прямо по лицу — глаза защипало, "
+                    "перед глазами темно! ОСЛЕПЛЁН на 30 минут: удары слабее, "
+                    "уклонение почти не работает.\n\n"
+                )
+
+    battle['round'] += 1
+    await _show_battle(callback, prefix=f"{poison_note}{hit_line}{counter_line}{proc_line}")
+
+
+async def _battle_defeat(callback: CallbackQuery, user_id: int, battle: dict,
+                         prefix: str = ""):
+    """Поражение в бою: пилот теряет ОД и приходит в себя у сторожки."""
+    kind = battle.get('kind') or "snake"
+    emoji = battle.get('emoji') or SNAKE_EMOJI
+    LOGGING_BATTLE.pop(user_id, None)
+    removed = await remove_ap_or_floor(user_id, int(battle.get('loss_ap')
+                                                     or LOGGING_SNAKE_SEED['loss_ap']))
+    if kind == "owl":
+        await log_activity(user_id, "logging", f"Проиграл Неясыти (−{removed} ОД)")
+        text = (
+            f"{emoji} НЕЯСЫТЬ\n\n"
+            f"{prefix}"
+            "Когти впиваются в плечо, крыло обрушивает темноту — сознание "
+            "гаснет...\n\n"
+            f"Очнулся ты у сторожки, весь в ссадинах. Неясыть ушла в чащу "
+            f"(−{removed} ОД)."
+        )
+    else:
+        await log_activity(user_id, "logging", f"Проиграл Лесной змее (−{removed} ОД)")
+        text = (
+            f"{emoji} БОЙ СО ЗМЕЁЙ\n\n"
+            f"{prefix}"
+            "Мир плывёт, зубы холодят кровь — сознание гаснет...\n\n"
+            f"Очнулся ты у сторожки, тяжело дыша. Змея уползла в подлесок "
+            f"(−{removed} ОД)."
+        )
+    await _paint(callback, text=text, media_path=_logging_path(),
+                 kb=_result_markup(LOGGING_TOKEN.get(user_id, "")))
+
+
+@router.callback_query(F.data.regexp(r"^logsite:battle:flee:\d+$"))
+async def logging_battle_flee(callback: CallbackQuery):
+    if not await _logging_ok(callback):
+        return
+    user_id = callback.from_user.id
+    battle = LOGGING_BATTLE.pop(user_id, None)
+    await callback.answer()
+    kind = (battle or {}).get('kind') or "snake"
+    if battle:
+        await log_activity(user_id, "logging", "Сбежал из боя на лесозаготовке")
+    await _logging_paint(
+        callback,
+        text=("🏃 Ты отступаешь к сторожке, отмахиваясь от врага.\n\n"
+              "Бой окончен — но рубка-то не закончена! Попробуй ещё раз!")
+        if kind == "snake" else
+        ("🏃 Ты отступаешь к сторожке, не сводя глаз с тяжёлого силуэта над "
+         "кронами.\n\n"
+         "Сова ушла — и хорошо. Рубка-то не закончена! Попробуй ещё раз!"),
+        kb=_result_markup(LOGGING_TOKEN.get(user_id, "")),
+    )

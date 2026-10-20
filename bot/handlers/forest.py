@@ -442,7 +442,11 @@ async def forest_area_switch(callback: CallbackQuery):
 
 
 async def _area_markup(token: str, area: str):
-    """Кнопки зоны: поиск грибов, переход в другую зону, город."""
+    """Кнопки зоны: поиск грибов, переход в другую зону, город.
+
+    На Лесной поляне (v0.37.0) дополнительно открывается Лесозаготовка —
+    вход кнопкой в отдельное окно рубки деревьев.
+    """
     rows = [[InlineKeyboardButton(
         text=f"{FOREST_AREA_EMOJI[area]} Искать грибы",
         callback_data=f"forest:cast:{token}:{area}")]]
@@ -452,6 +456,9 @@ async def _area_markup(token: str, area: str):
             text=(f"{FOREST_AREA_EMOJI[other]} "
                   + ("Углубиться в лес" if other == "clearing" else "К опушке")),
             callback_data=f"forest:area:{token}:{other}")])
+    if area == "clearing":
+        rows.append([InlineKeyboardButton(text="🪓 Лесозаготовка",
+                                          callback_data="logsite:enter")])
     rows.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -479,10 +486,14 @@ async def _result_markup(token: str, area: str = "glade"):
 
 def _simple_markup(token: str, area: str = "glade"):
     emoji = FOREST_AREA_EMOJI.get(area, "🌲")
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [InlineKeyboardButton(text=f"{emoji} Поискать ещё", callback_data=f"forest:cast:{token}:{area}")],
-        [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
-    ])
+    ]
+    if area == "clearing":
+        rows.append([InlineKeyboardButton(text="🪓 Лесозаготовка",
+                                          callback_data="logsite:enter")])
+    rows.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 # ───────── поиск грибов ─────────

@@ -11,7 +11,9 @@ from config import (DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MIN
                     DUNGEON_RUN_STALE_SEC, FOREST_BOAR_SEED, FOREST_WHITE_WOLF_SEED, FOREST_BOAR_HP, MOLLUSK_SEED,
                     MOLLUSK_ITEM_SEEDS, MOLLUSK_ENEMY_DROPS, PILOT_CRIT_MULT,
                     MINE_BAT_SEED, MINE_ITEM_SEEDS, MINE_ENEMY_DROPS, MINE_SHOP_ITEMS,
-                    MINE_PICKAXE_NAME, MINE_ORE_NAME, MINE_BAT_SPOT)
+                    MINE_PICKAXE_NAME, MINE_ORE_NAME, MINE_BAT_SPOT,
+                    LOGGING_SNAKE_SEED, LOGGING_OWL_SEED, LOGGING_ITEM_SEEDS,
+                    LOGGING_ENEMY_DROPS, LOGGING_SHOP_ITEMS)
 from config import get_effective_rank
 
 logger = logging.getLogger(__name__)
@@ -856,6 +858,30 @@ async def init_db():
             enabled INTEGER DEFAULT 1,
             admin_tuned INTEGER DEFAULT 0
         );
+        -- v0.37.0: Лесозаготовка — враги ресурсной локации в лесу
+        -- (Лесная змея и Неясыть). Набор колонок как у mine_enemies.
+        CREATE TABLE IF NOT EXISTS logging_enemies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT,
+            spot TEXT DEFAULT 'logging',
+            name TEXT NOT NULL,
+            hp INTEGER DEFAULT 30,
+            dmg_min INTEGER DEFAULT 5,
+            dmg_max INTEGER DEFAULT 9,
+            dodge INTEGER DEFAULT 0,
+            loss_ap INTEGER DEFAULT 0,
+            bleed_chance INTEGER DEFAULT 0,
+            bleed_dmg INTEGER DEFAULT 0,
+            chance REAL DEFAULT 0,
+            pity_target INTEGER DEFAULT 0,
+            reward_nm INTEGER DEFAULT 0,
+            drops TEXT DEFAULT '[]',
+            description TEXT,
+            image TEXT,
+            photo_key TEXT,
+            enabled INTEGER DEFAULT 1,
+            admin_tuned INTEGER DEFAULT 0
+        );
 
         CREATE TABLE IF NOT EXISTS wall_posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1113,6 +1139,13 @@ async def init_db():
     await _ensure_column(conn, "mine_enemies", "abilities", "TEXT DEFAULT '[]'")
     await _ensure_column(conn, "mine_enemies", "bleed_chance", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "mine_enemies", "bleed_dmg", "INTEGER DEFAULT 0")
+    # v0.37.0: Лесозаготовка — те же внешние колонки для logging_enemies
+    # (яда змеи хватает полей bleed_* из CREATE TABLE, остальное — редактору).
+    await _ensure_column(conn, "logging_enemies", "armor", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "logging_enemies", "dodge_chance", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "logging_enemies", "crit_chance", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "logging_enemies", "crit_mult", "REAL DEFAULT 1.5")
+    await _ensure_column(conn, "logging_enemies", "abilities", "TEXT DEFAULT '[]'")
     # admin_tuned=1 в обычных врагах dungeon не должен мешать: миграции по дропам
     # (ensure_dungeon_enemy_drops / seed_kvp) запускаются только по admin_tuned>0
     await _ensure_column(conn, "dungeon_enemies", "admin_tuned", "INTEGER DEFAULT 0")
@@ -1221,6 +1254,10 @@ async def init_db():
     # v0.31.0: счётчик попыток добычи руды с последней встречи с Летучей мышью
     # (гарантия встречи раз в MINE_BAT_PITY_TARGET попыток).
     await _ensure_column(conn, "users", "mine_attempts_since_bat", "INTEGER DEFAULT 0")
+    # v0.37.0: счётчики попыток рубки Лесозаготовки с последней встречи
+    # со Змеёй и с Неясытью (у каждого врага свой, как у кабана и волка).
+    await _ensure_column(conn, "users", "logging_attempts_since_snake", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "users", "logging_attempts_since_owl", "INTEGER DEFAULT 0")
     # v0.18.16: выкуп грибов казной — суточный лимит НМ на игрока
     # (FOREST_SOLD_DAILY_LIMIT). Счётчик сбрасывается при смене суток МСК.
     await _ensure_column(conn, "users", "forest_sold_day", "TEXT DEFAULT NULL")
@@ -8238,6 +8275,49 @@ async def ensure_mine_enemies():
     return await _ensure_source_enemies("mine", MINE_BAT_SEED)
 
 
+async def ensure_logging_items():
+    """Идемпотентно создаёт предметы Лесозаготовки (топор, бревна, дропы).
+
+    Топор — товар магазина (is_available=1, та же категория mining, что и
+    Кирка). Бревна — ресурс (вне магазина, market_ok=0, без loot_only:
+    их выкупает казна). Дропы змеи и неясыти — прямой лут (loot_only=1,
+    market_ok=0).
+    """
+    conn = await get_db()
+    added = False
+    for (name, desc, price, sell, rare, category, heal) in LOGGING_ITEM_SEEDS:
+        cursor = await conn.execute("SELECT id FROM items WHERE name = ?", (name,))
+        row = await cursor.fetchone()
+        is_drop = name in LOGGING_ENEMY_DROPS
+        in_shop = name in LOGGING_SHOP_ITEMS
+        if row is None:
+            item_id = await add_item(name=name, description=desc, price=price, sell_price=sell,
+                                     rarity=rare, category=category, stock=-1, added_by=0,
+                                     ap_cost=0, damage=0, heal=heal, market_ok=0)
+            await update_item(item_id, is_available=1 if in_shop else 0,
+                              loot_only=1 if is_drop else 0)
+            added = True
+        else:
+            await conn.execute(
+                "UPDATE items SET is_available = ?, market_ok = 0, loot_only = ?, heal = ? "
+                "WHERE id = ?",
+                (1 if in_shop else 0, 1 if is_drop else 0, heal, row['id']))
+    if added:
+        await conn.commit()
+    return added
+
+
+async def ensure_logging_enemies():
+    """Идемпотентно засевает врагов Лесозаготовки (Змея и Неясыть).
+
+    Сначала создаёт предметы добычи, чтобы дропы нашли свои item_id.
+    """
+    await ensure_logging_items()
+    created_snake = await _ensure_source_enemies("logging", LOGGING_SNAKE_SEED)
+    created_owl = await _ensure_source_enemies("logging", LOGGING_OWL_SEED)
+    return created_snake or created_owl
+
+
 async def ensure_forest_mushrooms():
     """Идемпотентно засевает пул грибов леса из FOREST_DEFAULTS.
 
@@ -8699,7 +8779,7 @@ async def get_forest_mushroom_candidates():
 # Враги подземелья остаются в dungeon_enemies — их боевой код не трогаем.
 
 ENEMY_SOURCE_TABLES = {"forest": "forest_enemies", "fishing": "fishing_enemies",
-                       "mine": "mine_enemies"}
+                       "mine": "mine_enemies", "logging": "logging_enemies"}
 
 # Поля врага, которые админ правит через бота.
 SOURCE_ENEMY_FIELDS = ("name", "hp", "dmg_min", "dmg_max", "dodge", "armor",
@@ -9046,6 +9126,52 @@ async def set_mine_bat_attempts(user_id: int, attempts: int):
 async def reset_mine_bat_counter(user_id: int):
     """Сброс счётчика после встречи мыши (начало боя)."""
     await set_mine_bat_attempts(user_id, 0)
+
+
+async def get_logging_snake_attempts(user_id: int) -> int:
+    """Число попыток рубки с последней встречи Змеи (гарантия раз в N)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT logging_attempts_since_snake FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    return int(row['logging_attempts_since_snake']) if row and row['logging_attempts_since_snake'] else 0
+
+
+async def set_logging_snake_attempts(user_id: int, attempts: int):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET logging_attempts_since_snake = ? WHERE user_id = ?",
+        (max(0, int(attempts)), user_id)
+    )
+    await conn.commit()
+
+
+async def reset_logging_snake_counter(user_id: int):
+    """Сброс счётчика после встречи Змеи (начало боя)."""
+    await set_logging_snake_attempts(user_id, 0)
+
+
+async def get_logging_owl_attempts(user_id: int) -> int:
+    """Число попыток рубки с последней встречи Неясыти (гарантия раз в N)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT logging_attempts_since_owl FROM users WHERE user_id = ?", (user_id,))
+    row = await cursor.fetchone()
+    return int(row['logging_attempts_since_owl']) if row and row['logging_attempts_since_owl'] else 0
+
+
+async def set_logging_owl_attempts(user_id: int, attempts: int):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE users SET logging_attempts_since_owl = ? WHERE user_id = ?",
+        (max(0, int(attempts)), user_id)
+    )
+    await conn.commit()
+
+
+async def reset_logging_owl_counter(user_id: int):
+    """Сброс счётчика после встречи Неясыти (начало боя)."""
+    await set_logging_owl_attempts(user_id, 0)
 
 
 async def remove_ap_or_floor(user_id: int, amount: int) -> int:

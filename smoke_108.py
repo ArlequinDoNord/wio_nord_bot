@@ -66,8 +66,8 @@ async def run():
 
     # ── 1. Таблицы и источники ──
     conn = await get_db()
-    check("источники врагов: лес, рыбалка и копи",
-          set(ENEMY_SOURCE_TABLES) == {"forest", "fishing", "mine"})
+    check("источники врагов: лес, рыбалка, копи и лесозаготовка",
+          set(ENEMY_SOURCE_TABLES) == {"forest", "fishing", "mine", "logging"})
     check("forest_enemies — таблица создана",
           bool(await conn.execute("SELECT name FROM sqlite_master "
                                   "WHERE type='table' AND name='forest_enemies'")))

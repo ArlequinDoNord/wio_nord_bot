@@ -72,7 +72,9 @@ async def _show_hall(callback: CallbackQuery):
     clock = datetime.now(MOSCOW_TZ).strftime("%H:%M")
     caption = (
         "🏛️ РАТУША НОРДХАЙМА\n\n"
-        "Здесь собираются пилоты, проходят голосования и решаются вопросы города.\n\n"
+        "Здесь собираются пилоты, проходят голосования и решаются вопросы города.\n"
+        "Участвовать в общественных голосованиях можно только со статусом "
+        "«Пилот 2 класса».\n\n"
         f"🕰 На башенных часах сейчас {clock}."
     )
     voted = await get_user_voted_polls_count(callback.from_user.id)

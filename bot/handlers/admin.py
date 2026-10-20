@@ -8616,6 +8616,7 @@ async def loc_step_photo(message: Message, state: FSMContext):
 ENEMY_SRC_FOREST = 'forest'
 ENEMY_SRC_FISHING = 'fishing'
 ENEMY_SRC_MINE = 'mine'
+ENEMY_SRC_LOGGING = 'logging'
 ENEMY_SRC_DUNGEON = 'dn'
 
 # Человеческие названия источников.
@@ -8624,6 +8625,7 @@ ENEMY_SOURCE_TITLES = {
     ENEMY_SRC_FOREST: "🌲 Лес на окраине",
     ENEMY_SRC_FISHING: "🎣 Рыбалка",
     ENEMY_SRC_MINE: "⛏️ Железная копи",
+    ENEMY_SRC_LOGGING: "🪓 Лесозаготовка",
 }
 
 # Названия водоёмов рыбалки для меню.
@@ -8662,6 +8664,10 @@ def _enemy_loc_title(src: str, loc: str) -> str:
         return ENEMY_SOURCE_TITLES[ENEMY_SRC_DUNGEON]
     if src == ENEMY_SRC_FOREST:
         return ENEMY_SOURCE_TITLES[ENEMY_SRC_FOREST]
+    if src == ENEMY_SRC_MINE:
+        return ENEMY_SOURCE_TITLES[ENEMY_SRC_MINE]
+    if src == ENEMY_SRC_LOGGING:
+        return ENEMY_SOURCE_TITLES[ENEMY_SRC_LOGGING]
     return FISHING_SPOT_TITLES.get(loc, f"🎣 Рыбалка: {loc}")
 
 
@@ -8699,6 +8705,11 @@ async def _admin_enemies_root(callback: CallbackQuery):
     rows.append([InlineKeyboardButton(
         text="⛏️ Железная копи",
         callback_data=_enemy_list_cb(ENEMY_SRC_MINE, 'iron'))])
+    logging_enemies = await get_source_enemies(ENEMY_SRC_LOGGING)
+    lines.append(f"\n🪓 Лесозаготовка — врагов: {len(logging_enemies)}")
+    rows.append([InlineKeyboardButton(
+        text="🪓 Лесозаготовка",
+        callback_data=_enemy_list_cb(ENEMY_SRC_LOGGING, 'logging'))])
     rows.append([InlineKeyboardButton(text="🔙 В админ-панель", callback_data="admin:menu")])
     await callback.message.edit_text("".join(lines),
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
@@ -8826,8 +8837,10 @@ async def _source_enemy_send(target, src: str, loc: str, enemy_id: int, edit: bo
     enabled = enemy.get('enabled', 1)
     bleed_chance = int(enemy.get('bleed_chance') or 0)
     bleed_dmg = int(enemy.get('bleed_dmg') or 0)
-    bleed_line = (f"🩸 Кровотечение: {bleed_chance}% на {bleed_dmg} HP/ход\n"
-                  if bleed_chance else "🩸 Кровотечение: нет\n")
+    # У змеи Лесозаготовки «кровотечение» — это яд: в бое описывается как укус.
+    bleed_label = "🐍 Яд" if src == ENEMY_SRC_LOGGING else "🩸 Кровотечение"
+    bleed_line = (f"{bleed_label}: {bleed_chance}% на {bleed_dmg} HP/ход\n"
+                  if bleed_chance else f"{bleed_label}: нет\n")
     text = (
         f"⚔️ {enemy['name']}\n"
         f"📍 {_enemy_loc_title(src, loc)}\n"
@@ -9337,7 +9350,7 @@ async def admin_enemies_new_done(message: Message, state: FSMContext):
     data = await state.get_data()
     src, loc = data.get('enemy_src'), data.get('enemy_loc')
     enemy_id = await add_source_enemy(
-        src,         spot=(loc if src in (ENEMY_SRC_FISHING, ENEMY_SRC_MINE) else 'forest'),
+        src,         spot=(loc if src in (ENEMY_SRC_FISHING, ENEMY_SRC_MINE, ENEMY_SRC_LOGGING) else 'forest'),
         name=data.get('new_name'), hp=data.get('new_hp'),
         dmg_min=data.get('new_dmg_min'), dmg_max=data.get('new_dmg_max'),
         dodge=data.get('new_dodge'),

@@ -67,6 +67,8 @@
 | `forest_attempts_since_boar` | `INTEGER DEFAULT 0` |
 | `forest_attempts_since_wolf` | `INTEGER DEFAULT 0` |
 | `mine_attempts_since_bat` | `INTEGER DEFAULT 0` |
+| `logging_attempts_since_snake` | `INTEGER DEFAULT 0` |
+| `logging_attempts_since_owl` | `INTEGER DEFAULT 0` |
 | `forest_sold_day` | `TEXT DEFAULT NULL` |
 | `forest_sold_today` | `INTEGER DEFAULT 0` |
 | `market_license_expires` | `TEXT DEFAULT NULL` |
@@ -1095,6 +1097,35 @@
 | `crit_chance` | `INTEGER DEFAULT 0` |
 | `crit_mult` | `REAL DEFAULT 1.5` |
 | `abilities` | `TEXT DEFAULT '[]'` |
+
+## `logging_enemies`
+
+Враги Лесозаготовки (v0.37.0): Лесная змея (`snake`) и Неясыть (`owl`).
+Набор колонок повторяет `mine_enemies`; миграции добавляют те же колонки,
+что и у копи (`armor`, `dodge_chance`, `crit_chance`, `crit_mult`, `abilities`).
+
+| Колонка |
+|---|
+| `id INTEGER PRIMARY KEY` |
+| `key TEXT` |
+| `spot TEXT DEFAULT 'logging'` |
+| `name TEXT NOT NULL` |
+| `hp INTEGER DEFAULT 30` |
+| `dmg_min INTEGER DEFAULT 5` |
+| `dmg_max INTEGER DEFAULT 9` |
+| `dodge INTEGER DEFAULT 0` |
+| `loss_ap INTEGER DEFAULT 0` |
+| `bleed_chance INTEGER DEFAULT 0` |
+| `bleed_dmg INTEGER DEFAULT 0` |
+| `chance REAL DEFAULT 0` |
+| `pity_target INTEGER DEFAULT 0` |
+| `reward_nm INTEGER DEFAULT 0` |
+| `drops TEXT DEFAULT '[]'` |
+| `description TEXT` |
+| `image TEXT` |
+| `photo_key TEXT` |
+| `enabled INTEGER DEFAULT 1` |
+| `admin_tuned INTEGER DEFAULT 0` |
 
 ## `wall_posts`
 

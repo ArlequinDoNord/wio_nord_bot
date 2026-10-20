@@ -31,17 +31,18 @@
 | 18 | `fishing_router` | `bot/handlers/fishing.py` |
 | 19 | `forest_router` | `bot/handlers/forest.py` |
 | 20 | `mine_router` | `bot/handlers/mine.py` |
-| 21 | `storage_router` | `bot/handlers/storage.py` |
-| 22 | `housing_router` | `bot/handlers/housing.py` |
-| 23 | `news_router` | `bot/handlers/news.py` |
-| 24 | `kvp_router` | `bot/handlers/kvp.py` |
-| 25 | `wall_router` | `bot/handlers/wall.py` |
-| 26 | `hq_router` | `bot/handlers/hq.py` |
-| 27 | `clans_router` | `bot/handlers/clans.py` |
-| 28 | `nii_router` | `bot/handlers/nii.py` |
-| 29 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
-| 30 | `duel_router` | `bot/handlers/duel.py` |
-| 31 | `mvd_router` | `bot/handlers/mvd.py` |
+| 21 | `logging_site_router` | `bot/handlers/logging_site.py` |
+| 22 | `storage_router` | `bot/handlers/storage.py` |
+| 23 | `housing_router` | `bot/handlers/housing.py` |
+| 24 | `news_router` | `bot/handlers/news.py` |
+| 25 | `kvp_router` | `bot/handlers/kvp.py` |
+| 26 | `wall_router` | `bot/handlers/wall.py` |
+| 27 | `hq_router` | `bot/handlers/hq.py` |
+| 28 | `clans_router` | `bot/handlers/clans.py` |
+| 29 | `nii_router` | `bot/handlers/nii.py` |
+| 30 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
+| 31 | `duel_router` | `bot/handlers/duel.py` |
+| 32 | `mvd_router` | `bot/handlers/mvd.py` |
 
 ## Сводка по модулям
 
@@ -67,6 +68,7 @@
 | `fishing.py` | Рыбалка на Озере в парке. | `router` | 0 | 4 | `fish:` | — |
 | `forest.py` | Лес на окраине: опушка и лесная поляна, сбор грибов и кабан. | `router` | 0 | 4 | `forest:` | — |
 | `mine.py` | Железная копи: ресурсная локация (v0.31.0). | `router` | 0 | 6 | `mine:` | — |
+| `logging_site.py` | Лесозаготовка: ресурсная локация в лесу (v0.37.0). | `router` | 0 | 6 | `logsite:` | — |
 | `storage.py` | Городские склады: накопление выкупленных казной ресурсов. | `router` | 0 | 1 | `storage:` | — |
 | `housing.py` | Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение. | `router` | 1 | 16 | `housing:` | — |
 | `news.py` | Новости ГосСМИ: лента, публикация, управление выпусками, архив. | `router` | 6 | 9 | `news:` | `NewsWrite`, `NewsEdit` |
@@ -225,6 +227,13 @@
 - Роутеры: `router`
 - Хендлеры: message=0, callback_query=6
 - `F.data.startswith`: `mine:battle:flee:\d+$`, `mine:battle:hit:\d+$`, `mine:deeper:\d+$`, `mine:dig:\d+$`, `mine:level:\d+$`, `mine:menu:\d+$`
+
+### `logging_site.py` — Лесозаготовка: ресурсная локация в лесу (v0.37.0).
+
+- Роутеры: `router`
+- Хендлеры: message=0, callback_query=6
+- `F.data.startswith`: `logsite:battle:flee:\d+$`, `logsite:battle:hit:\d+$`, `logsite:chop:\d+$`, `logsite:menu:\d+$`
+- `F.data ==`: `logsite:back`, `logsite:enter`
 
 ### `storage.py` — Городские склады: накопление выкупленных казной ресурсов.
 
