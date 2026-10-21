@@ -13,7 +13,8 @@ from config import (DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MIN
                     MINE_BAT_SEED, MINE_ITEM_SEEDS, MINE_ENEMY_DROPS, MINE_SHOP_ITEMS,
                     MINE_PICKAXE_NAME, MINE_ORE_NAME, MINE_BAT_SPOT,
                     LOGGING_SNAKE_SEED, LOGGING_OWL_SEED, LOGGING_ITEM_SEEDS,
-                    LOGGING_ENEMY_DROPS, LOGGING_SHOP_ITEMS)
+                    LOGGING_ENEMY_DROPS, LOGGING_SHOP_ITEMS,
+                    LOGGING_MARKET_RESOURCES)
 from config import get_effective_rank
 
 logger = logging.getLogger(__name__)
@@ -8411,7 +8412,8 @@ async def ensure_logging_items():
     Топор — товар магазина (is_available=1, та же категория mining, что и
     Кирка). Бревна — ресурс (вне магазина, market_ok=0, без loot_only:
     их выкупает казна). Дропы змеи и неясыти — прямой лут (loot_only=1,
-    market_ok=0).
+    market_ok=0). Доски и паки дров — ресурсы переработки: казна выкупает
+    их И игроки торгуют между собой (market_ok=1, вне магазина).
     """
     conn = await get_db()
     added = False
@@ -8420,18 +8422,28 @@ async def ensure_logging_items():
         row = await cursor.fetchone()
         is_drop = name in LOGGING_ENEMY_DROPS
         in_shop = name in LOGGING_SHOP_ITEMS
+        marketable = name in LOGGING_MARKET_RESOURCES
+        market_ok = 1 if marketable else 0
         if row is None:
             item_id = await add_item(name=name, description=desc, price=price, sell_price=sell,
                                      rarity=rare, category=category, stock=-1, added_by=0,
-                                     ap_cost=0, damage=0, heal=heal, market_ok=0)
+                                     ap_cost=0, damage=0, heal=heal, market_ok=market_ok)
             await update_item(item_id, is_available=1 if in_shop else 0,
                               loot_only=1 if is_drop else 0)
             added = True
         else:
-            await conn.execute(
-                "UPDATE items SET is_available = ?, market_ok = 0, loot_only = ?, heal = ? "
-                "WHERE id = ?",
-                (1 if in_shop else 0, 1 if is_drop else 0, heal, row['id']))
+            # market_ok обновляем ТОЛЬКО у ресурсов переработки: у прочих
+            # предметов ветки не трогаем, чтобы не затирать админские правки.
+            if marketable:
+                await conn.execute(
+                    "UPDATE items SET is_available = ?, market_ok = 1, loot_only = ?, heal = ? "
+                    "WHERE id = ?",
+                    (1 if in_shop else 0, 1 if is_drop else 0, heal, row['id']))
+            else:
+                await conn.execute(
+                    "UPDATE items SET is_available = ?, market_ok = 0, loot_only = ?, heal = ? "
+                    "WHERE id = ?",
+                    (1 if in_shop else 0, 1 if is_drop else 0, heal, row['id']))
     if added:
         await conn.commit()
     return added

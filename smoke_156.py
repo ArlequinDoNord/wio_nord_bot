@@ -18,6 +18,10 @@
 10. Картинка Лесозаготовки: колонка/слот в картинках леса, сохранение и
     очистка через админ-обработчик, фон окна берёт свою картинку (photo_id)
     иначе — локальный файл.
+11. Переработка брёвен (v0.38.2): предметы «Доска» и «Пак дров» (resource,
+    market_ok=1), чистая логика max_planks/max_firewood, окно переработки,
+    распил брёвен за НМ в казну (топор не нужен), рубка дров за ОД
+    (топор обязателен), проверки нехватки денег и ОД.
 
 Запуск: .venv\\Scripts\\python.exe smoke_156.py
 """
@@ -127,6 +131,9 @@ async def run():
         LOGGING_SNAKE_POISON_CHANCE, LOGGING_SNAKE_POISON_DMG,
         LOGGING_OWL_FLEE_HP, LOGGING_OWL_BLIND_CHANCE,
         LOGGING_ENEMY_DROPS, LOGGING_SHOP_ITEMS,
+        LOGGING_PLANK_NAME, LOGGING_FIREWOOD_NAME, LOGGING_PLANK_YIELD,
+        LOGGING_PLANK_FEE, LOGGING_FIREWOOD_YIELD, LOGGING_FIREWOOD_AP_COST,
+        LOGGING_MARKET_RESOURCES,
     )
     from database.db import (
         init_db, close_db, seed_default_items, ensure_base_statuses,
@@ -138,6 +145,7 @@ async def run():
         get_logging_owl_attempts, set_logging_owl_attempts, reset_logging_owl_counter,
         get_status_by_tag, grant_status,
         get_location_by_key, location_logging_photo, update_location_logging_photo,
+        get_treasury_balance,
     )
     from utils.states import STATE_CONF
     from bot.handlers import logging_site as ls
@@ -179,11 +187,30 @@ async def run():
     # ── 1. Предметы ──
     axe = await get_item_by_name(LOGGING_AXE_NAME)
     wood = await get_item_by_name(LOGGING_WOOD_NAME)
+    plank = await get_item_by_name(LOGGING_PLANK_NAME)
+    firewood = await get_item_by_name(LOGGING_FIREWOOD_NAME)
     skin = await get_item_by_name("Змеиная кожа")
     venom = await get_item_by_name("Змеиный яд")
     feather = await get_item_by_name("Совиное перо")
     check("предмет «Топор» есть", axe is not None)
     check("предмет «Бревна» есть", wood is not None)
+    check("предмет «Доска» есть (v0.38.2)", plank is not None)
+    check("предмет «Пак дров» есть (v0.38.2)", firewood is not None)
+    check("Доска — категория resource", plank and plank["category"] == "resource")
+    check("Пак дров — категория resource", firewood and firewood["category"] == "resource")
+    check("Доска: sell 17 / price 34",
+          plank and plank["sell_price"] == 17 and plank["price"] == 34)
+    check("Пак дров: sell 10 / price 20",
+          firewood and firewood["sell_price"] == 10 and firewood["price"] == 20)
+    check("Доска market_ok=1", plank and plank["market_ok"] == 1)
+    check("Пак дров market_ok=1", firewood and firewood["market_ok"] == 1)
+    check("Доска не в магазине", plank and plank["is_available"] == 0)
+    check("Пак дров не в магазине", firewood and firewood["is_available"] == 0)
+    check("Доска не loot_only", plank and not plank["loot_only"])
+    check("Пак дров не loot_only", firewood and not firewood["loot_only"])
+    check("Доска/Пак дров в LOGGING_MARKET_RESOURCES",
+          LOGGING_PLANK_NAME in LOGGING_MARKET_RESOURCES
+          and LOGGING_FIREWOOD_NAME in LOGGING_MARKET_RESOURCES)
     check("дропы есть (кожа/яд/перо)", all((skin, venom, feather)))
     check("Топор — категория mining", axe and axe["category"] == "mining")
     check("Топор в магазине (is_available=1)", axe and axe["is_available"] == 1)
@@ -215,6 +242,27 @@ async def run():
     check("неясыть: 50−10=40 > 20 → держится", hp == 40 and fled is False)
     hp, fled = ls.owl_after_hit(20, 0, LOGGING_OWL_FLEE_HP)
     check("неясыть: без урона и HP=20 → отлетела", hp == 20 and fled is True)
+
+    # ── 2b. Константы и логика переработки (v0.38.2) ──
+    check("LOGGING_PLANK_YIELD = 3", LOGGING_PLANK_YIELD == 3)
+    check("LOGGING_PLANK_FEE = 15", LOGGING_PLANK_FEE == 15)
+    check("LOGGING_FIREWOOD_YIELD = 3", LOGGING_FIREWOOD_YIELD == 3)
+    check("LOGGING_FIREWOOD_AP_COST = 4", LOGGING_FIREWOOD_AP_COST == 4)
+    check("max_planks: 3 бревна, 100 НМ (fr. 6) → 9 досок",
+          ls.max_planks(3, 100, 15, 3) == 9)
+    check("max_planks: деньги режут (3 бревна, 30 НМ) → 6 досок",
+          ls.max_planks(3, 30, 15, 3) == 6)
+    check("max_planks: брёвна режут (10 бревён, 1000 НМ) → 30 досок",
+          ls.max_planks(10, 1000, 15, 3) == 30)
+    check("max_planks: ровно 15 НМ → 3 доски", ls.max_planks(5, 15, 15, 3) == 3)
+    check("max_planks: нет денег → 0", ls.max_planks(5, 14, 15, 3) == 0)
+    check("max_firewood: 3 бревна, 100 ОД (fr. 4) → 9 паков",
+          ls.max_firewood(3, 100, 4, 3) == 9)
+    check("max_firewood: ОД режут (3 бревна, 9 ОД) → 6 паков",
+          ls.max_firewood(3, 9, 4, 3) == 6)
+    check("max_firewood: брёвна режут (10 бревён, 100 ОД) → 30 паков",
+          ls.max_firewood(10, 100, 4, 3) == 30)
+    check("max_firewood: нет ОД → 0", ls.max_firewood(5, 3, 4, 3) == 0)
 
     # ── 3. Pity-бросок встречи ──
     # Счётчик = число пропущенных попыток: гарантия срабатывает на N-й попытке
@@ -575,6 +623,128 @@ async def run():
             await ls.logging_battle_hit(cb_lose)
     check("поражение: бой завершён", uid7 not in ls.LOGGING_BATTLE)
     check("поражение: −10 ОД", (await get_user(uid7))["ap"] == 40)
+
+    # ── 18b. Переработка брёвен: распил на доски (v0.38.2) ──
+    uid_m = 561010
+    await add_user(uid_m, "miller", "Мельник", "")
+    await update_user(uid_m, ap=60, nordmarks=100)
+    await add_inventory_item(uid_m, wood["id"], 4)
+    tok_m = ls._new_token()
+    ls.LOGGING_TOKEN[uid_m] = tok_m
+    treasury_before = await get_treasury_balance()
+
+    # Окно переработки
+    bot_m = FakeSender()
+    cb_m = FakeCallback(uid_m, data=f"logsite:mill:{tok_m}", bot=bot_m)
+    await ls.logging_mill(cb_m)
+    txt_m, kb_m = last_send(bot_m)
+    check("переработка: окно показывает брёвна", "4" in txt_m)
+    check("переработка: кнопка распила на доски",
+          f"logsite:plank:all:{tok_m}" in markup_callbacks(kb_m))
+    check("переработка: кнопка дров",
+          f"logsite:fire:all:{tok_m}" in markup_callbacks(kb_m))
+
+    # Распил: 4 бревна × 15 = 60 НМ → 12 досок
+    bot_p = FakeSender()
+    cb_p = FakeCallback(uid_m, data=f"logsite:plank:all:{tok_m}", bot=bot_p)
+    await ls.logging_plank(cb_p)
+    txt_p, kb_p = last_send(bot_p)
+    inv_m = await get_inventory(uid_m)
+    planks_m = next((i["quantity"] for i in inv_m if i["id"] == plank["id"]), 0)
+    wood_m = next((i["quantity"] for i in inv_m if i["id"] == wood["id"]), 0)
+    check("распил: 12 досок в инвентаре", planks_m == 12)
+    check("распил: брёвна ушли (0 осталось)", wood_m == 0)
+    check("распил: деньги ушли (100−60=40)",
+          (await get_user(uid_m))["nordmarks"] == 40)
+    check("распил: казна пополнилась на 60",
+          await get_treasury_balance() == treasury_before + 60)
+    check("распил: текст про доски", "Доска" in txt_p or "доск" in txt_p.lower())
+    check("распил: кнопки переработки пропали (нет брёвен)",
+          f"logsite:mill:{tok_m}" not in markup_callbacks(kb_p))
+
+    # Распил без денег: 2 бревна, 10 НМ → 0 досок
+    uid_m2 = 561011
+    await add_user(uid_m2, "miller2", "Мельник2", "")
+    await update_user(uid_m2, ap=60, nordmarks=10)
+    await add_inventory_item(uid_m2, wood["id"], 2)
+    tok_m2 = ls._new_token()
+    ls.LOGGING_TOKEN[uid_m2] = tok_m2
+    bot_p2 = FakeSender()
+    cb_p2 = FakeCallback(uid_m2, data=f"logsite:plank:all:{tok_m2}", bot=bot_p2)
+    await ls.logging_plank(cb_p2)
+    check("распил без денег: отказ с подсказкой",
+          any("Не хватает денег" in (a or "") for a in cb_p2.alerts))
+    inv_m2 = await get_inventory(uid_m2)
+    wood_m2 = next((i["quantity"] for i in inv_m2 if i["id"] == wood["id"]), 0)
+    check("распил без денег: брёвна целы", wood_m2 == 2)
+    check("распил без денег: доски не появились",
+          next((i["quantity"] for i in inv_m2 if i["id"] == plank["id"]), 0) == 0)
+
+    # ── 18c. Переработка брёвен: рубка дров за ОД (v0.38.2) ──
+    uid_f = 561012
+    await add_user(uid_f, "fireman", "Дровосек", "")
+    await update_user(uid_f, ap=20)
+    await add_inventory_item(uid_f, wood["id"], 3)
+    await add_inventory_item(uid_f, axe["id"], 1)  # топор нужен
+    tok_f = ls._new_token()
+    ls.LOGGING_TOKEN[uid_f] = tok_f
+    bot_f = FakeSender()
+    cb_f = FakeCallback(uid_f, data=f"logsite:fire:all:{tok_f}", bot=bot_f)
+    await ls.logging_firewood(cb_f)
+    txt_f, kb_f = last_send(bot_f)
+    inv_f = await get_inventory(uid_f)
+    fw_f = next((i["quantity"] for i in inv_f if i["id"] == firewood["id"]), 0)
+    wood_f = next((i["quantity"] for i in inv_f if i["id"] == wood["id"]), 0)
+    check("дрова: 9 паков получено", fw_f == 9)
+    check("дрова: брёвна ушли (0)", wood_f == 0)
+    check("дрова: ОД −12 (20−12=8)", (await get_user(uid_f))["ap"] == 8)
+    check("дрова: текст про дрова", "дров" in txt_f.lower())
+
+    # Дрова без топора: отказано
+    uid_f2 = 561013
+    await add_user(uid_f2, "fireman2", "Дровосек2", "")
+    await update_user(uid_f2, ap=20)
+    await add_inventory_item(uid_f2, wood["id"], 2)
+    tok_f2 = ls._new_token()
+    ls.LOGGING_TOKEN[uid_f2] = tok_f2
+    bot_f2 = FakeSender()
+    cb_f2 = FakeCallback(uid_f2, data=f"logsite:fire:all:{tok_f2}", bot=bot_f2)
+    await ls.logging_firewood(cb_f2)
+    txt_f2, _ = last_send(bot_f2)
+    check("дрова без топора: подсказка", "топор" in txt_f2.lower())
+    inv_f2 = await get_inventory(uid_f2)
+    check("дрова без топора: брёвна целы",
+          next((i["quantity"] for i in inv_f2 if i["id"] == wood["id"]), 0) == 2)
+
+    # Дрова без ОД: отказано
+    uid_f3 = 561014
+    await add_user(uid_f3, "fireman3", "Дровосек3", "")
+    await update_user(uid_f3, ap=3)
+    await add_inventory_item(uid_f3, wood["id"], 2)
+    await add_inventory_item(uid_f3, axe["id"], 1)
+    tok_f3 = ls._new_token()
+    ls.LOGGING_TOKEN[uid_f3] = tok_f3
+    bot_f3 = FakeSender()
+    cb_f3 = FakeCallback(uid_f3, data=f"logsite:fire:all:{tok_f3}", bot=bot_f3)
+    await ls.logging_firewood(cb_f3)
+    check("дрова без ОД: отказ с подсказкой",
+          any("Не хватает ОД" in (a or "") for a in cb_f3.alerts))
+
+    # Окно переработки без брёвен: нет кнопок распила/дров
+    uid_m3 = 561015
+    await add_user(uid_m3, "miller3", "Мельник3", "")
+    await update_user(uid_m3, ap=60)
+    tok_m3 = ls._new_token()
+    ls.LOGGING_TOKEN[uid_m3] = tok_m3
+    bot_m3 = FakeSender()
+    cb_m3 = FakeCallback(uid_m3, data=f"logsite:mill:{tok_m3}", bot=bot_m3)
+    await ls.logging_mill(cb_m3)
+    txt_m3, kb_m3 = last_send(bot_m3)
+    check("переработка без брёвен: нет кнопок",
+          f"logsite:plank:all:{tok_m3}" not in markup_callbacks(kb_m3)
+          and f"logsite:fire:all:{tok_m3}" not in markup_callbacks(kb_m3))
+    check("переработка без брёвен: подсказка",
+          "нет брёвен" in txt_m3.lower() or "сначала наруби" in txt_m3.lower())
 
     # ── 18. deactivate сбрасывает окно ──
     ls.LOGGING_TOKEN[uid] = "abc"

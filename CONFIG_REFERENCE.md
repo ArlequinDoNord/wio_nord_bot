@@ -7,16 +7,16 @@
 > (комментариям-разделителям `# ── … ──`). Длинные значения усечены `…`;
 > точное значение — в `config.py` по строке из первой колонки.
 
-Всего констант: **195**; разделов: **10**.
+Всего констант: **202**; разделов: **10**.
 
 ## Без раздела
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `VERSION` | `'0.38.0'` |  | :16 |
-| `VERSION_NOTES` | `'Удары врагов теперь хитрее: кровоточи, отравляй, замораживай и оглушай!'` |  | :17 |
-| `PREV_VERSION` | `'0.37.1'` |  | :20 |
-| `PREV_VERSION_NOTES` | `'Картинки загородных уголков теперь поддаются руке мастера.'` |  | :21 |
+| `VERSION` | `'0.38.1'` |  | :16 |
+| `VERSION_NOTES` | `'Хозяйственные заботы севера: кое-что подешевело, кое-что — быстрее.'` |  | :17 |
+| `PREV_VERSION` | `'0.38.0'` |  | :20 |
+| `PREV_VERSION_NOTES` | `'Удары врагов теперь хитрее: кровоточи, отравляй, замораживай и оглушай!'` |  | :21 |
 | `TOURIST_BOOKLET_DESCRIPTION` | `'Печатная карта Нордхайма для гостей города. Просматривай превью городских локаций — и отмечай их в буклете. Собери все 9 и получи награду от командования.'` |  | :26 |
 | `TOURIST_BOOKLET_PRICE` | `1` |  | :29 |
 | `TOURIST_BOOKLET_SELL_PRICE` | `0` | буклет не продаётся (иначе чек-лист теряется) | :30 |
@@ -160,45 +160,52 @@
 | `LOGGING_RESULT_DELAY` | `(7, 15)` | результат рубки через 7–15 секунд | :661 |
 | `LOGGING_AXE_NAME` | `'Топор'` |  | :662 |
 | `LOGGING_WOOD_NAME` | `'Бревна'` |  | :663 |
-| `LOGGING_SNAKE_KEY` | `'snake'` |  | :667 |
-| `LOGGING_OWL_KEY` | `'owl'` |  | :668 |
-| `LOGGING_SPOT` | `'logging'` |  | :669 |
-| `LOGGING_SNAKE_CHANCE` | `8.0` |  | :670 |
-| `LOGGING_SNAKE_PITY_TARGET` | `10` |  | :671 |
-| `LOGGING_OWL_CHANCE` | `3.0` |  | :672 |
-| `LOGGING_OWL_PITY_TARGET` | `24` |  | :673 |
-| `LOGGING_SNAKE_POISON_CHANCE` | `30` |  | :675 |
-| `LOGGING_SNAKE_POISON_DMG` | `2` |  | :676 |
-| `LOGGING_OWL_FLEE_HP` | `20` |  | :680 |
-| `LOGGING_OWL_BLIND_CHANCE` | `30` |  | :681 |
-| `LOGGING_OWL_BLIND_ROUNDS` | `4` |  | :682 |
-| `LOGGING_SNAKE_SEED` | `{'key': LOGGING_SNAKE_KEY, 'spot': LOGGING_SPOT, 'name': 'Лесная змея', 'hp': 30, 'dmg_min': 4, 'dmg_max': 8, 'dodge': 25, 'loss_ap': 10, 'chance': LOGGING_SNAKE_CHANCE, 'pity_target': LOGGING_SNAK…` |  | :686 |
-| `LOGGING_OWL_SEED` | `{'key': LOGGING_OWL_KEY, 'spot': LOGGING_SPOT, 'name': 'Неясыть', 'hp': 90, 'dmg_min': 7, 'dmg_max': 12, 'dodge': 30, 'loss_ap': 15, 'chance': LOGGING_OWL_CHANCE, 'pity_target': LOGGING_OWL_PITY_TA…` |  | :716 |
-| `LOGGING_ITEM_SEEDS` | `[(LOGGING_AXE_NAME, 'Крепкий лесорубский топор: без него к срубам не подпустят. Повышает шанс успешной рубки деревьев.', 300, 150, 1, 'mining', 0), (LOGGING_WOOD_NAME, 'Свежие срубленные брёвна из …` |  | :748 |
-| `LOGGING_SHOP_ITEMS` | `(LOGGING_AXE_NAME,)` |  | :772 |
-| `LOGGING_ENEMY_DROPS` | `('Змеиная кожа', 'Змеиный яд', 'Совиное перо')` |  | :775 |
-| `REPORT_DAILY_LIMIT` | `3` |  | :777 |
-| `REPORT_AUTO_APPROVE_TROOPS` | `100` |  | :778 |
-| `NEWS_PUBLISH_BONUS` | `10` |  | :782 |
-| `NEWS_PUBLISH_CAP` | `28` |  | :783 |
-| `ROLE_SALARY_PAY_DAY` | `28` |  | :786 |
-| `REPORT_DAILY_PAY_CAP` | `4000` |  | :791 |
-| `REPORT_MAX_TROOPS` | `1000000` |  | :792 |
-| `REPORT_MAX_REGION` | `38` | 0 = Столица, 1..38 регионы | :793 |
-| `WALL_TEXT_MAX_LEN` | `40` | лимит символов на одно изречение | :796 |
-| `WALL_FREE_PER_DAY` | `2` | бесплатных сообщений в сутки | :797 |
-| `WALL_PAID_STEPS` | `[(3, 30), (3, 90), (3, 200)]` | далее платные ступени: (кол-во, цена НМ) | :798 |
-| `WALL_REVIEW_TOTAL` | `11` | максимум сообщений в сутки (2 + 3+3+3) | :803 |
-| `WALL_PAGE_SIZE` | `5` | постов на страницу стены | :804 |
-| `WALL_ARCHIVE_PAGE_SIZE` | `8` | записей архива стены на страницу списка | :805 |
-| `REPORT_ARCHIVE_PAGE` | `8` | отчётов на страницу архива МВД и в «Моих отчётах» | :808 |
-| `POLL_MAX_DAYS` | `10` | максимум дней, сколько живёт опрос. Не закрыл | :811 |
-| `POLL_VISIBLE` | `4` | сколько новейших опросов висит в меню голосования. | :814 |
-| `POLL_ARCHIVE_DAYS_PER_PAGE` | `5` | дней (дат) архива опросов на страницу списка | :817 |
-| `POLL_ARCHIVE_PER_DAY` | `6` | опросов под одним заголовком-днём | :818 |
-| `REP_SPEECH_MAX_LEN` | `100` | лимит символов одного обращения | :821 |
-| `REP_SPEECH_PER_DAY` | `2` | обращений в сутки от представителя | :822 |
-| `AUTO_PROMOTE_MAX_TROOPS` | `4040` |  | :827 |
+| `LOGGING_PLANK_NAME` | `'Доска'` |  | :669 |
+| `LOGGING_FIREWOOD_NAME` | `'Пак дров'` |  | :670 |
+| `LOGGING_PLANK_YIELD` | `3` | досок из одного бревна | :671 |
+| `LOGGING_PLANK_FEE` | `15` | НМ за распил одного бревна (в казну) | :672 |
+| `LOGGING_FIREWOOD_YIELD` | `3` | паков дров из одного бревна | :673 |
+| `LOGGING_FIREWOOD_AP_COST` | `4` | ОД за рубку дров из одного бревна | :674 |
+| `LOGGING_SNAKE_KEY` | `'snake'` |  | :678 |
+| `LOGGING_OWL_KEY` | `'owl'` |  | :679 |
+| `LOGGING_SPOT` | `'logging'` |  | :680 |
+| `LOGGING_SNAKE_CHANCE` | `8.0` |  | :681 |
+| `LOGGING_SNAKE_PITY_TARGET` | `10` |  | :682 |
+| `LOGGING_OWL_CHANCE` | `3.0` |  | :683 |
+| `LOGGING_OWL_PITY_TARGET` | `24` |  | :684 |
+| `LOGGING_SNAKE_POISON_CHANCE` | `30` |  | :686 |
+| `LOGGING_SNAKE_POISON_DMG` | `2` |  | :687 |
+| `LOGGING_OWL_FLEE_HP` | `20` |  | :691 |
+| `LOGGING_OWL_BLIND_CHANCE` | `30` |  | :692 |
+| `LOGGING_OWL_BLIND_ROUNDS` | `4` |  | :693 |
+| `LOGGING_SNAKE_SEED` | `{'key': LOGGING_SNAKE_KEY, 'spot': LOGGING_SPOT, 'name': 'Лесная змея', 'hp': 30, 'dmg_min': 4, 'dmg_max': 8, 'dodge': 25, 'loss_ap': 10, 'chance': LOGGING_SNAKE_CHANCE, 'pity_target': LOGGING_SNAK…` |  | :697 |
+| `LOGGING_OWL_SEED` | `{'key': LOGGING_OWL_KEY, 'spot': LOGGING_SPOT, 'name': 'Неясыть', 'hp': 90, 'dmg_min': 7, 'dmg_max': 12, 'dodge': 30, 'loss_ap': 15, 'chance': LOGGING_OWL_CHANCE, 'pity_target': LOGGING_OWL_PITY_TA…` |  | :727 |
+| `LOGGING_ITEM_SEEDS` | `[(LOGGING_AXE_NAME, 'Крепкий лесорубский топор: без него к срубам не подпустят. Повышает шанс успешной рубки деревьев.', 300, 150, 1, 'mining', 0), (LOGGING_WOOD_NAME, 'Свежие срубленные брёвна из …` |  | :759 |
+| `LOGGING_SHOP_ITEMS` | `(LOGGING_AXE_NAME,)` |  | :793 |
+| `LOGGING_ENEMY_DROPS` | `('Змеиная кожа', 'Змеиный яд', 'Совиное перо')` |  | :796 |
+| `LOGGING_MARKET_RESOURCES` | `(LOGGING_PLANK_NAME, LOGGING_FIREWOOD_NAME)` |  | :799 |
+| `REPORT_DAILY_LIMIT` | `3` |  | :801 |
+| `REPORT_AUTO_APPROVE_TROOPS` | `100` |  | :802 |
+| `NEWS_PUBLISH_BONUS` | `10` |  | :806 |
+| `NEWS_PUBLISH_CAP` | `28` |  | :807 |
+| `ROLE_SALARY_PAY_DAY` | `28` |  | :810 |
+| `REPORT_DAILY_PAY_CAP` | `4000` |  | :815 |
+| `REPORT_MAX_TROOPS` | `1000000` |  | :816 |
+| `REPORT_MAX_REGION` | `38` | 0 = Столица, 1..38 регионы | :817 |
+| `WALL_TEXT_MAX_LEN` | `40` | лимит символов на одно изречение | :820 |
+| `WALL_FREE_PER_DAY` | `2` | бесплатных сообщений в сутки | :821 |
+| `WALL_PAID_STEPS` | `[(3, 30), (3, 90), (3, 200)]` | далее платные ступени: (кол-во, цена НМ) | :822 |
+| `WALL_REVIEW_TOTAL` | `11` | максимум сообщений в сутки (2 + 3+3+3) | :827 |
+| `WALL_PAGE_SIZE` | `5` | постов на страницу стены | :828 |
+| `WALL_ARCHIVE_PAGE_SIZE` | `8` | записей архива стены на страницу списка | :829 |
+| `REPORT_ARCHIVE_PAGE` | `8` | отчётов на страницу архива МВД и в «Моих отчётах» | :832 |
+| `POLL_MAX_DAYS` | `10` | максимум дней, сколько живёт опрос. Не закрыл | :835 |
+| `POLL_VISIBLE` | `4` | сколько новейших опросов висит в меню голосования. | :838 |
+| `POLL_ARCHIVE_DAYS_PER_PAGE` | `5` | дней (дат) архива опросов на страницу списка | :841 |
+| `POLL_ARCHIVE_PER_DAY` | `6` | опросов под одним заголовком-днём | :842 |
+| `REP_SPEECH_MAX_LEN` | `100` | лимит символов одного обращения | :845 |
+| `REP_SPEECH_PER_DAY` | `2` | обращений в сутки от представителя | :846 |
+| `AUTO_PROMOTE_MAX_TROOPS` | `4040` |  | :851 |
 
 ## Буклет туриста
 
