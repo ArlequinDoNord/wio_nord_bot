@@ -471,6 +471,7 @@
 | `bleed_chance` | `INTEGER DEFAULT 0` |
 | `bleed_dmg` | `INTEGER DEFAULT 0` |
 | `frostbite_chance` | `INTEGER DEFAULT 0` |
+| `on_hit_effects` | `TEXT DEFAULT NULL` (v0.38.0, JSON-массив эффектов при ударе) |
 
 ## `dungeon_items`
 
@@ -1038,6 +1039,7 @@
 | `crit_chance` | `INTEGER DEFAULT 0` |
 | `crit_mult` | `REAL DEFAULT 1.5` |
 | `abilities` | `TEXT DEFAULT '[]'` |
+| `on_hit_effects` | `TEXT DEFAULT NULL` (v0.38.0, JSON-массив эффектов при ударе) |
 
 ## `fishing_enemies`
 
@@ -1063,6 +1065,12 @@
 | `photo_key TEXT` |
 | `enabled INTEGER DEFAULT 1` |
 | `admin_tuned INTEGER DEFAULT 0` |
+
+**Добавлено миграциями (`_ensure_column`):**
+
+| Колонка | Тип |
+|---|---|
+| `on_hit_effects` | `TEXT DEFAULT NULL` (v0.38.0, JSON-массив эффектов при ударе) |
 
 ## `mine_enemies`
 
@@ -1098,12 +1106,14 @@
 | `crit_chance` | `INTEGER DEFAULT 0` |
 | `crit_mult` | `REAL DEFAULT 1.5` |
 | `abilities` | `TEXT DEFAULT '[]'` |
+| `on_hit_effects` | `TEXT DEFAULT NULL` (v0.38.0, JSON-массив эффектов при ударе) |
 
 ## `logging_enemies`
 
 Враги Лесозаготовки (v0.37.0): Лесная змея (`snake`) и Неясыть (`owl`).
 Набор колонок повторяет `mine_enemies`; миграции добавляют те же колонки,
 что и у копи (`armor`, `dodge_chance`, `crit_chance`, `crit_mult`, `abilities`).
+v0.38.0: колонка `on_hit_effects` (у `snake` — яд, у `owl` — «ослеплён»).
 
 | Колонка |
 |---|

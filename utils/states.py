@@ -85,8 +85,9 @@ STATE_CONF = {
                 "+10% к атаке и уклонению, +5% к лечению, −3% к ценам в магазинах "
                 "на сутки. Пока действует — волк не придёт снова.",
     },
-    # Ослепление Неясытью (Лесозаготовка): временное боевое состояние —
-    # тик по минутам, как у пьянства. Снижает урон («шанс попадания» проявляется
+    # Ослепление Неясытью (Лесозаготовка): боевое состояние, накладывается
+    # врагом в бою на ходы (единая система эффектов при ударе, v0.38.0) и
+    # админом вручную (минуты). Снижает урон («шанс попадания» проявляется
     # как слабые промахивающиеся удары) и уклонение: в темноте и цели мельче,
     # и увернуться труднее.
     "ослеплён": {
@@ -95,13 +96,34 @@ STATE_CONF = {
         "default_minutes": 30,
         "attack_mult": 0.7,          # атака −30%
         "dodge_mult": 0.5,           # уклонение −50%
-        "hint": "Неясыть ослепила тебя: полчаса в темноте — удары мимо цели, "
-                "уклонение едва работает. Пройдёт само.",
+        "enemy_appliable": True,     # враг может наложить в бою (на ходы)
+        "hint": "Неясыть ослепила тебя: в темноте удары мимо цели, "
+                "уклонение едва работает.",
+    },
+    # Оглушение (v0.38.0): враг оглушает на ходы боя — точность и крит
+    # снижаются, уклонение хуже, расходники/зелья недоступны. Крит множится
+    # отдельным полем crit_mult (см. combat_multipliers).
+    "оглушён": {
+        "emoji": "💫",
+        "title": "Оглушён",
+        "default_minutes": 5,        # для ручной выдачи админом
+        "attack_mult": 0.7,          # точность: слабые промахивающиеся удары
+        "crit_mult": 0.5,            # шанс крита −50%
+        "dodge_mult": 0.5,           # уклонение −50%
+        "blocks_consumables": True,  # расходники/зелья запрещены
+        "enemy_appliable": True,     # враг может наложить в бою (на ходы)
+        "hint": "Оглушение: точность, крит и уклонение снижены, "
+                "расходники недоступны.",
     },
 }
 
 # Благословения Белого Волка Севера: пока активно любое — волк не встречается.
 BLESSING_STATES = ("внимание севера", "благословение севера")
+
+# Состояния, которые враг может наложить при ударе (пул пикера в админке
+# редактора врагов, v0.38.0). Новое вражеское состояние = флаг enemy_appliable.
+def enemy_appliable_states() -> list:
+    return [k for k, c in STATE_CONF.items() if c.get("enemy_appliable")]
 
 NORMAL = "нормально"
 
@@ -138,9 +160,28 @@ def combat_multipliers(state_names: list) -> dict:
         conf = STATE_CONF.get(name)
         if not conf:
             continue
-        for key in ("attack_mult", "dodge_mult"):
+        for key in ("attack_mult", "dodge_mult", "crit_mult"):
             if key in conf:
                 result[key] = result.get(key, 1.0) * conf[key]
+    result = {k: v for k, v in result.items() if v != 1.0}
+    return result
+
+
+def battle_state_multipliers(state_keys: list) -> dict:
+    """Боевые модификаторы из СОСТОЯНИЙ, наложенных врагом в бою.
+
+    Те же поля STATE_CONF (attack_mult/dodge_mult/crit_mult), что и у
+    глобальных состояний, но источник — эффекты текущего боя (kind='state'),
+    а не users.state. Перемножаются между собой.
+    """
+    result = {}
+    for key in state_keys:
+        conf = STATE_CONF.get(key)
+        if not conf:
+            continue
+        for mkey in ("attack_mult", "dodge_mult", "crit_mult"):
+            if mkey in conf:
+                result[mkey] = result.get(mkey, 1.0) * conf[mkey]
     result = {k: v for k, v in result.items() if v != 1.0}
     return result
 

@@ -46,6 +46,8 @@ from database.db import (
     get_source_enemies, get_source_enemy, update_source_enemy, delete_source_enemy,
     get_source_enemy_drops, set_source_enemy_drops, add_source_enemy_drop,
     remove_source_enemy_drop, add_source_enemy, get_fishing_spots,
+    get_enemy_on_hit_effects, set_enemy_on_hit_effects,
+    get_source_enemy_on_hit_effects, set_source_enemy_on_hit_effects,
     get_item_by_name,
     create_award, get_all_awards, get_award, delete_award, grant_award,
     update_award, get_user_awards, revoke_award, MAX_CRIT_CHANCE,
@@ -75,7 +77,10 @@ from utils.permissions import (
     can_grant_status, can_view_status_panel, is_citizen_gate_status,
 )
 from utils.helpers import plural_nordmark
-from config import RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES, get_effective_rank, VERSION, DRINK_EFFECT_LABELS, AWARD_MAX_SHOP_DISCOUNT, AWARD_MIN_REPORT_TAX
+from config import (RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES, get_effective_rank,
+                    VERSION, DRINK_EFFECT_LABELS, AWARD_MAX_SHOP_DISCOUNT, AWARD_MIN_REPORT_TAX,
+                    ON_HIT_EFFECTS, ON_HIT_STATE_ROUNDS)
+from utils.states import STATE_CONF, enemy_appliable_states
 from utils.notify import notify, player_display, notify_award, notify_report_praise, notify_user
 
 router = Router()
@@ -222,6 +227,7 @@ class AdminEnemy(StatesGroup):
     """Единый редактор врагов (лес, рыбалка): правка полей, дропы, создание."""
     field = State()          # ввод значения поля карточки
     photo = State()          # загрузка фото врага
+    onhit_value = State()    # ждём «шанс % и параметр» эффекта при ударе
     drop_chance = State()    # шанс дропа, %
     drop_qty = State()       # количество дропа
     c_name = State()         # мастер: название
@@ -280,6 +286,7 @@ class AdminDungeon(StatesGroup):
     enemy_id = State()       # выбранный враг
     enemy_field = State()    # поле врага, которое правим
     enemy_value = State()    # ждём новое значение поля врага
+    onhit_value = State()    # ждём «шанс % и параметр» эффекта при ударе
     drop_chance = State()    # ждём шанс дропа (%, 1–100)
     drop_qty = State()       # ждём кол-во дропа (1 и более)
     drop_item_photo = State()  # ждём фото предмета дропа
@@ -5402,8 +5409,6 @@ ENEMY_FIELD_LABELS = {
     "attack": "⚔️ АТК",
     "dodge": "💨 УКЛ (%)",
     "armor": "🛡 Броня",
-    "poison_chance": "☠️ Шанс яда (%)",
-    "poison_dmg": "☠️ Урон яда (HP/ход)",
     "reward_nm": "💰 Награда (НМ)",
     "drops": "💼 Дропы",
     "description": "📝 Описание",
@@ -5415,8 +5420,6 @@ ENEMY_INPUT_PROMPTS = {
     "attack": "Введи АТК врага (целое число ≥ 0):",
     "dodge": "Введи уклонение врага, % (0–100):",
     "armor": "Введи броню врага — сколько урона она поглощает за удар (целое число ≥ 0):",
-    "poison_chance": "Введи шанс яда при попадании, % (0–100; 0 = нет):",
-    "poison_dmg": "Введи урон яда за ход, HP (целое число ≥ 0):",
     "reward_nm": "Введи награду за победу, Нордмарок (целое число ≥ 0):",
     "drops": "Введи дропы — по одному на строку:\n"
              "Название | шанс % | кол-во\n\n"
@@ -5495,11 +5498,11 @@ async def _enemy_card_send(source, enemy_id: int, edit: bool = False):
     else:
         drop_lines.append("   — дропов нет")
 
-    if enemy.get('poison_chance') and enemy.get('poison_dmg'):
-        poison_line = (f"☠️ Яд: шанс {enemy['poison_chance']}%, "
-                       f"урон −{enemy['poison_dmg']} HP/ход")
+    onhit_effects = await get_enemy_on_hit_effects(enemy_id)
+    if onhit_effects:
+        effects_line = "\n".join(f"• {_onhit_effect_line(e)}" for e in onhit_effects)
     else:
-        poison_line = "☠️ Яда нет"
+        effects_line = "— нет (враг бьёт просто)"
 
     photo_state = "есть" if enemy.get('image') else "нет"
     desc_line = f"📝 {enemy['description']}" if enemy.get('description') else "📝 описания нет"
@@ -5511,7 +5514,7 @@ async def _enemy_card_send(source, enemy_id: int, edit: bool = False):
         f"⚔️ АТК: {enemy['attack']}\n"
         f"💨 УКЛ: {enemy.get('dodge', 0)}%\n"
         f"🛡 Броня: {enemy.get('armor', 0)}\n"
-        f"{poison_line}\n"
+        f"✨ Эффекты при ударе:\n{effects_line}\n"
         f"💰 Награда: {enemy.get('reward_nm', 0)} НМ\n"
         f"🖼 Картинка: {photo_state}\n"
         f"{desc_line}\n"
@@ -5525,8 +5528,7 @@ async def _enemy_card_send(source, enemy_id: int, edit: bool = False):
         [InlineKeyboardButton(text="⚔️ АТК", callback_data="enemy_field:attack")],
         [InlineKeyboardButton(text="💨 УКЛ (%)", callback_data="enemy_field:dodge")],
         [InlineKeyboardButton(text="🛡 Броня", callback_data="enemy_field:armor")],
-        [InlineKeyboardButton(text="☠️ Шанс яда", callback_data="enemy_field:poison_chance")],
-        [InlineKeyboardButton(text="☠️ Урон яда (HP/ход)", callback_data="enemy_field:poison_dmg")],
+        [InlineKeyboardButton(text="✨ Эффекты при ударе", callback_data=f"enemy:effects:{enemy_id}")],
         [InlineKeyboardButton(text="💰 Награда (НМ)", callback_data="enemy_field:reward_nm")],
         [InlineKeyboardButton(text="📝 Описание", callback_data="enemy_field:description")],
         [InlineKeyboardButton(text="🖼 Картинка", callback_data="enemy_field:image")],
@@ -5678,10 +5680,10 @@ async def dungeon_enemy_value(message: Message, state: FSMContext):
         await _enemy_card_send(message, enemy_id)
         return
 
-    if field in ("hp", "attack", "poison_dmg", "reward_nm", "armor"):
+    if field in ("hp", "attack", "reward_nm", "armor"):
         if text.isdigit():
             parsed = int(text)
-    elif field in ("dodge", "poison_chance"):
+    elif field == "dodge":
         if text.isdigit():
             parsed = int(text)
     elif field == "drops":
@@ -5690,9 +5692,9 @@ async def dungeon_enemy_value(message: Message, state: FSMContext):
         else:
             parsed = _parse_drops_text(text)
 
-    if field in ("hp", "attack", "poison_dmg", "reward_nm", "armor"):
+    if field in ("hp", "attack", "reward_nm", "armor"):
         valid = parsed is not None and parsed >= 0
-    elif field in ("dodge", "poison_chance"):
+    elif field == "dodge":
         valid = parsed is not None and 0 <= parsed <= 100
     else:
         valid = parsed is not None
@@ -5709,10 +5711,8 @@ async def dungeon_enemy_value(message: Message, state: FSMContext):
 
     if field == "drops":
         label = f"{len(parsed)} позиция(и)"
-    elif field in ("dodge", "poison_chance"):
+    elif field == "dodge":
         label = f"{parsed}%"
-    elif field == "poison_dmg":
-        label = f"{parsed} HP/ход"
     elif field == "reward_nm":
         label = f"{parsed} НМ"
     else:
@@ -5720,6 +5720,266 @@ async def dungeon_enemy_value(message: Message, state: FSMContext):
 
     await message.answer(f"✅ «{enemy['name']}»: {ENEMY_FIELD_LABELS[field]} = {label}.")
     await _enemy_card_send(message, enemy_id)
+
+
+# ============ АДМИН: ЭФФЕКТЫ ПРИ УДАРЕ ВРАГА (v0.38.0) ============
+# Общий редактор on_hit_effects для карточек данжа и леса/рыбалки:
+# один эффект на kind/state, шанс и параметр вводятся одним сообщением.
+
+def _onhit_options() -> list:
+    """[(item, label)]: item — 'bleed'/'poison'/'frostbite' либо 'state:<key>'."""
+    opts = []
+    for kind in ("bleed", "poison", "frostbite"):
+        conf = ON_HIT_EFFECTS.get(kind)
+        if conf:
+            opts.append((kind, f"{conf['emoji']} {conf['title']}"))
+    for key in enemy_appliable_states():
+        conf = STATE_CONF[key]
+        opts.append((f"state:{key}", f"{conf['emoji']} «{conf['title']}»"))
+    return opts
+
+
+def _onhit_effect_line(eff: dict) -> str:
+    """Одна строка эффекта для карточки/экрана."""
+    kind = eff.get('kind')
+    conf = ON_HIT_EFFECTS.get(kind) or {}
+    chance = int(eff.get('chance') or 0)
+    if kind in ("bleed", "poison"):
+        return (f"{conf.get('emoji', '')} {conf.get('title', kind)}: "
+                f"{chance}% на −{int(eff.get('dmg') or 0)} HP/ход (до конца боя)")
+    if kind == "frostbite":
+        return (f"{conf.get('emoji', '')} {conf.get('title', kind)}: "
+                f"{chance}% на {int(eff.get('rounds') or 4)} х. (лечение −50%)")
+    if kind == "state":
+        key = eff.get('key')
+        sconf = STATE_CONF.get(key) or {}
+        rounds = int(eff.get('rounds') or ON_HIT_STATE_ROUNDS.get(key) or 3)
+        return (f"{sconf.get('emoji', '')} «{sconf.get('title', key)}»: "
+                f"{chance}% на {rounds} х.")
+    return f"{kind}: {chance}%"
+
+
+def _onhit_text(name: str, effects: list, loc_line: str = "") -> str:
+    head = f"✨ ЭФФЕКТЫ ПРИ УДАРЕ — {name}"
+    if loc_line:
+        head += f"\n📍 {loc_line}"
+    body = ("\n".join(f"• {_onhit_effect_line(e)}" for e in effects)
+            if effects else "— эффектов нет (враг бьёт просто).")
+    return (f"{head}\n──────────────\n{body}\n\n"
+            "Нажми эффект, чтобы включить (задать шанс) или выключить.")
+
+
+def _onhit_kb(tog_prefix: str, effects: list, back_cb: str):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    active = set()
+    for e in effects:
+        active.add(f"state:{e['key']}" if e.get('kind') == 'state' else e.get('kind'))
+    rows = []
+    for idx, (item, label) in enumerate(_onhit_options()):
+        mark = "✅ " if item in active else "▫️ "
+        rows.append([InlineKeyboardButton(text=f"{mark}{label}",
+                                          callback_data=f"{tog_prefix}:{idx}")])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=back_cb)])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _onhit_prompt(label: str, item: str) -> str:
+    if item in ("bleed", "poison"):
+        params = ("шанс % и урон за ход (HP), например «30 3».\n"
+                  "Эффект длится до конца боя.")
+    elif item == "frostbite":
+        params = "шанс % и число ходов, например «25 4»."
+    else:
+        key = item.split(":", 1)[1]
+        rounds = ON_HIT_STATE_ROUNDS.get(key) or 3
+        params = f"шанс % и число ходов, например «30 {rounds}»."
+    return f"✨ {label}\nВведи через пробел: {params}"
+
+
+def _onhit_parse_params(text: str, item: str):
+    parts = text.replace(",", " ").split()
+    if len(parts) != 2 or not all(p.isdigit() for p in parts):
+        return None
+    chance, val = int(parts[0]), int(parts[1])
+    if not (0 < chance <= 100) or val <= 0:
+        return None
+    if item in ("bleed", "poison"):
+        return {"kind": item, "chance": chance, "dmg": val}
+    if item == "frostbite":
+        return {"kind": "frostbite", "chance": chance, "rounds": val}
+    key = item.split(":", 1)[1]
+    if key not in STATE_CONF:
+        return None
+    return {"kind": "state", "key": key, "chance": chance, "rounds": val}
+
+
+def _onhit_merge(effects: list, eff: dict) -> list:
+    """Один эффект на kind/state: новый заменяет старый, остальные сохраняются."""
+    target = f"state:{eff['key']}" if eff.get('kind') == 'state' else eff.get('kind')
+    out, replaced = [], False
+    for e in effects:
+        ek = f"state:{e['key']}" if e.get('kind') == 'state' else e.get('kind')
+        if ek == target:
+            out.append(eff)
+            replaced = True
+        else:
+            out.append(e)
+    if not replaced:
+        out.append(eff)
+    return out
+
+
+def _onhit_item_key(e: dict) -> str:
+    return f"state:{e['key']}" if e.get('kind') == 'state' else e.get('kind')
+
+
+@router.callback_query(F.data.regexp(r"^enemy:effects:\d+$"))
+async def dungeon_enemy_effects(callback: CallbackQuery, state: FSMContext):
+    """Экран эффектов при ударе — враг подземелья."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    enemy_id = int(callback.data.split(":")[2])
+    await state.update_data(enemy_id=enemy_id)
+    enemy = await get_enemy(enemy_id)
+    if not enemy:
+        await callback.message.answer("❌ Враг не найден.")
+        return
+    effects = await get_enemy_on_hit_effects(enemy_id)
+    await callback.message.edit_text(
+        _onhit_text(enemy['name'], effects),
+        reply_markup=_onhit_kb(f"enemy:fx:tog:{enemy_id}", effects,
+                               f"dungeon:enemy:{enemy_id}"))
+
+
+@router.callback_query(F.data.regexp(r"^enemy:fx:tog:\d+:\d+$"))
+async def dungeon_enemy_effect_toggle(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    parts = callback.data.split(":")
+    enemy_id, idx = int(parts[3]), int(parts[4])
+    opts = _onhit_options()
+    if idx < 0 or idx >= len(opts):
+        return
+    item, label = opts[idx]
+    effects = await get_enemy_on_hit_effects(enemy_id)
+    if any(_onhit_item_key(e) == item for e in effects):
+        effects = [e for e in effects if _onhit_item_key(e) != item]
+        await set_enemy_on_hit_effects(enemy_id, effects)
+        await log_action(callback.from_user.id, 'edit_enemy', None,
+                         f"enemy_id={enemy_id} onhit remove {item}")
+        enemy = await get_enemy(enemy_id)
+        await callback.message.edit_text(
+            _onhit_text(enemy['name'] if enemy else "?", effects),
+            reply_markup=_onhit_kb(f"enemy:fx:tog:{enemy_id}", effects,
+                                   f"dungeon:enemy:{enemy_id}"))
+        return
+    await state.update_data(onhit_scope="dungeon", onhit_enemy_id=enemy_id,
+                            onhit_item=item)
+    await state.set_state(AdminDungeon.onhit_value)
+    await callback.message.answer(_onhit_prompt(label, item),
+                                  reply_markup=cancel_keyboard())
+
+
+@router.message(AdminDungeon.onhit_value)
+async def dungeon_enemy_onhit_value(message: Message, state: FSMContext):
+    data = await state.get_data()
+    enemy_id = data.get('onhit_enemy_id') or data.get('enemy_id')
+    item = data.get('onhit_item')
+    enemy = await get_enemy(enemy_id) if enemy_id else None
+    if not enemy or not item:
+        await state.clear()
+        await message.answer("❌ Враг не найден. Открой карточку заново.")
+        return
+    eff = _onhit_parse_params((message.text or "").strip(), item)
+    if not eff:
+        await state.clear()
+        await message.answer("❌ Неверный формат. Начни заново с карточки врага.")
+        return
+    effects = _onhit_merge(await get_enemy_on_hit_effects(enemy_id), eff)
+    await set_enemy_on_hit_effects(enemy_id, effects)
+    await log_action(message.from_user.id, 'edit_enemy', None,
+                     f"enemy_id={enemy_id} onhit {json.dumps(eff, ensure_ascii=False)}")
+    await state.clear()
+    await message.answer(f"✅ «{enemy['name']}»: {_onhit_effect_line(eff)}")
+    await _enemy_card_send(message, enemy_id)
+
+
+@router.callback_query(F.data.regexp(r"^enemy:fx:src:"))
+async def source_enemy_effects(callback: CallbackQuery, state: FSMContext):
+    """Экран эффектов при ударе — враг леса/копи/рыбалки."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    parts = callback.data.split(":", 5)
+    src, loc, enemy_id = parts[3], parts[4], int(parts[5])
+    await state.update_data(enemy_src=src, enemy_loc=loc, enemy_id=enemy_id)
+    enemy = await get_source_enemy(src, enemy_id)
+    if not enemy:
+        await callback.message.answer("❌ Враг не найден.")
+        return
+    effects = await get_source_enemy_on_hit_effects(src, enemy_id)
+    await callback.message.edit_text(
+        _onhit_text(enemy['name'], effects, loc_line=_enemy_loc_title(src, loc)),
+        reply_markup=_onhit_kb(f"enemy:fxt:{src}:{loc}:{enemy_id}", effects,
+                               f"enemy:card:{src}:{loc}:{enemy_id}"))
+
+
+@router.callback_query(F.data.regexp(r"^enemy:fxt:"))
+async def source_enemy_effect_toggle(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    parts = callback.data.split(":")
+    # enemy:fxt:{src}:{loc}:{enemy_id}:{idx}
+    src, loc, enemy_id, idx = parts[2], parts[3], int(parts[4]), int(parts[5])
+    opts = _onhit_options()
+    if idx < 0 or idx >= len(opts):
+        return
+    item, label = opts[idx]
+    effects = await get_source_enemy_on_hit_effects(src, enemy_id)
+    if any(_onhit_item_key(e) == item for e in effects):
+        effects = [e for e in effects if _onhit_item_key(e) != item]
+        await set_source_enemy_on_hit_effects(src, enemy_id, effects)
+        await log_action(callback.from_user.id, 'edit_enemy', None,
+                         f"src={src} id={enemy_id} onhit remove {item}")
+        enemy = await get_source_enemy(src, enemy_id)
+        await callback.message.edit_text(
+            _onhit_text(enemy['name'] if enemy else "?", effects,
+                        loc_line=_enemy_loc_title(src, loc)),
+            reply_markup=_onhit_kb(f"enemy:fxt:{src}:{loc}:{enemy_id}", effects,
+                                   f"enemy:card:{src}:{loc}:{enemy_id}"))
+        return
+    await state.update_data(onhit_scope="source", enemy_src=src, enemy_loc=loc,
+                            onhit_enemy_id=enemy_id, onhit_item=item)
+    await state.set_state(AdminEnemy.onhit_value)
+    await callback.message.answer(_onhit_prompt(label, item),
+                                  reply_markup=cancel_keyboard())
+
+
+@router.message(AdminEnemy.onhit_value)
+async def source_enemy_onhit_value(message: Message, state: FSMContext):
+    data = await state.get_data()
+    src, loc = data.get('enemy_src'), data.get('enemy_loc')
+    enemy_id, item = data.get('onhit_enemy_id'), data.get('onhit_item')
+    enemy = await get_source_enemy(src, enemy_id) if src and enemy_id else None
+    if not enemy or not item:
+        await state.clear()
+        await message.answer("❌ Враг не найден. Открой карточку заново.")
+        return
+    eff = _onhit_parse_params((message.text or "").strip(), item)
+    if not eff:
+        await state.clear()
+        await message.answer("❌ Неверный формат. Начни заново с карточки врага.")
+        return
+    effects = _onhit_merge(await get_source_enemy_on_hit_effects(src, enemy_id), eff)
+    await set_source_enemy_on_hit_effects(src, enemy_id, effects)
+    await log_action(message.from_user.id, 'edit_enemy', None,
+                     f"src={src} id={enemy_id} onhit {json.dumps(eff, ensure_ascii=False)}")
+    await state.clear()
+    await message.answer(f"✅ «{enemy['name']}»: {_onhit_effect_line(eff)}")
+    await _source_enemy_send(message, src, loc, enemy_id, edit=False)
 
 
 # ============ АДМИН: МЕНЕДЖЕР ДРОПОВ ВРАГА ============
@@ -8709,8 +8969,6 @@ ENEMY_FIELDS = {
     "dmg_max": ("🗡 Урон (макс)", "Введи максимальный урон врага (целое ≥ 0):", "int"),
     "dodge": ("💨 Уклонение", "Введи шанс уклонения врага, % (0–100):", "percent"),
     "armor": ("🛡 Броня", "Введи броню врага — сколько урона она поглощает за удар (целое ≥ 0):", "int"),
-    "bleed_chance": ("🩸 Шанс кровотечения", "Введи шанс наложить кровотечение при ударе, % (0–100; 0 = не кровоточит):", "percent"),
-    "bleed_dmg": ("🩸 Урон кровотечения", "Введи урон кровотечения в HP за ход (целое ≥ 0):", "int"),
     "chance": ("🎲 Шанс встречи", "Введи шанс встречи с врагом на одну попытку, % (0–100; 0 = выключить):", "percent"),
     "pity_target": ("🧿 Гарантия", "Введи, через сколько попыток встреча гарантирована (0 = без гарантии):", "int"),
     "loss_ap": ("⚡ Потеря ОД", "Введи, сколько ОД теряет игрок при поражении (целое ≥ 0):", "int"),
@@ -8901,12 +9159,12 @@ async def _source_enemy_send(target, src: str, loc: str, enemy_id: int, edit: bo
         return
     drops = await get_source_enemy_drops(src, enemy_id)
     enabled = enemy.get('enabled', 1)
-    bleed_chance = int(enemy.get('bleed_chance') or 0)
-    bleed_dmg = int(enemy.get('bleed_dmg') or 0)
-    # У змеи Лесозаготовки «кровотечение» — это яд: в бое описывается как укус.
-    bleed_label = "🐍 Яд" if src == ENEMY_SRC_LOGGING else "🩸 Кровотечение"
-    bleed_line = (f"{bleed_label}: {bleed_chance}% на {bleed_dmg} HP/ход\n"
-                  if bleed_chance else f"{bleed_label}: нет\n")
+    onhit_effects = await get_source_enemy_on_hit_effects(src, enemy_id)
+    if onhit_effects:
+        effects_line = ("\n".join(f"• {_onhit_effect_line(e)}" for e in onhit_effects)
+                        + "\n")
+    else:
+        effects_line = "— нет (враг бьёт просто)\n"
     text = (
         f"⚔️ {enemy['name']}\n"
         f"📍 {_enemy_loc_title(src, loc)}\n"
@@ -8916,7 +9174,7 @@ async def _source_enemy_send(target, src: str, loc: str, enemy_id: int, edit: bo
         f"🗡 Урон: {enemy['dmg_min']}–{enemy['dmg_max']}\n"
         f"💨 Уклонение: {enemy['dodge']}%\n"
         f"🛡 Броня: {int(enemy.get('armor') or 0)}\n"
-        f"{bleed_line}"
+        f"✨ Эффекты при ударе:\n{effects_line}"
         f"🎲 Шанс встречи: {enemy['chance']}% (за попытку)\n"
         f"🧿 Гарантия: раз в {enemy['pity_target'] or '—'} попыток\n"
         f"⚡ Потеря ОД при поражении: {enemy['loss_ap']}\n"
@@ -8933,8 +9191,7 @@ async def _source_enemy_send(target, src: str, loc: str, enemy_id: int, edit: bo
         [_B(text="🗡 Урон макс", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:dmg_max"),
          _B(text="💨 Уклонение", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:dodge")],
         [_B(text="🛡 Броня", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:armor")],
-        [_B(text="🩸 Шанс кровот.", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:bleed_chance"),
-         _B(text="🩸 Урон кровот.", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:bleed_dmg")],
+        [_B(text="✨ Эффекты при ударе", callback_data=f"enemy:fx:src:{src}:{loc}:{enemy_id}")],
         [_B(text="🎲 Шанс встречи", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:chance"),
          _B(text="🧿 Гарантия", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:pity_target")],
         [_B(text="⚡ Потеря ОД", callback_data=f"enemy:fld:{src}:{loc}:{enemy_id}:loss_ap"),

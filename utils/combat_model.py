@@ -14,11 +14,17 @@ import random
 
 from config import PILOT_BASE_HP, PILOT_CRIT_MULT, PILOT_NO_WEAPON_DMG
 from utils.combat import roll_dodge
-from utils.states import combat_multipliers, get_state_info
+from utils.states import (battle_state_multipliers, combat_multipliers,
+                          get_state_info)
 
 
-async def pilot_combat_stats(user_id: int) -> dict:
-    """Боевые характеристики пилота: урон, крит, уклонение, броня, макс. HP."""
+async def pilot_combat_stats(user_id: int, battle_states: list = None) -> dict:
+    """Боевые характеристики пилота: урон, крит, уклонение, броня, макс. HP.
+
+    battle_states — ключи состояний, наложенных врагом в ТЕКУЩЕМ бою (единая
+    система эффектов при ударе, v0.38.0): их модификаторы (attack/dodge/crit)
+    перемножаются с модификаторами глобальных состояний игрока.
+    """
     from database.db import (get_award_bonus, get_pilot_base_damage,
                              get_player_armor_with_bonus, get_player_crit_mult,
                              get_player_dodge, get_player_weapon_damage,
@@ -27,15 +33,19 @@ async def pilot_combat_stats(user_id: int) -> dict:
     weapon_damage = await get_player_weapon_damage(user_id)
     state_info = await get_state_info(user_id)
     mult = combat_multipliers(state_info['names'])
+    if battle_states:
+        for key, val in battle_state_multipliers(battle_states).items():
+            mult[key] = mult.get(key, 1.0) * val
     bonus = await get_award_bonus(user_id)
     base_lo, base_hi = await get_pilot_base_damage(user_id)
 
     attack_mult = mult.get('attack_mult', 1.0) * (1.0 + bonus['attack'] / 100.0)
+    crit_chance = (await get_player_crit_chance(user_id)) * mult.get('crit_mult', 1.0)
     return {
         'base_dmg': (int(base_lo), int(base_hi)),
         'weapon_damage': weapon_damage,
         'attack_mult': attack_mult,
-        'crit_chance': await get_player_crit_chance(user_id),
+        'crit_chance': crit_chance,
         'crit_mult': await get_player_crit_mult(user_id),
         'dodge': await get_player_dodge(user_id, mult.get('dodge_mult', 1.0)),
         'armor': await get_player_armor_with_bonus(user_id),

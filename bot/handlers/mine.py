@@ -32,6 +32,7 @@ from database.db import (
 from utils.helpers import (
     resolve_image_seasonal, season_key, time_of_day_key, plural_nordmark,
 )
+from utils import onhit
 from config import (
     MINE_AP_COST, MINE_BASE_CHANCE, MINE_PICKAXE_BONUS_PER_RANK, MINE_CHANCE_CAP,
     MINE_RESULT_DELAY, MINE_PICKAXE_NAME, MINE_ORE_NAME, MINE_GEM_CAP,
@@ -67,6 +68,7 @@ async def deactivate_mine(user_id: int):
     MINE_MSG.pop(user_id, None)
     MINE_CASTING.discard(user_id)
     MINE_BATTLE.pop(user_id, None)
+    onhit.unregister(user_id)
 
 
 def _callback_token(data: str) -> str:
@@ -524,9 +526,11 @@ async def _start_battle(callback: CallbackQuery, user_id: int, bat: dict):
         "dmg_min": int(bat.get('dmg_min') or MINE_BAT_SEED['dmg_min']),
         "dmg_max": int(bat.get('dmg_max') or MINE_BAT_SEED['dmg_max']),
         "loss_ap": int(bat.get('loss_ap') or MINE_BAT_SEED['loss_ap']),
+        "on_hit_effects": onhit.parse_on_hit_effects(bat.get('on_hit_effects')),
         "bat": bat,
         "round": 1,
     }
+    onhit.register(user_id, MINE_BATTLE[user_id])
     await _show_battle(callback)
 
 
@@ -540,12 +544,14 @@ async def _show_battle(callback: CallbackQuery, prefix: str = ""):
     bat_hp_max = battle.get('bat_hp_max') or battle['bat_hp']
     bat_name = battle.get('bat_name') or "Летучая мышь"
     emoji = battle.get('emoji') or MINE_BAT_EMOJI
+    effects_line = onhit.active_line(battle)
+    effects_line = f"\n{effects_line}" if effects_line else ""
     text = (
         f"{prefix}{emoji} {bat_name.upper()}\n\n"
         "Из темноты штольни с писком выныривает крылатая тень — Летучая мышь!\n\n"
         f"{emoji} Мышь   HP {_hp_bar(bat_hp, bat_hp_max)} {max(0, bat_hp)}/{bat_hp_max}\n"
         f"🧑 Ты     HP {_hp_bar(player_hp, battle['player_hp_max'])} "
-        f"{max(0, player_hp)}/{battle['player_hp_max']}\n\n"
+        f"{max(0, player_hp)}/{battle['player_hp_max']}{effects_line}\n\n"
         f"Ход {battle['round']}. Бей — или уходи подобру-поздорову."
     )
     await _enemy_paint(callback, text=text, kb=_battle_markup(battle['token']),
@@ -578,9 +584,31 @@ async def mine_battle_hit(callback: CallbackQuery):
     emoji = battle.get('emoji') or MINE_BAT_EMOJI
     bat_img = (battle.get('bat') or {}).get('image')
 
+    # DoT (яд/кровотечение, единая система v0.38.0): тикает в начале хода игрока.
+    dot_dmg, dot_lines = onhit.tick_dots(battle)
+    dot_note = "".join(f"{line}\n\n" for line in dot_lines)
+    if dot_dmg:
+        battle['player_hp'] = max(0, battle['player_hp'] - dot_dmg)
+        if battle['player_hp'] <= 0:
+            MINE_BATTLE.pop(user_id, None)
+            onhit.unregister(user_id)
+            removed = await remove_ap_or_floor(user_id, int(battle.get('loss_ap') or MINE_BAT_SEED['loss_ap']))
+            await log_activity(user_id, "mine", f"Проиграл Летучей мыши (−{removed} ОД)")
+            text = (
+                f"{emoji} БОЙ С МЫШЬЮ\n\n"
+                f"{dot_note}"
+                "В глазах темнеет, писк крыльев всё дальше...\n\n"
+                f"Ты приходишь в себя на полу штольни. Мышь улетела — но добычу "
+                f"придётся начать заново (−{removed} ОД)."
+            )
+            await _enemy_paint(callback, text=text,
+                               kb=_result_markup(MINE_TOKEN.get(user_id, "")),
+                               image=bat_img)
+            return
+
     # Твой удар: свой урон/крит, мышь может увернуться, броня поглощает часть.
     from utils.combat_model import pilot_combat_stats, roll_pilot_damage, roll_enemy_damage
-    stats = await pilot_combat_stats(user_id)
+    stats = await pilot_combat_stats(user_id, onhit.battle_state_keys(battle))
     res = roll_pilot_damage(stats, {
         'dodge': battle.get('dodge') or 0,
         'armor': battle.get('armor') or 0,
@@ -599,6 +627,7 @@ async def mine_battle_hit(callback: CallbackQuery):
 
     if battle['bat_hp'] <= 0:
         MINE_BATTLE.pop(user_id, None)
+        onhit.unregister(user_id)
         await log_activity(user_id, "mine", "Победил Летучую мышь в копи")
         loot = await _battle_loot(user_id, battle)
         got = []
@@ -616,7 +645,7 @@ async def mine_battle_hit(callback: CallbackQuery):
             result_line = "Мышь повержена, но ничего ценного в ней не нашлось."
         text = (
             f"{emoji} БОЙ С МЫШЬЮ\n\n"
-            f"{hit_line}"
+            f"{dot_note}{hit_line}"
             "Мышь с писком падает на каменный пол — в штольне снова тихо.\n\n"
             f"{result_line}"
         )
@@ -643,11 +672,12 @@ async def mine_battle_hit(callback: CallbackQuery):
     battle['player_hp'] -= bat_hit
     if battle['player_hp'] <= 0:
         MINE_BATTLE.pop(user_id, None)
+        onhit.unregister(user_id)
         removed = await remove_ap_or_floor(user_id, int(battle.get('loss_ap') or MINE_BAT_SEED['loss_ap']))
         await log_activity(user_id, "mine", f"Проиграл Летучей мыши (−{removed} ОД)")
         text = (
             f"{emoji} БОЙ С МЫШЬЮ\n\n"
-            f"{hit_line}{counter_line}"
+            f"{dot_note}{hit_line}{counter_line}"
             "В глазах темнеет, писк крыльев всё дальше...\n\n"
             f"Ты приходишь в себя на полу штольни. Мышь улетела — но добычу "
             f"придётся начать заново (−{removed} ОД)."
@@ -657,8 +687,20 @@ async def mine_battle_hit(callback: CallbackQuery):
                            image=bat_img)
         return
 
+    # Эффекты при ударе (v0.38.0): единая система — on_hit_effects мыши.
+    proc_line = ""
+    if not eres['dodged']:
+        procs = onhit.roll_procs(battle.get('on_hit_effects') or [])
+        if procs:
+            proc_lines = onhit.apply_procs(user_id, battle, procs,
+                                           enemy_name=battle.get('bat_name') or "Мышь")
+            proc_line = "".join(f"{line}\n\n" for line in proc_lines)
+
+    # Спад срочных эффектов (оглушение/ослепление и т.д.) в конце хода.
+    round_note = "".join(f"{line}\n\n" for line in onhit.end_round(battle))
+
     battle['round'] += 1
-    await _show_battle(callback, prefix=f"{hit_line}{counter_line}")
+    await _show_battle(callback, prefix=f"{dot_note}{hit_line}{counter_line}{proc_line}{round_note}")
 
 
 @router.callback_query(F.data.regexp(r"^mine:battle:flee:\d+$"))
@@ -667,6 +709,7 @@ async def mine_battle_flee(callback: CallbackQuery):
         return
     user_id = callback.from_user.id
     battle = MINE_BATTLE.pop(user_id, None)
+    onhit.unregister(user_id)
     await callback.answer()
     if battle:
         await log_activity(user_id, "mine", "Сбежал из боя с Летучей мышью")

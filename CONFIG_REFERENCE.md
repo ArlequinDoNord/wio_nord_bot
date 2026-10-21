@@ -7,16 +7,16 @@
 > (комментариям-разделителям `# ── … ──`). Длинные значения усечены `…`;
 > точное значение — в `config.py` по строке из первой колонки.
 
-Всего констант: **191**; разделов: **10**.
+Всего констант: **195**; разделов: **10**.
 
 ## Без раздела
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `VERSION` | `'0.37.0'` |  | :16 |
-| `VERSION_NOTES` | `'Лесозаготовка: рубка деревьев за топором, бой со Змеёй и Неясытью (слепота), Ратуша напоминает про статус для голосования.'` |  | :17 |
-| `PREV_VERSION` | `'0.36.0'` |  | :20 |
-| `PREV_VERSION_NOTES` | `'Рынок: своё объявление можно снять с продажи, свои объявления в ленте помечены «👤 твоё».'` |  | :21 |
+| `VERSION` | `'0.37.1'` |  | :16 |
+| `VERSION_NOTES` | `'Картинки загородных уголков теперь поддаются руке мастера.'` |  | :17 |
+| `PREV_VERSION` | `'0.37.0'` |  | :20 |
+| `PREV_VERSION_NOTES` | `'Продолжаем осваивать загородные территории и работаем над внутренней безопасностью...'` |  | :21 |
 | `TOURIST_BOOKLET_DESCRIPTION` | `'Печатная карта Нордхайма для гостей города. Просматривай превью городских локаций — и отмечай их в буклете. Собери все 9 и получи награду от командования.'` |  | :26 |
 | `TOURIST_BOOKLET_PRICE` | `1` |  | :29 |
 | `TOURIST_BOOKLET_SELL_PRICE` | `0` | буклет не продаётся (иначе чек-лист теряется) | :30 |
@@ -129,72 +129,76 @@
 | `FOREST_WHITE_WOLF_SMALL_BLESSING` | `'внимание севера'` |  | :419 |
 | `FOREST_WHITE_WOLF_BIG_BLESSING` | `'благословение севера'` |  | :420 |
 | `FOREST_BOAR_SEED` | `{'key': 'boar', 'spot': 'forest', 'name': 'Дикий кабан', 'hp': FOREST_BOAR_HP, 'dmg_min': FOREST_BOAR_DMG[0], 'dmg_max': FOREST_BOAR_DMG[1], 'dodge': FOREST_BOAR_DODGE, 'loss_ap': FOREST_BOAR_LOSS_…` |  | :427 |
-| `FOREST_WHITE_WOLF_SEED` | `{'key': 'white_wolf', 'spot': 'forest', 'name': 'Белый Волк Севера', 'hp': FOREST_WHITE_WOLF_HP, 'dmg_min': FOREST_WHITE_WOLF_DMG[0], 'dmg_max': FOREST_WHITE_WOLF_DMG[1], 'dodge': FOREST_WHITE_WOLF…` |  | :454 |
-| `MOLLUSK_SEED` | `{'key': 'mollusk', 'spot': 'reservoir', 'name': 'Мутировавший моллюск', 'hp': 24, 'dmg_min': 5, 'dmg_max': 9, 'dodge': 20, 'loss_ap': 12, 'chance': 4, 'pity_target': 0, 'bleed_chance': 0, 'bleed_dm…` |  | :479 |
-| `MOLLUSK_ITEM_SEEDS` | `[('Мясо моллюска', 'Плотное мясо мутировавшего моллюска. В сыром виде есть нельзя — прожарь на кухне.', 120, 60, 3, 'resource', 0), ('Жемчужина', 'Редчайшая жемчужина из раковины мутировавшего молл…` |  | :504 |
-| `MOLLUSK_ENEMY_DROPS` | `('Мясо моллюска', 'Жемчужина')` |  | :519 |
-| `MINE_AP_COST` | `15` | стоимость одной попытки добычи | :528 |
-| `MINE_BASE_CHANCE` | `30` | базовый шанс успеха без бонуса кирки | :529 |
-| `MINE_PICKAXE_BONUS_PER_RANK` | `15` | надбавка к шансу за ступень кирки (ранг 1 → +15%) | :530 |
-| `MINE_CHANCE_CAP` | `90` | потолок шанса успеха | :531 |
-| `MINE_RESULT_DELAY` | `(7, 15)` | результат добычи через 7–15 секунд | :532 |
-| `MINE_REQUIRED_STATUS` | `'pilot1'` | вход в копь — с «Пилота 1 класса» | :533 |
-| `MINE_GEM_CAP` | `1` | из самоцветов за бой выпадает не больше одного | :534 |
-| `MINE_PICKAXE_NAME` | `'Кирка'` |  | :535 |
-| `MINE_ORE_NAME` | `'Железная руда'` |  | :536 |
-| `MINE_BAT_KEY` | `'bat'` |  | :539 |
-| `MINE_BAT_SPOT` | `'iron'` |  | :540 |
-| `MINE_BAT_CHANCE` | `7.0` |  | :541 |
-| `MINE_BAT_PITY_TARGET` | `12` |  | :542 |
-| `MINE_BAT_SEED` | `{'key': MINE_BAT_KEY, 'spot': MINE_BAT_SPOT, 'name': 'Летучая мышь', 'hp': 22, 'dmg_min': 3, 'dmg_max': 7, 'dodge': 35, 'loss_ap': 15, 'chance': MINE_BAT_CHANCE, 'pity_target': MINE_BAT_PITY_TARGET…` |  | :547 |
-| `MINE_ITEM_SEEDS` | `[(MINE_PICKAXE_NAME, 'Простая кирка шахтёра: без неё в штольню не сунешься, а с ней порода поддаётся легче. Повышает шанс успешной добычи руды.', 300, 150, 1, 'mining', 0), (MINE_ORE_NAME, 'Кусок ж…` |  | :575 |
-| `MINE_SHOP_ITEMS` | `(MINE_PICKAXE_NAME,)` |  | :596 |
-| `MINE_ENEMY_DROPS` | `('Изумруд', 'Рубин', 'Сапфир')` |  | :599 |
-| `LOGGING_AP_COST` | `15` | стоимость одной попытки рубки | :605 |
-| `LOGGING_BASE_CHANCE` | `35` | базовый шанс успеха без бонуса топора | :606 |
-| `LOGGING_AXE_BONUS_PER_RANK` | `15` | надбавка к шансу за ступень топора | :607 |
-| `LOGGING_CHANCE_CAP` | `90` | потолок шанса успеха | :608 |
-| `LOGGING_RESULT_DELAY` | `(7, 15)` | результат рубки через 7–15 секунд | :609 |
-| `LOGGING_AXE_NAME` | `'Топор'` |  | :610 |
-| `LOGGING_WOOD_NAME` | `'Бревна'` |  | :611 |
-| `LOGGING_SNAKE_KEY` | `'snake'` |  | :615 |
-| `LOGGING_OWL_KEY` | `'owl'` |  | :616 |
-| `LOGGING_SPOT` | `'logging'` |  | :617 |
-| `LOGGING_SNAKE_CHANCE` | `8.0` |  | :618 |
-| `LOGGING_SNAKE_PITY_TARGET` | `10` |  | :619 |
-| `LOGGING_OWL_CHANCE` | `3.0` |  | :620 |
-| `LOGGING_OWL_PITY_TARGET` | `24` |  | :621 |
-| `LOGGING_SNAKE_POISON_CHANCE` | `30` |  | :623 |
-| `LOGGING_SNAKE_POISON_DMG` | `2` |  | :624 |
-| `LOGGING_OWL_FLEE_HP` | `20` |  | :628 |
-| `LOGGING_OWL_BLIND_CHANCE` | `30` |  | :629 |
-| `LOGGING_SNAKE_SEED` | `{'key': LOGGING_SNAKE_KEY, 'spot': LOGGING_SPOT, 'name': 'Лесная змея', 'hp': 30, 'dmg_min': 4, 'dmg_max': 8, 'dodge': 25, 'loss_ap': 10, 'chance': LOGGING_SNAKE_CHANCE, 'pity_target': LOGGING_SNAK…` |  | :633 |
-| `LOGGING_OWL_SEED` | `{'key': LOGGING_OWL_KEY, 'spot': LOGGING_SPOT, 'name': 'Неясыть', 'hp': 90, 'dmg_min': 7, 'dmg_max': 12, 'dodge': 30, 'loss_ap': 15, 'chance': LOGGING_OWL_CHANCE, 'pity_target': LOGGING_OWL_PITY_TA…` |  | :660 |
-| `LOGGING_ITEM_SEEDS` | `[(LOGGING_AXE_NAME, 'Крепкий лесорубский топор: без него к срубам не подпустят. Повышает шанс успешной рубки деревьев.', 300, 150, 1, 'mining', 0), (LOGGING_WOOD_NAME, 'Свежие срубленные брёвна из …` |  | :689 |
-| `LOGGING_SHOP_ITEMS` | `(LOGGING_AXE_NAME,)` |  | :713 |
-| `LOGGING_ENEMY_DROPS` | `('Змеиная кожа', 'Змеиный яд', 'Совиное перо')` |  | :716 |
-| `REPORT_DAILY_LIMIT` | `3` |  | :718 |
-| `REPORT_AUTO_APPROVE_TROOPS` | `100` |  | :719 |
-| `NEWS_PUBLISH_BONUS` | `10` |  | :723 |
-| `NEWS_PUBLISH_CAP` | `28` |  | :724 |
-| `ROLE_SALARY_PAY_DAY` | `28` |  | :727 |
-| `REPORT_DAILY_PAY_CAP` | `4000` |  | :732 |
-| `REPORT_MAX_TROOPS` | `1000000` |  | :733 |
-| `REPORT_MAX_REGION` | `38` | 0 = Столица, 1..38 регионы | :734 |
-| `WALL_TEXT_MAX_LEN` | `40` | лимит символов на одно изречение | :737 |
-| `WALL_FREE_PER_DAY` | `2` | бесплатных сообщений в сутки | :738 |
-| `WALL_PAID_STEPS` | `[(3, 30), (3, 90), (3, 200)]` | далее платные ступени: (кол-во, цена НМ) | :739 |
-| `WALL_REVIEW_TOTAL` | `11` | максимум сообщений в сутки (2 + 3+3+3) | :744 |
-| `WALL_PAGE_SIZE` | `5` | постов на страницу стены | :745 |
-| `WALL_ARCHIVE_PAGE_SIZE` | `8` | записей архива стены на страницу списка | :746 |
-| `REPORT_ARCHIVE_PAGE` | `8` | отчётов на страницу архива МВД и в «Моих отчётах» | :749 |
-| `POLL_MAX_DAYS` | `10` | максимум дней, сколько живёт опрос. Не закрыл | :752 |
-| `POLL_VISIBLE` | `4` | сколько новейших опросов висит в меню голосования. | :755 |
-| `POLL_ARCHIVE_DAYS_PER_PAGE` | `5` | дней (дат) архива опросов на страницу списка | :758 |
-| `POLL_ARCHIVE_PER_DAY` | `6` | опросов под одним заголовком-днём | :759 |
-| `REP_SPEECH_MAX_LEN` | `100` | лимит символов одного обращения | :762 |
-| `REP_SPEECH_PER_DAY` | `2` | обращений в сутки от представителя | :763 |
-| `AUTO_PROMOTE_MAX_TROOPS` | `4040` |  | :768 |
+| `FOREST_WHITE_WOLF_SEED` | `{'key': 'white_wolf', 'spot': 'forest', 'name': 'Белый Волк Севера', 'hp': FOREST_WHITE_WOLF_HP, 'dmg_min': FOREST_WHITE_WOLF_DMG[0], 'dmg_max': FOREST_WHITE_WOLF_DMG[1], 'dodge': FOREST_WHITE_WOLF…` |  | :452 |
+| `MOLLUSK_SEED` | `{'key': 'mollusk', 'spot': 'reservoir', 'name': 'Мутировавший моллюск', 'hp': 24, 'dmg_min': 5, 'dmg_max': 9, 'dodge': 20, 'loss_ap': 12, 'chance': 4, 'pity_target': 0, 'reward_nm': 0, 'photo_key':…` |  | :480 |
+| `MOLLUSK_ITEM_SEEDS` | `[('Мясо моллюска', 'Плотное мясо мутировавшего моллюска. В сыром виде есть нельзя — прожарь на кухне.', 120, 60, 3, 'resource', 0), ('Жемчужина', 'Редчайшая жемчужина из раковины мутировавшего молл…` |  | :503 |
+| `MOLLUSK_ENEMY_DROPS` | `('Мясо моллюска', 'Жемчужина')` |  | :518 |
+| `MINE_AP_COST` | `15` | стоимость одной попытки добычи | :527 |
+| `MINE_BASE_CHANCE` | `30` | базовый шанс успеха без бонуса кирки | :528 |
+| `MINE_PICKAXE_BONUS_PER_RANK` | `15` | надбавка к шансу за ступень кирки (ранг 1 → +15%) | :529 |
+| `MINE_CHANCE_CAP` | `90` | потолок шанса успеха | :530 |
+| `MINE_RESULT_DELAY` | `(7, 15)` | результат добычи через 7–15 секунд | :531 |
+| `MINE_REQUIRED_STATUS` | `'pilot1'` | вход в копь — с «Пилота 1 класса» | :532 |
+| `MINE_GEM_CAP` | `1` | из самоцветов за бой выпадает не больше одного | :533 |
+| `MINE_PICKAXE_NAME` | `'Кирка'` |  | :534 |
+| `MINE_ORE_NAME` | `'Железная руда'` |  | :535 |
+| `MINE_BAT_KEY` | `'bat'` |  | :538 |
+| `MINE_BAT_SPOT` | `'iron'` |  | :539 |
+| `MINE_BAT_CHANCE` | `7.0` |  | :540 |
+| `MINE_BAT_PITY_TARGET` | `12` |  | :541 |
+| `MINE_BAT_SEED` | `{'key': MINE_BAT_KEY, 'spot': MINE_BAT_SPOT, 'name': 'Летучая мышь', 'hp': 22, 'dmg_min': 3, 'dmg_max': 7, 'dodge': 35, 'loss_ap': 15, 'chance': MINE_BAT_CHANCE, 'pity_target': MINE_BAT_PITY_TARGET…` |  | :546 |
+| `MINE_ITEM_SEEDS` | `[(MINE_PICKAXE_NAME, 'Простая кирка шахтёра: без неё в штольню не сунешься, а с ней порода поддаётся легче. Повышает шанс успешной добычи руды.', 300, 150, 1, 'mining', 0), (MINE_ORE_NAME, 'Кусок ж…` |  | :572 |
+| `MINE_SHOP_ITEMS` | `(MINE_PICKAXE_NAME,)` |  | :593 |
+| `MINE_ENEMY_DROPS` | `('Изумруд', 'Рубин', 'Сапфир')` |  | :596 |
+| `ON_HIT_EFFECTS` | `{'bleed': {'emoji': '🩸', 'title': 'Кровотечение', 'until_battle_end': True, 'params': (('chance', 'Шанс наложить, %', 'percent'), ('dmg', 'Урон, HP за ход', 'int')), 'hint': 'Раны сочатся кровью ка…` |  | :605 |
+| `ON_HIT_KIND_ORDER` | `('bleed', 'poison', 'frostbite', 'state')` |  | :649 |
+| `ON_HIT_STATE_ROUNDS` | `{'оглушён': 3, 'ослеплён': 4}` |  | :651 |
+| `LOGGING_AP_COST` | `15` | стоимость одной попытки рубки | :657 |
+| `LOGGING_BASE_CHANCE` | `35` | базовый шанс успеха без бонуса топора | :658 |
+| `LOGGING_AXE_BONUS_PER_RANK` | `15` | надбавка к шансу за ступень топора | :659 |
+| `LOGGING_CHANCE_CAP` | `90` | потолок шанса успеха | :660 |
+| `LOGGING_RESULT_DELAY` | `(7, 15)` | результат рубки через 7–15 секунд | :661 |
+| `LOGGING_AXE_NAME` | `'Топор'` |  | :662 |
+| `LOGGING_WOOD_NAME` | `'Бревна'` |  | :663 |
+| `LOGGING_SNAKE_KEY` | `'snake'` |  | :667 |
+| `LOGGING_OWL_KEY` | `'owl'` |  | :668 |
+| `LOGGING_SPOT` | `'logging'` |  | :669 |
+| `LOGGING_SNAKE_CHANCE` | `8.0` |  | :670 |
+| `LOGGING_SNAKE_PITY_TARGET` | `10` |  | :671 |
+| `LOGGING_OWL_CHANCE` | `3.0` |  | :672 |
+| `LOGGING_OWL_PITY_TARGET` | `24` |  | :673 |
+| `LOGGING_SNAKE_POISON_CHANCE` | `30` |  | :675 |
+| `LOGGING_SNAKE_POISON_DMG` | `2` |  | :676 |
+| `LOGGING_OWL_FLEE_HP` | `20` |  | :680 |
+| `LOGGING_OWL_BLIND_CHANCE` | `30` |  | :681 |
+| `LOGGING_OWL_BLIND_ROUNDS` | `4` |  | :682 |
+| `LOGGING_SNAKE_SEED` | `{'key': LOGGING_SNAKE_KEY, 'spot': LOGGING_SPOT, 'name': 'Лесная змея', 'hp': 30, 'dmg_min': 4, 'dmg_max': 8, 'dodge': 25, 'loss_ap': 10, 'chance': LOGGING_SNAKE_CHANCE, 'pity_target': LOGGING_SNAK…` |  | :686 |
+| `LOGGING_OWL_SEED` | `{'key': LOGGING_OWL_KEY, 'spot': LOGGING_SPOT, 'name': 'Неясыть', 'hp': 90, 'dmg_min': 7, 'dmg_max': 12, 'dodge': 30, 'loss_ap': 15, 'chance': LOGGING_OWL_CHANCE, 'pity_target': LOGGING_OWL_PITY_TA…` |  | :716 |
+| `LOGGING_ITEM_SEEDS` | `[(LOGGING_AXE_NAME, 'Крепкий лесорубский топор: без него к срубам не подпустят. Повышает шанс успешной рубки деревьев.', 300, 150, 1, 'mining', 0), (LOGGING_WOOD_NAME, 'Свежие срубленные брёвна из …` |  | :748 |
+| `LOGGING_SHOP_ITEMS` | `(LOGGING_AXE_NAME,)` |  | :772 |
+| `LOGGING_ENEMY_DROPS` | `('Змеиная кожа', 'Змеиный яд', 'Совиное перо')` |  | :775 |
+| `REPORT_DAILY_LIMIT` | `3` |  | :777 |
+| `REPORT_AUTO_APPROVE_TROOPS` | `100` |  | :778 |
+| `NEWS_PUBLISH_BONUS` | `10` |  | :782 |
+| `NEWS_PUBLISH_CAP` | `28` |  | :783 |
+| `ROLE_SALARY_PAY_DAY` | `28` |  | :786 |
+| `REPORT_DAILY_PAY_CAP` | `4000` |  | :791 |
+| `REPORT_MAX_TROOPS` | `1000000` |  | :792 |
+| `REPORT_MAX_REGION` | `38` | 0 = Столица, 1..38 регионы | :793 |
+| `WALL_TEXT_MAX_LEN` | `40` | лимит символов на одно изречение | :796 |
+| `WALL_FREE_PER_DAY` | `2` | бесплатных сообщений в сутки | :797 |
+| `WALL_PAID_STEPS` | `[(3, 30), (3, 90), (3, 200)]` | далее платные ступени: (кол-во, цена НМ) | :798 |
+| `WALL_REVIEW_TOTAL` | `11` | максимум сообщений в сутки (2 + 3+3+3) | :803 |
+| `WALL_PAGE_SIZE` | `5` | постов на страницу стены | :804 |
+| `WALL_ARCHIVE_PAGE_SIZE` | `8` | записей архива стены на страницу списка | :805 |
+| `REPORT_ARCHIVE_PAGE` | `8` | отчётов на страницу архива МВД и в «Моих отчётах» | :808 |
+| `POLL_MAX_DAYS` | `10` | максимум дней, сколько живёт опрос. Не закрыл | :811 |
+| `POLL_VISIBLE` | `4` | сколько новейших опросов висит в меню голосования. | :814 |
+| `POLL_ARCHIVE_DAYS_PER_PAGE` | `5` | дней (дат) архива опросов на страницу списка | :817 |
+| `POLL_ARCHIVE_PER_DAY` | `6` | опросов под одним заголовком-днём | :818 |
+| `REP_SPEECH_MAX_LEN` | `100` | лимит символов одного обращения | :821 |
+| `REP_SPEECH_PER_DAY` | `2` | обращений в сутки от представителя | :822 |
+| `AUTO_PROMOTE_MAX_TROOPS` | `4040` |  | :827 |
 
 ## Буклет туриста
 

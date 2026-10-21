@@ -13,13 +13,13 @@ load_dotenv()
 # При бампе: пишем в VERSION_NOTES только то, что изменилось в этом деплое, а
 # прошлые сдвигаем в PREV_VERSION / PREV_VERSION_NOTES. Больше двух записей не
 # держим — иначе приветствие превращается в простыню из трёх-четырёх деплоев.
-VERSION = "0.37.1"
-VERSION_NOTES = ("Картинки загородных уголков "
-                 "теперь поддаются руке мастера.")
+VERSION = "0.38.0"
+VERSION_NOTES = ("Удары врагов теперь хитрее: кровоточи, "
+                 "отравляй, замораживай и оглушай!")
 
-PREV_VERSION = "0.37.0"
-PREV_VERSION_NOTES = ("Продолжаем осваивать загородные территории "
-                      "и работаем над внутренней безопасностью...")
+PREV_VERSION = "0.37.1"
+PREV_VERSION_NOTES = ("Картинки загородных уголков "
+                      "теперь поддаются руке мастера.")
 
 # ── Буклет туриста ─────────────────────────────────────────────────────────────
 TOURIST_BOOKLET_NAME = "Буклет туриста"
@@ -435,8 +435,6 @@ FOREST_BOAR_SEED = {
     "loss_ap": FOREST_BOAR_LOSS_AP,
     "chance": FOREST_BOAR_CHANCE,
     "pity_target": FOREST_BOAR_PITY_TARGET,
-    "bleed_chance": 0,
-    "bleed_dmg": 0,
     "reward_nm": 0,
     "photo_key": "city/forest_boar",
     "description": (
@@ -462,8 +460,11 @@ FOREST_WHITE_WOLF_SEED = {
     "loss_ap": FOREST_WHITE_WOLF_LOSS_AP,
     "chance": FOREST_WHITE_WOLF_CHANCE,
     "pity_target": FOREST_WHITE_WOLF_PITY_TARGET,
-    "bleed_chance": FOREST_WHITE_WOLF_BLEED_CHANCE,
-    "bleed_dmg": FOREST_WHITE_WOLF_BLEED_DMG,
+    # v0.38.0: кровотечение — общий эффект при ударе (единая система).
+    "on_hit_effects": [
+        {"kind": "bleed", "chance": FOREST_WHITE_WOLF_BLEED_CHANCE,
+         "dmg": FOREST_WHITE_WOLF_BLEED_DMG},
+    ],
     "reward_nm": 0,
     "photo_key": "city/forest_white_wolf",
     "description": (
@@ -487,8 +488,6 @@ MOLLUSK_SEED = {
     "loss_ap": 12,
     "chance": 4,
     "pity_target": 0,
-    "bleed_chance": 0,
-    "bleed_dmg": 0,
     "reward_nm": 0,
     "photo_key": "city/mollusk",
     "description": (
@@ -555,8 +554,6 @@ MINE_BAT_SEED = {
     "loss_ap": 15,
     "chance": MINE_BAT_CHANCE,
     "pity_target": MINE_BAT_PITY_TARGET,
-    "bleed_chance": 0,
-    "bleed_dmg": 0,
     "reward_nm": 0,
     "photo_key": "city/mine_bat",
     "description": (
@@ -598,6 +595,61 @@ MINE_SHOP_ITEMS = (MINE_PICKAXE_NAME,)
 # с пометкой loot_only. Самоцветы пока не участвуют в крафте.
 MINE_ENEMY_DROPS = ("Изумруд", "Рубин", "Сапфир")
 
+# --- v0.38.0: Единая система эффектов при ударе врага ---
+# У каждого врага (лес/рыбалка/копь/лесозаготовка/данж) может быть список
+# эффектов on_hit_effects (JSON-массив на строке врага), которые накладываются
+# при каждом попавшем ответном ударе. Длительность — в ходах боя: кровотечение
+# и яд живут до конца боя, остальное — заданное число ходов (тикает в конце
+# хода). Расширение: новая запись здесь + (если нужен свой тик) ветка в
+# utils/onhit.py.
+ON_HIT_EFFECTS = {
+    "bleed": {
+        "emoji": "🩸",
+        "title": "Кровотечение",
+        "until_battle_end": True,
+        "params": (
+            ("chance", "Шанс наложить, %", "percent"),
+            ("dmg", "Урон, HP за ход", "int"),
+        ),
+        "hint": "Раны сочатся кровью каждый ход до конца боя.",
+    },
+    "poison": {
+        "emoji": "☠️",
+        "title": "Отравление",
+        "until_battle_end": True,
+        "params": (
+            ("chance", "Шанс наложить, %", "percent"),
+            ("dmg", "Урон, HP за ход", "int"),
+        ),
+        "hint": "Яд сочится каждый ход до конца боя.",
+    },
+    "frostbite": {
+        "emoji": "💧",
+        "title": "Обморожение",
+        "until_battle_end": False,
+        "default_rounds": 4,
+        "params": (
+            ("chance", "Шанс наложить, %", "percent"),
+            ("rounds", "Сколько ходов", "int"),
+        ),
+        "hint": "Мороз сковывает тело: лечение хуже, пока не пройдёт.",
+    },
+    "state": {
+        "emoji": "✨",
+        "title": "Состояние",
+        "until_battle_end": False,
+        "needs_key": True,
+        "params": (
+            ("chance", "Шанс наложить, %", "percent"),
+            ("rounds", "Сколько ходов", "int"),
+        ),
+        "hint": "Накладывает состояние игрока из STATE_CONF на ходы боя.",
+    },
+}
+ON_HIT_KIND_ORDER = ("bleed", "poison", "frostbite", "state")
+# Дефолтное число ходов для kind'а state — по ключу состояния.
+ON_HIT_STATE_ROUNDS = {"оглушён": 3, "ослеплён": 4}
+
 # --- Лесозаготовка (v0.37.0) ---
 # Ресурсная локация в лесу, вход кнопкой с Лесной поляны. Рубка деревьев
 # по образцу добычи руды: 15 ОД за попытку, результат через 7–15 секунд,
@@ -623,10 +675,11 @@ LOGGING_OWL_PITY_TARGET = 24
 LOGGING_SNAKE_POISON_CHANCE = 30
 LOGGING_SNAKE_POISON_DMG = 2
 # Неясыть: при HP <= этого значения отлетает (убить нельзя). Шанс наложить
-# ослепление при своём ударе (%). Ослепление — состояние «ослеплён»
-# (utils/states.py): временное, снижает урон и уклонение.
+# ослепление при своём ударе (%) — хранится в on_hit_effects врага
+# (эффект «состояние: ослеплён» на LOGGING_OWL_BLIND_ROUNDS ходов боя).
 LOGGING_OWL_FLEE_HP = 20
 LOGGING_OWL_BLIND_CHANCE = 30
+LOGGING_OWL_BLIND_ROUNDS = 4
 
 # Змея Лесозаготовки: верткая (уклонение 25%), бьёт 4–8 HP, может отравить
 # (яд — −2 HP за ход на протяжении боя). Поражение — −10 ОД.
@@ -641,8 +694,11 @@ LOGGING_SNAKE_SEED = {
     "loss_ap": 10,
     "chance": LOGGING_SNAKE_CHANCE,
     "pity_target": LOGGING_SNAKE_PITY_TARGET,
-    "bleed_chance": LOGGING_SNAKE_POISON_CHANCE,
-    "bleed_dmg": LOGGING_SNAKE_POISON_DMG,
+    # v0.38.0: яд змеи — общий эффект при ударе (до конца боя).
+    "on_hit_effects": [
+        {"kind": "poison", "chance": LOGGING_SNAKE_POISON_CHANCE,
+         "dmg": LOGGING_SNAKE_POISON_DMG},
+    ],
     "reward_nm": 0,
     "photo_key": "city/logging_snake",
     "description": (
@@ -668,8 +724,11 @@ LOGGING_OWL_SEED = {
     "loss_ap": 15,
     "chance": LOGGING_OWL_CHANCE,
     "pity_target": LOGGING_OWL_PITY_TARGET,
-    "bleed_chance": 0,
-    "bleed_dmg": 0,
+    # v0.38.0: ослепление неясыти — общий эффект при ударе (состояние на ходы).
+    "on_hit_effects": [
+        {"kind": "state", "key": "ослеплён", "chance": LOGGING_OWL_BLIND_CHANCE,
+         "rounds": LOGGING_OWL_BLIND_ROUNDS},
+    ],
     "reward_nm": 0,
     "photo_key": "city/logging_owl",
     "description": (

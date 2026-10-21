@@ -1146,6 +1146,13 @@ async def init_db():
     await _ensure_column(conn, "logging_enemies", "crit_chance", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "logging_enemies", "crit_mult", "REAL DEFAULT 1.5")
     await _ensure_column(conn, "logging_enemies", "abilities", "TEXT DEFAULT '[]'")
+    # v0.38.0: единая система эффектов при ударе врага. Колонка хранит
+    # JSON-массив [{"kind": "bleed", "chance": 25, "dmg": 4}, ...] у всех
+    # врагов; legacy-колонки bleed_*/poison_*/frostbite_chance мигрируются
+    # в неё при старте (_migrate_enemy_on_hit_effects) и больше не читаются.
+    for _t in ("dungeon_enemies", "forest_enemies", "fishing_enemies",
+               "mine_enemies", "logging_enemies"):
+        await _ensure_column(conn, _t, "on_hit_effects", "TEXT DEFAULT NULL")
     # admin_tuned=1 в обычных врагах dungeon не должен мешать: миграции по дропам
     # (ensure_dungeon_enemy_drops / seed_kvp) запускаются только по admin_tuned>0
     await _ensure_column(conn, "dungeon_enemies", "admin_tuned", "INTEGER DEFAULT 0")
@@ -1510,6 +1517,56 @@ async def init_db():
     await _balance_legacy_booklet_payouts()
     # v0.22.8: единые игровые сутки (10:00 МСК) — прижать «опережающие» ключи.
     await _normalize_daily_keys()
+    # v0.38.0: legacy-колонки эффектов врагов (bleed_*/poison_*/frostbite_*)
+    # переносим в on_hit_effects (JSON). Идемпотентно, по NULL-строкам.
+    await _migrate_enemy_on_hit_effects()
+
+
+async def _migrate_enemy_on_hit_effects():
+    """v0.38.0: миграция legacy-колонок эффектов врагов в on_hit_effects.
+
+    Заполняет только строки, где on_hit_effects IS NULL (идемпотентно при
+    каждом старте). logging_enemies: bleed_* — это боевой яд змеи, поэтому
+    мигрирует в kind='poison' (боевая семантика лесозаготовки).
+    """
+    conn = await get_db()
+    frostbite_rounds = config.ON_HIT_EFFECTS["frostbite"].get("default_rounds", 4)
+    plans = [
+        ("dungeon_enemies", "bleed", ("bleed_chance", "bleed_dmg"), None),
+        ("dungeon_enemies", "poison", ("poison_chance", "poison_dmg"), None),
+        ("dungeon_enemies", "frostbite", ("frostbite_chance", None), frostbite_rounds),
+        ("forest_enemies", "bleed", ("bleed_chance", "bleed_dmg"), None),
+        ("fishing_enemies", "bleed", ("bleed_chance", "bleed_dmg"), None),
+        ("mine_enemies", "bleed", ("bleed_chance", "bleed_dmg"), None),
+        ("logging_enemies", "poison", ("bleed_chance", "bleed_dmg"), None),
+    ]
+    changed = False
+    for table in ("dungeon_enemies", "forest_enemies", "fishing_enemies",
+                  "mine_enemies", "logging_enemies"):
+        cursor = await conn.execute(
+            f"SELECT * FROM {table} WHERE on_hit_effects IS NULL")
+        rows = await cursor.fetchall()
+        for row in rows:
+            keys = row.keys()
+            effects = []
+            for plan_table, kind, cols, rounds in plans:
+                if plan_table != table or cols[0] not in keys:
+                    continue
+                chance = int(row[cols[0]] or 0)
+                if chance <= 0:
+                    continue
+                eff = {"kind": kind, "chance": chance}
+                if cols[1] and cols[1] in keys and int(row[cols[1]] or 0) > 0:
+                    eff["dmg"] = int(row[cols[1]])
+                if rounds:
+                    eff["rounds"] = rounds
+                effects.append(eff)
+            await conn.execute(
+                f"UPDATE {table} SET on_hit_effects = ? WHERE id = ?",
+                (json.dumps(effects, ensure_ascii=False), row['id']))
+            changed = True
+    if changed:
+        await conn.commit()
 
 
 async def seed_locations(conn):
@@ -2375,6 +2432,13 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
                 "🤢 Несварение: пищеварение на паузе. "
                 "Расходники нельзя применять ещё сутки."
             )
+
+        # v0.38.0: боевые эффекты врага (оглушение и далее) тоже запрещают
+        # расходники, пока активны в текущем бою.
+        from utils import onhit as onhit_mod
+        battle_block = onhit_mod.consumables_blocked_by_battle(user_id)
+        if battle_block:
+            return False, battle_block
 
         # Напиток с действием: пиво и прочие пьются где угодно
         # (+10 HP засчитывается в бою подземелья отдельным путём).
@@ -8819,11 +8883,12 @@ ENEMY_SOURCE_TABLES = {"forest": "forest_enemies", "fishing": "fishing_enemies",
 SOURCE_ENEMY_FIELDS = ("name", "hp", "dmg_min", "dmg_max", "dodge", "armor",
                        "loss_ap", "bleed_chance", "bleed_dmg", "chance",
                        "pity_target", "reward_nm", "description", "image",
-                       "photo_key", "enabled", "spot")
+                       "photo_key", "enabled", "spot", "on_hit_effects")
 
 ENEMY_SEED_FIELDS = ("key", "spot", "name", "hp", "dmg_min", "dmg_max", "dodge",
                      "loss_ap", "bleed_chance", "bleed_dmg", "chance",
-                     "pity_target", "reward_nm", "description", "photo_key")
+                     "pity_target", "reward_nm", "description", "photo_key",
+                     "on_hit_effects")
 
 
 def _enemy_source_table(source: str) -> str:
@@ -8904,6 +8969,10 @@ async def _ensure_source_enemies(source: str, seed: dict) -> bool:
     if await cursor.fetchone():
         return False
     values = {k: seed.get(k) for k in ENEMY_SEED_FIELDS}
+    # v0.38.0: эффекты при ударе — JSON-массив на строке врага.
+    if isinstance(values.get("on_hit_effects"), list):
+        values["on_hit_effects"] = json.dumps(values["on_hit_effects"],
+                                              ensure_ascii=False)
     # Дропы сида: имена предметов → item_id (часть может отсутствовать в БД).
     drops = []
     for item_name, chance in seed.get("loot") or ():
@@ -8998,6 +9067,51 @@ async def remove_source_enemy_drop(source: str, enemy_id: int, index: int) -> bo
     return True
 
 
+def _parse_on_hit_effects(raw) -> list:
+    """JSON-строка on_hit_effects → список dict (валидация kind — в onhit)."""
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+    return data if isinstance(data, list) else []
+
+
+async def get_source_enemy_on_hit_effects(source: str, enemy_id: int) -> list:
+    """Эффекты при ударе врага-источника (лес/рыбалка/копь/лесозаготовка)."""
+    enemy = await get_source_enemy(source, enemy_id)
+    if not enemy:
+        return []
+    return _parse_on_hit_effects(enemy.get('on_hit_effects'))
+
+
+async def set_source_enemy_on_hit_effects(source: str, enemy_id: int, effects: list):
+    """Правит эффекты при ударе врага-источника; помечает admin_tuned=1."""
+    conn = await get_db()
+    table = _enemy_source_table(source)
+    await conn.execute(
+        f"UPDATE {table} SET on_hit_effects = ?, admin_tuned = 1 WHERE id = ?",
+        (json.dumps(effects, ensure_ascii=False), enemy_id))
+    await conn.commit()
+
+
+async def get_enemy_on_hit_effects(enemy_id: int) -> list:
+    """Эффекты при ударе врага подземелья (dungeon_enemies)."""
+    enemy = await get_enemy(enemy_id)
+    if not enemy:
+        return []
+    return _parse_on_hit_effects(enemy.get('on_hit_effects'))
+
+
+async def set_enemy_on_hit_effects(enemy_id: int, effects: list):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE dungeon_enemies SET on_hit_effects = ? WHERE id = ?",
+        (json.dumps(effects, ensure_ascii=False), enemy_id))
+    await conn.commit()
+
+
 async def update_source_enemy(source: str, enemy_id: int, **fields) -> bool:
     """Правка врага через админ-бота; помечает admin_tuned=1."""
     conn = await get_db()
@@ -9027,6 +9141,8 @@ async def add_source_enemy(source: str, **fields) -> int:
             continue
         val = fields[key]
         if key == "drops" and isinstance(val, list):
+            val = json.dumps(val, ensure_ascii=False)
+        if key == "on_hit_effects" and isinstance(val, list):
             val = json.dumps(val, ensure_ascii=False)
         cols.append(key)
         vals.append(val)
@@ -9558,6 +9674,28 @@ DEFAULT_DUNGEON = {
 }
 
 
+def _legacy_effects_json(poison_chance=0, poison_dmg=0, bleed_chance=0,
+                         bleed_dmg=0, frostbite_chance=0) -> str:
+    """Собирает JSON on_hit_effects из legacy-полей кортежа сида данжа."""
+    effects = []
+    if int(bleed_chance or 0) > 0:
+        eff = {"kind": "bleed", "chance": int(bleed_chance)}
+        if int(bleed_dmg or 0) > 0:
+            eff["dmg"] = int(bleed_dmg)
+        effects.append(eff)
+    if int(poison_chance or 0) > 0:
+        eff = {"kind": "poison", "chance": int(poison_chance)}
+        if int(poison_dmg or 0) > 0:
+            eff["dmg"] = int(poison_dmg)
+        effects.append(eff)
+    if int(frostbite_chance or 0) > 0:
+        effects.append({
+            "kind": "frostbite", "chance": int(frostbite_chance),
+            "rounds": config.ON_HIT_EFFECTS["frostbite"].get("default_rounds", 4),
+        })
+    return json.dumps(effects, ensure_ascii=False)
+
+
 def _enemy_to_fields(enemy):
     """Раскладывает кортеж врага DEFAULT_DUNGEON в словарь полей БД.
 
@@ -9565,6 +9703,11 @@ def _enemy_to_fields(enemy):
     poison_dmg, dodge, bleed_chance, bleed_dmg, frostbite_chance, description.
     """
     (name, hp, atk, reward, is_boss, drops) = enemy[:6]
+    poison_chance = enemy[7] if len(enemy) > 7 else 0
+    poison_dmg = enemy[8] if len(enemy) > 8 else 0
+    bleed_chance = enemy[10] if len(enemy) > 10 else 0
+    bleed_dmg = enemy[11] if len(enemy) > 11 else 0
+    frostbite_chance = enemy[12] if len(enemy) > 12 else 0
     return {
         "name": name,
         "hp": hp,
@@ -9573,19 +9716,23 @@ def _enemy_to_fields(enemy):
         "is_boss": int(is_boss),
         "drops": drops,
         "image": enemy[6] if len(enemy) > 6 else None,
-        "poison_chance": enemy[7] if len(enemy) > 7 else 0,
-        "poison_dmg": enemy[8] if len(enemy) > 8 else 0,
+        "poison_chance": poison_chance,
+        "poison_dmg": poison_dmg,
         "dodge": enemy[9] if len(enemy) > 9 else 0,
-        "bleed_chance": enemy[10] if len(enemy) > 10 else 0,
-        "bleed_dmg": enemy[11] if len(enemy) > 11 else 0,
-        "frostbite_chance": enemy[12] if len(enemy) > 12 else 0,
+        "bleed_chance": bleed_chance,
+        "bleed_dmg": bleed_dmg,
+        "frostbite_chance": frostbite_chance,
         "description": enemy[13] if len(enemy) > 13 else None,
+        # v0.38.0: единая система эффектов при ударе — JSON из legacy-полей.
+        "on_hit_effects": _legacy_effects_json(
+            poison_chance, poison_dmg, bleed_chance, bleed_dmg, frostbite_chance),
     }
 
 
 DUNGEON_ENEMY_INSERT_COLS = (
     "dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, "
-    "poison_chance, poison_dmg, dodge, bleed_chance, bleed_dmg, frostbite_chance, description"
+    "poison_chance, poison_dmg, dodge, bleed_chance, bleed_dmg, frostbite_chance, "
+    "description, on_hit_effects"
 )
 
 
@@ -9611,21 +9758,23 @@ async def seed_dungeon():
             f = _enemy_to_fields(enemy)
             await conn.execute(
                 f"INSERT INTO dungeon_enemies ({DUNGEON_ENEMY_INSERT_COLS}) "
-                f"VALUES ({','.join(['?'] * 16)})",
+                f"VALUES ({','.join(['?'] * 17)})",
                 (dungeon_id, floor_idx, f["name"], f["hp"], f["attack"], f["reward_nm"],
                  f["is_boss"], json.dumps(f["drops"], ensure_ascii=False), f["image"],
                  f["poison_chance"], f["poison_dmg"], f["dodge"],
-                 f["bleed_chance"], f["bleed_dmg"], f["frostbite_chance"], f["description"])
+                 f["bleed_chance"], f["bleed_dmg"], f["frostbite_chance"],
+                 f["description"], f["on_hit_effects"])
             )
         boss = floor_data["boss"]
         bf = _enemy_to_fields(boss)
         await conn.execute(
             f"INSERT INTO dungeon_enemies ({DUNGEON_ENEMY_INSERT_COLS}) "
-            f"VALUES ({','.join(['?'] * 16)})",
+            f"VALUES ({','.join(['?'] * 17)})",
             (dungeon_id, floor_idx, bf["name"], bf["hp"], bf["attack"], bf["reward_nm"],
              bf["is_boss"], json.dumps(bf["drops"], ensure_ascii=False), bf["image"],
              bf["poison_chance"], bf["poison_dmg"], bf["dodge"],
-             bf["bleed_chance"], bf["bleed_dmg"], bf["frostbite_chance"], bf["description"])
+             bf["bleed_chance"], bf["bleed_dmg"], bf["frostbite_chance"],
+             bf["description"], bf["on_hit_effects"])
         )
 
     await conn.commit()
@@ -9693,10 +9842,11 @@ async def seed_kvp():
 
     for name, hp, atk, reward, is_boss, drops, image, poison_chance, poison_dmg, dodge, desc in KVP_ENEMIES:
         await conn.execute(
-            "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, dodge, description) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO dungeon_enemies (dungeon_id, floor, name, hp, attack, reward_nm, is_boss, drops, image, poison_chance, poison_dmg, dodge, description, on_hit_effects) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (dungeon_id, 1, name, hp, atk, reward, int(is_boss),
-             json.dumps(drops, ensure_ascii=False), image, poison_chance, poison_dmg, dodge, desc)
+             json.dumps(drops, ensure_ascii=False), image, poison_chance, poison_dmg, dodge, desc,
+             _legacy_effects_json(poison_chance, poison_dmg))
         )
     await conn.commit()
     return dungeon_id
@@ -11585,11 +11735,12 @@ async def ensure_dungeon_enemy_drops():
             if existing is None:
                 await conn.execute(
                     f"INSERT INTO dungeon_enemies ({DUNGEON_ENEMY_INSERT_COLS}) "
-                    f"VALUES ({','.join(['?'] * 16)})",
+                    f"VALUES ({','.join(['?'] * 17)})",
                     (dungeon_id, floor_idx, f["name"], f["hp"], f["attack"], f["reward_nm"],
                      f["is_boss"], drops_json, f["image"],
                      f["poison_chance"], f["poison_dmg"], f["dodge"],
-                     f["bleed_chance"], f["bleed_dmg"], f["frostbite_chance"], f["description"])
+                     f["bleed_chance"], f["bleed_dmg"], f["frostbite_chance"],
+                     f["description"], f["on_hit_effects"])
                 )
             else:
                 # Этаж синхронизируем всегда (нужен для переезда боссов между ярусами).
@@ -11600,11 +11751,12 @@ async def ensure_dungeon_enemy_drops():
                 if not existing['admin_tuned']:
                     base += ", description = ?, hp = ?, attack = ?, reward_nm = ?, drops = ?, image = ?, " \
                             "poison_chance = ?, poison_dmg = ?, dodge = ?, " \
-                            "bleed_chance = ?, bleed_dmg = ?, frostbite_chance = ?"
+                            "bleed_chance = ?, bleed_dmg = ?, frostbite_chance = ?, on_hit_effects = ?"
                     base_vals += [f["description"], f["hp"], f["attack"], f["reward_nm"],
                                   drops_json, f["image"],
                                   f["poison_chance"], f["poison_dmg"], f["dodge"],
-                                  f["bleed_chance"], f["bleed_dmg"], f["frostbite_chance"]]
+                                  f["bleed_chance"], f["bleed_dmg"], f["frostbite_chance"],
+                                  f["on_hit_effects"]]
                 base_vals += [dungeon_id, f["name"], f["is_boss"]]
                 await conn.execute(
                     f"UPDATE dungeon_enemies SET {base} "

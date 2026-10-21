@@ -15,6 +15,7 @@
 Запуск: .venv\\Scripts\\python.exe smoke_138.py
 """
 import asyncio
+import json
 import os
 import sys
 
@@ -135,10 +136,11 @@ async def main():
     check("волк: урон 7–12", wolf and int(wolf['dmg_min']) == 7 and int(wolf['dmg_max']) == 12)
     check("волк: уклонение 20%", wolf and int(wolf['dodge']) == 20)
     check("волк: потеря ОД = 15", wolf and int(wolf['loss_ap']) == 15)
-    check("волк: шанс кровотечения = конфиг",
-          wolf and int(wolf['bleed_chance']) == FOREST_WHITE_WOLF_BLEED_CHANCE)
-    check("волк: урон кровотечения = конфиг",
-          wolf and int(wolf['bleed_dmg']) == FOREST_WHITE_WOLF_BLEED_DMG)
+    # v0.38.0: кровотечение волка — в on_hit_effects (JSON), legacy bleed_* убраны.
+    wolf_oh = json.loads(wolf['on_hit_effects'] or '[]') if wolf else []
+    check("волк: кровотечение 30% на 3 урона (on_hit_effects)",
+          any(e.get('kind') == 'bleed' and int(e.get('chance') or 0) == 30
+              and int(e.get('dmg') or 0) == 3 for e in wolf_oh))
     check("волк: включён", wolf and wolf['enabled'] == 1)
     check("волк: без дропов (только благословения)",
           len(await get_source_enemy_drops("forest", wolf['id'])) == 0)
@@ -256,10 +258,13 @@ async def main():
     wolf_keys = set((await get_source_enemy_by_key("forest", "white_wolf")).keys())
     check("колонки bleed_* есть у white_wolf",
           "bleed_chance" in wolf_keys and "bleed_dmg" in wolf_keys)
-    check("ENEMY_FIELDS: есть правка шанса кровотечения",
-          "bleed_chance" in admin.ENEMY_FIELDS)
-    check("ENEMY_FIELDS: есть правка урона кровотечения",
-          "bleed_dmg" in admin.ENEMY_FIELDS)
+    # v0.38.0: админ-карточка больше не правит bleed_* — всё через «Эффекты при ударе».
+    check("ENEMY_FIELDS: legacy bleed_* убраны",
+          "bleed_chance" not in admin.ENEMY_FIELDS and "bleed_dmg" not in admin.ENEMY_FIELDS)
+    check("ENEMY_FIELD_LABELS: legacy bleed_* убраны",
+          "bleed_chance" not in admin.ENEMY_FIELD_LABELS and "bleed_dmg" not in admin.ENEMY_FIELD_LABELS)
+    check("админ: есть редактор эффектов при ударе",
+          hasattr(admin, "_onhit_options") and hasattr(admin, "_onhit_parse_params"))
 
     print("\n9c. Броня у врагов (поля/колонки/админка)")
     check("SOURCE_ENEMY_FIELDS содержит armor", "armor" in SOURCE_ENEMY_FIELDS)

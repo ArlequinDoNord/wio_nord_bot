@@ -10,7 +10,8 @@ LOGGING_CHANCE_CAP.
 бревен и заменяет её. Сначала — Лесная змея (обычный враг: убиваема, может
 отравить ядом), потом — Неясыть (реже и сильнее): убить её нельзя — при HP
 не выше LOGGING_OWL_FLEE_HP она отлетает (победа = редкое Совиное перо), а
-ударом может наложить «ослепление». Поражение в бою — минус loss_ap ОД.
+ударом может наложить «ослепление» (v0.38.0 — эффекты при ударе из
+on_hit_effects врага, считаются в ходах боя). Поражение — минус loss_ap ОД.
 """
 
 import asyncio
@@ -34,12 +35,12 @@ from database.db import (
 from utils.helpers import (
     resolve_image_seasonal, season_key, time_of_day_key, plural_nordmark,
 )
-from utils.states import apply_state_to
+from utils import onhit
 from config import (
     LOGGING_AP_COST, LOGGING_BASE_CHANCE, LOGGING_AXE_BONUS_PER_RANK,
     LOGGING_CHANCE_CAP, LOGGING_RESULT_DELAY, LOGGING_AXE_NAME, LOGGING_WOOD_NAME,
     LOGGING_SNAKE_KEY, LOGGING_OWL_KEY, LOGGING_SPOT, LOGGING_SNAKE_SEED,
-    LOGGING_OWL_SEED, LOGGING_OWL_FLEE_HP, LOGGING_OWL_BLIND_CHANCE,
+    LOGGING_OWL_SEED, LOGGING_OWL_FLEE_HP,
 )
 
 router = Router()
@@ -47,10 +48,6 @@ router = Router()
 LOGGING_HOME_PHOTO = "city/logging"
 SNAKE_EMOJI = "🐍"
 OWL_EMOJI = "🦉"
-
-# Яд Змеи: урон каждый ход игрока, спадает через N ходов (как кровотечение
-# кабана в лесу, но с ядовитым «уколом» вместо рвущей раны).
-POISON_TICKS_MAX = 3
 
 # Пользователи, чья рубка ещё не завершена (защита от повторного клика).
 LOGGING_CASTING = set()
@@ -75,6 +72,7 @@ async def deactivate_logging_site(user_id: int):
     LOGGING_MSG.pop(user_id, None)
     LOGGING_CASTING.discard(user_id)
     LOGGING_BATTLE.pop(user_id, None)
+    onhit.unregister(user_id)
 
 
 def _callback_token(data: str) -> str:
@@ -471,15 +469,13 @@ async def _start_battle(callback: CallbackQuery, user_id: int, enemy: dict, kind
         "dmg_min": int(enemy.get('dmg_min') or (LOGGING_OWL_SEED if kind == "owl" else LOGGING_SNAKE_SEED)['dmg_min']),
         "dmg_max": int(enemy.get('dmg_max') or (LOGGING_OWL_SEED if kind == "owl" else LOGGING_SNAKE_SEED)['dmg_max']),
         "loss_ap": int(enemy.get('loss_ap') or (LOGGING_OWL_SEED if kind == "owl" else LOGGING_SNAKE_SEED)['loss_ap']),
-        # Яд змеи: шанс и урон из полей кровотечения (админ правит как кровотечение,
-        # в текстах боя это «яд»).
-        "poison_chance": int(enemy.get('bleed_chance') or 0),
-        "poison_dmg": int(enemy.get('bleed_dmg') or 0),
-        "active_poison": 0,
-        "poison_ticks": 0,
+        # v0.38.0: эффекты при ударе (яд змеи, ослепление неясыти) — единая
+        # система: JSON со строки врага, активные пишутся в on_hit.
+        "on_hit_effects": onhit.parse_on_hit_effects(enemy.get('on_hit_effects')),
         "enemy": enemy,
         "round": 1,
     }
+    onhit.register(user_id, LOGGING_BATTLE[user_id])
     await _show_battle(callback)
 
 
@@ -493,10 +489,8 @@ async def _show_battle(callback: CallbackQuery, prefix: str = ""):
     enemy_hp_max = battle.get('enemy_hp_max') or battle['enemy_hp']
     enemy_name = battle.get('enemy_name') or "Враг"
     emoji = battle.get('emoji') or SNAKE_EMOJI
-    poison = int(battle.get('active_poison') or 0)
-    pticks = int(battle.get('poison_ticks') or 0)
-    poison_line = (f"\n🐍 Яд: −{poison} HP каждый ход (ещё {pticks} х.)."
-                   if poison > 0 else "")
+    effects_line = onhit.active_line(battle)
+    effects_line = f"\n{effects_line}" if effects_line else ""
     if battle.get('kind') == "owl":
         flavor = ("Из чащи вылетает тяжёлый силуэт — Неясыть! Совиный глаз "
                   "прикован к тебе.\n\n")
@@ -510,7 +504,7 @@ async def _show_battle(callback: CallbackQuery, prefix: str = ""):
         f"{flavor}"
         f"{emoji} Враг   HP {_hp_bar(enemy_hp, enemy_hp_max)} {max(0, enemy_hp)}/{enemy_hp_max}\n"
         f"🧑 Ты     HP {_hp_bar(player_hp, battle['player_hp_max'])} "
-        f"{max(0, player_hp)}/{battle['player_hp_max']}{poison_line}\n\n"
+        f"{max(0, player_hp)}/{battle['player_hp_max']}{effects_line}\n\n"
         f"Ход {battle['round']}. {tail}"
     )
     await _logging_paint(callback, text=text,
@@ -546,26 +540,19 @@ async def logging_battle_hit(callback: CallbackQuery):
     kind = battle.get('kind') or "snake"
     enemy_img = (battle.get('enemy') or {}).get('image')
 
-    # Яд: тикает в начале хода игрока (наложен змеёй на прошлом ходу).
-    poison_note = ""
-    poison = int(battle.get('active_poison') or 0)
-    if poison > 0:
-        battle['player_hp'] = max(0, battle['player_hp'] - poison)
-        pticks = int(battle.get('poison_ticks') or 0) - 1
-        if pticks <= 0:
-            battle['active_poison'] = 0
-            battle['poison_ticks'] = 0
-            poison_note = f"🐍 Яд: −{poison} HP. Яд отпустил!\n\n"
-        else:
-            battle['poison_ticks'] = pticks
-            poison_note = f"🐍 Яд: −{poison} HP (ещё {pticks} х.).\n\n"
+    # DoT (яд/кровотечение): тикает в начале хода игрока (наложен змеёй
+    # на прошлом ходу; живёт до конца боя).
+    dot_dmg, dot_lines = onhit.tick_dots(battle)
+    dot_note = "".join(f"{line}\n\n" for line in dot_lines)
+    if dot_dmg:
+        battle['player_hp'] = max(0, battle['player_hp'] - dot_dmg)
         if battle['player_hp'] <= 0:
-            await _battle_defeat(callback, user_id, battle, prefix=poison_note)
+            await _battle_defeat(callback, user_id, battle, prefix=dot_note)
             return
 
     # Твой удар: свой урон/крит, враг может увернуться, броня поглощает часть.
     from utils.combat_model import pilot_combat_stats, roll_pilot_damage, roll_enemy_damage
-    stats = await pilot_combat_stats(user_id)
+    stats = await pilot_combat_stats(user_id, onhit.battle_state_keys(battle))
     res = roll_pilot_damage(stats, {
         'dodge': battle.get('dodge') or 0,
         'armor': battle.get('armor') or 0,
@@ -595,6 +582,7 @@ async def logging_battle_hit(callback: CallbackQuery):
     # ── Неясыть отлетает (победа) ──
     if kind == "owl" and enemy_fled:
         LOGGING_BATTLE.pop(user_id, None)
+        onhit.unregister(user_id)
         await log_activity(user_id, "logging", "Неясыть отлетела (победа над неясытью)")
         loot = await _battle_loot(user_id, battle)
         got = []
@@ -614,7 +602,7 @@ async def logging_battle_hit(callback: CallbackQuery):
                            "без трофеев.")
         text = (
             f"{emoji} НЕЯСЫТЬ\n\n"
-            f"{poison_note}{hit_line}"
+            f"{dot_note}{hit_line}"
             "Раненая неясыть бросает бой: тяжёлый силуэт вздымается над кронами "
             "и растворяется в сумерках. Ты победил!\n\n"
             f"{result_line}"
@@ -626,6 +614,7 @@ async def logging_battle_hit(callback: CallbackQuery):
     # ── Змея повержена (обычный враг, убиваема) ──
     if kind == "snake" and battle['enemy_hp'] <= 0:
         LOGGING_BATTLE.pop(user_id, None)
+        onhit.unregister(user_id)
         await log_activity(user_id, "logging", "Победил Лесную змею")
         loot = await _battle_loot(user_id, battle)
         got = []
@@ -643,7 +632,7 @@ async def logging_battle_hit(callback: CallbackQuery):
             result_line = "Змея повержена, но ничего ценного на этот раз не нашлось."
         text = (
             f"{emoji} БОЙ СО ЗМЕЁЙ\n\n"
-            f"{poison_note}{hit_line}"
+            f"{dot_note}{hit_line}"
             "Змея дёргается и замирает — подлесок снова затихает.\n\n"
             f"{result_line}"
         )
@@ -670,35 +659,25 @@ async def logging_battle_hit(callback: CallbackQuery):
     battle['player_hp'] -= enemy_hit
     if battle['player_hp'] <= 0:
         await _battle_defeat(callback, user_id, battle,
-                             prefix=f"{poison_note}{hit_line}{counter_line}")
+                             prefix=f"{dot_note}{hit_line}{counter_line}")
         return
 
-    # Наложение эффектов ответным ударом (только если попал).
+    # Наложение эффектов ответным ударом (только если попал): единая система
+    # эффектов при ударе (v0.38.0) — яд змеи, ослепление неясыти и всё, что
+    # админ добавит в on_hit_effects врага.
     proc_line = ""
     if not eres['dodged']:
-        if kind == "snake":
-            pc = int(battle.get('poison_chance') or 0)
-            pd = int(battle.get('poison_dmg') or 0)
-            if pc and pd and random.randint(1, 100) <= pc:
-                battle['active_poison'] = pd
-                battle['poison_ticks'] = POISON_TICKS_MAX
-                proc_line = (
-                    f"🐍 Змея впивается клыками — яд! Ощущаешь, как горячая "
-                    f"струя расходится по жилам: −{pd} HP каждый ход "
-                    f"({POISON_TICKS_MAX} х.).\n\n"
-                )
-        elif kind == "owl":
-            if random.randint(1, 100) <= LOGGING_OWL_BLIND_CHANCE:
-                await apply_state_to(user_id, "ослеплён", caused_by=user_id,
-                                     reason="Неясыть")
-                proc_line = (
-                    "🌑 Неясыть хлопает крылом прямо по лицу — глаза защипало, "
-                    "перед глазами темно! ОСЛЕПЛЁН на 30 минут: удары слабее, "
-                    "уклонение почти не работает.\n\n"
-                )
+        procs = onhit.roll_procs(battle.get('on_hit_effects') or [])
+        if procs:
+            proc_lines = onhit.apply_procs(user_id, battle, procs,
+                                           enemy_name=battle.get('enemy_name') or "Враг")
+            proc_line = "".join(f"{line}\n\n" for line in proc_lines)
+
+    # Спад срочных эффектов (оглушение/ослепление и т.д.) в конце хода.
+    round_note = "".join(f"{line}\n\n" for line in onhit.end_round(battle))
 
     battle['round'] += 1
-    await _show_battle(callback, prefix=f"{poison_note}{hit_line}{counter_line}{proc_line}")
+    await _show_battle(callback, prefix=f"{dot_note}{hit_line}{counter_line}{proc_line}{round_note}")
 
 
 async def _battle_defeat(callback: CallbackQuery, user_id: int, battle: dict,
@@ -707,6 +686,7 @@ async def _battle_defeat(callback: CallbackQuery, user_id: int, battle: dict,
     kind = battle.get('kind') or "snake"
     emoji = battle.get('emoji') or SNAKE_EMOJI
     LOGGING_BATTLE.pop(user_id, None)
+    onhit.unregister(user_id)
     removed = await remove_ap_or_floor(user_id, int(battle.get('loss_ap')
                                                      or LOGGING_SNAKE_SEED['loss_ap']))
     if kind == "owl":
@@ -738,6 +718,7 @@ async def logging_battle_flee(callback: CallbackQuery):
         return
     user_id = callback.from_user.id
     battle = LOGGING_BATTLE.pop(user_id, None)
+    onhit.unregister(user_id)
     await callback.answer()
     kind = (battle or {}).get('kind') or "snake"
     if battle:

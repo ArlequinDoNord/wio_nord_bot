@@ -48,6 +48,7 @@ from bot.handlers.fishing import (
     FISHING_CASTING,
 )
 from utils.notify import notify, player_display
+from utils import onhit
 from config import (
     DUNGEON_HEAL_SOFT_LIMIT, DUNGEON_HEAL_HARD_LIMIT,
     DUNGEON_HEAL_SOFT_MULT, DUNGEON_HEAL_HARD_MULT,
@@ -135,8 +136,6 @@ async def _log_stale(callback, context: str):
         pass
 
 
-# Кровотечение: урон каждый ход, спадает через BLEED_TICKS_MAX ходов.
-BLEED_TICKS_MAX = 3
 # Обморожение: лечение ×FROSTBITE_HEAL_MULT, само проходит через FROSTBITE_TURNS
 # ходов игрока либо сразу от напитка с cure_frostbite.
 FROSTBITE_TURNS = 4
@@ -237,6 +236,7 @@ MOLLUSK_BATTLE_TTL = 900
 def deactivate_mollusk(user_id: int):
     """Сброс боя с моллюском (уход в другое меню)."""
     MOLLUSK_BATTLE.pop(user_id, None)
+    onhit.unregister(user_id)
 
 
 def purge_mollusk_battle(now: float | None = None):
@@ -245,6 +245,7 @@ def purge_mollusk_battle(now: float | None = None):
     for uid in [u for u, b in MOLLUSK_BATTLE.items()
                 if now - float(b.get('started_at') or 0) > MOLLUSK_BATTLE_TTL]:
         MOLLUSK_BATTLE.pop(uid, None)
+        onhit.unregister(uid)
 
 
 def _mollusk_markup(token: str):
@@ -282,14 +283,16 @@ async def _show_mollusk_battle(callback, prefix: str = ""):
     if not battle:
         return
     enemy = battle['enemy']
-    hp_max = battle['enemy_hp_max']
     name = enemy.get('name') or "Мутировавший моллюск"
+    effects_line = onhit.active_line(battle)
+    effects_line = f"\n🧑 {effects_line}" if effects_line else ""
+    hp_max = battle['enemy_hp_max']
     text = (
         f"{prefix}🦪 {name.upper()}\n\n"
         "Вместо рыбы на крючке — раковина. Она вся в бугорках, панцирь "
         "хрустит от напряжения — и моллюск бросается на снасть!\n\n"
         f"🦪 {name}  HP {_hp_bar(battle['enemy_hp'], hp_max)}\n"
-        f"🧑 Ты          HP {_hp_bar(battle['player_hp'], battle['player_hp_max'])}\n\n"
+        f"🧑 Ты          HP {_hp_bar(battle['player_hp'], battle['player_hp_max'])}{effects_line}\n\n"
         f"Ход {battle['round']}. Ударь моллюска или сними снасть."
     )
     photo_id, photo = await _mollusk_media(enemy)
@@ -315,8 +318,10 @@ async def _mollusk_start(callback, state: FSMContext, user_id: int, extra: str =
         "enemy_hp_max": enemy_hp,
         "player_hp": player_hp,
         "player_hp_max": player_hp,
+        "on_hit_effects": onhit.parse_on_hit_effects(enemy.get('on_hit_effects')),
         "round": 1,
     }
+    onhit.register(user_id, MOLLUSK_BATTLE[user_id])
     await log_activity(user_id, "dungeon_reservoir", f"Встреча: {enemy.get('name')}")
     await _show_mollusk_battle(callback, prefix=extra)
     return True
@@ -374,11 +379,34 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
         MOLLUSK_BATTLE.pop(user_id, None)
+        onhit.unregister(user_id)
         await callback.answer("❌ Ты больше не в водохранилище.", show_alert=True)
         return
     await callback.answer()
 
     enemy = battle['enemy']
+    # DoT (яд/кровотечение, единая система v0.38.0): тикает в начале хода.
+    dot_dmg, dot_lines = onhit.tick_dots(battle)
+    dot_note = "".join(f"{line}\n\n" for line in dot_lines)
+    if dot_dmg:
+        battle['player_hp'] = max(0, battle['player_hp'] - dot_dmg)
+        if battle['player_hp'] <= 0:
+            MOLLUSK_BATTLE.pop(user_id, None)
+            onhit.unregister(user_id)
+            loss_ap = int(enemy.get('loss_ap') or 12)
+            removed = await remove_ap_or_floor(user_id, loss_ap)
+            await log_activity(user_id, "dungeon_reservoir", f"Проиграл моллюску (−{removed} ОД)")
+            text = (
+                "🦪 БОЙ С МОЛЮСКОМ\n\n"
+                f"{dot_note}"
+                "Ты срываешься с крючка.\n\n"
+                f"Пока ты выбирался из воды, снасть потерялась. Плата за бессмысленный риск: "
+                f"−{removed} ОД."
+            )
+            step = await dungeon_new_step(state)
+            await _reservoir_answer_result(callback, text, _reservoir_result_markup(step))
+            return
+
     # Ачивка «Эликсиры» lvl4: пассивная регенерация в начале хода игрока.
     ach_regen = await get_achievement_bonus(user_id, "elixir", "regen_hp")
     regen_note = ""
@@ -390,7 +418,7 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
 
     # Твой удар: считается от ТВОЕГО оружия, наград и состояний.
     from utils.combat_model import pilot_combat_stats, roll_pilot_damage
-    stats = await pilot_combat_stats(user_id)
+    stats = await pilot_combat_stats(user_id, onhit.battle_state_keys(battle))
     res = roll_pilot_damage(stats, enemy)
     player_hit = res['damage']
     # Достижение «Монстры»: урон в водохранилище тоже считается подземельем.
@@ -410,13 +438,14 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
 
     if battle['enemy_hp'] <= 0:
         MOLLUSK_BATTLE.pop(user_id, None)
+        onhit.unregister(user_id)
         name = enemy.get('name') or "Мутировавший моллюск"
         loot_line = await _mollusk_loot(user_id, enemy)
         await log_activity(user_id, "dungeon_reservoir", f"Победил: {name}")
         await bump_achievement(user_id, "monsters", 1)
         text = (
             "🦪 БОЙ С МОЛЮСКОМ\n\n"
-            f"{regen_note}{hit_line}"
+            f"{dot_note}{regen_note}{hit_line}"
             "Панцирь хрустнул и раскрылся — в тёмной воде осталось только сияние.\n\n"
             f"{loot_line}"
         )
@@ -440,12 +469,13 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
         counter_line = f"Молюск впивается щупальцем: −{dmg} HP. {extra}\n\n"
     if battle['player_hp'] <= 0:
         MOLLUSK_BATTLE.pop(user_id, None)
+        onhit.unregister(user_id)
         loss_ap = int(enemy.get('loss_ap') or 12)
         removed = await remove_ap_or_floor(user_id, loss_ap)
         await log_activity(user_id, "dungeon_reservoir", f"Проиграл моллюску (−{removed} ОД)")
         text = (
             "🦪 БОЙ С МОЛЮСКОМ\n\n"
-            f"{regen_note}{hit_line}"
+            f"{dot_note}{regen_note}{hit_line}"
             f"{counter_line}Ты срываешься с крючка.\n\n"
             f"Пока ты выбирался из воды, снасть потерялась. Плата за бессмысленный риск: "
             f"−{removed} ОД."
@@ -454,8 +484,21 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
         await _reservoir_answer_result(callback, text, _reservoir_result_markup(step))
         return
 
+    # Эффекты при ударе (v0.38.0): единая система — on_hit_effects врага.
+    proc_line = ""
+    if not eres['dodged']:
+        procs = onhit.roll_procs(battle.get('on_hit_effects') or [])
+        if procs:
+            proc_lines = onhit.apply_procs(user_id, battle, procs,
+                                           enemy_name=enemy.get('name') or "Моллюск")
+            proc_line = "".join(f"{line}\n\n" for line in proc_lines)
+
+    # Спад срочных эффектов (оглушение/ослепление и т.д.) в конце хода.
+    round_note = "".join(f"{line}\n\n" for line in onhit.end_round(battle))
+
     battle['round'] += 1
-    await _show_mollusk_battle(callback, prefix=f"{regen_note}{hit_line}{counter_line}")
+    await _show_mollusk_battle(
+        callback, prefix=f"{dot_note}{regen_note}{hit_line}{counter_line}{proc_line}{round_note}")
 
 
 @router.callback_query(F.data.regexp(r"^mollusk:flee:\d+$"))
@@ -467,6 +510,7 @@ async def mollusk_flee(callback: CallbackQuery, state: FSMContext):
         await callback.answer("⏳ Это окно устарело.", show_alert=True)
         return
     MOLLUSK_BATTLE.pop(user_id, None)
+    onhit.unregister(user_id)
     await callback.answer()
     await log_activity(user_id, "dungeon_reservoir", "Сбежал от моллюска")
     step = await dungeon_new_step(state)
@@ -496,17 +540,9 @@ async def rooms_total_now(run) -> int:
 
 
 def status_lines(data) -> list:
-    """Строки активных статусов боя (яд, кровотечение, обморожение)."""
-    lines = []
-    if data.get('active_poison'):
-        lines.append(f"☠️ Ты отравлен! Яд: −{data['active_poison']} HP каждый ход")
-    if data.get('active_bleed'):
-        ticks = int(data.get('bleed_ticks', 0) or 0)
-        rem = f" (спадёт через {ticks} х.)" if ticks else " (спадёт скоро)"
-        lines.append(f"🩸 Кровотечение: −{data['active_bleed']} HP каждый ход{rem}")
-    if data.get('active_frostbite'):
-        lines.append(f"🧊 Обморожение: лечение −50%. {FROSTBITE_CURE_HINT}")
-    return lines
+    """Строки активных статусов боя (яд/кровотечение/обморожение/состояния)."""
+    line = onhit.active_line(data)
+    return [line] if line else []
 
 
 def dungeon_main_keyboard(step: int = 0):
@@ -1186,7 +1222,6 @@ async def show_room(message, run, user_id, state: FSMContext):
         rolled = True
         await state.update_data(dungeon_room_rolled=run['room_number'],
                                 dungeon_room_type=room_type)
-    poison = sdata.get('active_poison')
     heal_uses = int(sdata.get('dungeon_heal_uses', 0) or 0)
     step = await dungeon_new_step(state)
     rooms_total = await rooms_total_now(run)
@@ -1306,6 +1341,7 @@ async def _enemy_defeated(callback, state, bot, run, enemy, player_hp):
 
             await end_run(run['id'], 0)
             await state.clear()
+            onhit.unregister(user_id)
             await log_activity(user_id, "dungeon_win",
                                f"Прошёл «{enemy['name']}»/подземелье на {run['floor']} этаже")
             await bump_achievement(user_id, "raider", 1)
@@ -1364,7 +1400,6 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         return
 
     current_enemy_hp = data.get('current_enemy_hp', enemy['hp'])
-    poison = data.get('active_poison')
     player_hp = run['hp']
 
     # ── Тик регенерации (расходник) в начале хода игрока: первый тик самый большой ──
@@ -1399,38 +1434,24 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         await state.clear()
         await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
 
-    # Яд (не спадает сам, снимается антидотом). Резист от ачивки «Антидоты» —
-    # снижает урон яда за ход (poison_res_pct от базового урона).
-    if poison:
-        res_pct = await get_achievement_bonus(user_id, "antidote", "poison_res_pct")
-        poison_dmg = max(1, round(poison * (100 - res_pct) / 100)) if res_pct else poison
-        player_hp = max(0, player_hp - poison_dmg)
+    # DoT (яд/кровотечение, единая система v0.38.0): тики в начале хода игрока.
+    # Резист от ачивки «Антидоты» снижает урон яда (считаем на всю сумму DoT,
+    # если яд наложен — legacy-поведение poison_res_pct).
+    onhit.register(user_id, data)
+    dot_dmg, dot_lines = onhit.tick_dots(data)
+    if dot_dmg:
+        if onhit.has_dot(data, 'poison'):
+            res_pct = await get_achievement_bonus(user_id, "antidote", "poison_res_pct")
+            if res_pct:
+                dot_dmg = max(1, round(dot_dmg * (100 - res_pct) / 100))
+        player_hp = max(0, player_hp - dot_dmg)
         await update_run_hp(run['id'], player_hp)
         if player_hp <= 0:
-            await dot_death(f"☠️ Яд погубил тебя (−{poison_dmg} HP)")
+            await dot_death("\n".join(dot_lines) + f"\n(−{dot_dmg} HP за ход)")
             return
 
-    # Кровотечение (спадает через BLEED_TICKS_MAX ходов).
-    bleed = data.get('active_bleed')
-    if bleed:
-        player_hp = max(0, player_hp - bleed)
-        await update_run_hp(run['id'], player_hp)
-        if player_hp <= 0:
-            await dot_death(f"🩸 Ты истёк кровью (−{bleed} HP)")
-            return
-        bticks = int(data.get('bleed_ticks', 0) or 0) - 1
-        if bticks <= 0:
-            await state.update_data(active_bleed=None, bleed_ticks=0)
-        else:
-            await state.update_data(bleed_ticks=bticks)
-
-    # Обморожение спадает само через FROSTBITE_TURNS ходов игрока.
-    if data.get('active_frostbite'):
-        fticks = int(data.get('frostbite_ticks', 0) or 0) - 1
-        if fticks <= 0:
-            await state.update_data(active_frostbite=None, frostbite_ticks=0)
-        else:
-            await state.update_data(frostbite_ticks=fticks)
+    # Обморожение/оглушение и прочие срочные эффекты спадают в конце хода —
+    # см. end_round ниже (здесь ничего не декрементируем).
 
     # ── Тики эффекта оружия игрока на враге (в начале хода игрока) ──
     if data.get('enemy_effect'):
@@ -1454,7 +1475,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
     # Урон игрока: своё оружие + награды + состояния, броня врага поглощает часть.
     from utils.combat_model import pilot_combat_stats, roll_pilot_damage
-    stats = await pilot_combat_stats(user_id)
+    stats = await pilot_combat_stats(user_id, onhit.battle_state_keys(data))
     enemy_row = enemy if isinstance(enemy, dict) else dict(enemy)
     if not enemy_row.get('dodge') and enemy_row.get('dodge_chance'):
         enemy_row['dodge'] = enemy_row['dodge_chance']
@@ -1559,44 +1580,33 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         from utils.combat import get_enemy_attack_text
         text += get_enemy_attack_text(enemy['name'], reduced, player_hp) + blocked_line
 
-    # Навесить яд/кровотечение/обморожение при укусе врага (только если враг попал)
-    poison_just_applied = False
-    bleed_just_applied = False
-    frost_just_applied = False
+    # Наложение эффектов при ударе врага (v0.38.0): единая система —
+    # on_hit_effects строки врага (яд/кровотечение/оглушение и всё, что
+    # админ добавит). Наложение только если враг попал.
+    proc_text = ""
     if not player_dodged:
-        pc = enemy['poison_chance'] if 'poison_chance' in enemy.keys() else 0
-        if pc and enemy['poison_dmg'] and random.randint(1, 100) <= pc:
-            await state.update_data(active_poison=enemy['poison_dmg'])
-            text += f"\n☠️ {enemy['name']} отравил тебя! Яд: −{enemy['poison_dmg']} HP каждый ход."
-            poison_just_applied = True
-        bc = enemy['bleed_chance'] if 'bleed_chance' in enemy.keys() else 0
-        bd = enemy['bleed_dmg'] if 'bleed_dmg' in enemy.keys() else 0
-        if bc and bd and random.randint(1, 100) <= bc:
-            await state.update_data(active_bleed=bd, bleed_ticks=BLEED_TICKS_MAX)
-            text += (f"\n🩸 {enemy['name']} ранил тебя! Кровотечение: −{bd} HP каждый ход "
-                     f"(спадёт через {BLEED_TICKS_MAX} ходов).")
-            bleed_just_applied = True
-        fc = enemy['frostbite_chance'] if 'frostbite_chance' in enemy.keys() else 0
-        if fc and random.randint(1, 100) <= fc:
-            await state.update_data(active_frostbite=1, frostbite_ticks=FROSTBITE_TURNS)
-            text += (f"\n🧊 {enemy['name']} окутал тебя морозом! Обморожение: лечение −50%. "
-                     f"{FROSTBITE_CURE_HINT} Или пройдёт само через {FROSTBITE_TURNS} хода.")
-            frost_just_applied = True
+        procs = onhit.roll_procs(
+            onhit.parse_on_hit_effects(enemy_row.get('on_hit_effects')))
+        if procs:
+            proc_lines = onhit.apply_procs(user_id, data, procs,
+                                           enemy_name=enemy['name'])
+            proc_text = "".join(f"\n{line}" for line in proc_lines)
+            await state.update_data(on_hit=data.get('on_hit'))
+
+    # Спад срочных эффектов (оглушение/ослепление и т.д.) в конце хода.
+    round_note = "".join(f"\n{line}" for line in onhit.end_round(data))
+    await state.update_data(on_hit=data.get('on_hit'))
 
     # Показывать текущие статусы, пока игрок их не снял
     data_after = await state.get_data()
-    active_poison = data_after.get('active_poison')
-    if active_poison and not poison_just_applied:
-        text += f"\n☠️ Ты отравлен! Яд: −{active_poison} HP каждый ход."
-    if data_after.get('active_bleed') and not bleed_just_applied:
-        fticks = int(data_after.get('bleed_ticks', 0) or 0)
-        rem = f" (спадёт через {fticks} х.)" if fticks else " (спадёт скоро)"
-        text += f"\n🩸 Кровотечение: −{data_after['active_bleed']} HP каждый ход{rem}."
-    if data_after.get('active_frostbite') and not frost_just_applied:
-        text += f"\n🧊 Обморожение: лечение −50%. {FROSTBITE_CURE_HINT}"
+    status_text = ""
+    cur_status = onhit.active_line(data_after)
+    if cur_status:
+        status_text = f"\n{cur_status}"
     if data_after.get('regen_amounts'):
         rq = list(data_after['regen_amounts'])
-        text += f"\n♻ Регенерация активна: следующий тик +{rq[0]} HP (осталось {len(rq)} х.)."
+        status_text += f"\n♻ Регенерация активна: следующий тик +{rq[0]} HP (осталось {len(rq)} х.)."
+    text += proc_text + round_note + status_text
     # Текущий эффект оружия на враге (пока сам не спал).
     if data_after.get('enemy_effect') and not enemy_eff_just:
         eeff = data_after['enemy_effect']
@@ -1618,6 +1628,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         text += f"\n\n💀 Ты погиб! −{nm_penalty} Нордмарок штраф.\nСобранный лут потерян."
         await end_run(run['id'], 0)
         await state.clear()
+        onhit.unregister(user_id)
         await log_activity(user_id, "dungeon_death", f"Погиб в подземелье от «{enemy['name']}»")
         await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
     else:
@@ -1632,11 +1643,15 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
 async def battle_state_block_message(user_id: int):
     """Сообщение, если состояния игрока запрещают расходники в бою.
 
-    Возвращает текст блокировки («несварение»/«очень пьян») или None — всё
-    в порядке. В бою применение предметов из слотов (антидот, зелья, напитки,
-    дымовые шашки) подчиняется тем же правилам, что и вне боя.
+    Возвращает текст блокировки («несварение»/«очень пьян»/«оглушён») или None
+    — всё в порядке. В бою применение предметов из слотов (антидот, зелья,
+    напитки, дымовые шашки) подчиняется тем же правилам, что и вне боя;
+    оглушение врагом (v0.38.0) тоже блокирует расходники на время действия.
     """
     from utils.states import get_state_info, consumables_blocked
+    if onhit.consumables_blocked_by_battle(user_id):
+        return ("💫 Ты оглушён: тело не слушается. Расходники будут доступны, "
+                "когда оглушение пройдёт.")
     info = await get_state_info(user_id)
     blocked = consumables_blocked(info.get('names') or [])
     if not blocked:
@@ -1730,7 +1745,7 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         await _do_dungeon_escape(callback.message, state, user_id, run, enemy_row, smoke_used=True)
         return
 
-    if item['cure_poison'] and not data.get('active_poison'):
+    if item['cure_poison'] and not onhit.has_dot(data, 'poison'):
         await callback.message.answer("Ты не отравлен, антидот бесполезен.")
         return
 
@@ -1757,7 +1772,9 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
     await log_activity(user_id, "item_use", f"В бою: «{item['name']}»")
 
     if item['cure_poison']:
-        await state.update_data(active_poison=None)
+        _oh = dict(data.get('on_hit') or {})
+        _oh.pop('poison', None)
+        await state.update_data(on_hit=_oh)
         await bump_achievement(user_id, "antidote", 1)
         text = (
             f"⚗️ {item['name']} применён: отравление снято!\n"
@@ -1772,14 +1789,16 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         frost_note = ""
         regen_note = ""
         # Напитки с cure_frostbite (Огненная вода, Горячий ягодный морс) снимают обморожение.
-        if item.get('cure_frostbite') and data.get('active_frostbite'):
-            await state.update_data(active_frostbite=None, frostbite_ticks=0)
+        if item.get('cure_frostbite') and onhit.frostbite_active(data):
+            _oh = dict(data.get('on_hit') or {})
+            _oh.pop('frostbite', None)
+            await state.update_data(on_hit=_oh)
             frost_note = "\n🧊 Обморожение снято!"
         if item['heal'] > 0:
             heal_uses = int(data.get('dungeon_heal_uses', 0) or 0) + 1
             await state.update_data(dungeon_heal_uses=heal_uses)
             mult = heal_limit_mult(heal_uses)
-            frozen = bool(data.get('active_frostbite'))
+            frozen = onhit.frostbite_active(data)
             if frozen:
                 mult *= FROSTBITE_HEAL_MULT
             # Достижения: блюда усиливают «Готовка», зелья — «Эликсиры».
@@ -1816,7 +1835,7 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         heal_uses = int(data.get('dungeon_heal_uses', 0) or 0) + 1
         await state.update_data(dungeon_heal_uses=heal_uses)
         mult = heal_limit_mult(heal_uses)
-        frozen = bool(data.get('active_frostbite'))
+        frozen = onhit.frostbite_active(data)
         if frozen:
             mult *= FROSTBITE_HEAL_MULT
         # Достижения: блюда усиливают «Готовка», зелья — «Эликсиры».
@@ -1938,6 +1957,7 @@ async def _do_dungeon_escape(where, state, user_id: int, run, enemy,
         text += f"\n\n💀 Ты погиб! −{nm_penalty} Нордмарок штраф.\nСобранный лут потерян."
         await end_run(run['id'], 0)
         await state.clear()
+        onhit.unregister(user_id)
         await log_activity(user_id, "dungeon_death", "Погиб при попытке побега в подземелье")
         await answer_enemy_photo(where, enemy, text, reply_markup=dungeon_start_keyboard())
     else:
@@ -2555,6 +2575,7 @@ async def dungeon_exit_confirm(callback: CallbackQuery, state: FSMContext):
     if loot_nm > 0:
         await add_nordmarks(user_id, loot_nm, "dungeon_exit", "Вынесено из подземелья")
     await end_run(run['id'], 0)
+    onhit.unregister(user_id)
     await log_activity(user_id, "dungeon_exit", "Покинул подземелье (досрочный выход)")
 
     parts = []

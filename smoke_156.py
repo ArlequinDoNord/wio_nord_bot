@@ -1,17 +1,19 @@
-"""Smoke v0.37.0: «Лесозаготовка» — рубка деревьев, змея/неясыть, ослепление.
+"""Smoke v0.37.0/v0.38.0: «Лесозаготовка» — рубка деревьев, змея/неясыть, ослепление.
 
 Проверяет:
 1. Сид предметов: «Топор» (магазин, mining), «Бревна» (казна, не маркет),
    дропы змеи/неясыти (loot_only, не маркет).
 2. Константы лесозаготовки и чистая логика: logging_wood_chance, owl_after_hit.
-3. Сид врагов в logging_enemies (змея: яд 30%/2, неясыть: flee 20, blind 30%)
-   и дропы (кожа 50%, яд 10%, перо 35%).
+3. Сид врагов в logging_enemies (змея: яд 30%/2 в on_hit_effects, неясыть:
+   flee 20, ослепление 30% через on_hit) и дропы (кожа 50%, яд 10%, перо 35%).
 4. Счётчики гарантии (snake/owl) и колонки users.
-5. Состояние «ослеплён» в STATE_CONF (урон ×0.7, уклонение ×0.5, 30 минут).
+5. Состояние «ослеплён» в STATE_CONF (урон ×0.7, уклонение ×0.5, 30 минут
+   для ручной выдачи; в бою — на ходы боя, v0.38.0).
 6. Кнопка «🪓 Лесозаготовка» на Лесной поляне (и отсутствие на опушке).
 7. Вход: туриста не пускают; пилоту без топора — подсказка; с топором — окно.
-8. Бой: змея убиваема + яд; неясыть отлетает при HP ≤ 20 (победа, лут),
-   ослепление накладывается; поражение от змеи −10 ОД.
+8. Бой: змея убиваема + яд (on_hit store, v0.38.0); неясыть отлетает при
+   HP ≤ 20 (победа, лут), ослепление накладывается на ходы боя;
+   поражение от змеи −10 ОД.
 9. Ратуша: в подписи есть «Пилот 2 класса».
 10. Картинка Лесозаготовки: колонка/слот в картинках леса, сохранение и
     очистка через админ-обработчик, фон окна берёт свою картинку (photo_id)
@@ -230,9 +232,12 @@ async def run():
     check("змея: шанс 8, pity 10",
           snake and abs(snake["chance"] - LOGGING_SNAKE_CHANCE) < 1e-9
           and snake["pity_target"] == LOGGING_SNAKE_PITY_TARGET)
-    check("змея: яд 30% на 2 HP",
-          snake and snake["bleed_chance"] == LOGGING_SNAKE_POISON_CHANCE
-          and snake["bleed_dmg"] == LOGGING_SNAKE_POISON_DMG)
+    # v0.38.0: яд змеи — в on_hit_effects (JSON), legacy bleed_* убраны из сида.
+    import json as _json
+    snake_oh = _json.loads(snake['on_hit_effects'] or '[]') if snake else []
+    check("змея: яд 30% на 2 HP (on_hit_effects)",
+          any(e.get('kind') == 'poison' and int(e.get('chance') or 0) == 30
+              and int(e.get('dmg') or 0) == 2 for e in snake_oh))
     check("змея: loss_ap 10", snake and snake["loss_ap"] == 10)
     check("неясыть: шанс 3, pity 24",
           owl and abs(owl["chance"] - LOGGING_OWL_CHANCE) < 1e-9
@@ -479,14 +484,16 @@ async def run():
         "player_hp": 400, "player_hp_max": 400,
         "enemy_hp": 999999, "enemy_hp_max": 999999, "enemy_name": "Лесная змея", "emoji": "🐍",
         "dodge": 0.0, "armor": 0, "dmg_min": 1, "dmg_max": 1, "loss_ap": 10,
-        "poison_chance": 100, "poison_dmg": 2, "active_poison": 0, "poison_ticks": 0,
+        # v0.38.0: яд врага — через on_hit_effects, не legacy-ключи.
+        "on_hit_effects": [{"kind": "poison", "chance": 100, "dmg": 2}],
         "enemy": snake, "round": 1,
     }
     cb_p = FakeCallback(uid4, data=f"logsite:battle:hit:{tok4}", bot=FakeSender())
     with fixed_combat(pilot_damage=5, enemy_damage=1):
         await ls.logging_battle_hit(cb_p)
     b4 = ls.LOGGING_BATTLE.get(uid4) or {}
-    check("змея: яд наложен", b4.get("active_poison") == 2 and b4.get("poison_ticks") == 3)
+    check("змея: яд наложен (on_hit poison)",
+          (b4.get("on_hit") or {}).get("poison", {}).get("dmg") == 2)
     ls.LOGGING_BATTLE.pop(uid4, None)
 
     # ── 15. Бой с неясытью: отлёт при HP ≤ 20 → победа, бой завершён ──
@@ -528,19 +535,22 @@ async def run():
         "player_hp": 400, "player_hp_max": 400,
         "enemy_hp": 90, "enemy_hp_max": 90, "enemy_name": "Неясыть", "emoji": "🦉",
         "dodge": 0.0, "armor": 0, "dmg_min": 0, "dmg_max": 0, "loss_ap": 15,
-        "poison_chance": 0, "poison_dmg": 0, "active_poison": 0, "poison_ticks": 0,
+        # v0.38.0: ослепление — эффект on_hit врага (бой store), не users.state.
+        "on_hit_effects": [{"kind": "state", "key": "ослеплён",
+                            "chance": 100, "rounds": 4}],
         "enemy": owl, "round": 1,
     }
     saved_ri = ls.random.randint
-    ls.random.randint = lambda a, b: 1  # критический proc ослепления
+    ls.random.randint = lambda a, b: 1  # детерминированный бросок прока
     cb_bl = FakeCallback(uid6, data=f"logsite:battle:hit:{tok6}", bot=FakeSender())
     try:
         with fixed_combat(pilot_damage=5, enemy_damage=1):
             await ls.logging_battle_hit(cb_bl)
     finally:
         ls.random.randint = saved_ri
-    u6 = await get_user(uid6)
-    check("неясыть: «ослеплён» наложен", "ослеплён" in (u6["state"] or ""))
+    b6 = ls.LOGGING_BATTLE.get(uid6) or {}
+    check("неясыть: «ослеплён» наложен (on_hit store)",
+          (b6.get("on_hit") or {}).get("ослеплён", {}).get("rounds_left") is not None)
     ls.LOGGING_BATTLE.pop(uid6, None)
 
     # ── 17. Поражение от змеи: −10 ОД ──

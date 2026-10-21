@@ -41,6 +41,7 @@ from utils.helpers import (
     resolve_image, resolve_image_seasonal, season_key, time_of_day_key,
     plural_nordmark, item_local_photo,
 )
+from utils import onhit
 from config import (
     FOREST_AP_COST, FOREST_RESULT_DELAY, FOREST_ALLOW_TOURISTS, FOREST_SOLD_DAILY_LIMIT,
     FOREST_BOAR_PITY_TARGET, FOREST_BOAR_HP, FOREST_BOAR_DMG,
@@ -52,9 +53,6 @@ from config import (
 router = Router()
 
 # Зона по умолчанию при входе в лес.
-# Кровотечение (как в подземельях): урон каждый ход игрока, спадает через N ходов.
-BLEED_TICKS_MAX = 3
-
 FOREST_HOME_AREA = "glade"
 
 # Эмблемы зон для текстов и кнопок.
@@ -104,6 +102,7 @@ async def deactivate_forest(user_id: int):
     FOREST_MSG.pop(user_id, None)
     FOREST_CASTING.discard(user_id)
     FOREST_BATTLE.pop(user_id, None)
+    onhit.unregister(user_id)
 
 
 def _callback_token(data: str) -> str:
@@ -597,13 +596,13 @@ async def forest_cast(callback: CallbackQuery):
                 "dmg_min": int(beast.get('dmg_min') or FOREST_BOAR_DMG[0]),
                 "dmg_max": int(beast.get('dmg_max') or FOREST_BOAR_DMG[1]),
                 "loss_ap": int(beast.get('loss_ap') or FOREST_BOAR_LOSS_AP),
-                "bleed_chance": int(beast.get('bleed_chance') or 0),
-                "bleed_dmg": int(beast.get('bleed_dmg') or 0),
-                "active_bleed": 0,
-                "bleed_ticks": 0,
+                # v0.38.0: эффекты при ударе (кровотечение волка и др.) —
+                # единая система: JSON со строки зверя, активные — в on_hit.
+                "on_hit_effects": onhit.parse_on_hit_effects(beast.get('on_hit_effects')),
                 "boar": beast,
                 "round": 1,
             }
+            onhit.register(user_id, FOREST_BATTLE[user_id])
             await _show_battle(callback)
             return
 
@@ -795,16 +794,14 @@ async def _show_battle(callback: CallbackQuery, prefix: str = ""):
     boar_hp_max = battle.get('boar_hp_max') or battle['boar_hp']
     boar_name = battle.get('boar_name') or "Дикий кабан"
     emoji = battle.get('emoji') or "🐗"
-    bleed = int(battle.get('active_bleed') or 0)
-    bticks = int(battle.get('bleed_ticks') or 0)
-    bleed_line = (f"\n🩸 Кровотечение: −{bleed} HP каждый ход (ещё {bticks} х.)."
-                  if bleed > 0 else "")
+    effects_line = onhit.active_line(battle)
+    effects_line = f"\n{effects_line}" if effects_line else ""
     text = (
         f"{prefix}{emoji} {boar_name.upper()}\n\n"
         f"Кусты позади взрываются хрустом — на тебя несётся взбешённый зверь!\n\n"
         f"{emoji} Зверь   HP {_hp_bar(boar_hp, boar_hp_max)} {max(0, boar_hp)}/{boar_hp_max}\n"
         f"🧑 Ты     HP {_hp_bar(player_hp, battle['player_hp_max'])} "
-        f"{max(0, player_hp)}/{battle['player_hp_max']}{bleed_line}\n\n"
+        f"{max(0, player_hp)}/{battle['player_hp_max']}{effects_line}\n\n"
         f"Ход {battle['round']}. Ударь зверя — или уноси ноги."
     )
     await _boar_paint(callback, text=text,
@@ -821,6 +818,7 @@ async def _white_wolf_defeat(callback, user_id, battle, *, big: bool, prefix: st
     from utils.states import apply_state_to
     battle_area = battle.get('area') or FOREST_HOME_AREA
     FOREST_BATTLE.pop(user_id, None)
+    onhit.unregister(user_id)
     removed = await remove_ap_or_floor(
         user_id, int(battle.get('loss_ap') or FOREST_WHITE_WOLF_LOSS_AP))
     emoji = battle.get('emoji') or "🐺"
@@ -875,32 +873,26 @@ async def forest_battle_hit(callback: CallbackQuery):
     emoji = battle.get('emoji') or "🐗"
     is_white_wolf = bool(battle.get('is_white_wolf'))
 
-    # Кровотечение: тикает в начале хода игрока (наложено зверем на прошлом ходу).
-    bleed_note = ""
-    bleed = int(battle.get('active_bleed') or 0)
-    if bleed > 0:
-        battle['player_hp'] = max(0, battle['player_hp'] - bleed)
-        bticks = int(battle.get('bleed_ticks') or 0) - 1
-        if bticks <= 0:
-            battle['active_bleed'] = 0
-            battle['bleed_ticks'] = 0
-            bleed_note = f"🩸 Кровотечение: −{bleed} HP. Кровь остановилась.\n\n"
-        else:
-            battle['bleed_ticks'] = bticks
-            bleed_note = f"🩸 Кровотечение: −{bleed} HP (ещё {bticks} х.).\n\n"
+    # DoT (кровотечение волка и др.): тикает в начале хода игрока (наложено
+    # зверем на прошлом ходу; живёт до конца боя).
+    dot_dmg, dot_lines = onhit.tick_dots(battle)
+    dot_note = "".join(f"{line}\n\n" for line in dot_lines)
+    if dot_dmg:
+        battle['player_hp'] = max(0, battle['player_hp'] - dot_dmg)
         if battle['player_hp'] <= 0:
             if is_white_wolf:
                 await _white_wolf_defeat(callback, user_id, battle, big=False,
-                                         prefix=bleed_note)
+                                         prefix=dot_note)
                 return
             battle_area = battle.get('area') or FOREST_HOME_AREA
             FOREST_BATTLE.pop(user_id, None)
+            onhit.unregister(user_id)
             removed = await remove_ap_or_floor(
                 user_id, int(battle.get('loss_ap') or FOREST_BOAR_LOSS_AP))
             await log_activity(user_id, "forest", f"Проиграл зверю в лесу (−{removed} ОД)")
             text = (
                 f"{emoji} БОЙ С ЗВЕРЕМ\n\n"
-                f"{bleed_note}"
+                f"{dot_note}"
                 "Ты истёк кровью и теряешь сознание.\n\n"
                 f"Зверь уходит, оставив тебя в чаще (−{removed} ОД)."
             )
@@ -921,7 +913,7 @@ async def forest_battle_hit(callback: CallbackQuery):
     # Твой удар: считается от ТВОЕГО оружия, наград и состояний.
     # Зверь может увернуться; его броня поглощает часть урона.
     from utils.combat_model import pilot_combat_stats, roll_pilot_damage
-    stats = await pilot_combat_stats(user_id)
+    stats = await pilot_combat_stats(user_id, onhit.battle_state_keys(battle))
     enemy = {
         'dodge': battle.get('dodge') or 0,
         'armor': battle.get('armor') or 0,
@@ -962,12 +954,13 @@ async def forest_battle_hit(callback: CallbackQuery):
             "страшнее!\n\n"
         )
         await _white_wolf_defeat(callback, user_id, battle, big=True,
-                                 prefix=f"{bleed_note}{regen_note}{hit_line}{enrage_note}")
+                                 prefix=f"{dot_note}{regen_note}{hit_line}{enrage_note}")
         return
 
     if battle['boar_hp'] <= 0 and not is_white_wolf:
         battle_area = battle.get('area') or FOREST_HOME_AREA
         FOREST_BATTLE.pop(user_id, None)
+        onhit.unregister(user_id)
         await log_activity(user_id, "forest", "Победил зверя в лесу")
         loot_names = await _roll_boar_loot_items(battle.get('boar') or {}, user_id)
         got = []
@@ -990,7 +983,7 @@ async def forest_battle_hit(callback: CallbackQuery):
             result_line = "Зверь повержен, но ничего ценного на этот раз не нашлось."
         text = (
             f"{emoji} БОЙ С ЗВЕРЕМ\n\n"
-            f"{bleed_note}{regen_note}{hit_line}"
+            f"{dot_note}{regen_note}{hit_line}"
             "Зверь споткнулся и рухнул — тишина снова принадлежит лесу.\n\n"
             f"{result_line}"
         )
@@ -1021,15 +1014,16 @@ async def forest_battle_hit(callback: CallbackQuery):
     if battle['player_hp'] <= 0:
         if is_white_wolf:
             await _white_wolf_defeat(callback, user_id, battle, big=False,
-                                     prefix=f"{bleed_note}{regen_note}{hit_line}{counter_line}")
+                                     prefix=f"{dot_note}{regen_note}{hit_line}{counter_line}")
             return
         battle_area = battle.get('area') or FOREST_HOME_AREA
         FOREST_BATTLE.pop(user_id, None)
+        onhit.unregister(user_id)
         removed = await remove_ap_or_floor(user_id, int(battle.get('loss_ap') or FOREST_BOAR_LOSS_AP))
         await log_activity(user_id, "forest", f"Проиграл зверю в лесу (−{removed} ОД)")
         text = (
             f"{emoji} БОЙ С ЗВЕРЕМ\n\n"
-            f"{bleed_note}{regen_note}{hit_line}"
+            f"{dot_note}{regen_note}{hit_line}"
             f"{counter_line}Ты теряешь сознание.\n\n"
             f"Очнулся ты на {FOREST_AREA_NAME[battle_area].lower()} весь в ссадинах — "
             f"зверь ушёл в чащу. Победа досталась ему ценой твоих сил: −{removed} ОД."
@@ -1039,24 +1033,23 @@ async def forest_battle_hit(callback: CallbackQuery):
                      area=battle_area)
         return
 
-    # Кровотечение: зверь может наложить его ударом (только если попал).
-    bleed_proc_line = ""
+    # Эффекты при ударе (v0.38.0): кровотечение волка и всё, что админ добавит
+    # в on_hit_effects зверя — единая система (наложение только если попал).
+    proc_line = ""
     if not eres['dodged']:
-        bc = int(battle.get('bleed_chance') or 0)
-        bd = int(battle.get('bleed_dmg') or 0)
-        if bc and bd and random.randint(1, 100) <= bc:
-            battle['active_bleed'] = bd
-            battle['bleed_ticks'] = BLEED_TICKS_MAX
-            beast_name = battle.get('boar_name') or "Зверь"
-            bleed_proc_line = (
-                f"🩸 {beast_name} нанёс рвущую рану — кровотечение! "
-                f"−{bd} HP каждый ход ({BLEED_TICKS_MAX} х.).\n\n"
-            )
+        procs = onhit.roll_procs(battle.get('on_hit_effects') or [])
+        if procs:
+            proc_lines = onhit.apply_procs(user_id, battle, procs,
+                                           enemy_name=battle.get('boar_name') or "Зверь")
+            proc_line = "".join(f"{line}\n\n" for line in proc_lines)
+
+    # Спад срочных эффектов (оглушение/ослепление и т.д.) в конце хода.
+    round_note = "".join(f"{line}\n\n" for line in onhit.end_round(battle))
 
     battle['round'] += 1
     await _show_battle(
         callback,
-        prefix=f"{bleed_note}{regen_note}{hit_line}{counter_line}{bleed_proc_line}"
+        prefix=f"{dot_note}{regen_note}{hit_line}{counter_line}{proc_line}{round_note}"
     )
 
 
@@ -1066,6 +1059,7 @@ async def forest_battle_flee(callback: CallbackQuery):
         return
     user_id = callback.from_user.id
     stale = FOREST_BATTLE.pop(user_id, None)
+    onhit.unregister(user_id)
     if not stale:
         await _show_area(callback, FOREST_HOME_AREA, prefix="⏳ Бой со зверем устарел.\n\n")
         return
