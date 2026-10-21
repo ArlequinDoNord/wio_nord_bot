@@ -108,6 +108,21 @@ async def run():
         check(f"{f} скрыт из магазина", it and it["is_available"] == 0)
         check(f"{f} категория fishing", it and it["category"] == "fishing")
 
+    # ── 3a. Ребаланс v0.38.1: цены форели и жареной форели ──
+    flare = await get_item_by_name("Светящаяся форель")
+    check("форель: sell_price=450", flare and flare["sell_price"] == 450)
+    check("форель: price=900", flare and flare["price"] == 900)
+    fried = await get_item_by_name("Жареный форель")
+    check("жареная форель: sell_price=600", fried and fried["sell_price"] == 600)
+    check("жареная форель: price=1200", fried and fried["price"] == 1200)
+
+    # ── 3b. Веса пула водохранилища (сом 70 / угорь 25 / форель 5) ──
+    from database.db import WATER_FISH_DEFAULTS
+    res = dict((n, (d, ni)) for n, d, ni in WATER_FISH_DEFAULTS["reservoir"])
+    check("сом: вес 70", res.get("Мерцающий сом") == (70, 70))
+    check("угорь: вес 25", res.get("Искрящийся угорь") == (25, 25))
+    check("форель: вес 5", res.get("Светящаяся форель") == (5, 5))
+
     vk = await get_item_by_name("Огненная вода (водка)")
     check("водка существует", vk is not None)
     check("водка: cure_frostbite=1", vk and vk["cure_frostbite"] == 1)

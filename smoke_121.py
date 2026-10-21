@@ -87,6 +87,12 @@ def main():
     check("CALLSIGN_PRICE = 500", CALLSIGN_PRICE == 500)
     check("цена не захардкожена в profile.py", "price = 500" not in prof)
 
+    # ── 8а. Оплата уходит в казну, а не в пустоту ──
+    check("оплата через transfer_to_treasury", "transfer_to_treasury" in prof)
+    check("нет сгорания денег на to_user=0", "transfer_nordmarks(user_id, 0" not in prof)
+    check("нет несуществующей add_transaction", "add_transaction" not in prof)
+    from database.db import transfer_to_treasury  # noqa: F401 — функция существует
+
     # ── 9. Админ может ставить/менять позывной любому ──
     check("кнопка админки есть", 'callback_data="admin:callsign"' in kbd)
     check("админ выбирает пилота", 'pilot_picker_markup("callsign")' in adm)

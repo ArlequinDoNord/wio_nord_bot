@@ -701,9 +701,8 @@ async def profile_callsign_buy(callback: CallbackQuery, state: FSMContext):
         await callback.answer(f"❌ Недостаточно. Нужно {CALLSIGN_PRICE} НМ", show_alert=True)
         return
 
-    from database.db import transfer_nordmarks, add_transaction
-    await transfer_nordmarks(user_id, 0, CALLSIGN_PRICE, "callsign_change")
-    await add_transaction(user_id, "callsign_change", -CALLSIGN_PRICE, "Смена позывного")
+    from database.db import transfer_to_treasury
+    await transfer_to_treasury(user_id, CALLSIGN_PRICE, "Смена позывного")
 
     # Позывной сбрасываем, чтобы ввод нового прошёл как первая установка.
     await set_callsign(user_id, None)

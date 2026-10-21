@@ -165,7 +165,7 @@ async def run():
     check("категория mining в ITEM_CATEGORIES", "mining" in ITEM_CATEGORIES)
 
     # ── 2. Константы и чистая логика ──
-    check("MINE_AP_COST = 15", MINE_AP_COST == 15)
+    check("MINE_AP_COST = 12", MINE_AP_COST == 12)
     check("база шанса = 30", MINE_BASE_CHANCE == 30)
     check("надбавка кирки = 15/ступень", MINE_PICKAXE_BONUS_PER_RANK == 15)
     check("кап шанса = 90", MINE_CHANCE_CAP == 90)

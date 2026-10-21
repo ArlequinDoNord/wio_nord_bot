@@ -200,7 +200,7 @@ async def run():
           all(n in LOGGING_ENEMY_DROPS for n in ("Змеиная кожа", "Змеиный яд", "Совиное перо")))
 
     # ── 2. Константы и чистая логика ──
-    check("LOGGING_AP_COST = 15", LOGGING_AP_COST == 15)
+    check("LOGGING_AP_COST = 12", LOGGING_AP_COST == 12)
     check("база шанса = 35", LOGGING_BASE_CHANCE == 35)
     check("надбавка топора = 15/ступень", LOGGING_AXE_BONUS_PER_RANK == 15)
     check("кап шанса = 90", LOGGING_CHANCE_CAP == 90)
@@ -434,7 +434,7 @@ async def run():
         ls._snake, ls._owl = saved_snake, saved_owl
         ls.LOGGING_RESULT_DELAY = ls.LOGGING_RESULT_DELAY_SAVED
     txt_c, kb_c = last_send(bot_c)
-    check("рубка списала ОД", (await get_user(uid2))["ap"] == 45)
+    check("рубка списала ОД", (await get_user(uid2))["ap"] == 60 - LOGGING_AP_COST)
     inv2 = await get_inventory(uid2)
     check("бревно в инвентаре",
           wood and any(i["id"] == wood["id"] for i in inv2))

@@ -1520,6 +1520,38 @@ async def init_db():
     # v0.38.0: legacy-колонки эффектов врагов (bleed_*/poison_*/frostbite_*)
     # переносим в on_hit_effects (JSON). Идемпотентно, по NULL-строкам.
     await _migrate_enemy_on_hit_effects()
+    # v0.38.1: ребаланс водохранилища (цены форели + веса пула).
+    await _migrate_reservoir_balance()
+
+
+async def _migrate_reservoir_balance():
+    """v0.38.1: ребаланс подземного водохранилища.
+
+    Цены «Светящаяся форель» (sell 600→450, price 1200→900) и «Жареный форель»
+    (sell 1000→600, price 2000→1200), плюс веса пула (сом 62→70, угорь 33→25).
+    Обновляет ТОЛЬКО строки с прежними значениями (не трогает админские правки
+    на другие числа), идемпотентно при каждом старте.
+    """
+    conn = await get_db()
+    price_fix = [
+        ("Светящаяся форель", 1200, 900, 600, 450),
+        ("Жареный форель", 2000, 1200, 1000, 600),
+    ]
+    for name, old_price, new_price, old_sell, new_sell in price_fix:
+        await conn.execute(
+            "UPDATE items SET price = ?, sell_price = ? "
+            "WHERE name = ? AND price = ? AND sell_price = ?",
+            (new_price, new_sell, name, old_price, old_sell))
+    weight_fix = [("Мерцающий сом", 62, 70), ("Искрящийся угорь", 33, 25)]
+    for name, old_w, new_w in weight_fix:
+        item = await get_item_by_name(name)
+        if item:
+            await conn.execute(
+                "UPDATE water_fish SET day_weight = ?, night_weight = ? "
+                "WHERE water = 'reservoir' AND item_id = ? "
+                "AND day_weight = ? AND night_weight = ?",
+                (new_w, new_w, item['id'], old_w, old_w))
+    await conn.commit()
 
 
 async def _migrate_enemy_on_hit_effects():
@@ -7848,8 +7880,8 @@ WATER_FISH_DEFAULTS = {
         ("Налим", 0, 5),
     ],
     "reservoir": [
-        ("Мерцающий сом", 62, 62),
-        ("Искрящийся угорь", 33, 33),
+        ("Мерцающий сом", 70, 70),
+        ("Искрящийся угорь", 25, 25),
         ("Светящаяся форель", 5, 5),
     ],
 }
@@ -11624,7 +11656,7 @@ async def ensure_dungeon_reservoir_items():
         ("Искрящийся угорь", "Редкая рыба-электрик из подземного водохранилища. При разряде светится изнутри.",
          500, 250, 3),
         ("Светящаяся форель", "Секретная рыба водохранилища. Сияет холодным светом, как маленькая луна. Такой почти никто не видел.",
-         1200, 600, 4),
+         900, 450, 4),
     )
     for (fname, fdesc, fprice, fsell, frarity) in reservoir_fish:
         cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (fname,))
@@ -11644,7 +11676,7 @@ async def ensure_dungeon_reservoir_items():
         ("Жареный угорь", "Хрустящий жареный угорь с водорослями. +90 HP в бою подземелья. Срок годности 4 суток.",
          850, 425, 3, 90),
         ("Жареный форель", "Светящаяся форель, пожаренная до золотой корочки. +140 HP в бою подземелья. Срок годности 4 суток.",
-         2000, 1000, 4, 140),
+         1200, 600, 4, 140),
     )
     for (iname, idesc, iprice, isell, irarity, iheal) in reservoir_fried:
         cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (iname,))
