@@ -34,7 +34,8 @@ from database.db import (
     get_location_by_key, location_logging_photo,
 )
 from utils.helpers import (
-    resolve_image_seasonal, season_key, time_of_day_key, plural_nordmark,
+    resolve_image_seasonal, resolve_image, item_local_photo,
+    season_key, time_of_day_key, plural_nordmark,
 )
 from utils import onhit
 from config import (
@@ -160,13 +161,50 @@ async def _paint(callback, *, text: str = None, media_path: str = None,
     LOGGING_MSG[user_id] = (chat_id, sent.message_id)
 
 
-async def _logging_paint(callback, *, text: str, kb=None):
-    """Отрисовка окна: своя картинка из админ-редактора, иначе локальный фон."""
-    photo_id = await _logging_photo_id()
-    if photo_id:
-        await _paint(callback, text=text, photo_id=photo_id, kb=kb)
+async def _logging_paint(callback, *, text: str, kb=None,
+                         photo_id=None, media_path=None):
+    """Отрисовка окна: своя картинка из админ-редактора, иначе локальный фон.
+
+    photo_id/media_path — явный override (фото врага или находки); если заданы,
+    используются вместо фона локации.
+    """
+    if photo_id or media_path:
+        await _paint(callback, text=text, photo_id=photo_id,
+                     media_path=media_path, kb=kb)
+        return
+    loc_photo = await _logging_photo_id()
+    if loc_photo:
+        await _paint(callback, text=text, photo_id=loc_photo, kb=kb)
     else:
         await _paint(callback, text=text, media_path=_logging_path(), kb=kb)
+
+
+async def _enemy_paint(callback, battle: dict, *, text: str, kb=None):
+    """Отрисовка боя: фото врага из БД (image), иначе локальный ключ, иначе фон."""
+    enemy = battle.get('enemy') or {}
+    image = enemy.get('image')
+    if image:
+        await _logging_paint(callback, text=text, kb=kb, photo_id=image)
+        return
+    path = resolve_image(enemy.get('photo_key') or "")
+    if path and os.path.isfile(path):
+        await _logging_paint(callback, text=text, kb=kb, media_path=path)
+        return
+    await _logging_paint(callback, text=text, kb=kb)
+
+
+async def _item_paint(callback, item, *, text: str, kb=None):
+    """Отрисовка находки: фото предмета (items.photo_file_id), иначе локальный файл."""
+    if item:
+        photo_id = item.get('photo_file_id') if item.keys() is not None and 'photo_file_id' in item.keys() else None
+        if photo_id:
+            await _logging_paint(callback, text=text, kb=kb, photo_id=photo_id)
+            return
+        local_photo = item_local_photo(item.get('name') or "")
+        if local_photo:
+            await _logging_paint(callback, text=text, kb=kb, media_path=local_photo)
+            return
+    await _logging_paint(callback, text=text, kb=kb)
 
 
 # ───────── чистые функции (тестируются в smoke) ─────────
@@ -252,11 +290,14 @@ def _enter_markup(token: str):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _result_markup(token: str):
+def _result_markup(token: str, has_wood: bool = False):
     rows = [
         [InlineKeyboardButton(text="🪓 Рубить ещё", callback_data=f"logsite:chop:{token}")],
-        [InlineKeyboardButton(text="🔙 К лесу", callback_data="logsite:back")],
     ]
+    if has_wood:
+        rows.append([InlineKeyboardButton(text="🪚 Переработка брёвен",
+                                          callback_data=f"logsite:mill:{token}")])
+    rows.append([InlineKeyboardButton(text="🔙 К лесу", callback_data="logsite:back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -296,17 +337,30 @@ def max_firewood(wood_qty: int, ap: int, ap_cost: int, yield_per: int) -> int:
     return min(wood_qty, affordable) * yield_per
 
 
-def _mill_markup(token: str, planks: int, firewood: int, fee: int, ap_cost: int):
-    """Окно переработки: распил на доски и самостоятельная рубка дров."""
+def _mill_markup(token: str, planks: int, firewood: int, planks_one: int,
+                 firewood_one: int):
+    """Окно переработки: распил на доски и рубка дров, по 1 или всё доступное."""
     rows = []
     if planks > 0:
-        rows.append([InlineKeyboardButton(
-            text=f"🪚 Распилить всё ({planks} досок)",
-            callback_data=f"logsite:plank:all:{token}")])
+        row = []
+        if planks_one > 0:
+            row.append(InlineKeyboardButton(
+                text=f"🪚 1 бревно ({planks_one} дос.)",
+                callback_data=f"logsite:plank:1:{token}"))
+        row.append(InlineKeyboardButton(
+            text=f"🪚 Всё ({planks} досок)",
+            callback_data=f"logsite:plank:all:{token}"))
+        rows.append(row)
     if firewood > 0:
-        rows.append([InlineKeyboardButton(
-            text=f"🪓 Нарубить дров ({firewood} паков)",
-            callback_data=f"logsite:fire:all:{token}")])
+        row = []
+        if firewood_one > 0:
+            row.append(InlineKeyboardButton(
+                text=f"🪓 1 бревно ({firewood_one} пак.)",
+                callback_data=f"logsite:fire:1:{token}"))
+        row.append(InlineKeyboardButton(
+            text=f"🪓 Всё ({firewood} паков)",
+            callback_data=f"logsite:fire:all:{token}"))
+        rows.append(row)
     rows.append([InlineKeyboardButton(text="🔙 Назад",
                                       callback_data=f"logsite:menu:{token}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -488,12 +542,15 @@ async def logging_chop(callback: CallbackQuery):
         chance = logging_wood_chance(rank)
         head = "🪓 ЛЕСОЗАГОТОВКА"
         ap_block = f"\n\n{await _ap_line(user_id)}"
-        result_kb = _result_markup(LOGGING_TOKEN.get(user_id, ""))
+        found_wood = False
+        item_meta = None
         if random.random() * 100 < chance:
             wood = await get_item_by_name(LOGGING_WOOD_NAME)
             if wood:
                 await add_inventory_item(user_id, wood['id'], 1)
                 await log_activity(user_id, "logging", f"Срубил «{wood['name']}»")
+                found_wood = True
+                item_meta = wood
                 sell_line = ""
                 if wood['sell_price'] > 0:
                     sell_line = (f"\nКазна выкупает бревна по {wood['sell_price']} "
@@ -514,7 +571,9 @@ async def logging_chop(callback: CallbackQuery):
                 "дерево уходито на дрова.\n"
                 "Пробуй ещё!"
             ) + ap_block
-        await _logging_paint(callback, text=text, kb=result_kb)
+        left_wood = await _wood_count(user_id)
+        result_kb = _result_markup(LOGGING_TOKEN.get(user_id, ""), left_wood > 0)
+        await _item_paint(callback, item_meta, text=text, kb=result_kb)
     finally:
         LOGGING_CASTING.discard(user_id)
 
@@ -544,6 +603,9 @@ async def logging_mill(callback: CallbackQuery):
     planks = max_planks(wood_qty, nordmarks, LOGGING_PLANK_FEE, LOGGING_PLANK_YIELD)
     firewood = max_firewood(wood_qty, ap, LOGGING_FIREWOOD_AP_COST,
                             LOGGING_FIREWOOD_YIELD)
+    planks_one = max_planks(1, nordmarks, LOGGING_PLANK_FEE, LOGGING_PLANK_YIELD)
+    firewood_one = max_firewood(1, ap, LOGGING_FIREWOOD_AP_COST,
+                                LOGGING_FIREWOOD_YIELD)
     paid_wood = min(wood_qty, nordmarks // max(1, LOGGING_PLANK_FEE))
     fw_wood = min(wood_qty, ap // max(1, LOGGING_FIREWOOD_AP_COST))
 
@@ -567,16 +629,17 @@ async def logging_mill(callback: CallbackQuery):
     )
     await _logging_paint(callback, text="\n".join(lines),
                          kb=_mill_markup(token, planks, firewood,
-                                         LOGGING_PLANK_FEE, LOGGING_FIREWOOD_AP_COST))
+                                         planks_one, firewood_one))
 
 
-@router.callback_query(F.data.regexp(r"^logsite:plank:all:\d+$"))
+@router.callback_query(F.data.regexp(r"^logsite:plank:(1|all):\d+$"))
 async def logging_plank(callback: CallbackQuery):
-    """Распил всех доступных брёвен на доски: плата в казну, топор не нужен."""
+    """Распил брёвен на доски (1 или всё доступное): плата в казну, топор не нужен."""
     if not await _logging_ok(callback):
         return
     user_id = callback.from_user.id
     token = LOGGING_TOKEN.get(user_id, "")
+    mode = callback.data.split(":")[2]
 
     if await get_active_run(user_id):
         await callback.answer("⛔ Ты в подземелье — тут не до распила.", show_alert=True)
@@ -592,7 +655,9 @@ async def logging_plank(callback: CallbackQuery):
 
     user = await get_user(user_id) or {}
     nordmarks = int(user.get('nordmarks', 0) or 0)
-    n = min(wood_qty, nordmarks // max(1, LOGGING_PLANK_FEE))
+    afford = nordmarks // max(1, LOGGING_PLANK_FEE)
+    want = 1 if mode == "1" else wood_qty
+    n = min(wood_qty, afford, want)
     if n <= 0:
         await callback.answer(
             f"❌ Не хватает денег: распил одного бревна стоит "
@@ -612,7 +677,6 @@ async def logging_plank(callback: CallbackQuery):
                        f"(−{total_fee} НМ в казну)")
     await callback.answer()
 
-    fresh = await get_user(user_id) or {}
     left_wood = await _wood_count(user_id)
     text = (
         "🪚 РАСПИЛ БРЁВЕН\n\n"
@@ -623,18 +687,18 @@ async def logging_plank(callback: CallbackQuery):
         f"🎒 Получено: «{plank_item['name']}» x{planks}.\n"
         f"📦 Брёвен осталось: {left_wood} шт."
     )
-    await _logging_paint(
-        callback, text=text,
-        kb=_enter_markup_extra(token, left_wood > 0))
+    await _item_paint(callback, plank_item, text=text,
+                      kb=_enter_markup_extra(token, left_wood > 0))
 
 
-@router.callback_query(F.data.regexp(r"^logsite:fire:all:\d+$"))
+@router.callback_query(F.data.regexp(r"^logsite:fire:(1|all):\d+$"))
 async def logging_firewood(callback: CallbackQuery):
-    """Рубка дров из брёвен: тратит ОД, требует топор."""
+    """Рубка дров из брёвен (1 или всё доступное): тратит ОД, требует топор."""
     if not await _logging_ok(callback):
         return
     user_id = callback.from_user.id
     token = LOGGING_TOKEN.get(user_id, "")
+    mode = callback.data.split(":")[2]
     await callback.answer()
 
     if await get_active_run(user_id):
@@ -660,7 +724,9 @@ async def logging_firewood(callback: CallbackQuery):
 
     user = await get_user(user_id) or {}
     ap = int(user.get('ap', 0) or 0)
-    n = min(wood_qty, ap // max(1, LOGGING_FIREWOOD_AP_COST))
+    afford = ap // max(1, LOGGING_FIREWOOD_AP_COST)
+    want = 1 if mode == "1" else wood_qty
+    n = min(wood_qty, afford, want)
     if n <= 0:
         await callback.answer(
             f"❌ Не хватает ОД: на одно бревно нужно "
@@ -692,9 +758,8 @@ async def logging_firewood(callback: CallbackQuery):
         f"📦 Брёвен осталось: {left_wood} шт.\n\n"
         f"{await _ap_line(user_id)}"
     )
-    await _logging_paint(
-        callback, text=text,
-        kb=_enter_markup_extra(token, left_wood > 0))
+    await _item_paint(callback, fw_item, text=text,
+                      kb=_enter_markup_extra(token, left_wood > 0))
 
 
 async def _start_battle(callback: CallbackQuery, user_id: int, enemy: dict, kind: str):
@@ -758,8 +823,8 @@ async def _show_battle(callback: CallbackQuery, prefix: str = ""):
         f"{max(0, player_hp)}/{battle['player_hp_max']}{effects_line}\n\n"
         f"Ход {battle['round']}. {tail}"
     )
-    await _logging_paint(callback, text=text,
-                         kb=_battle_markup(battle['token']))
+    await _enemy_paint(callback, battle, text=text,
+                       kb=_battle_markup(battle['token']))
 
 
 async def _battle_loot(user_id: int, battle: dict) -> list:
@@ -789,7 +854,6 @@ async def logging_battle_hit(callback: CallbackQuery):
     await callback.answer()
     emoji = battle.get('emoji') or SNAKE_EMOJI
     kind = battle.get('kind') or "snake"
-    enemy_img = (battle.get('enemy') or {}).get('image')
 
     # DoT (яд/кровотечение): тикает в начале хода игрока (наложен змеёй
     # на прошлом ходу; живёт до конца боя).

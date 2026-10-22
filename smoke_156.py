@@ -488,6 +488,8 @@ async def run():
           wood and any(i["id"] == wood["id"] for i in inv2))
     check("текст с бревном", "Бревна" in txt_c or "бревно" in txt_c.lower())
     check("кнопка «рубить ещё»", f"logsite:chop:{tok2}" in markup_callbacks(kb_c))
+    check("после рубки: кнопка переработки видна (v0.38.3)",
+          f"logsite:mill:{tok2}" in markup_callbacks(kb_c))
     check("кастинг снят", uid2 not in ls.LOGGING_CASTING)
 
     # ── 13. Бой со змеёй: победа + лут, яд не висит ──
@@ -643,6 +645,10 @@ async def run():
           f"logsite:plank:all:{tok_m}" in markup_callbacks(kb_m))
     check("переработка: кнопка дров",
           f"logsite:fire:all:{tok_m}" in markup_callbacks(kb_m))
+    check("переработка: кнопка распила 1 бревна",
+          f"logsite:plank:1:{tok_m}" in markup_callbacks(kb_m))
+    check("переработка: кнопка дров 1 бревна",
+          f"logsite:fire:1:{tok_m}" in markup_callbacks(kb_m))
 
     # Распил: 4 бревна × 15 = 60 НМ → 12 досок
     bot_p = FakeSender()
