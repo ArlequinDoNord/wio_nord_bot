@@ -432,7 +432,7 @@
 |---|---|---|
 | `waiting_photo` | `bot/handlers/profile.py:249` `set_photo` | `bot/handlers/profile.py:257` `process_photo` |
 | `waiting_about` | `bot/handlers/profile.py:270` `edit_about` | `bot/handlers/profile.py:278` `process_about` |
-| `waiting_callsign` | `bot/handlers/profile.py:601` `profile_callsign`<br>`bot/handlers/profile.py:612` `profile_callsign`<br>`bot/handlers/profile.py:710` `profile_callsign_buy` | `bot/handlers/profile.py:649` `profile_callsign_input` |
+| `waiting_callsign` | `bot/handlers/profile.py:601` `profile_callsign`<br>`bot/handlers/profile.py:612` `profile_callsign`<br>`bot/handlers/profile.py:709` `profile_callsign_buy` | `bot/handlers/profile.py:649` `profile_callsign_input` |
 
 ### `ReportSubmit` — `bot/handlers/reports.py`
 
@@ -660,8 +660,8 @@
 - `loc:set_status`: `bot/handlers/admin.py:8077`
 - `loc:storage_clear`: `bot/handlers/admin.py:8744`
 - `loc:storage_set`: `bot/handlers/admin.py:8706`
-- `logsite:back`: `bot/handlers/logging_site.py:324`
-- `logsite:enter`: `bot/handlers/logging_site.py:272`
+- `logsite:back`: `bot/handlers/logging_site.py:452`
+- `logsite:enter`: `bot/handlers/logging_site.py:392`
 - `mvd:menu`: `bot/handlers/mvd.py:29`
 - `news:archive`: `bot/handlers/news.py:132`
 - `news:no_photo`: `bot/handlers/news.py:350`
@@ -962,10 +962,13 @@
 - `location:enter:`: `bot/handlers/locations.py:107`
 - `location:preview:`: `bot/handlers/locations.py:40`
 - `locstat:`: `bot/handlers/admin.py:4882`
-- `logsite:battle:flee:\d+$`: `bot/handlers/logging_site.py:715`
-- `logsite:battle:hit:\d+$`: `bot/handlers/logging_site.py:525`
-- `logsite:chop:\d+$`: `bot/handlers/logging_site.py:332`
-- `logsite:menu:\d+$`: `bot/handlers/logging_site.py:317`
+- `logsite:battle:flee:\d+$`: `bot/handlers/logging_site.py:1054`
+- `logsite:battle:hit:\d+$`: `bot/handlers/logging_site.py:865`
+- `logsite:chop:\d+$`: `bot/handlers/logging_site.py:460`
+- `logsite:fire:(1|all):\d+$`: `bot/handlers/logging_site.py:718`
+- `logsite:menu:\d+$`: `bot/handlers/logging_site.py:445`
+- `logsite:mill:\d+$`: `bot/handlers/logging_site.py:605`
+- `logsite:plank:(1|all):\d+$`: `bot/handlers/logging_site.py:659`
 - `lootonly:`: `bot/handlers/admin.py:1529`
 - `marketok:`: `bot/handlers/admin.py:1507`
 - `mine:battle:flee:\d+$`: `bot/handlers/mine.py:706`

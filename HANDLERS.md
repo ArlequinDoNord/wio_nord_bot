@@ -68,7 +68,7 @@
 | `fishing.py` | Рыбалка на Озере в парке. | `router` | 0 | 4 | `fish:` | — |
 | `forest.py` | Лес на окраине: опушка и лесная поляна, сбор грибов и кабан. | `router` | 0 | 4 | `forest:` | — |
 | `mine.py` | Железная копи: ресурсная локация (v0.31.0). | `router` | 0 | 6 | `mine:` | — |
-| `logging_site.py` | Лесозаготовка: ресурсная локация в лесу (v0.37.0). | `router` | 0 | 6 | `logsite:` | — |
+| `logging_site.py` | Лесозаготовка: ресурсная локация в лесу (v0.37.0). | `router` | 0 | 9 | `logsite:` | — |
 | `storage.py` | Городские склады: накопление выкупленных казной ресурсов. | `router` | 0 | 1 | `storage:` | — |
 | `housing.py` | Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение. | `router` | 1 | 16 | `housing:` | — |
 | `news.py` | Новости ГосСМИ: лента, публикация, управление выпусками, архив. | `router` | 6 | 9 | `news:` | `NewsWrite`, `NewsEdit` |
@@ -231,8 +231,8 @@
 ### `logging_site.py` — Лесозаготовка: ресурсная локация в лесу (v0.37.0).
 
 - Роутеры: `router`
-- Хендлеры: message=0, callback_query=6
-- `F.data.startswith`: `logsite:battle:flee:\d+$`, `logsite:battle:hit:\d+$`, `logsite:chop:\d+$`, `logsite:menu:\d+$`
+- Хендлеры: message=0, callback_query=9
+- `F.data.startswith`: `logsite:battle:flee:\d+$`, `logsite:battle:hit:\d+$`, `logsite:chop:\d+$`, `logsite:fire:(1|all):\d+$`, `logsite:menu:\d+$`, `logsite:mill:\d+$`, `logsite:plank:(1|all):\d+$`
 - `F.data ==`: `logsite:back`, `logsite:enter`
 
 ### `storage.py` — Городские склады: накопление выкупленных казной ресурсов.
