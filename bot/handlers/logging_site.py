@@ -45,6 +45,7 @@ from config import (
     LOGGING_OWL_SEED, LOGGING_OWL_FLEE_HP,
     LOGGING_PLANK_NAME, LOGGING_FIREWOOD_NAME, LOGGING_PLANK_YIELD,
     LOGGING_PLANK_FEE, LOGGING_FIREWOOD_YIELD, LOGGING_FIREWOOD_AP_COST,
+    LOGGING_AXE_SLIP_CHANCE,
 )
 
 router = Router()
@@ -537,11 +538,27 @@ async def logging_chop(callback: CallbackQuery):
                 return
             await set_logging_owl_attempts(user_id, attempts + 1)
 
-        # ── находка бревен ──
+        # Малый шанс: топор отскакивает и бьёт пилота в плечо
         rank = axe['rarity'] or 1
         chance = logging_wood_chance(rank)
         head = "🪓 ЛЕСОЗАГОТОВКА"
         ap_block = f"\n\n{await _ap_line(user_id)}"
+        # Малый шанс: топор от усталости/невнимательности отскакивает от
+        # мощного ствола и бьёт пилота в плечо. Ресурса нет, попытка (ОД) уже
+        # потрачена — вторая неудача того же вида, что и «сучковатое дерево».
+        if random.random() * 100 < LOGGING_AXE_SLIP_CHANCE:
+            text = (
+                f"{head}\n\n"
+                "Топор от усталости неудачно отскакивает от мощного ствола "
+                "и отлетает пилоту в плечо.\n\n"
+                "Ресурса не получено, попытка потрачена."
+            ) + ap_block
+            left_wood = await _wood_count(user_id)
+            result_kb = _result_markup(LOGGING_TOKEN.get(user_id, ""), left_wood > 0)
+            await _logging_paint(callback, text=text, kb=result_kb)
+            return
+
+        # ── находка бревен ──
         found_wood = False
         item_meta = None
         if random.random() * 100 < chance:
@@ -565,12 +582,19 @@ async def logging_chop(callback: CallbackQuery):
                 text = (f"{head}\n\n🌲 Срубил что-то, но предмет потерялся. "
                         "Сообщи хранителю.") + ap_block
         else:
+            firewood = await get_item_by_name(LOGGING_FIREWOOD_NAME)
+            loot_line = ""
+            if firewood:
+                await add_inventory_item(user_id, firewood['id'], 1)
+                await log_activity(user_id, "logging", f"Срубил «{firewood['name']}» (суковатое дерево)")
+                item_meta = firewood
+                loot_line = f"\n\n🎒 Добыча: «{firewood['name']}» — в инвентарь."
             text = (
                 f"{head}\n\n"
                 "Удар за ударом — стружка летит, но сук топор не берёт: сучковатое "
-                "дерево уходито на дрова.\n"
+                "дерево уходит на дрова.\n"
                 "Пробуй ещё!"
-            ) + ap_block
+            ) + loot_line + ap_block
         left_wood = await _wood_count(user_id)
         result_kb = _result_markup(LOGGING_TOKEN.get(user_id, ""), left_wood > 0)
         await _item_paint(callback, item_meta, text=text, kb=result_kb)

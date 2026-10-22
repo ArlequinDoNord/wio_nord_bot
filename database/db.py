@@ -3,6 +3,7 @@ import logging
 import random
 import time
 import aiosqlite
+import atexit
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -25,7 +26,18 @@ db: aiosqlite.Connection | None = None
 async def get_db() -> aiosqlite.Connection:
     global db
     if db is None:
-        db = await aiosqlite.connect(DB_PATH, isolation_level=None)
+        conn = aiosqlite.connect(DB_PATH, isolation_level=None)
+        # Поток воркера aiosqlite — обычный, НЕ daemon: если скрипт упал
+        # до close_db(), процесс не завершается НИКОГДА (тест «зависает»
+        # вместо того, чтобы упасть, — прогон всех смоуков встаёт).
+        # Флаг daemon выставляем ДО старта потока (поток создаётся в
+        # __init__ Connection и стартует только при await). Это правится
+        # централизованно, без переписывания сотни смоуков.
+        try:
+            conn._thread.daemon = True
+        except Exception:
+            pass
+        db = await conn
 
         def _dict_factory(cursor, row):
             """Dict-строка БД вместо sqlite3.Row.
@@ -48,6 +60,25 @@ async def close_db():
     if db:
         await db.close()
         db = None
+
+
+def _atexit_close_db():
+    """Закрыть БД при выходе из скрипта.
+
+    Нужен смоукам, которые упали до close_db(): без этого остаётся
+    непрочитанное соединение и «висящий» тест вместо падения.
+    """
+    global db
+    if db is None:
+        return
+    try:
+        db.stop()
+    except Exception:
+        pass
+    db = None
+
+
+atexit.register(_atexit_close_db)
 
 
 async def init_db():

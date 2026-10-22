@@ -133,7 +133,7 @@ async def run():
         LOGGING_ENEMY_DROPS, LOGGING_SHOP_ITEMS,
         LOGGING_PLANK_NAME, LOGGING_FIREWOOD_NAME, LOGGING_PLANK_YIELD,
         LOGGING_PLANK_FEE, LOGGING_FIREWOOD_YIELD, LOGGING_FIREWOOD_AP_COST,
-        LOGGING_MARKET_RESOURCES,
+        LOGGING_MARKET_RESOURCES, LOGGING_AXE_SLIP_CHANCE,
     )
     from database.db import (
         init_db, close_db, seed_default_items, ensure_base_statuses,
@@ -472,7 +472,9 @@ async def run():
         return None
     ls._snake, ls._owl = _no_snake, _no_owl
     saved_random = ls.random.random
-    ls.random.random = lambda: 0.0  # 0.0 < шанса 50% → успех
+    # Броски идут по порядку: 1) топор не проскользнул, 2) находка бревна.
+    _seq = [0.99, 0.0]
+    ls.random.random = lambda: _seq.pop(0) if _seq else 0.99
     try:
         bot_c = FakeSender()
         cb_c = FakeCallback(uid2, data=f"logsite:chop:{tok2}", bot=bot_c)

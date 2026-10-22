@@ -69,7 +69,7 @@ async def run():
         async def send_message(self, *a, **kw):
             return None
 
-    await _nii_finish(uid, message, FakeState(), FakeBot(), photo_file_id=None)
+    await _nii_finish(uid, message, FakeState(), FakeBot())
 
     check("player: есть подтверждение (принято)", any("принято" in a for a in answers))
     mine = await get_my_nii_reports(uid)
@@ -92,8 +92,12 @@ async def run():
     nii = os.path.join(root, "bot", "handlers", "nii.py")
     check("nii.py: user_id от callback.from_user.id", source_has(
         nii, "_nii_finish(callback.from_user.id, callback.message, state, bot"))
+    # Фото кладутся в FSM-состояние (photos), а _nii_finish забирает их
+    # оттуда: отдельного аргумента photo_file_id у функции нет.
     check("nii.py: подпись _nii_finish(user_id, ...)", source_has(
-        nii, "async def _nii_finish(user_id: int, message, state: FSMContext, bot: Bot, photo_file_id):"))
+        nii, "async def _nii_finish(user_id: int, message, state: FSMContext, bot: Bot):"))
+    check("nii.py: фото берутся из состояния", source_has(
+        nii, 'photos = list(data.get("photos") or [])'))
     check("nii.py: нет старого message.from_user.id", not source_has(
         nii, "user_id = message.from_user.id"))
 

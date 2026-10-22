@@ -339,7 +339,7 @@ async def main():
     # ── 5. Голос Представителя ───────────────────────────────────────────
     print("\n= 5. Речь представителя =")
     check("REP_SPEECH_MAX_LEN = 100", config.REP_SPEECH_MAX_LEN == 100)
-    check("REP_SPEECH_PER_DAY = 4", config.REP_SPEECH_PER_DAY == 4)
+    check("REP_SPEECH_PER_DAY = 2", config.REP_SPEECH_PER_DAY == 2)
     check("у представителя есть право can_address_city",
           await has_permission(REP, "can_address_city"))
     check("у обычного пилота права нет",
@@ -463,7 +463,8 @@ async def main():
           await count_rep_speeches_today(REP) == config.REP_SPEECH_PER_DAY)
     cb_lim = CB("rep:speech:write", REP)
     await rep_mod.rep_speech_write(cb_lim, _FakeState())
-    check("сверх суточного лимита отказано", "все 4 обращения" in (cb_lim.message.last or ""))
+    check("сверх суточного лимита отказано",
+          f"все {config.REP_SPEECH_PER_DAY} обращения" in (cb_lim.message.last or ""))
     check("карточка речи показывает лимит представителю",
           any("🔙 В Ратушу" in t for t in texts(cb_speech.message.markup)))
 

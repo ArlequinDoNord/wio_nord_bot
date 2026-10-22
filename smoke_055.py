@@ -107,18 +107,24 @@ async def run():
 
     # ── бонусы наград ──
     b = await get_award_bonus(uid)
-    check("бонусы по умолчанию = 0", b == {"attack": 0, "defense": 0, "dodge": 0, "fishing": 0,
-                                           "hp": 0, "shop_discount": 0, "report_tax": 0})
+    # Не сравниваем dict целиком: новый вид бонуса (например crit) ломает
+    # сравнение, хотя поведение не менялось. Проверяем, что ВСЕ бонусы нулевые.
+    check("бонусы по умолчанию = 0",
+          bool(b) and all(v == 0 for v in b.values())
+          and b['attack'] == 0 and b['defense'] == 0 and b['dodge'] == 0
+          and b['fishing'] == 0 and b['hp'] == 0 and b['shop_discount'] == 0
+          and b['report_tax'] == 0)
     ok, aid = await create_award("Тест-бонус", "desc", "🎖️")
     check("награда создана", ok and aid)
     await update_award(aid, bonus_attack=10, bonus_defense=20, bonus_dodge=5,
-                       bonus_fishing=50, bonus_hp=25)
+                       bonus_fishing=50, bonus_hp=25, bonus_crit=7)
     a = await get_award(aid)
     check("бонусы записаны", a and a['bonus_attack'] == 10 and a['bonus_hp'] == 25)
     await grant_award(uid, aid, None, None)
     b = await get_award_bonus(uid)
     check("get_award_bonus суммы", b['attack'] == 10 and b['defense'] == 20
-          and b['dodge'] == 5 and b['fishing'] == 50 and b['hp'] == 25)
+          and b['dodge'] == 5 and b['fishing'] == 50 and b['hp'] == 25
+          and b['crit'] == 7)
     await grant_award(uid2, aid, None, None)
 
     # ── нашивка К.В.П. = 2% атаки / 3% уклонения ──

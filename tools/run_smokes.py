@@ -26,12 +26,23 @@ def find_smokes() -> list:
 
 def run_one(path: str, timeout: int = 180):
     env = dict(os.environ)
-    proc = subprocess.run(
-        [PYTHON, path], cwd=ROOT, env=env,
-        capture_output=True, text=True, timeout=timeout,
-    )
+    env["PYTHONIOENCODING"] = "utf-8"
+    try:
+        proc = subprocess.run(
+            [PYTHON, path], cwd=ROOT, env=env,
+            capture_output=True, text=True, timeout=timeout,
+            errors="replace",
+        )
+    except subprocess.TimeoutExpired:
+        # Тест завис (не закрыл БД). Раньше исключение пробрасывалось наружу и
+        # раннер падал целиком — остальные смоуки не запускались. Теперь такой
+        # тест просто считается упавшим, прогон продолжается.
+        return False, f"HANG: тест не завершился за {timeout} сек"
     tail = (proc.stdout or "").strip().splitlines()
     tail = tail[-8:]
+    if proc.returncode != 0 and not tail:
+        err_lines = (proc.stderr or "").strip().splitlines()
+        tail = [err_lines[-1] if err_lines else "без вывода"]
     return proc.returncode == 0, "\n".join(tail)
 
 

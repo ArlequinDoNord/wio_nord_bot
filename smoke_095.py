@@ -75,6 +75,12 @@ async def main():
     # Вообще без статусов — тоже без гражданства
     await mkuser(1005, "nost1", "Без Статусов")
 
+    # Актёр-админ: экран статусов фильтруется по правам на выдачу,
+    # поэтому нужен кто-то с can_manage_statuses.
+    ADMIN = 1006
+    await mkuser(ADMIN, "admin1", "Админ Хранитель")
+    await D.add_user_role(ADMIN, 'super_admin')
+
     citizens = await D.citizen_user_ids()
     check("турист — не гражданин", 1001 not in citizens)
     check("рекрут — гражданин", 1002 in citizens)
@@ -97,13 +103,13 @@ async def main():
         check(f"в «{step}» меток нет (обратная совместимость)", "🎫" not in "\n".join(t2))
 
     chat = FakeChat()
-    await _send_status_picker(chat, await D.get_user(1001))
+    await _send_status_picker(chat, await D.get_user(1001), ADMIN)
     check("экран туриста предупреждает", "🎫 Турист" in chat.text)
     check("на экране туриста нет **жирного** (нет parse_mode)", "**" not in chat.text)
     check("на экране туриста нет обещания про штаб", "Штаб" not in chat.text)
 
     chat2 = FakeChat()
-    await _send_status_picker(chat2, await D.get_user(1002))
+    await _send_status_picker(chat2, await D.get_user(1002), ADMIN)
     check("экран гражданина без метки туриста", "🎫 Турист" not in chat2.text)
     check("экран гражданина показывает статус", "Рекрут" in chat2.text)
 
@@ -114,4 +120,11 @@ async def main():
     sys.exit(1 if FAILED else 0)
 
 
-asyncio.run(main())
+try:
+    asyncio.run(main())
+except SystemExit:
+    raise
+except Exception:
+    import traceback
+    traceback.print_exc()
+    sys.exit(1)

@@ -99,7 +99,7 @@ def _buttons(markup):
 async def run():
     from database.db import (
         init_db, close_db, add_user, get_user, get_user_statuses,
-        get_status_by_tag, grant_status,
+        get_status_by_tag, grant_status, add_user_role,
     )
     import bot.handlers.admin as admin_mod
     from bot.handlers.admin import (
@@ -111,6 +111,13 @@ async def run():
     await init_db()
     passed = 0
     failed = 0
+
+    # Актёр-админ: экраны статусов фильтруются по правам на выдачу
+    # (can_view_status_panel / can_grant_status). Без роли обработчик
+    # вежливо отказывает — и проверять нечего.
+    ADMIN = 999
+    await add_user(ADMIN, "admin01", "Админ", "Хранитель")
+    await add_user_role(ADMIN, 'super_admin')
 
     def check(name, cond):
         nonlocal passed, failed
@@ -151,13 +158,21 @@ async def run():
 
     # ── 2. Клавиатура выдачи: порядок по иерархии + пометки ──
     from database.db import get_all_statuses
+    from database.db import LEGIONER_ACCESS_TAG
     statuses = await get_all_statuses()
     kb = _status_grant_markup(statuses, have_p)
     btns = _buttons(kb)
     status_btns = [b for b in btns if b.callback_data.startswith("st_pick:")]
-    levels = [s['sort_order'] for s in sorted(statuses, key=lambda x: (x['sort_order'] or 0))]
+    # Легионер — не ступень карьеры: он выдаётся отдельной кнопкой st:legioner,
+    # поэтому в общем списке кнопок его нет (правило держит _status_grant_markup).
+    grantable = [s for s in statuses if s.get('access_tag') != LEGIONER_ACCESS_TAG]
     check("кнопки статусов отсортированы по иерархии",
-          len(status_btns) == len(statuses))
+          len(status_btns) == len(grantable))
+    check("легионер не в общем списке выдачи",
+          not any("Легионер" in b.text for b in status_btns))
+    check("легионер выдаётся отдельной кнопкой",
+          any(b.callback_data == "st:legioner" for b in btns)
+          or not any(s.get('access_tag') == LEGIONER_ACCESS_TAG for s in statuses))
     check("первый в списке — самый слабый (Турист)",
           status_btns[0].text.endswith("Турист") and "сейчас" not in status_btns[0].text)
     ace_btn = [b for b in status_btns if "Ас" in b.text][0]

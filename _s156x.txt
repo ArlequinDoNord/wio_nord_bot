@@ -1,0 +1,3 @@
+  FAIL: неудача: бревна НЕ дали
+
+Smoke 156: 153 passed, 1 failed
