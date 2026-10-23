@@ -40,6 +40,7 @@
 | [CONFIG_REFERENCE.md](CONFIG_REFERENCE.md) | Справочник по `config.py`. | При правках констант/настроек. |
 | [BALANCE.md](BALANCE.md), [BALANCE_AUDIT.md](BALANCE_AUDIT.md), [BALANCE_ANALYSIS.md](BALANCE_ANALYSIS.md) | Балансные заметки/аудит. | При экономических/балансных правках. |
 | [BATTLE_TEXTS.md](BATTLE_TEXTS.md) | Каталог боевых текстов. **Обновлять при правках боевых хендлеров.** | При правках `forest/dungeon/kvp/mine/logging_site/utils/combat.py`. |
+| [CLAN_HALL.md](CLAN_HALL.md) | Спека «Клан-холл»: типы зданий, склад, расширения, права, схема БД, фазы. | Перед любой работой по клановому зданию. |
 
 ## Правило «перед правкой»
 - **Хендлер/навигация** → [HANDLERS.md](HANDLERS.md) + [MENU_MAP.md](MENU_MAP.md)
