@@ -39,10 +39,11 @@
 | 26 | `wall_router` | `bot/handlers/wall.py` |
 | 27 | `hq_router` | `bot/handlers/hq.py` |
 | 28 | `clans_router` | `bot/handlers/clans.py` |
-| 29 | `nii_router` | `bot/handlers/nii.py` |
-| 30 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
-| 31 | `duel_router` | `bot/handlers/duel.py` |
-| 32 | `mvd_router` | `bot/handlers/mvd.py` |
+| 29 | `clan_hall_router` | `bot/handlers/clan_hall.py` |
+| 30 | `nii_router` | `bot/handlers/nii.py` |
+| 31 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
+| 32 | `duel_router` | `bot/handlers/duel.py` |
+| 33 | `mvd_router` | `bot/handlers/mvd.py` |
 
 ## Сводка по модулям
 
@@ -76,6 +77,7 @@
 | `wall.py` | Стена изречений — доска объявлений города. | `router` | 2 | 7 | `wall:` | `WallWrite` |
 | `hq.py` | Штаб ВВС: командование рассылает приказы авиакрыльям. | `router` | 7 | 25 | `hq:` | `HqOrder`, `HqWingCreate`, `HqWingEdit` |
 | `clans.py` | Партии и кланы: реестр из Ратуши. | `router` | 7 | 23 | `city:`, `clans:` | `ClansCreate`, `ClansEdit`, `ClansMessage` |
+| `clan_hall.py` | Клан-холл: клановый склад (пожертвования ресурсов). | `router` | 0 | 6 | `clanh:` | — |
 | `nii.py` | НИИ Северной Кибернетики и кремниевых систем — здание обратной связи. | `router` | 2 | 7 | `nii:` | `NiiWrite` |
 | `tourist_booklet.py` | Буклет туриста: чек-лист городских локаций и разовая награда. | `router` | 0 | 2 | `booklet:` | — |
 | `duel.py` | Дом Дуэлей — PvP-арена «зона на зону». | `router` | 0 | 12 | `duel:` | — |
@@ -287,6 +289,13 @@
 - FSM: `ClansCreate`, `ClansEdit`, `ClansMessage`
 - `F.data.startswith`: `clans:add:`, `clans:addset:`, `clans:cancel:`, `clans:create:`, `clans:del:`, `clans:delyes:`, `clans:edit:`, `clans:editf:`, `clans:join:`, `clans:kick:`, `clans:leader:`, `clans:leaderset:`, `clans:leaderunset:`, `clans:leave:`, `clans:list:`, `clans:manage:`, `clans:msg:`, `clans:reqno:`, `clans:reqok:`, `clans:view:`
 - `F.data ==`: `city:clans`, `clans:create_skip`, `clans:noop`
+
+### `clan_hall.py` — Клан-холл: клановый склад (пожертвования ресурсов).
+
+- Роутеры: `router`
+- Хендлеры: message=0, callback_query=6
+- `F.data.startswith`: `clanh:donate:`, `clanh:give:`, `clanh:item:`, `clanh:log:`, `clanh:storage:`
+- `F.data ==`: `clanh:noop`
 
 ### `nii.py` — НИИ Северной Кибернетики и кремниевых систем — здание обратной связи.
 

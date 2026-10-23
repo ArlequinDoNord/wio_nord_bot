@@ -1208,6 +1208,36 @@ v0.38.0: колонка `on_hit_effects` (у `snake` — яд, у `owl` — «о
 
 **Составной PRIMARY KEY:** (clan_id, user_id)
 
+## `clan_storage`
+
+| Колонка |
+|---|
+| `clan_id INTEGER NOT NULL` |
+| `item_id INTEGER NOT NULL` |
+| `qty INTEGER NOT NULL DEFAULT 0` |
+| `updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` |
+
+**Составной PRIMARY KEY:** (clan_id, item_id)
+
+**Индексы:**
+
+- `idx_clan_storage_clan` по (clan_id)
+
+## `clan_build_contrib`
+
+| Колонка |
+|---|
+| `id INTEGER PRIMARY KEY AUTOINCREMENT` |
+| `clan_id INTEGER NOT NULL` |
+| `user_id INTEGER NOT NULL` |
+| `item_id INTEGER NOT NULL` |
+| `qty INTEGER NOT NULL` |
+| `created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` |
+
+**Индексы:**
+
+- `idx_clan_contrib_clan` по (clan_id)
+
 ## `user_recipes`
 
 | Колонка |

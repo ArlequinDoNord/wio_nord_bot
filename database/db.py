@@ -972,6 +972,26 @@ async def init_db():
             PRIMARY KEY (clan_id, user_id)
         );
 
+        CREATE TABLE IF NOT EXISTS clan_storage (
+            clan_id INTEGER NOT NULL,
+            item_id INTEGER NOT NULL,
+            qty INTEGER NOT NULL DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (clan_id, item_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS clan_build_contrib (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clan_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            item_id INTEGER NOT NULL,
+            qty INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_clan_storage_clan ON clan_storage(clan_id);
+        CREATE INDEX IF NOT EXISTS idx_clan_contrib_clan ON clan_build_contrib(clan_id);
+
         CREATE TABLE IF NOT EXISTS user_recipes (
             user_id INTEGER NOT NULL,
             recipe_id INTEGER NOT NULL,
@@ -13236,8 +13256,108 @@ async def delete_clan(clan_id: int):
     conn = await get_db()
     await conn.execute("DELETE FROM clan_requests WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_members WHERE clan_id = ?", (clan_id,))
+    await conn.execute("DELETE FROM clan_storage WHERE clan_id = ?", (clan_id,))
+    await conn.execute("DELETE FROM clan_build_contrib WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clans WHERE id = ?", (clan_id,))
     await conn.commit()
+
+
+async def get_clan_storage(clan_id: int) -> list:
+    """Содержимое кланового склада: строки qty>0 с названием и категорией."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT cs.item_id AS item_id, cs.qty AS qty, i.name AS name, "
+        "i.category AS category "
+        "FROM clan_storage cs JOIN items i ON i.id = cs.item_id "
+        "WHERE cs.clan_id = ? AND cs.qty > 0 "
+        "ORDER BY i.category, i.name COLLATE NOCASE", (clan_id,))
+    return await cursor.fetchall()
+
+
+async def get_clan_storage_qty(clan_id: int, item_id: int) -> int:
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT qty FROM clan_storage WHERE clan_id = ? AND item_id = ?",
+        (clan_id, item_id))
+    row = await cursor.fetchone()
+    return row['qty'] if row else 0
+
+
+async def add_clan_storage(clan_id: int, item_id: int, qty: int) -> None:
+    """Пополнение/списание склада. Отрицательный остаток обрезается до нуля."""
+    if not qty:
+        return
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT qty FROM clan_storage WHERE clan_id = ? AND item_id = ?",
+        (clan_id, item_id))
+    row = await cursor.fetchone()
+    if row:
+        new_qty = max(0, row['qty'] + qty)
+        await conn.execute(
+            "UPDATE clan_storage SET qty = ?, updated_at = datetime('now') "
+            "WHERE clan_id = ? AND item_id = ?",
+            (new_qty, clan_id, item_id))
+    elif qty > 0:
+        await conn.execute(
+            "INSERT INTO clan_storage (clan_id, item_id, qty) VALUES (?, ?, ?)",
+            (clan_id, item_id, qty))
+    await conn.commit()
+
+
+async def take_clan_storage(clan_id: int, item_id: int, qty: int) -> bool:
+    """Списать qty со склада, если хватает. Возвращает успех."""
+    if qty <= 0:
+        return False
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT qty FROM clan_storage WHERE clan_id = ? AND item_id = ?",
+        (clan_id, item_id))
+    row = await cursor.fetchone()
+    if not row or row['qty'] < qty:
+        return False
+    await conn.execute(
+        "UPDATE clan_storage SET qty = qty - ?, updated_at = datetime('now') "
+        "WHERE clan_id = ? AND item_id = ?",
+        (qty, clan_id, item_id))
+    await conn.commit()
+    return True
+
+
+async def donate_to_clan_storage(clan_id: int, user_id: int, item_id: int,
+                                 qty: int) -> bool:
+    """Передать ресурс из личного инвентаря на склад клана.
+
+    Вклад невозвратен. Разрешены только предметы категории 'resource'.
+    """
+    if qty <= 0:
+        return False
+    item = await get_item(item_id)
+    if not item or item['category'] != 'resource':
+        return False
+    if not await remove_inventory_item(user_id, item_id, qty):
+        return False
+    await add_clan_storage(clan_id, item_id, qty)
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO clan_build_contrib (clan_id, user_id, item_id, qty) "
+        "VALUES (?, ?, ?, ?)", (clan_id, user_id, item_id, qty))
+    await conn.commit()
+    return True
+
+
+async def get_clan_contributions(clan_id: int, limit: int = 50) -> list:
+    """Последние вклады клана: кто, что и сколько внёс."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT cb.id, cb.user_id, cb.item_id, cb.qty, cb.created_at, "
+        "i.name AS item_name, u.first_name AS user_name "
+        "FROM clan_build_contrib cb "
+        "LEFT JOIN items i ON i.id = cb.item_id "
+        "LEFT JOIN users u ON u.user_id = cb.user_id "
+        "WHERE cb.clan_id = ? ORDER BY cb.id DESC LIMIT ?",
+        (clan_id, limit))
+    return await cursor.fetchall()
 
 
 async def add_clan_member(clan_id: int, user_id: int):

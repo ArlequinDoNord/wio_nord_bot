@@ -64,6 +64,7 @@ from bot.handlers.kvp import router as kvp_router
 from bot.handlers.wall import router as wall_router
 from bot.handlers.hq import router as hq_router
 from bot.handlers.clans import router as clans_router
+from bot.handlers.clan_hall import router as clan_hall_router
 from bot.handlers.nii import router as nii_router
 from bot.handlers.tourist_booklet import router as tourist_booklet_router
 from bot.handlers.duel import router as duel_router
@@ -587,6 +588,7 @@ async def main():
     dp.include_router(wall_router)
     dp.include_router(hq_router)
     dp.include_router(clans_router)
+    dp.include_router(clan_hall_router)
     dp.include_router(nii_router)
     dp.include_router(tourist_booklet_router)
     dp.include_router(duel_router)

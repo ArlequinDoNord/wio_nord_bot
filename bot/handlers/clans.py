@@ -199,6 +199,8 @@ async def clan_view_cb(callback: CallbackQuery):
 
     kb = []
     if is_member:
+        kb.append([InlineKeyboardButton(text="📦 Склад клана",
+                                        callback_data=f"clanh:storage:{clan['id']}")])
         if not is_leader:
             kb.append([InlineKeyboardButton(text="🚪 Выйти", callback_data=f"clans:leave:{clan['id']}")])
         else:
