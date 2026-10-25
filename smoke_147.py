@@ -10,6 +10,8 @@
 6. daily_ap_recovery обнуляет shower_used_today при смене суток.
 7. Апгрейд: установка «Ванной с душем» заменяет «Душевую» (возврат в инвентарь),
    слот повышается до 2 ур.; применение даёт +50 ОД.
+8. Душ/ванна сокращают опьянение: душевая −60 мин, ванная −180 мин («пьян» и
+   «очень пьян»); короткое опьянение снимается полностью.
 
 Запуск: .venv\\Scripts\\python.exe smoke_147.py
 """
@@ -142,6 +144,7 @@ async def run():
     check("_slot_name душевая ур.2",
           hh._slot_name({"expansion_type": "shower", "expansion_level": 2}) == "Ванная с душем")
     check("SHOWER_AP_BY_LEVEL", hh.SHOWER_AP_BY_LEVEL == {1: 25, 2: 50})
+    check("SHOWER_SOBER_MINUTES", hh.SHOWER_SOBER_MINUTES == {1: 60, 2: 180})
 
     if not shower or not bath:
         await close_db()
@@ -163,6 +166,7 @@ async def run():
     check("экран душевой: кнопка «Принять душ»",
           "housing:shower:0" in room_cbs)
     check("экран душевой: упоминается +25 ОД", "+25 ОД" in room_txt)
+    check("экран душевой: подсказка про опьянение", "60 мин" in room_txt)
 
     # ── 4. Применение и суточный лимит ──
     ap0 = (await get_user(uid))["ap"]
@@ -225,6 +229,54 @@ async def run():
     cb_bath = FakeCallback(uid3, data="housing:shower:0", bot=FakeSender())
     await hh.housing_shower(cb_bath)
     check("ванна: +50 ОД", (await get_user(uid3))["ap"] == ap3 + 50)
+
+    # ── 8. Душ и ванна сокращают опьянение ──
+    from utils.states import apply_state_to, get_state_info
+
+    async def drunk_left(user_id, key):
+        info = await get_state_info(user_id)
+        return next((s["minutes_left"] for s in info["states"] if s["key"] == key), None)
+
+    uid4 = 471004
+    await add_user(uid4, "drunk1", "Пьяный1", "")
+    await update_user(uid4, ap=10)
+    await set_player_housing(uid4, "apartment")
+    await set_housing_slot(uid4, 0, "shower", 1)
+    await apply_state_to(uid4, "пьян", minutes=120)
+    cb4 = FakeCallback(uid4, data="housing:shower:0", bot=FakeSender())
+    await hh.housing_shower(cb4)
+    left4 = await drunk_left(uid4, "пьян")
+    check("душевая: «пьян» 120 → ~60 мин",
+          left4 is not None and 58 <= left4 <= 60)
+    check("душевая: алерт про −60 мин",
+          any(t and "−60 мин" in t for t in cb4.alerts))
+
+    uid5 = 471005
+    await add_user(uid5, "drunk2", "Пьяный2", "")
+    await update_user(uid5, ap=10)
+    await set_player_housing(uid5, "apartment")
+    await set_housing_slot(uid5, 0, "shower", 2)
+    await apply_state_to(uid5, "очень пьян", minutes=360)
+    cb5 = FakeCallback(uid5, data="housing:shower:0", bot=FakeSender())
+    await hh.housing_shower(cb5)
+    left5 = await drunk_left(uid5, "очень пьян")
+    check("ванна: «очень пьян» 360 → ~180 мин",
+          left5 is not None and 178 <= left5 <= 180)
+    check("ванна: алерт про −180 мин",
+          any(t and "−180 мин" in t for t in cb5.alerts))
+
+    uid6 = 471006
+    await add_user(uid6, "drunk3", "Пьяный3", "")
+    await update_user(uid6, ap=10)
+    await set_player_housing(uid6, "apartment")
+    await set_housing_slot(uid6, 0, "shower", 1)
+    await apply_state_to(uid6, "пьян", minutes=30)
+    cb6 = FakeCallback(uid6, data="housing:shower:0", bot=FakeSender())
+    await hh.housing_shower(cb6)
+    check("душевая: короткое опьянение снято полностью",
+          await drunk_left(uid6, "пьян") is None)
+    check("душевая: алерт «совсем трезв»",
+          any(t and "совсем трезв" in t for t in cb6.alerts))
 
     await close_db()
     print(f"\nSmoke 147: {passed} passed, {failed} failed")

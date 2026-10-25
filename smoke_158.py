@@ -11,6 +11,7 @@
 6. Хендлеры: экран склада, выбор ресурса, экран вклада, «+1/Всё»,
    текст вкладов, отказ не-члену клана.
 7. В карточке клана у члена есть кнопка «Склад клана», у постороннего — нет.
+   Склад живёт в клан-холле, поэтому тест включает `config.CLAN_HALL_ENABLED`.
 
 Запуск: .venv\\Scripts\\python.exe smoke_158.py
 """
@@ -85,6 +86,8 @@ def cbs(kb):
 async def main():
     import config
     config.DB_PATH = _TEST_DB
+    # Склад клана живёт в клан-холле и скрыт общим флагом — для тестов включаем.
+    config.CLAN_HALL_ENABLED = True
     import database.db as db
     db.DB_PATH = _TEST_DB
     from database.db import (

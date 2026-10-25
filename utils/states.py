@@ -127,6 +127,9 @@ def enemy_appliable_states() -> list:
 
 NORMAL = "нормально"
 
+# Состояния опьянения: их укорачивают душевая и ванная (см. bot/handlers/housing.py).
+DRUNK_STATES = ("пьян", "очень пьян")
+
 
 def state_keys() -> list:
     return list(STATE_CONF.keys())
@@ -304,6 +307,47 @@ async def apply_state_to(user_id: int, state_key: str, caused_by: int = None,
                                 reason=f"заменено на «{conf['title']}»")
 
     await set_user_state(user_id, state_key, minutes, caused_by, reason, meta)
+
+
+async def reduce_state_minutes(user_id: int, state_keys, minutes: int,
+                               caused_by: int = None, reason: str = "") -> list:
+    """Сократить остаток указанных состояний на `minutes` (не ниже нуля).
+
+    Остаток считается по `applied_at + minutes`, поэтому сокращение переписывает
+    состояние через set_user_state с новым остатком (applied_at = сейчас):
+    эффект не продлевается, а именно укорачивается. Если остаток дошёл до нуля,
+    состояние снимается совсем. Возвращает список изменений для текста игроку:
+    [{"key", "title", "before", "after", "removed"}, ...].
+    """
+    if not state_keys or not minutes or int(minutes) <= 0:
+        return []
+    wanted = set(state_keys)
+    cut = int(minutes)
+    info = await get_state_info(user_id)
+    changes = []
+    for s in info.get('states') or []:
+        key = s['key']
+        if key not in wanted:
+            continue
+        left = s.get('minutes_left')
+        if left is None:
+            eff = s.get('effects') or {}
+            left = int(eff.get('minutes') or s['conf'].get('default_minutes') or 0)
+        left = max(0, int(left))
+        new_left = max(0, left - cut)
+        note = reason or f"сокращено на {cut} мин. ({key})"
+        if new_left <= 0:
+            await remove_user_state(user_id, key, caused_by, note)
+        else:
+            await set_user_state(user_id, key, new_left, caused_by, note)
+        changes.append({
+            "key": key,
+            "title": s['title'],
+            "before": left,
+            "after": new_left,
+            "removed": new_left <= 0,
+        })
+    return changes
 
 
 async def clear_state_of(user_id: int, state_key: str = None, caused_by: int = None,

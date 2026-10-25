@@ -7,7 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 from database.db import (
     get_user, update_user, get_user_statuses, get_selected_status, set_selected_status,
     user_has_status_tag, user_is_tourist, get_equipment, get_item, get_equipment_slot_items, get_user_awards,
-    set_callsign, set_callsign_free_used, get_callsign_free_used, get_db,
+    set_callsign, set_callsign_free_used, get_callsign_free_used, get_db, get_user_clan,
 )
 from keyboards.keyboards import profile_keyboard, cancel_keyboard, main_menu_kb
 from config import get_rank, get_effective_rank, get_next_rank, get_rank_index, RANKS, CALLSIGN_PRICE
@@ -119,7 +119,6 @@ async def _profile_caption(user_id: int, owner: bool = True):
         + (f"{state_line}\n" if state_line else "❤️ Состояние: нормально\n")
         + f"🎖️ Статус: {status}\n"
     )
-    from database.db import get_user_clan
     clan = await get_user_clan(user_id, 'clan')
     party = await get_user_clan(user_id, 'party')
     caption += f"🏰 Клан: {clan['name'] if clan else '—'}\n"
@@ -177,15 +176,22 @@ async def render_profile(where, user_id: int):
     notify = bool(user['notify_enabled'] if 'notify_enabled' in user.keys() else 1)
     public = bool(user['profile_public'] if 'profile_public' in user.keys() else 1)
     can_toggle = await user_has_status_tag(user_id, "ace")
+    clan = await get_user_clan(user_id, 'clan')
 
+    kb = profile_keyboard(
+        notify, public, can_toggle,
+        has_callsign=bool(user.get('callsign') and str(user.get('callsign')).strip()),
+        clan_id=clan['id'] if clan else None,
+        clan_name=clan['name'] if clan else None,
+    )
     if photo:
         await out.answer_photo(
             photo=photo,
             caption=caption,
-            reply_markup=profile_keyboard(notify, public, can_toggle, has_callsign=bool(user.get('callsign') and str(user.get('callsign')).strip()))
+            reply_markup=kb
         )
     else:
-        await out.answer(caption, reply_markup=profile_keyboard(notify, public, can_toggle, has_callsign=bool(user.get('callsign') and str(user.get('callsign')).strip())))
+        await out.answer(caption, reply_markup=kb)
 
 
 async def render_other_profile(where, user_id: int):
@@ -424,11 +430,14 @@ async def pilot_card(callback: CallbackQuery):
         f"═══════════════════════════"
     )
 
+    clan = await get_user_clan(callback.from_user.id, 'clan')
     kb = profile_keyboard(
         notify_enabled=bool(user.get('notify_enabled', 1)),
         profile_public=bool(user.get('profile_public', 1)),
         can_toggle_visibility=await user_has_status_tag(callback.from_user.id, "ace"),
         has_callsign=bool(user.get('callsign') and str(user.get('callsign')).strip()),
+        clan_id=clan['id'] if clan else None,
+        clan_name=clan['name'] if clan else None,
     )
     kb.inline_keyboard.insert(0, [
         InlineKeyboardButton(text="🔙 В профиль", callback_data="profile:open")])

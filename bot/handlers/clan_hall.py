@@ -52,6 +52,29 @@ from utils.permissions import has_permission
 
 router = Router()
 
+# Пока CLAN_HALL_ENABLED=False (Фаза 2 не доделана), весь клан-холл закрыт:
+# роутерные middleware не пускают ни один `clanh:`-колбэк и ни один шаг FSM,
+# даже если у кого-то осталась старая кнопка в переписке.
+CLAN_HALL_CLOSED_TEXT = "🏗 Клановое здание ещё дорабатывается — скоро откроем."
+
+
+async def clan_hall_guard(handler, event, data):
+    if getattr(config, "CLAN_HALL_ENABLED", False):
+        return await handler(event, data)
+    try:
+        if isinstance(event, CallbackQuery):
+            await event.answer(CLAN_HALL_CLOSED_TEXT, show_alert=True)
+        else:
+            await event.answer(CLAN_HALL_CLOSED_TEXT)
+    except Exception:
+        pass
+    return None
+
+
+router.callback_query.middleware(clan_hall_guard)
+router.message.middleware(clan_hall_guard)
+router.edited_message.middleware(clan_hall_guard)
+
 STORAGE_PAGE = 12
 
 

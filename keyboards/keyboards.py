@@ -72,7 +72,8 @@ def admin_panel_keyboard(permissions: dict):
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def profile_keyboard(notify_enabled: bool = True, profile_public: bool = True, can_toggle_visibility: bool = False, has_callsign: bool = False):
+def profile_keyboard(notify_enabled: bool = True, profile_public: bool = True, can_toggle_visibility: bool = False, has_callsign: bool = False,
+                     clan_id: int | None = None, clan_name: str | None = None):
     rows = [
         [InlineKeyboardButton(text="Изменить фото", callback_data="profile:set_photo")],
         [InlineKeyboardButton(text="Выбрать статус", callback_data="profile:choose_status")],
@@ -83,6 +84,14 @@ def profile_keyboard(notify_enabled: bool = True, profile_public: bool = True, c
     rows.append([InlineKeyboardButton(text="🎖️ Награды", callback_data="profile:awards")])
     rows.append([InlineKeyboardButton(text="🏅 Достижения", callback_data="profile:achievements")])
     rows.append([InlineKeyboardButton(text="Карточка пилота", callback_data="profile:pilot_card")])
+    if clan_id:
+        # В caption название клана некликабельно (Telegram не поддерживает ссылки
+        # внутри текста), поэтому переход в карточку — отдельной кнопкой.
+        label = (clan_name or "").strip() or f"#{clan_id}"
+        if len(label) > 28:
+            label = label[:27] + "…"
+        rows.append([InlineKeyboardButton(
+            text=f"🏰 Клан: {label}", callback_data=f"clans:view:{clan_id}")])
     rows.append([InlineKeyboardButton(
         text="🔔 Оповещения: вкл" if notify_enabled else "🔕 Оповещения: выкл",
         callback_data="profile:notify_toggle"

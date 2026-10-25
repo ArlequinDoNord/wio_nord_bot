@@ -10,6 +10,8 @@
 
 import os
 
+import config
+
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, Message, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
@@ -199,7 +201,7 @@ async def clan_view_cb(callback: CallbackQuery):
 
     kb = []
     if is_member:
-        if clan['kind'] == 'clan':
+        if clan['kind'] == 'clan' and getattr(config, "CLAN_HALL_ENABLED", False):
             kb.append([InlineKeyboardButton(text="🏰 Здание клана",
                                             callback_data=f"clanh:hall:{clan['id']}")])
             kb.append([InlineKeyboardButton(text="📦 Склад клана",
@@ -680,7 +682,7 @@ async def clan_edit_menu_cb(callback: CallbackQuery):
         [InlineKeyboardButton(text="🖼 Картинка", callback_data=f"clans:editf:{clan['id']}:photo")],
         [InlineKeyboardButton(text="❌ Убрать картинку", callback_data=f"clans:editf:{clan['id']}:nophoto")],
     ]
-    if clan['kind'] == 'clan':
+    if clan['kind'] == 'clan' and getattr(config, "CLAN_HALL_ENABLED", False):
         rows.append([InlineKeyboardButton(text="🏰 Фото здания клана",
                                           callback_data=f"clanh:admphoto:{clan['id']}")])
         rows.append([InlineKeyboardButton(text="🏗 Фото-заглушка стройки",

@@ -26,6 +26,7 @@ from database.db import (
     bump_achievement, get_achievement_bonus,
 )
 from utils.helpers import resolve_image, rarity_emoji, rarity_label, edit_or_replace
+from utils.states import DRUNK_STATES, reduce_state_minutes
 
 router = Router()
 
@@ -52,6 +53,10 @@ EXPANSION_LABELS = {
 # Душевая: раз в игровые сутки восстанавливает ОД. Душевая (ур. 1) — +25,
 # ванна с душем (ур. 2) — +50. Лимит общий: одна комната, одно применение в сутки.
 SHOWER_AP_BY_LEVEL = {1: 25, 2: 50}
+
+# Помывка сбивает опьянение: душевая (ур. 1) — на 60 мин, ванная с душем
+# (ур. 2) — на 180 мин. Сокращает «пьян» и «очень пьян» (utils/states.py).
+SHOWER_SOBER_MINUTES = {1: 60, 2: 180}
 
 # Встроенная кухня студии (идёт вместе с жильём, не снимается и не возвращается).
 STUDIO_KITCHEN_NAME = "Маленький духовой шкаф, совмещённый с плиткой"
@@ -456,10 +461,12 @@ async def _room_workbench(cb, uid, idx, slot, ht, lvl):
 async def _room_shower(cb, uid, idx, slot, ht, lvl):
     title = _slot_name(slot)
     ap_gain = SHOWER_AP_BY_LEVEL.get(lvl, 25)
+    sober = SHOWER_SOBER_MINUTES.get(lvl, 60)
     can = await can_use_shower(uid)
     lines = [f"🚿 *{title}* (слот {idx+1})\n"]
     if can:
         lines.append(f"Раз в сутки можно освежиться и восстановить +{ap_gain} ОД.")
+        lines.append(f"🍺 Свежесть сбивает опьянение: «пьян» и «очень пьян» — короче на {sober} мин.")
     else:
         lines.append("✅ Сегодня ты уже мылся — приходи завтра.")
     rows = []
@@ -486,10 +493,22 @@ async def housing_shower(cb: CallbackQuery):
         return
     lvl = slot.get("expansion_level", 1)
     ap_gain = SHOWER_AP_BY_LEVEL.get(lvl, 25)
+    sober = SHOWER_SOBER_MINUTES.get(lvl, 60)
     await add_ap(uid, ap_gain, reason="душевая")
     await mark_shower_used(uid)
-    await log_activity(uid, "shower", f"+{ap_gain} ОД")
-    await cb.answer(f"🚿 Освежился: +{ap_gain} ОД!", show_alert=True)
+    changes = await reduce_state_minutes(
+        uid, DRUNK_STATES, sober, reason="душевая: протрезвел")
+    log_note = f"+{ap_gain} ОД"
+    if changes:
+        log_note += f", опьянение −{sober} мин."
+    await log_activity(uid, "shower", log_note)
+    alert = f"🚿 Освежился: +{ap_gain} ОД!"
+    if changes:
+        titles = ", ".join(f"«{c['title']}»" for c in changes)
+        alert += f"\n🍺 {titles}: −{sober} мин."
+        if all(c["removed"] for c in changes):
+            alert += "\n✅ Ты совсем трезв."
+    await cb.answer(alert, show_alert=True)
     ht = (await get_player_housing(uid))["housing_type"]
     await _room_shower(cb, uid, idx, slot, ht, lvl)
 

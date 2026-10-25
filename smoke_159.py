@@ -17,6 +17,9 @@
    вход внутрь (`clanh:inside:`) до и после постройки, резервный 7-й слот Замка.
 8. Очистка `clan_buildings` при `delete_clan`.
 
+Клан-холл по умолчанию закрыт флагом `config.CLAN_HALL_ENABLED` (Фаза 2 ещё не
+доделана), поэтому тест включает флаг явно перед проверками механики.
+
 Запуск: .venv\\Scripts\\python.exe smoke_159.py
 """
 import asyncio
@@ -122,6 +125,9 @@ def cbs(kb):
 async def main():
     import config
     config.DB_PATH = _TEST_DB
+    # Клан-холл по умолчанию закрыт флагом CLAN_HALL_ENABLED; тесты проверяют
+    # саму механику, поэтому включаем его явно до импорта хендлеров.
+    config.CLAN_HALL_ENABLED = True
     import database.db as db
     db.DB_PATH = _TEST_DB
     from database.db import (
