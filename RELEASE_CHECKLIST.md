@@ -3,8 +3,8 @@
 Короткий чек-лист для деплоя. Ключевое правило: **тег вешаем ТОЛЬКО на коммит с релизными правками**.
 
 ## 1) Предрелиз
-- [ ] **Синхронизация доков**: `.\.venv\Scripts\python.exe tools\docs_check_sync.py` — все `UP TO DATE` (если нет — прогнать нужные `export_*.py`)
-- [ ] **Смоуки**: с `$env:PYTHONIOENCODING='utf-8'` прогнать `.\.venv\Scripts\python.exe tools/run_smokes.py` → **104/104, 0 failed**
+- [ ] **Синхронизация доков**: `.\.venv\Scripts\python.exe tools\docs_check_sync.py --fix` — все `UP TO DATE`
+- [ ] **Смоуки**: `.\.venv\Scripts\python.exe tools\run_smokes.py` (по умолчанию в 4 потока, либо точечно `tools\run_smokes.py --last 10` / `146 158-159`) → **0 failed**
 - [ ] **Код компилируется** (быстрая проверка): `.\.venv\Scripts\python.exe -m py_compile config.py main.py database/db.py` (либо по затронутым модулям)
 - [ ] **Уточнить у владельца**: явный спойлер в анонсе или неявный намёк (см. [AGENTS.md](AGENTS.md) «Предрелизный вопрос»)
 

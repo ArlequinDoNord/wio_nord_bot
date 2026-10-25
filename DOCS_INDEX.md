@@ -50,13 +50,18 @@
 - **Релиз** → [AGENTS.md](AGENTS.md) → [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) → [SERVER_MAINTENANCE.md](SERVER_MAINTENANCE.md)
 
 ## Автогенерация
-Если меняли `bot/handlers/`, `utils/states.py`, `main.py`, `database/db.py`, `smoke_*.py` — полезно прогнать:
+Если меняли `bot/handlers/`, `utils/states.py`, `main.py`, `database/db.py`, `config.py`, `smoke_*.py` — достаточно одной команды:
 
 ```powershell
-.\.venv\Scripts\python.exe tools\docs_check_sync.py
-# при OUTDATED — прогнать соответствующие export_*.py
+.\.venv\Scripts\python.exe tools\docs_check_sync.py --fix
+```
+
+Либо точечно по скриптам:
+
+```powershell
 .\.venv\Scripts\python.exe tools\export_handlers.py
 .\.venv\Scripts\python.exe tools\export_states.py
 .\.venv\Scripts\python.exe tools\export_migrations.py
 .\.venv\Scripts\python.exe tools\export_smokes.py
+.\.venv\Scripts\python.exe tools\export_config.py
 ```
