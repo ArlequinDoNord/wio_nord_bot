@@ -14043,9 +14043,16 @@ async def deduct_clan_storage_items(clan_id: int, items: dict):
     await conn.commit()
 
 
-async def start_clan_building_project(clan_id: int,
-                                      user_id: int) -> tuple[bool, str, dict | None]:
-    """Старт строительства здания главой клана (списывает ресурсы со склада и НМ с главы)."""
+async def start_clan_building_project(clan_id: int, user_id: int,
+                                      skip_resources: bool = False) -> tuple[bool, str, dict | None]:
+    """Старт строительства здания главой клана.
+
+    Два способа оплаты:
+    - обычный: на складе клана собраны все ресурсы проекта, с главы списывается
+      базовый `price_nm`, ресурсы со склада списываются ровно по норме;
+    - без ресурсов (`skip_resources=True`): склад клана не трогаем, глава платит
+      `price_nm × config.CLAN_BUILDING_NO_RESOURCES_MULT` (двойная цена).
+    """
     if not await can_manage_clan_hall(clan_id, user_id):
         return False, "❌ Запустить стройку может только глава клана.", None
     b = await ensure_clan_building(clan_id)
@@ -14055,33 +14062,55 @@ async def start_clan_building_project(clan_id: int,
     btype = b['building_type']
     if btype not in btypes:
         return False, "❌ Неизвестный тип здания.", None
-    try:
-        required = json.loads(b['required_json'] or "{}")
-    except Exception:
-        required = {}
-    progress, all_ok = await get_clan_project_progress(clan_id, required)
-    if not all_ok:
-        return False, "❌ На складе клана ещё не собраны все необходимые ресурсы.", None
-    price_nm = int(b['price_nm'] or 0)
+
+    price_base = int(b['price_nm'] or 0)
+    mult = int(getattr(config, "CLAN_BUILDING_NO_RESOURCES_MULT", 2) or 2)
+    progress = []
+    if skip_resources:
+        price_nm = price_base * mult
+    else:
+        try:
+            required = json.loads(b['required_json'] or "{}")
+        except Exception:
+            required = {}
+        progress, all_ok = await get_clan_project_progress(clan_id, required)
+        if not all_ok:
+            return False, "❌ На складе клана ещё не собраны все необходимые ресурсы.", None
+        price_nm = price_base
+
     leader = await get_user(user_id)
     have_nm = int((leader['nordmarks'] if leader else 0) or 0)
     if have_nm < price_nm:
+        if skip_resources:
+            return (False,
+                    f"❌ Для стройки без ресурсов нужно {price_nm} НМ "
+                    f"(двойная цена), у главы есть {have_nm} НМ.",
+                    None)
         return (False,
                 f"❌ Недостаточно нордмарок у главы клана: нужно {price_nm} НМ, есть {have_nm} НМ.",
                 None)
-    # Списываем ровно требуемые ресурсы со склада (излишки остаются)
-    to_deduct = {r['item_id']: r['need'] for r in progress if r['item_id'] and r['need'] > 0}
-    await deduct_clan_storage_items(clan_id, to_deduct)
+
+    # С ресурсами: списываем ровно требуемые ресурсы со склада (излишки остаются).
+    # Без ресурсов: склад не трогаем — всё оплачено нордмарками.
+    if not skip_resources:
+        to_deduct = {r['item_id']: r['need'] for r in progress if r['item_id'] and r['need'] > 0}
+        await deduct_clan_storage_items(clan_id, to_deduct)
+
     # Списываем НМ с лидера (транзакция clan_build)
     bname = btypes[btype]['name']
     if price_nm > 0:
-        await remove_nordmarks(user_id, price_nm, "clan_build",
-                               f"Строительство здания клана «{bname}»")
-    days = int(btypes[btype].get('days') or 5)
+        reason = f"Строительство здания клана «{bname}»"
+        if skip_resources:
+            reason += " без сбора ресурсов (двойная оплата)"
+        await remove_nordmarks(user_id, price_nm, "clan_build", reason)
+    days = int(btypes[btype].get('days') or 2)
     completes_at = (datetime.now(timezone.utc) + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
     await start_clan_building(clan_id, completes_at)
     updated = await get_clan_building(clan_id)
-    return True, f"🏗 Строительство «{bname}» начато! Завершится {completes_at[:10]}.", updated
+    msg = f"🏗 Строительство «{bname}» начато! Завершится {completes_at[:10]}."
+    if skip_resources:
+        msg += f" Ресурсы не понадобились: оплачено {price_nm} НМ (двойная цена)."
+    return True, msg, updated
 
 
 async def set_clan_building_built(clan_id: int, building_type: str):

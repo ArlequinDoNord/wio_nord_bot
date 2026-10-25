@@ -11,11 +11,14 @@
 5. Старт строительства (`start_clan_building_project` / `clanh:start:`):
    отказ при нехватке ресурсов или НМ; при успехе списываются ровно требуемые ресурсы
    (излишки остаются на складе) и НМ главы (транзакция `clan_build`), рассылается уведомление.
+   Второй способ — `clanh:startfull:`: двойная цена НМ, ресурсы на складе не тратятся.
 6. Картинки: во время `building` используется общая заглушка стройки (`clan_construction_photo`),
    после постройки (`built`) — индивидуальное фото здания клана (`building_photo_file_id`).
-7. Завершение по таймеру (`resolve_clan_building` / `resolve_due_clan_buildings`), идемпотентность,
-   вход внутрь (`clanh:inside:`) до и после постройки, резервный 7-й слот Замка.
-8. Очистка `clan_buildings` при `delete_clan`.
+7. Оплата без ресурсов (`clanh:startfull:` / `start_clan_building_project(skip_resources=True)`):
+   двойная цена НМ, склад клана не тратится, срок Дома — 2 дня.
+8. Завершение по таймеру (`resolve_clan_building` / `resolve_due_clan_buildings`), идемпотентность,
+   вход внутрь (`clanh:inside:`) до и после постройки, резервный 7-й слот резиденции.
+9. Очистка `clan_buildings` при `delete_clan`.
 
 Клан-холл по умолчанию закрыт флагом `config.CLAN_HALL_ENABLED` (Фаза 2 ещё не
 доделана), поэтому тест включает флаг явно перед проверками механики.
@@ -175,6 +178,15 @@ async def main():
               {"clan_id", "building_type", "target_type", "status",
                "required_json", "price_nm", "building_photo_file_id"}.issubset(cols))
 
+        bcfg = config.CLAN_BUILDING_TYPES
+        check("сроки построек: дом 2 дн., поместье 4, резиденция 7",
+              bcfg["house"]["days"] == 2 and bcfg["manor"]["days"] == 4
+              and bcfg["castle"]["days"] == 7)
+        check("3-й уровень — «Индивидуальный проект резиденции клана»",
+              bcfg["castle"]["name"] == "Индивидуальный проект резиденции клана")
+        check("множитель оплаты без ресурсов = 2",
+              config.CLAN_BUILDING_NO_RESOURCES_MULT == 2)
+
         b0 = await ensure_clan_building(clan_id)
         check("ленивое создание со статусом choosing",
               b0 is not None and b0["status"] == "choosing" and b0["building_type"] is None)
@@ -253,6 +265,14 @@ async def main():
 
         # Снова выбираем Дом Клана
         await choose_clan_building(clan_id, LEADER, "house")
+
+        cb_fund = FakeCallback(LEADER, f"clanh:hall:{clan_id}")
+        await clan_hall.clan_hall_cb(cb_fund)
+        fund_txt = cb_fund.message.text or ""
+        check("на экране сбора есть кнопка «без ресурсов»",
+              f"clanh:startfull:{clan_id}" in cbs(cb_fund.message.kb))
+        check("на экране сбора видна двойная цена 6000 НМ",
+              "6000 НМ" in fund_txt and "двойная цена" in fund_txt)
 
         print("\n4. Прогресс сбора и старт строительства")
         prog, all_ok = await get_clan_project_progress(clan_id)
@@ -357,7 +377,46 @@ async def main():
         )
         check("7-й слот Замка помечен как резервный", "7. 🔒" in txt_castle and "Резервный слот" in txt_castle)
 
-        print("\n7. Очистка при роспуске клана")
+        print("\n7. Оплата без ресурсов (двойная цена)")
+        clan2 = await create_clan("clan", "Ледяной Клинок", "Второй клан", LEADER)
+        await set_clan_leader(clan2, LEADER)
+        await add_clan_member(clan2, LEADER)
+        ok_pick, _ = await choose_clan_building(clan2, LEADER, "house")
+        check("второй клан: проект Дома выбран", ok_pick is True)
+
+        ok_poor, msg_poor, _ = await start_clan_building_project(
+            clan2, LEADER, skip_resources=True)
+        check("без ресурсов и без НМ: отказ с двойной ценой",
+              ok_poor is False and "6000" in msg_poor)
+
+        await add_nordmarks(LEADER, 7000, "test", "двойная оплата")
+        nm_before2 = (await get_user(LEADER))["nordmarks"]
+        bot2 = FakeBot()
+        cb_full = FakeCallback(LEADER, f"clanh:startfull:{clan2}", bot=bot2)
+        await clan_hall.clan_hall_startfull_cb(cb_full)
+        b2 = await get_clan_building(clan2)
+        check("без ресурсов: статус building",
+              b2 is not None and b2["status"] == "building")
+        check("без ресурсов: с главы списано 6000 НМ (двойная цена)",
+              (await get_user(LEADER))["nordmarks"] == nm_before2 - 6000)
+        tx2_cur = await conn.execute(
+            "SELECT * FROM transactions WHERE from_user = ? AND tx_type = 'clan_build' "
+            "ORDER BY rowid DESC LIMIT 1", (LEADER,))
+        tx2 = await tx2_cur.fetchone()
+        check("без ресурсов: транзакция clan_build на 6000",
+              tx2 is not None and tx2["amount"] == 6000)
+        check("без ресурсов: склад клана не тронут",
+              await get_clan_storage_qty(clan2, plank["id"]) == 0)
+
+        completes2 = datetime.strptime(str(b2["completes_at"]), "%Y-%m-%d %H:%M:%S")
+        now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+        delta_days = (completes2 - now_utc).total_seconds() / 86400
+        check("Дом строится 2 дня", 1.9 <= delta_days <= 2.01)
+
+        print("\n8. Очистка при роспуске клана")
+        await delete_clan(clan2)
+        check("clan_buildings второго клана очищена",
+              await get_clan_building(clan2) is None)
         await delete_clan(clan_id)
         check("clan_buildings очищена при delete_clan",
               await get_clan_building(clan_id) is None)

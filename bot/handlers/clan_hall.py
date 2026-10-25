@@ -2,8 +2,10 @@
 
 См. CLAN_HALL.md:
 - общий склад клана (пожертвования ресурсов +1/+10/всё, журнал вкладов);
-- выбор типа здания главой клана (Дом Клана / Клановое поместье / Замок Клана);
-- сбор ресурсов на складе + оплата НМ лидером -> старт строительства;
+- выбор типа здания главой клана (Дом Клана / Клановое поместье /
+  Индивидуальный проект резиденции клана);
+- сбор ресурсов на складе + оплата НМ лидером -> старт строительства
+  (либо двойная оплата НМ без сбора ресурсов);
 - во время стройки/апгрейда отображается общая картинка-заглушка стройки,
   а после постройки — индивидуальная картинка здания клана (устанавливается админом);
 - ленивое завершение стройки по таймеру + вход внутрь здания.
@@ -182,13 +184,16 @@ def build_hall_choosing_text(clan, is_leader: bool) -> str:
         "",
     ]
     btypes = getattr(config, "CLAN_BUILDING_TYPES", {})
+    mult = int(getattr(config, "CLAN_BUILDING_NO_RESOURCES_MULT", 2) or 2)
     for key, cfg in btypes.items():
         req_parts = [f"{_esc(k)} × {v}" for k, v in (cfg.get("required") or {}).items()]
         req_str = ", ".join(req_parts) if req_parts else "нет"
+        price = int(cfg.get("price_nm") or 0)
         lines.append(
             f"• <b>{_esc(cfg['name'])}</b> — слотов: <b>{cfg['slots']}</b> "
             f"(макс. ур. {cfg['max_level']}), срок: <b>{cfg['days']} дн.</b>\n"
-            f"  💰 {cfg['price_nm']} НМ | 📦 {req_str}"
+            f"  💰 {price} НМ + 📦 {req_str}\n"
+            f"  💰 {price * mult} НМ без ресурсов (двойная цена)"
         )
     lines.append("")
     if is_leader:
@@ -205,8 +210,10 @@ def build_hall_funding_text(clan, building_row, progress: list[dict],
     bname = cfg.get("name") or btype or "Здание клана"
     slots = cfg.get("slots", 0)
     max_lvl = cfg.get("max_level", 1)
-    days = cfg.get("days", 5)
+    days = cfg.get("days", 2)
     price_nm = int(building_row["price_nm"] or cfg.get("price_nm") or 0)
+    mult = int(getattr(config, "CLAN_BUILDING_NO_RESOURCES_MULT", 2) or 2)
+    nores_price = price_nm * mult
 
     lines = [
         f"🏗 <b>Проект: {_esc(bname)}</b> — «{_esc(clan['name'])}»",
@@ -225,13 +232,22 @@ def build_hall_funding_text(clan, building_row, progress: list[dict],
         nm_ok = leader_nm >= price_nm
         nm_mark = "✅" if nm_ok else "⏳"
         lines.append(f"{nm_mark} Оплата работ главой: <b>{price_nm} НМ</b> (у тебя: {leader_nm} НМ)")
+        nores_mark = "✅" if leader_nm >= nores_price else "⏳"
+        lines.append(
+            f"{nores_mark} Без сбора ресурсов: <b>{nores_price} НМ</b> "
+            f"(двойная цена, склад не тратится)"
+        )
     else:
-        lines.append(f"💰 Оплата работ главой: <b>{price_nm} НМ</b>")
+        lines.append(f"💰 Оплата работ главой: <b>{price_nm} НМ</b> + ресурсы")
+        lines.append(f"💰 Либо без ресурсов: <b>{nores_price} НМ</b> (двойная цена)")
 
     if all_ok:
         lines.append("\n✅ Все ресурсы собраны! Глава клана может запустить стройку.")
     else:
-        lines.append("\nВносите ресурсы на склад клана, чтобы начать строительство.")
+        lines.append(
+            "\nВносите ресурсы на склад клана — или глава может оплатить "
+            f"двойную цену ({nores_price} НМ) и начать стройку сразу без ресурсов."
+        )
     return "\n".join(lines)
 
 
@@ -392,11 +408,16 @@ async def _render_hall(cb: CallbackQuery, clan, building_row):
         ]
         if is_leader:
             price_nm = int(building_row["price_nm"] or 0)
+            mult = int(getattr(config, "CLAN_BUILDING_NO_RESOURCES_MULT", 2) or 2)
             if all_ok:
                 rows.append([InlineKeyboardButton(
                     text=f"🚀 Начать строительство ({price_nm} НМ)",
                     callback_data=f"clanh:start:{clan_id}",
                 )])
+            rows.append([InlineKeyboardButton(
+                text=f"💰 Начать без ресурсов ({price_nm * mult} НМ)",
+                callback_data=f"clanh:startfull:{clan_id}",
+            )])
             rows.append([InlineKeyboardButton(
                 text="↩️ Сменить / отменить проект",
                 callback_data=f"clanh:cancel:{clan_id}",
@@ -516,6 +537,31 @@ async def clan_hall_start_cb(cb: CallbackQuery):
         clan_id,
         f"🏗 <b>Стройка начата!</b>\n"
         f"Клан «{_esc(clan['name'])}» начал возведение здания «<b>{_esc(bname)}</b>».\n"
+        f"Завершение: <b>{completes}</b>.",
+    )
+    await _render_hall(cb, clan, building)
+
+
+@router.callback_query(F.data.startswith("clanh:startfull:"))
+async def clan_hall_startfull_cb(cb: CallbackQuery):
+    """Старт стройки без сбора ресурсов: глава платит двойную цену."""
+    clan_id = int(cb.data.split(":")[2])
+    clan = await _member_clan(cb, clan_id)
+    if not clan:
+        return
+    ok, msg, building = await start_clan_building_project(
+        clan_id, cb.from_user.id, skip_resources=True)
+    await cb.answer(msg, show_alert=True)
+    if not ok or not building:
+        return
+    bname = _building_cfg(building["building_type"]).get("name") or building["building_type"]
+    completes = str(building["completes_at"] or "")[:10]
+    await notify_clan_members(
+        getattr(cb, "bot", None),
+        clan_id,
+        f"🏗 <b>Стройка начата без сбора ресурсов!</b>\n"
+        f"Клан «{_esc(clan['name'])}» начал возведение здания «<b>{_esc(bname)}</b>».\n"
+        f"Глава оплатил двойную цену, склад клана не тронут.\n"
         f"Завершение: <b>{completes}</b>.",
     )
     await _render_hall(cb, clan, building)

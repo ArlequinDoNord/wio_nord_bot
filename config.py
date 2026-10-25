@@ -47,16 +47,21 @@ TOURIST_BOOKLET_LOCATIONS = (
 CLAN_HALL_ENABLED = False
 
 CLAN_BUILDING_TYPES = {
-    "house":  {"name": "Дом Клана",         "slots": 2, "max_level": 2, "days": 5,
+    "house":  {"name": "Дом Клана",         "slots": 2, "max_level": 2, "days": 2,
                "price_nm": 3000,
                "required": {"Доска": 60,  "Бревна": 20,  "Железная руда": 15}},
-    "manor":  {"name": "Клановое поместье", "slots": 4, "max_level": 2, "days": 8,
+    "manor":  {"name": "Клановое поместье", "slots": 4, "max_level": 2, "days": 4,
                "price_nm": 8000,
                "required": {"Доска": 150, "Бревна": 60,  "Железная руда": 50}},
-    "castle": {"name": "Замок Клана",       "slots": 7, "max_level": 4, "days": 12,
+    "castle": {"name": "Индивидуальный проект резиденции клана",
+               "slots": 7, "max_level": 4, "days": 7,
                "price_nm": 20000,
                "required": {"Доска": 400, "Бревна": 150, "Железная руда": 150}},
 }
+
+# Можно не копить ресурсы: глава оплачивает работы в двойном размере, и склад
+# клана не тратится. С ресурсами цена остаётся базовой (price_nm).
+CLAN_BUILDING_NO_RESOURCES_MULT = 2
 
 CLAN_EXPANSION_TYPES = ("kitchen", "workbench", "shower", "garden", "library", "shop")
 

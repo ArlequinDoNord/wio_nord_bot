@@ -11,7 +11,8 @@
 7. Апгрейд: установка «Ванной с душем» заменяет «Душевую» (возврат в инвентарь),
    слот повышается до 2 ур.; применение даёт +50 ОД.
 8. Душ/ванна сокращают опьянение: душевая −60 мин, ванная −180 мин («пьян» и
-   «очень пьян»); короткое опьянение снимается полностью.
+   «очень пьян»); короткое опьянение снимается полностью; повторное применение
+   в те же сутки не даёт ни ОД, ни дополнительного протрезвления.
 
 Запуск: .venv\\Scripts\\python.exe smoke_147.py
 """
@@ -250,6 +251,17 @@ async def run():
           left4 is not None and 58 <= left4 <= 60)
     check("душевая: алерт про −60 мин",
           any(t and "−60 мин" in t for t in cb4.alerts))
+
+    # повторное применение в те же сутки: лимит общий — ни ОД, ни протрезвления
+    ap4_before = (await get_user(uid4))["ap"]
+    cb4b = FakeCallback(uid4, data="housing:shower:0", bot=FakeSender())
+    await hh.housing_shower(cb4b)
+    left4b = await drunk_left(uid4, "пьян")
+    check("повторно в те же сутки: отказ «уже мылся»",
+          any(t and "уже мылся" in t for t in cb4b.alerts))
+    check("повторно: таймер опьянения не сокращён дальше",
+          left4b is not None and left4 is not None and abs(left4b - left4) <= 2)
+    check("повторно: ОД не выросли", (await get_user(uid4))["ap"] == ap4_before)
 
     uid5 = 471005
     await add_user(uid5, "drunk2", "Пьяный2", "")

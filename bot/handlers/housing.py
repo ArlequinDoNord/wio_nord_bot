@@ -465,8 +465,8 @@ async def _room_shower(cb, uid, idx, slot, ht, lvl):
     can = await can_use_shower(uid)
     lines = [f"🚿 *{title}* (слот {idx+1})\n"]
     if can:
-        lines.append(f"Раз в сутки можно освежиться и восстановить +{ap_gain} ОД.")
-        lines.append(f"🍺 Свежесть сбивает опьянение: «пьян» и «очень пьян» — короче на {sober} мин.")
+        lines.append(f"Раз в сутки можно освежиться: +{ap_gain} ОД и −{sober} мин "
+                     f"к состояниям «пьян» и «очень пьян».")
     else:
         lines.append("✅ Сегодня ты уже мылся — приходи завтра.")
     rows = []
