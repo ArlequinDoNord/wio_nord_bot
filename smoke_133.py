@@ -94,8 +94,13 @@ async def run():
     check("в тексте есть суть релиза (усечённая)", short_notes in txt)
     full_words = len(VERSION_NOTES.split())
     check("суть не длиннее 7 слов", len(short_notes.split()) <= RELEASE_NOTES_MAX_WORDS)
-    check("длинная суть обрывается многоточием",
-          short_notes.endswith("…") == (full_words > RELEASE_NOTES_MAX_WORDS))
+    if full_words > RELEASE_NOTES_MAX_WORDS:
+        check("длинная суть обрывается многоточием", short_notes.endswith("…"))
+    else:
+        # Короткая заметка возвращается как есть: она сама может заканчиваться
+        # многоточием, если автор оставил интригу (v0.38.6).
+        check("короткая суть возвращается без обрезки",
+              short_notes == " ".join(VERSION_NOTES.split()))
     check("нет нерабочей команды-/ссылки /changelog", "/changelog" not in txt)
     check("подробности — обычной фразой «в боте»", "в боте" in txt)
     check("нет сырых переносов строк из заметок",
