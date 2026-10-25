@@ -199,12 +199,13 @@ async def clan_view_cb(callback: CallbackQuery):
 
     kb = []
     if is_member:
-        kb.append([InlineKeyboardButton(text="📦 Склад клана",
-                                        callback_data=f"clanh:storage:{clan['id']}")])
+        if clan['kind'] == 'clan':
+            kb.append([InlineKeyboardButton(text="🏰 Здание клана",
+                                            callback_data=f"clanh:hall:{clan['id']}")])
+            kb.append([InlineKeyboardButton(text="📦 Склад клана",
+                                            callback_data=f"clanh:storage:{clan['id']}")])
         if not is_leader:
             kb.append([InlineKeyboardButton(text="🚪 Выйти", callback_data=f"clans:leave:{clan['id']}")])
-        else:
-            kb.append([InlineKeyboardButton(text="⚙️ Управление", callback_data=f"clans:manage:{clan['id']}")])
     else:
         if await has_clan_request(clan['id'], uid):
             kb.append([InlineKeyboardButton(text="⏳ Заявка отправлена — отозвать", callback_data=f"clans:cancel:{clan['id']}")])
@@ -673,13 +674,19 @@ async def clan_edit_menu_cb(callback: CallbackQuery):
     clan = await get_clan(int(callback.data.split(":")[2]))
     if not clan:
         return
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [InlineKeyboardButton(text="✏️ Название", callback_data=f"clans:editf:{clan['id']}:name")],
         [InlineKeyboardButton(text="📖 Описание", callback_data=f"clans:editf:{clan['id']}:desc")],
         [InlineKeyboardButton(text="🖼 Картинка", callback_data=f"clans:editf:{clan['id']}:photo")],
         [InlineKeyboardButton(text="❌ Убрать картинку", callback_data=f"clans:editf:{clan['id']}:nophoto")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data=f"clans:manage:{clan['id']}")],
-    ])
+    ]
+    if clan['kind'] == 'clan':
+        rows.append([InlineKeyboardButton(text="🏰 Фото здания клана",
+                                          callback_data=f"clanh:admphoto:{clan['id']}")])
+        rows.append([InlineKeyboardButton(text="🏗 Фото-заглушка стройки",
+                                          callback_data=f"clanh:admconstphoto:{clan['id']}")])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"clans:manage:{clan['id']}")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await _redraw(callback, f"✏️ ЧТО ПРАВИМ В «{clan['name']}»?", kb, photo=clan.get('photo_file_id'))
 
 

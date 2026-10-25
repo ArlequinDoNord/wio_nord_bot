@@ -33,6 +33,7 @@ from database.db import (
     ensure_recipe_shop_items, ensure_user_recipes_backfill,
     log_activity, prune_activity_log, prune_location_visits, recompute_region_stats,
     maybe_archive_wall_weekly, maintain_polls, touch_user_active,
+    resolve_due_clan_buildings, get_clan,
 )
 from utils.notify import notify_treasury_shortage
 from utils.chat_guard import ChatGuard
@@ -379,6 +380,29 @@ async def scheduled_jobs(bot: Bot):
                 )
         except Exception as e:
             logger.error(f"Ошибка обслуживания опросов: {e}", exc_info=True)
+        # Клан-холл: завершение строек/апгрейдов по таймеру и уведомление членов клана.
+        try:
+            from config import CLAN_BUILDING_TYPES
+            from bot.handlers.clan_hall import notify_clan_members
+            due_buildings = await resolve_due_clan_buildings()
+            for item in due_buildings:
+                cid = item['clan_id']
+                clan = await get_clan(cid)
+                if not clan:
+                    continue
+                btype = item['building_type']
+                bname = CLAN_BUILDING_TYPES.get(btype, {}).get('name', btype)
+                if item['event'] == 'upgraded':
+                    msg = (f"🎉 <b>Улучшение завершено!</b>\n"
+                           f"Здание клана «{clan['name']}» улучшено до «<b>{bname}</b>»!")
+                else:
+                    msg = (f"🎉 <b>Строительство завершено!</b>\n"
+                           f"Здание клана «{clan['name']}» — <b>{bname}</b> — построено и открыто!")
+                await notify_clan_members(bot, cid, msg)
+            if due_buildings:
+                logger.info(f"Клан-холл: завершено строек/апгрейдов {len(due_buildings)}")
+        except Exception as e:
+            logger.error(f"Ошибка проверки строек клан-холла: {e}", exc_info=True)
 
 
 async def main():

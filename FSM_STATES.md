@@ -6,7 +6,7 @@
 > Назначение: единый обзор всех `StatesGroup`, где они ставятся и где ловятся,
 > а также реестр `callback_data` — чтобы не допускать конфликтов меню/хендлеров.
 
-Всего классов состояний: **48**; полей-состояний: **211**; уникальных `callback_data`: **252**.
+Всего классов состояний: **49**; полей-состояний: **213**; уникальных `callback_data`: **252**.
 
 ## 1. Классы состояний по модулям
 
@@ -298,27 +298,34 @@
 | `waiting_message` | `bot/handlers/bank.py:322` `process_amount` | `bot/handlers/bank.py:331` `process_message` |
 | `waiting_treasury_amount` | `bot/handlers/bank.py:208` `bank_treasury` | `bot/handlers/bank.py:218` `process_treasury_amount` |
 
+### `ClanHallAdminPhoto` — `bot/handlers/clan_hall.py`
+
+| Состояние | Ставится (`set_state`) | Ловится (хендлер) |
+|---|---|---|
+| `wait_building_photo` | `bot/handlers/clan_hall.py:547` `clan_hall_admphoto_cb` | `bot/handlers/clan_hall.py:583` `clan_hall_admphoto_save` |
+| `wait_construction_photo` | `bot/handlers/clan_hall.py:576` `clan_hall_admconstphoto_cb` | `bot/handlers/clan_hall.py:601` `clan_hall_admconstphoto_save` |
+
 ### `ClansCreate` — `bot/handlers/clans.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
 | `kind` | — | — |
-| `wait_name` | `bot/handlers/clans.py:565` `clan_create_start` | `bot/handlers/clans.py:573` `clan_create_name` |
-| `wait_desc` | `bot/handlers/clans.py:580` `clan_create_name` | `bot/handlers/clans.py:588` `clan_create_desc` |
-| `wait_photo` | `bot/handlers/clans.py:598` `clan_create_desc` | `bot/handlers/clans.py:642` `clan_create_photo`<br>`bot/handlers/clans.py:649` `clan_create_photo_hint` |
+| `wait_name` | `bot/handlers/clans.py:566` `clan_create_start` | `bot/handlers/clans.py:574` `clan_create_name` |
+| `wait_desc` | `bot/handlers/clans.py:581` `clan_create_name` | `bot/handlers/clans.py:589` `clan_create_desc` |
+| `wait_photo` | `bot/handlers/clans.py:599` `clan_create_desc` | `bot/handlers/clans.py:643` `clan_create_photo`<br>`bot/handlers/clans.py:650` `clan_create_photo_hint` |
 
 ### `ClansEdit` — `bot/handlers/clans.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
 | `field` | — | — |
-| `wait_value` | `bot/handlers/clans.py:707` `clan_edit_field_cb` | `bot/handlers/clans.py:713` `clan_edit_finish_photo`<br>`bot/handlers/clans.py:727` `clan_edit_finish_text` |
+| `wait_value` | `bot/handlers/clans.py:714` `clan_edit_field_cb` | `bot/handlers/clans.py:720` `clan_edit_finish_photo`<br>`bot/handlers/clans.py:734` `clan_edit_finish_text` |
 
 ### `ClansMessage` — `bot/handlers/clans.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `wait_text` | `bot/handlers/clans.py:764` `clan_msg_start` | `bot/handlers/clans.py:772` `clan_msg_send` |
+| `wait_text` | `bot/handlers/clans.py:771` `clan_msg_start` | `bot/handlers/clans.py:779` `clan_msg_send` |
 
 ### `DungeonFSM` — `bot/handlers/dungeon.py`
 
@@ -590,9 +597,9 @@
 - `city:pilots:list`: `bot/handlers/pilots.py:129`
 - `city:quarter`: `bot/handlers/locations.py:225`
 - `city:vote`: `bot/handlers/polls.py:70`
-- `clanh:noop`: `bot/handlers/clan_hall.py:248`
-- `clans:create_skip`: `bot/handlers/clans.py:653`
-- `clans:noop`: `bot/handlers/clans.py:438`
+- `clanh:noop`: `bot/handlers/clan_hall.py:764`
+- `clans:create_skip`: `bot/handlers/clans.py:654`
+- `clans:noop`: `bot/handlers/clans.py:439`
 - `contracts:list`: `bot/handlers/dungeon.py:738`
 - `del_item:back`: `bot/handlers/admin.py:1692`
 - `duel:card:buy`: `bot/handlers/duel.py:246`
@@ -769,30 +776,38 @@
 - `cat:`: `bot/handlers/admin.py:1276`
 - `city/`: `bot/handlers/locations.py:87`
 - `city:pilots:list:`: `bot/handlers/pilots.py:135`
-- `clanh:donate:`: `bot/handlers/clan_hall.py:122`
-- `clanh:give:`: `bot/handlers/clan_hall.py:177`
-- `clanh:item:`: `bot/handlers/clan_hall.py:146`
-- `clanh:log:`: `bot/handlers/clan_hall.py:233`
-- `clanh:storage:`: `bot/handlers/clan_hall.py:103`
-- `clans:add:`: `bot/handlers/clans.py:443`
-- `clans:addset:`: `bot/handlers/clans.py:460`
-- `clans:cancel:`: `bot/handlers/clans.py:259`
-- `clans:create:`: `bot/handlers/clans.py:555`
-- `clans:del:`: `bot/handlers/clans.py:801`
-- `clans:delyes:`: `bot/handlers/clans.py:818`
-- `clans:edit:`: `bot/handlers/clans.py:668`
-- `clans:editf:`: `bot/handlers/clans.py:686`
-- `clans:join:`: `bot/handlers/clans.py:222`
-- `clans:kick:`: `bot/handlers/clans.py:393`
-- `clans:leader:`: `bot/handlers/clans.py:484`
-- `clans:leaderset:`: `bot/handlers/clans.py:501`
-- `clans:leaderunset:`: `bot/handlers/clans.py:531`
-- `clans:leave:`: `bot/handlers/clans.py:269`
+- `clanh:admconstphoto:`: `bot/handlers/clan_hall.py:568`
+- `clanh:admnophoto:`: `bot/handlers/clan_hall.py:554`
+- `clanh:admphoto:`: `bot/handlers/clan_hall.py:536`
+- `clanh:cancel:`: `bot/handlers/clan_hall.py:465`
+- `clanh:choose:`: `bot/handlers/clan_hall.py:449`
+- `clanh:donate:`: `bot/handlers/clan_hall.py:634`
+- `clanh:give:`: `bot/handlers/clan_hall.py:691`
+- `clanh:hall:`: `bot/handlers/clan_hall.py:429`
+- `clanh:inside:`: `bot/handlers/clan_hall.py:501`
+- `clanh:item:`: `bot/handlers/clan_hall.py:660`
+- `clanh:log:`: `bot/handlers/clan_hall.py:749`
+- `clanh:start:`: `bot/handlers/clan_hall.py:479`
+- `clanh:storage:`: `bot/handlers/clan_hall.py:613`
+- `clans:add:`: `bot/handlers/clans.py:444`
+- `clans:addset:`: `bot/handlers/clans.py:461`
+- `clans:cancel:`: `bot/handlers/clans.py:260`
+- `clans:create:`: `bot/handlers/clans.py:556`
+- `clans:del:`: `bot/handlers/clans.py:808`
+- `clans:delyes:`: `bot/handlers/clans.py:825`
+- `clans:edit:`: `bot/handlers/clans.py:669`
+- `clans:editf:`: `bot/handlers/clans.py:693`
+- `clans:join:`: `bot/handlers/clans.py:223`
+- `clans:kick:`: `bot/handlers/clans.py:394`
+- `clans:leader:`: `bot/handlers/clans.py:485`
+- `clans:leaderset:`: `bot/handlers/clans.py:502`
+- `clans:leaderunset:`: `bot/handlers/clans.py:532`
+- `clans:leave:`: `bot/handlers/clans.py:270`
 - `clans:list:`: `bot/handlers/clans.py:128`
-- `clans:manage:`: `bot/handlers/clans.py:337`
-- `clans:msg:`: `bot/handlers/clans.py:756`
-- `clans:reqno:`: `bot/handlers/clans.py:320`
-- `clans:reqok:`: `bot/handlers/clans.py:296`
+- `clans:manage:`: `bot/handlers/clans.py:338`
+- `clans:msg:`: `bot/handlers/clans.py:763`
+- `clans:reqno:`: `bot/handlers/clans.py:321`
+- `clans:reqok:`: `bot/handlers/clans.py:297`
 - `clans:view:`: `bot/handlers/clans.py:165`
 - `confirm_del_photo:`: `bot/handlers/admin.py:845`
 - `contract:enter:\d+$`: `bot/handlers/dungeon.py:818`

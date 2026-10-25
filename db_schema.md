@@ -1238,6 +1238,22 @@ v0.38.0: колонка `on_hit_effects` (у `snake` — яд, у `owl` — «о
 
 - `idx_clan_contrib_clan` по (clan_id)
 
+## `clan_buildings`
+
+| Колонка |
+|---|
+| `clan_id INTEGER PRIMARY KEY` |
+| `building_type TEXT` |
+| `target_type TEXT` |
+| `status TEXT NOT NULL DEFAULT 'choosing'` |
+| `required_json TEXT` |
+| `price_nm INTEGER DEFAULT 0` |
+| `chosen_at TIMESTAMP` |
+| `started_at TIMESTAMP` |
+| `completes_at TIMESTAMP` |
+| `updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` |
+| `building_photo_file_id TEXT` |
+
 ## `user_recipes`
 
 | Колонка |

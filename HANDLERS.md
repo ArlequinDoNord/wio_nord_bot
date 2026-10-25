@@ -77,7 +77,7 @@
 | `wall.py` | Стена изречений — доска объявлений города. | `router` | 2 | 7 | `wall:` | `WallWrite` |
 | `hq.py` | Штаб ВВС: командование рассылает приказы авиакрыльям. | `router` | 7 | 25 | `hq:` | `HqOrder`, `HqWingCreate`, `HqWingEdit` |
 | `clans.py` | Партии и кланы: реестр из Ратуши. | `router` | 7 | 23 | `city:`, `clans:` | `ClansCreate`, `ClansEdit`, `ClansMessage` |
-| `clan_hall.py` | Клан-холл: клановый склад (пожертвования ресурсов). | `router` | 0 | 6 | `clanh:` | — |
+| `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 2 | 14 | `clanh:` | `ClanHallAdminPhoto` |
 | `nii.py` | НИИ Северной Кибернетики и кремниевых систем — здание обратной связи. | `router` | 2 | 7 | `nii:` | `NiiWrite` |
 | `tourist_booklet.py` | Буклет туриста: чек-лист городских локаций и разовая награда. | `router` | 0 | 2 | `booklet:` | — |
 | `duel.py` | Дом Дуэлей — PvP-арена «зона на зону». | `router` | 0 | 12 | `duel:` | — |
@@ -290,11 +290,12 @@
 - `F.data.startswith`: `clans:add:`, `clans:addset:`, `clans:cancel:`, `clans:create:`, `clans:del:`, `clans:delyes:`, `clans:edit:`, `clans:editf:`, `clans:join:`, `clans:kick:`, `clans:leader:`, `clans:leaderset:`, `clans:leaderunset:`, `clans:leave:`, `clans:list:`, `clans:manage:`, `clans:msg:`, `clans:reqno:`, `clans:reqok:`, `clans:view:`
 - `F.data ==`: `city:clans`, `clans:create_skip`, `clans:noop`
 
-### `clan_hall.py` — Клан-холл: клановый склад (пожертвования ресурсов).
+### `clan_hall.py` — Клан-холл: клановый склад и строительство кланового здания (Фаза 1).
 
 - Роутеры: `router`
-- Хендлеры: message=0, callback_query=6
-- `F.data.startswith`: `clanh:donate:`, `clanh:give:`, `clanh:item:`, `clanh:log:`, `clanh:storage:`
+- Хендлеры: message=2, callback_query=14
+- FSM: `ClanHallAdminPhoto`
+- `F.data.startswith`: `clanh:admconstphoto:`, `clanh:admnophoto:`, `clanh:admphoto:`, `clanh:cancel:`, `clanh:choose:`, `clanh:donate:`, `clanh:give:`, `clanh:hall:`, `clanh:inside:`, `clanh:item:`, `clanh:log:`, `clanh:start:`, `clanh:storage:`
 - `F.data ==`: `clanh:noop`
 
 ### `nii.py` — НИИ Северной Кибернетики и кремниевых систем — здание обратной связи.

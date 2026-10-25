@@ -992,6 +992,20 @@ async def init_db():
         CREATE INDEX IF NOT EXISTS idx_clan_storage_clan ON clan_storage(clan_id);
         CREATE INDEX IF NOT EXISTS idx_clan_contrib_clan ON clan_build_contrib(clan_id);
 
+        CREATE TABLE IF NOT EXISTS clan_buildings (
+            clan_id INTEGER PRIMARY KEY,
+            building_type TEXT,
+            target_type TEXT,
+            status TEXT NOT NULL DEFAULT 'choosing',
+            required_json TEXT,
+            price_nm INTEGER DEFAULT 0,
+            chosen_at TIMESTAMP,
+            started_at TIMESTAMP,
+            completes_at TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            building_photo_file_id TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS user_recipes (
             user_id INTEGER NOT NULL,
             recipe_id INTEGER NOT NULL,
@@ -1574,6 +1588,9 @@ async def init_db():
     await _migrate_enemy_on_hit_effects()
     # v0.38.1: ребаланс водохранилища (цены форели + веса пула).
     await _migrate_reservoir_balance()
+    # Клан-холл: фото готового здания (добавляет клан, админ проставляет)
+    await _ensure_column(conn, "clan_buildings", "building_photo_file_id", "TEXT")
+    await conn.commit()
 
 
 async def _migrate_reservoir_balance():
@@ -13258,6 +13275,7 @@ async def delete_clan(clan_id: int):
     await conn.execute("DELETE FROM clan_members WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_storage WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_build_contrib WHERE clan_id = ?", (clan_id,))
+    await conn.execute("DELETE FROM clan_buildings WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clans WHERE id = ?", (clan_id,))
     await conn.commit()
 
@@ -13714,3 +13732,304 @@ def location_clearing_photo(loc):
             return dict(loc).get('clearing_photo')
         except Exception:
             return None
+
+async def can_manage_clan_hall(clan_id: int, user_id: int) -> bool:
+    """Право управлять клан-холлом (выбор/старт/отмена стройки, расширения).
+
+    В v1 — только действующий глава клана (kind='clan'). В следующем этапе
+    подключится иерархия клана.
+    """
+    clan = await get_clan(clan_id)
+    if not clan or clan['kind'] != 'clan':
+        return False
+    return bool(clan['leader_id'] and int(clan['leader_id']) == int(user_id))
+
+
+async def can_withdraw_clan_storage(clan_id: int, user_id: int) -> bool:
+    """Заглушка права вывода со склада (пока привязана к главе клана)."""
+    return await can_manage_clan_hall(clan_id, user_id)
+
+
+async def can_harvest_clan_garden(clan_id: int, user_id: int) -> bool:
+    """Право собирать урожай в клановом саду (пока только глава клана)."""
+    return await can_manage_clan_hall(clan_id, user_id)
+
+
+async def get_clan_building(clan_id: int):
+    conn = await get_db()
+    cur = await conn.execute("SELECT * FROM clan_buildings WHERE clan_id = ?", (clan_id,))
+    return await cur.fetchone()
+
+
+async def ensure_clan_building(clan_id: int):
+    conn = await get_db()
+    await conn.execute(
+        "INSERT OR IGNORE INTO clan_buildings (clan_id, status) VALUES (?, 'choosing')",
+        (clan_id,))
+    await conn.commit()
+    return await get_clan_building(clan_id)
+
+
+async def get_clan_construction_photo() -> str | None:
+    """Общая картинка-заглушка стройки кланового здания (file_id из settings)."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT value FROM settings WHERE key = 'clan_construction_photo'")
+    row = await cur.fetchone()
+    val = (row['value'] or '').strip() if row and row['value'] else ''
+    return val or None
+
+
+async def set_clan_construction_photo(photo_file_id: str | None) -> None:
+    """Установить или сбросить общую картинку-заглушку стройки."""
+    conn = await get_db()
+    if photo_file_id:
+        await conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES ('clan_construction_photo', ?)",
+            (photo_file_id.strip(),))
+    else:
+        await conn.execute("DELETE FROM settings WHERE key = 'clan_construction_photo'")
+    await conn.commit()
+
+
+async def set_clan_building_photo(clan_id: int, photo_file_id: str | None):
+    """Установить или сбросить индивидуальную картинку готового здания клана."""
+    await ensure_clan_building(clan_id)
+    conn = await get_db()
+    await conn.execute(
+        """UPDATE clan_buildings SET building_photo_file_id = ?, updated_at = datetime('now')
+           WHERE clan_id = ?""",
+        (photo_file_id, clan_id))
+    await conn.commit()
+
+
+async def set_clan_building_choice(clan_id: int, building_type: str,
+                                   required_json: str, price_nm: int):
+    await ensure_clan_building(clan_id)
+    conn = await get_db()
+    await conn.execute(
+        """UPDATE clan_buildings SET building_type = ?, target_type = NULL, status = 'funding',
+           required_json = ?, price_nm = ?, chosen_at = datetime('now'),
+           started_at = NULL, completes_at = NULL, updated_at = datetime('now')
+           WHERE clan_id = ?""",
+        (building_type, required_json, int(price_nm), clan_id))
+    await conn.commit()
+
+
+async def has_clan_project_contributions(clan_id: int) -> bool:
+    """Были ли вклады в склад после выбора текущего проекта (chosen_at)."""
+    b = await get_clan_building(clan_id)
+    if not b or not b['chosen_at']:
+        return False
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT 1 FROM clan_build_contrib WHERE clan_id = ? AND created_at >= ? LIMIT 1",
+        (clan_id, b['chosen_at']))
+    return (await cur.fetchone()) is not None
+
+
+async def choose_clan_building(clan_id: int, user_id: int,
+                               building_type: str) -> tuple[bool, str]:
+    """Выбор типа здания главой клана (фиксирует снимок required_json и price_nm)."""
+    if not await can_manage_clan_hall(clan_id, user_id):
+        return False, "❌ Выбирать проект здания может только глава клана."
+    btypes = getattr(config, "CLAN_BUILDING_TYPES", {})
+    if building_type not in btypes:
+        return False, "❌ Неизвестный тип здания."
+    b = await ensure_clan_building(clan_id)
+    if b['status'] not in ('choosing', 'funding'):
+        return False, "❌ Здание уже строится или построено."
+    if b['status'] == 'funding' and await has_clan_project_contributions(clan_id):
+        return False, "❌ В проект уже внесены ресурсы — сначала отмени сбор или заверши стройку."
+    cfg = btypes[building_type]
+    req_json = json.dumps(cfg.get('required') or {}, ensure_ascii=False)
+    price_nm = int(cfg.get('price_nm') or 0)
+    await set_clan_building_choice(clan_id, building_type, req_json, price_nm)
+    return True, f"✅ Выбран проект: «{cfg['name']}». Можно собирать ресурсы!"
+
+
+async def cancel_clan_building_funding(clan_id: int):
+    conn = await get_db()
+    await conn.execute(
+        """UPDATE clan_buildings SET building_type = NULL, target_type = NULL,
+           status = 'choosing', required_json = NULL, price_nm = 0,
+           chosen_at = NULL, started_at = NULL, completes_at = NULL,
+           updated_at = datetime('now') WHERE clan_id = ?""",
+        (clan_id,))
+    await conn.commit()
+
+
+async def cancel_clan_building(clan_id: int, user_id: int) -> tuple[bool, str]:
+    """Отмена выбранного проекта на этапе funding (ресурсы остаются на складе)."""
+    if not await can_manage_clan_hall(clan_id, user_id):
+        return False, "❌ Отменить проект может только глава клана."
+    b = await ensure_clan_building(clan_id)
+    if b['status'] != 'funding':
+        return False, "❌ Отменить проект можно только на этапе сбора ресурсов."
+    await cancel_clan_building_funding(clan_id)
+    return True, "↩️ Сбор отменён. Все внесённые ресурсы остались на складе клана."
+
+
+async def get_clan_project_progress(clan_id: int,
+                                    required: dict | None = None) -> tuple[list[dict], bool]:
+    """Прогресс по ресурсам проекта: список {name, item_id, need, have, ok} и флаг all_ok."""
+    if required is None:
+        b = await get_clan_building(clan_id)
+        try:
+            required = json.loads((b['required_json'] if b else None) or "{}")
+        except Exception:
+            required = {}
+    rows = []
+    all_ok = bool(required)
+    for name, need in (required or {}).items():
+        need = int(need or 0)
+        if need <= 0:
+            continue
+        item = await get_item_by_name(name)
+        item_id = item['id'] if item else None
+        have = await get_clan_storage_qty(clan_id, item_id) if item_id else 0
+        ok = have >= need
+        if not ok:
+            all_ok = False
+        rows.append({
+            "name": name,
+            "item_id": item_id,
+            "need": need,
+            "have": have,
+            "ok": ok,
+        })
+    return rows, all_ok
+
+
+async def start_clan_building(clan_id: int, completes_at: str):
+    conn = await get_db()
+    await conn.execute(
+        """UPDATE clan_buildings SET status = 'building', started_at = datetime('now'),
+           completes_at = ?, updated_at = datetime('now') WHERE clan_id = ?""",
+        (completes_at, clan_id))
+    await conn.commit()
+
+
+async def start_clan_upgrading(clan_id: int, target_type: str, required_json: str,
+                               price_nm: int, completes_at: str):
+    conn = await get_db()
+    await conn.execute(
+        """UPDATE clan_buildings SET target_type = ?, status = 'upgrading',
+           required_json = ?, price_nm = ?, started_at = datetime('now'),
+           completes_at = ?, updated_at = datetime('now') WHERE clan_id = ?""",
+        (target_type, required_json, price_nm, completes_at, clan_id))
+    await conn.commit()
+
+
+async def deduct_clan_storage_items(clan_id: int, items: dict):
+    conn = await get_db()
+    for item_id, need in items.items():
+        if need <= 0:
+            continue
+        await conn.execute(
+            """UPDATE clan_storage SET qty = MAX(0, qty - ?), updated_at = datetime('now')
+               WHERE clan_id = ? AND item_id = ?""",
+            (need, clan_id, int(item_id)))
+    await conn.commit()
+
+
+async def start_clan_building_project(clan_id: int,
+                                      user_id: int) -> tuple[bool, str, dict | None]:
+    """Старт строительства здания главой клана (списывает ресурсы со склада и НМ с главы)."""
+    if not await can_manage_clan_hall(clan_id, user_id):
+        return False, "❌ Запустить стройку может только глава клана.", None
+    b = await ensure_clan_building(clan_id)
+    if b['status'] != 'funding' or not b['building_type']:
+        return False, "❌ Проект здания не находится на этапе сбора ресурсов.", None
+    btypes = getattr(config, "CLAN_BUILDING_TYPES", {})
+    btype = b['building_type']
+    if btype not in btypes:
+        return False, "❌ Неизвестный тип здания.", None
+    try:
+        required = json.loads(b['required_json'] or "{}")
+    except Exception:
+        required = {}
+    progress, all_ok = await get_clan_project_progress(clan_id, required)
+    if not all_ok:
+        return False, "❌ На складе клана ещё не собраны все необходимые ресурсы.", None
+    price_nm = int(b['price_nm'] or 0)
+    leader = await get_user(user_id)
+    have_nm = int((leader['nordmarks'] if leader else 0) or 0)
+    if have_nm < price_nm:
+        return (False,
+                f"❌ Недостаточно нордмарок у главы клана: нужно {price_nm} НМ, есть {have_nm} НМ.",
+                None)
+    # Списываем ровно требуемые ресурсы со склада (излишки остаются)
+    to_deduct = {r['item_id']: r['need'] for r in progress if r['item_id'] and r['need'] > 0}
+    await deduct_clan_storage_items(clan_id, to_deduct)
+    # Списываем НМ с лидера (транзакция clan_build)
+    bname = btypes[btype]['name']
+    if price_nm > 0:
+        await remove_nordmarks(user_id, price_nm, "clan_build",
+                               f"Строительство здания клана «{bname}»")
+    days = int(btypes[btype].get('days') or 5)
+    completes_at = (datetime.now(timezone.utc) + timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    await start_clan_building(clan_id, completes_at)
+    updated = await get_clan_building(clan_id)
+    return True, f"🏗 Строительство «{bname}» начато! Завершится {completes_at[:10]}.", updated
+
+
+async def set_clan_building_built(clan_id: int, building_type: str):
+    conn = await get_db()
+    await conn.execute(
+        """UPDATE clan_buildings SET building_type = ?, target_type = NULL,
+           status = 'built', required_json = NULL, price_nm = 0,
+           started_at = NULL, completes_at = NULL, updated_at = datetime('now')
+           WHERE clan_id = ?""",
+        (building_type, clan_id))
+    await conn.commit()
+
+
+async def resolve_clan_building_with_event(clan_id: int) -> tuple[object, str | None]:
+    """Ленивое разрешение таймера стройки/апгрейда.
+
+    Возвращает (row, event), где event in (None, 'built', 'upgraded').
+    """
+    b = await ensure_clan_building(clan_id)
+    if not b or b['status'] not in ('building', 'upgrading') or not b['completes_at']:
+        return b, None
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    if str(b['completes_at']) > now_str:
+        return b, None
+    if b['status'] == 'upgrading':
+        new_type = b['target_type'] or b['building_type']
+        event = 'upgraded'
+    else:
+        new_type = b['building_type']
+        event = 'built'
+    await set_clan_building_built(clan_id, new_type)
+    return await get_clan_building(clan_id), event
+
+
+async def resolve_clan_building(clan_id: int):
+    """Ленивое разрешение таймера стройки/апгрейда при открытии холла."""
+    row, _ = await resolve_clan_building_with_event(clan_id)
+    return row
+
+
+async def resolve_due_clan_buildings() -> list[dict]:
+    """Проход по всем активным стройкам/апгрейдам кланов, у которых вышел срок."""
+    conn = await get_db()
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    cur = await conn.execute(
+        """SELECT clan_id FROM clan_buildings
+           WHERE status IN ('building', 'upgrading')
+             AND completes_at IS NOT NULL AND completes_at <= ?""",
+        (now_str,))
+    rows = await cur.fetchall()
+    done = []
+    for r in rows:
+        cid = int(r['clan_id'])
+        updated, event = await resolve_clan_building_with_event(cid)
+        if event and updated:
+            done.append({
+                "clan_id": cid,
+                "event": event,
+                "building_type": updated['building_type'],
+            })
+    return done

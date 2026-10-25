@@ -40,6 +40,31 @@ TOURIST_BOOKLET_LOCATIONS = (
     "kvp", "hq", "contracts", "nii",
 )
 
+# Клан-холл (проект)
+CLAN_BUILDING_TYPES = {
+    "house":  {"name": "Дом Клана",         "slots": 2, "max_level": 2, "days": 5,
+               "price_nm": 3000,
+               "required": {"Доска": 60,  "Бревна": 20,  "Железная руда": 15}},
+    "manor":  {"name": "Клановое поместье", "slots": 4, "max_level": 2, "days": 8,
+               "price_nm": 8000,
+               "required": {"Доска": 150, "Бревна": 60,  "Железная руда": 50}},
+    "castle": {"name": "Замок Клана",       "slots": 7, "max_level": 4, "days": 12,
+               "price_nm": 20000,
+               "required": {"Доска": 400, "Бревна": 150, "Железная руда": 150}},
+}
+
+CLAN_EXPANSION_TYPES = ("kitchen", "workbench", "shower", "garden", "library", "shop")
+
+CLAN_EXPANSION_UPGRADE = {
+    2: {"nm": 1500, "required": {"Доска": 20,  "Железная руда": 10}},
+    3: {"nm": 4000, "required": {"Доска": 50,  "Железная руда": 30}},
+    4: {"nm": 9000, "required": {"Доска": 100, "Железная руда": 60}},
+}
+
+CLAN_GARDEN_PLOTS = {1: 2, 2: 3, 3: 4, 4: 6}
+CLAN_SHOP_DAILY_LIMIT = 3
+CLAN_SHOP_DISCOUNT = 10
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
 
