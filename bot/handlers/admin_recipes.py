@@ -6,14 +6,18 @@ ensure_recipes() их не перезатирает — она работает 
 (по имени+расширению+уровню), поэтому менеджерные строки не трогаются.
 
 Возможности:
-- создание: название, картинка результата, ингредиенты (циклом «название:кол-во»),
-  результат — существующий предмет ИЛИ новый (мини-визард характеристик и фото),
-  расширение/уровень, ОД, время крафта, редкость, кол-во результата, цена
-  товара-рецепта «Рецепт: <название>» в лавке (0 — не продавать);
-- правка: все поля карточки по одному + быстрые кнопки расширения/редкости,
-  показать/скрыть, перевыбор результата и переписывание ингредиентов;
-- удаление: скрытие рецепта и его товара (строки не трогаем — на id ссылаются
-  выученные user_recipes).
+- создание свитка (одного рецепта): тип → название → описание → состав
+  (ингредиенты выбираются из каталога предметов по категориям, затем
+  спрашивается количество) → результат → расширение/уровень → ОД → время →
+  редкость → кол-во → цена товара-рецепта «Рецепт: <название>» в лавке;
+- создание книги рецептов: тип → название → описание → выбор готовых рецептов
+  (минимум один) → цена; книга — предмет категории `recipes`, при использовании
+  открывает все свои рецепты (`recipe_book_items`, `learn_recipe_from_item`);
+- правка рецепта: все поля карточки по одному + быстрые кнопки расширения/редкости,
+  показать/скрыть, перевыбор результата и состава;
+- книги: список, карточка, показать/скрыть, мягкое удаление;
+- удаление рецепта: скрытие рецепта и его товара (строки не трогаем — на id
+  ссылаются выученные user_recipes).
 
 Вход — из админ-панели (кнопка «📜 Менеджер рецептов», can_manage_shop).
 Всё пространство callbacks живёт под префиксом recadm: — оно не пересекается
@@ -21,7 +25,6 @@ ensure_recipes() их не перезатирает — она работает 
 """
 
 import json
-import re
 
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -29,9 +32,13 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
-    get_item_by_name, get_recipe, list_recipes_for_admin,
+    get_item, get_item_by_name, get_items_by_category, count_items_by_category,
+    get_recipe, list_recipes_for_admin,
     upsert_recipe, ensure_recipe_shop_item, delete_recipe,
     find_recipe, set_recipe_visible, add_item,
+    set_recipe_book, get_recipe_book_recipes, list_recipe_books,
+    set_recipe_book_visible, delete_recipe_book,
+    BOOK_ITEM_PREFIX,
 )
 from utils.permissions import has_permission, log_action
 from utils.helpers import edit_message_safe
@@ -41,6 +48,16 @@ from config import RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES
 router = Router()
 
 RECIPES_PER_PAGE = 8
+PICK_PER_PAGE = 8
+
+# Служебные категории не предлагаем в пикере состава/результата: рецепты,
+# рыночные лоты, дуэльные карты и лицензии в крафт не кладут.
+PICK_EXCLUDE_CATEGORIES = {"recipes", "market", "duel_card", "license"}
+
+KIND_LABELS = {
+    "scroll": "📜 Свиток",
+    "book": "📖 Книга рецептов",
+}
 
 EXPANSION_LABELS = {
     "kitchen": "🍳 Кухня",
@@ -58,10 +75,16 @@ RARITY_MAX = 5
 
 
 class RecipeManager(StatesGroup):
-    # создание (и переиспользование для правки структурных полей)
-    ing = State()           # ингредиенты: «название:кол-во», кнопка «готово»
+    # создание: тип -> название -> описание -> состав / выбор рецептов книги
+    c_kind = State()        # свиток или книга рецептов
+    c_name = State()        # название рецепта/книги
+    c_desc = State()        # описание
+    c_ing_cat = State()     # состав: выбор категории и предметов
+    c_ing_qty = State()     # состав: количество выбранного ингредиента
+    c_book = State()        # книга: выбор готовых рецептов
+    c_book_price = State()  # книга: цена в лавке
     res_mode = State()      # результат: существующий / новый
-    res_pick = State()      # ввод имени существующего результата
+    c_res_cat = State()     # результат: выбор предмета из каталога
     # мини-визард нового предмета-результата
     n_name = State()
     n_desc = State()
@@ -102,10 +125,13 @@ async def _ok(callback: CallbackQuery) -> bool:
 def _new_draft() -> dict:
     return {
         "ctx": "create",
+        "kind": "scroll",
         "rid": None,
         "name": "",
         "description": "",
         "ingredients": [],
+        "pending_ing": None,
+        "book_recipes": [],
         "result_mode": "existing",
         "result_item_name": None,
         "newitem": None,
@@ -119,19 +145,27 @@ def _new_draft() -> dict:
     }
 
 
-def _parse_ingredient(text: str):
-    """«Название:3» или «Название 3» -> (name, qty); None если не распарсилось."""
-    text = text.strip()
-    if not text:
-        return None
-    m = re.match(r"^(.+?)\s*[:]\s*(\d+)$", text) or re.match(r"^(.+?)\s+(\d+)$", text)
-    if not m:
-        return None
-    name = m.group(1).strip()
-    qty = int(m.group(2))
-    if not name or qty <= 0:
-        return None
-    return name, qty
+def _composition_str(d: dict) -> str:
+    ings = d.get("ingredients") or []
+    if not ings:
+        return "пока пусто"
+    return ", ".join(f"{x[0]} × {x[1]}" for x in ings)
+
+
+def _pick_category_rows(prefix: str, counts: dict) -> list:
+    """Кнопки категорий каталога (без служебных) для пикера предметов."""
+    rows = []
+    for key, label in sorted(ITEM_CATEGORIES.items(), key=lambda x: x[1]):
+        if key in PICK_EXCLUDE_CATEGORIES:
+            continue
+        c = counts.get(key, 0)
+        if not c:
+            continue
+        rows.append([InlineKeyboardButton(
+            text=f"{label} ({c})", callback_data=f"recadm:{prefix}:{key}:0")])
+    rows.append([InlineKeyboardButton(
+        text="📦 Все предметы", callback_data=f"recadm:{prefix}:all:0")])
+    return rows
 
 
 def _ingredients_str(recipe) -> str:
@@ -150,6 +184,140 @@ def _rarity_buttons(prefix: str, extra: str = "") -> list:
             text=f"{RARITY_EMOJI[r]} {RARITY_LEVELS[r]}",
             callback_data=f"recadm:{prefix}:{r}{extra}"))
     return [row]
+
+
+async def _show_composition(target, state: FSMContext, edit: bool = True):
+    """Экран состава: категории каталога + текущий список ингредиентов."""
+    d = (await state.get_data()).get("d", _new_draft())
+    counts = await count_items_by_category()
+    rows = _pick_category_rows("ingcat", counts)
+    if d.get("ingredients"):
+        rows.append([InlineKeyboardButton(text="✅ Состав готов",
+                                          callback_data="recadm:ing_done")])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="recadm:cancel")])
+    text = (
+        "🧪 СОСТАВ РЕЦЕПТА\n\n"
+        f"Сейчас: {_composition_str(d)}\n\n"
+        "Выбери категорию — покажу предметы игры. После выбора спрошу количество."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    if edit:
+        await edit_message_safe(target, text, kb)
+    else:
+        await target.answer(text, reply_markup=kb)
+
+
+async def _show_pick_items(target, state: FSMContext, kind: str, cat: str,
+                           page: int, edit: bool = True):
+    """Список предметов каталога с пагинацией.
+
+    kind='ing' — выбор ингредиента, kind='res' — выбор результата крафта.
+    """
+    d = (await state.get_data()).get("d", _new_draft())
+    items = await get_items_by_category(cat)
+    # «Все предметы» и любой прямой callback не должны тянуть служебные
+    # категории (рецепты, рынок, дуэльные карты, лицензии) в состав/результат.
+    items = [it for it in items if it.get("category") not in PICK_EXCLUDE_CATEGORIES]
+    pages = max(1, (len(items) + PICK_PER_PAGE - 1) // PICK_PER_PAGE)
+    page = max(0, min(page, pages - 1))
+    chunk = items[page * PICK_PER_PAGE: page * PICK_PER_PAGE + PICK_PER_PAGE]
+
+    selected = {x[0] for x in (d.get("ingredients") or [])} if kind == "ing" else set()
+    rows = []
+    for it in chunk:
+        mark = "✅ " if it["name"] in selected else ""
+        rows.append([InlineKeyboardButton(
+            text=f"{mark}{it['name']}",
+            callback_data=f"recadm:{kind}pick:{it['id']}")])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(
+            text="⬅️", callback_data=f"recadm:{kind}cat:{cat}:{page - 1}"))
+    nav.append(InlineKeyboardButton(text=f"{page + 1}/{pages}",
+                                    callback_data="recadm:noop"))
+    if page < pages - 1:
+        nav.append(InlineKeyboardButton(
+            text="➡️", callback_data=f"recadm:{kind}cat:{cat}:{page + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(
+        text="🔙 Категории", callback_data=f"recadm:{kind}cats")])
+    if kind == "ing" and d.get("ingredients"):
+        rows.append([InlineKeyboardButton(text="✅ Состав готов",
+                                          callback_data="recadm:ing_done")])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="recadm:cancel")])
+
+    cat_name = ITEM_CATEGORIES.get(cat, cat) if cat != "all" else "Все предметы"
+    if kind == "ing":
+        text = (f"🧪 {cat_name} — страница {page + 1}/{pages}\n\n"
+                f"Сейчас: {_composition_str(d)}")
+    else:
+        text = f"📦 {cat_name} — страница {page + 1}/{pages}\n\nВыбери предмет-результат."
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    if edit:
+        await edit_message_safe(target, text, kb)
+    else:
+        await target.answer(text, reply_markup=kb)
+
+
+async def _show_result_categories(target, edit: bool = True):
+    counts = await count_items_by_category()
+    rows = _pick_category_rows("rescat", counts)
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="recadm:cancel")])
+    text = ("📦 РЕЗУЛЬТАТ КРАФТА\n\n"
+            "Выбери категорию — покажу предметы. Результатом может быть любой предмет игры.")
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    if edit:
+        await edit_message_safe(target, text, kb)
+    else:
+        await target.answer(text, reply_markup=kb)
+
+
+async def _show_book_picker(target, state: FSMContext, page: int = 0, edit: bool = True):
+    """Выбор готовых рецептов для книги (отметить/снять, пагинация)."""
+    d = (await state.get_data()).get("d", _new_draft())
+    recipes = [r for r in await list_recipes_for_admin() if r["is_available"]]
+    pages = max(1, (len(recipes) + RECIPES_PER_PAGE - 1) // RECIPES_PER_PAGE)
+    page = max(0, min(page, pages - 1))
+    chunk = recipes[page * RECIPES_PER_PAGE: page * RECIPES_PER_PAGE + RECIPES_PER_PAGE]
+    selected = list(d.get("book_recipes") or [])
+    rows = []
+    for r in chunk:
+        mark = "✅" if r["id"] in selected else "▫️"
+        exp = EXPANSION_LABELS.get(r["required_expansion"] or '', r["required_expansion"] or '?')
+        rows.append([InlineKeyboardButton(
+            text=f"{mark} {r['name']} · {exp} {r['required_level']}",
+            callback_data=f"recadm:bookpick:{page}:{r['id']}")])
+    nav = [InlineKeyboardButton(text="⬅️", callback_data=f"recadm:bookpage:{page - 1}"),
+           InlineKeyboardButton(text=f"{page + 1}/{pages}", callback_data="recadm:noop"),
+           InlineKeyboardButton(text="➡️", callback_data=f"recadm:bookpage:{page + 1}")]
+    rows.append(nav)
+    rows.append([InlineKeyboardButton(
+        text=f"✅ Готово (выбрано {len(selected)})", callback_data="recadm:book_done")])
+    rows.append([InlineKeyboardButton(text="❌ Отмена", callback_data="recadm:cancel")])
+    text = (
+        f"📖 КНИГА «{d.get('name') or '—'}»\n\n"
+        f"Отмечено рецептов: {len(selected)}.\n"
+        "Нажми на рецепт, чтобы отметить или снять. Нужен минимум один."
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    if edit:
+        await edit_message_safe(target, text, kb)
+    else:
+        await target.answer(text, reply_markup=kb)
+
+
+def _book_description(raw: str, recipes) -> str:
+    lines = ["📖 Книга рецептов."]
+    if raw:
+        lines.append(raw)
+    lines.append("")
+    lines.append("Открывает рецепты:")
+    for r in recipes:
+        lines.append(f"• {r['name']}")
+    lines.append("")
+    lines.append("Используй из инвентаря, чтобы выучить все рецепты сразу.")
+    return "\n".join(lines)
 
 
 async def _show_recipe_card(msg, rid: int, state: FSMContext = None):
@@ -210,7 +378,8 @@ async def _show_list(callback: CallbackQuery, page: int):
     nav.append(InlineKeyboardButton(text="➡️", callback_data=f"recadm:page:{page + 1}"))
     rows.append(nav)
     rows.append([
-        InlineKeyboardButton(text="➕ Создать рецепт", callback_data="recadm:create"),
+        InlineKeyboardButton(text="➕ Создать", callback_data="recadm:create"),
+        InlineKeyboardButton(text="📖 Книги", callback_data="recadm:books"),
         InlineKeyboardButton(text="🔙 В менеджер", callback_data="recadm:menu"),
     ])
     text = f"📜 Рецепты крафта — всего {total}:\n\n"
@@ -219,7 +388,63 @@ async def _show_list(callback: CallbackQuery, page: int):
                             InlineKeyboardMarkup(inline_keyboard=rows))
 
 
-async def _resolve_result(state: FSMContext, callback: CallbackQuery):
+async def _show_books(callback: CallbackQuery, page: int):
+    """Список книг рецептов (предметы с привязкой к рецептам)."""
+    books = await list_recipe_books()
+    total = len(books)
+    pages = max(1, (total + RECIPES_PER_PAGE - 1) // RECIPES_PER_PAGE)
+    page = max(0, min(page, pages - 1))
+    rows = []
+    for b in books[page * RECIPES_PER_PAGE: page * RECIPES_PER_PAGE + RECIPES_PER_PAGE]:
+        short = b["name"]
+        if short.startswith(BOOK_ITEM_PREFIX):
+            short = short[len(BOOK_ITEM_PREFIX):]
+        mark = "⛔ " if not b["is_available"] else "📖 "
+        rows.append([InlineKeyboardButton(
+            text=f"{mark}{short} · рецептов: {b['recipes_count']}",
+            callback_data=f"recadm:bookopen:{b['id']}")])
+    nav = [InlineKeyboardButton(text="⬅️", callback_data=f"recadm:bookspage:{page - 1}"),
+           InlineKeyboardButton(text=f"{page + 1}/{pages}", callback_data="recadm:noop"),
+           InlineKeyboardButton(text="➡️", callback_data=f"recadm:bookspage:{page + 1}")]
+    rows.append(nav)
+    rows.append([InlineKeyboardButton(text="📜 Рецепты", callback_data="recadm:list"),
+                 InlineKeyboardButton(text="🔙 В менеджер", callback_data="recadm:menu")])
+    text = (f"📖 КНИГИ РЕЦЕПТОВ — всего {total}:\n\n"
+            "Нажми на книгу, чтобы открыть карточку. ⛔ — скрытые.")
+    await edit_message_safe(callback.message, text,
+                            InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+async def _show_book_card(msg, item_id: int):
+    item = await get_item(item_id)
+    recipes = await get_recipe_book_recipes(item_id)
+    if not item or not recipes:
+        await msg.answer("❌ Книга не найдена.")
+        return
+    status = "✅ в продаже" if item["is_available"] else "⛔ скрыта"
+    listing = "\n".join(
+        f"• {r['name']} — "
+        f"{EXPANSION_LABELS.get(r['required_expansion'] or '', r['required_expansion'] or '?')}"
+        f" {r['required_level']}"
+        for r in recipes)
+    text = (
+        f"📖 Книга #{item['id']} — {item['name']}\n\n"
+        f"{status} · 🏷 {item['price']} НМ\n"
+        f"Открывает рецептов: {len(recipes)}\n{listing}"
+    )
+    if item.get("description"):
+        text += f"\n\n📝 {item['description']}"
+    await edit_message_safe(msg, text, InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="👁 Скрыть" if item["is_available"] else "👁 Показать",
+            callback_data=f"recadm:booktoggle:{item_id}"),
+         InlineKeyboardButton(text="🗑 Удалить",
+                              callback_data=f"recadm:bookdel:{item_id}")],
+        [InlineKeyboardButton(text="🔙 К книгам", callback_data="recadm:books")],
+    ]))
+
+
+async def _resolve_result(state: FSMContext, message):
     """Результат выбран (существующий предмет). Зависит от контекста: создание
     идёт дальше по визарду, правка — сразу сохраняет результат в карточке."""
     d = (await state.get_data()).get("d", {})
@@ -227,7 +452,7 @@ async def _resolve_result(state: FSMContext, callback: CallbackQuery):
         rid = d["rid"]
         recipe = dict(await get_recipe(rid))
         if not recipe:
-            await callback.message.answer("❌ Рецепт не найден.")
+            await message.answer("❌ Рецепт не найден.")
             await state.clear()
             return
         recipe["result_item_name"] = d["result_item_name"]
@@ -238,10 +463,10 @@ async def _resolve_result(state: FSMContext, callback: CallbackQuery):
             recipe["ap_cost"], recipe["production_time"], recipe["rarity"],
             recipe_id=rid)
         await state.clear()
-        await _show_recipe_card(callback.message, rid)
+        await _show_recipe_card(message, rid)
     else:
         await state.set_state(RecipeManager.c_exp)
-        await callback.message.answer(
+        await message.answer(
             "🏠 На каком расширении крафтится?",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text=v, callback_data=f"recadm:exp:{k}")]
@@ -282,7 +507,7 @@ async def _newitem_done(message, state: FSMContext, photo: str = None):
             recipe_id=rid)
         await state.clear()
         await message.answer(f"✅ Предмет «{ni['name']}» создан и привязан к рецепту.")
-        await _show_recipe_card(callback_message(message), rid)
+        await _show_recipe_card(message, rid)
         return
     await state.set_state(RecipeManager.c_exp)
     await message.answer(
@@ -292,12 +517,6 @@ async def _newitem_done(message, state: FSMContext, photo: str = None):
             for k, v in EXPANSION_LABELS.items()
         ] + [[InlineKeyboardButton(text="❌ Отмена", callback_data="recadm:cancel")]])
     )
-
-
-def callback_message(msg):
-    """Подойдёт для .answer: Message и CallbackQuery.message имеют .answer() у
-    Message. В edit-ветке нового результата у нас обычное Message или CallbackQuery."""
-    return msg
 
 
 def _int(text, lo=None, hi=None):
@@ -327,11 +546,13 @@ async def recadm_menu(callback: CallbackQuery, state: FSMContext):
     text = (
         "📜 МЕНЕДЖЕР РЕЦЕПТОВ\n\n"
         "Рецепты крафта (кухня/верстак) — здесь можно добавить, поправить и "
-        "удалить рецепт. Удаление скрывает рецепт и его товар из лавки."
+        "удалить рецепт. Удаление скрывает рецепт и его товар из лавки.\n\n"
+        "📖 Книги рецептов — предметы, которые открывают набор готовых рецептов."
     )
     markup = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📜 Список рецептов", callback_data="recadm:list")],
-        [InlineKeyboardButton(text="➕ Создать рецепт", callback_data="recadm:create")],
+        [InlineKeyboardButton(text="📖 Книги рецептов", callback_data="recadm:books")],
+        [InlineKeyboardButton(text="➕ Создать", callback_data="recadm:create")],
         [InlineKeyboardButton(text="🔙 В админ-панель", callback_data="admin:menu")],
     ])
     await edit_message_safe(callback.message, text, markup)
@@ -343,6 +564,97 @@ async def recadm_list(callback: CallbackQuery, state: FSMContext):
         return
     await state.clear()
     await _show_list(callback, 0)
+
+
+@router.callback_query(F.data == "recadm:books")
+async def recadm_books(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    await state.clear()
+    await _show_books(callback, 0)
+
+
+@router.callback_query(F.data.startswith("recadm:bookspage:"))
+async def recadm_books_page(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    try:
+        page = int(callback.data.split(":")[-1])
+    except ValueError:
+        page = 0
+    await _show_books(callback, page)
+
+
+@router.callback_query(F.data.startswith("recadm:bookopen:"))
+async def recadm_book_open(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    item_id_s = callback.data.split(":")[-1]
+    if not item_id_s.isdigit():
+        return
+    await state.clear()
+    await _show_book_card(callback.message, int(item_id_s))
+
+
+@router.callback_query(F.data.startswith("recadm:booktoggle:"))
+async def recadm_book_toggle(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    item_id_s = callback.data.split(":")[-1]
+    if not item_id_s.isdigit():
+        return
+    item_id = int(item_id_s)
+    item = await get_item(item_id)
+    if not item:
+        await callback.message.answer("❌ Книга не найдена.")
+        return
+    await set_recipe_book_visible(item_id, not item["is_available"])
+    await log_action(callback.from_user.id, "recipe_book_toggle", item_id,
+                     f"visible={not item['is_available']}")
+    await _show_book_card(callback.message, item_id)
+
+
+@router.callback_query(F.data.startswith("recadm:bookdel:"))
+async def recadm_book_del(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    item_id_s = callback.data.split(":")[-1]
+    if not item_id_s.isdigit():
+        return
+    item_id = int(item_id_s)
+    item = await get_item(item_id)
+    if not item:
+        await callback.message.answer("❌ Книга не найдена.")
+        return
+    await callback.message.answer(
+        f"🗑 Скрыть книгу «{item['name']}» из лавки?\n\n"
+        "⚠️ Книги в инвентарях игроков продолжат работать, связка с рецептами "
+        "сохранится — книгу можно вернуть кнопкой «Показать».",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, скрыть",
+                                  callback_data=f"recadm:bookdel_yes:{item_id}")],
+            [InlineKeyboardButton(text="❌ Нет", callback_data="recadm:noop")],
+        ]),
+    )
+
+
+@router.callback_query(F.data.startswith("recadm:bookdel_yes:"))
+async def recadm_book_del_yes(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    item_id_s = callback.data.split(":")[-1]
+    if not item_id_s.isdigit():
+        return
+    item_id = int(item_id_s)
+    if await delete_recipe_book(item_id):
+        await log_action(callback.from_user.id, "recipe_book_delete", item_id)
+    await state.clear()
+    await callback.message.answer(
+        "🗑 Книга скрыта.",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📖 К книгам", callback_data="recadm:books")],
+        ]),
+    )
 
 
 @router.callback_query(F.data.startswith("recadm:page:"))
@@ -371,53 +683,184 @@ async def recadm_open(callback: CallbackQuery, state: FSMContext):
 async def recadm_create(callback: CallbackQuery, state: FSMContext):
     if not await _ok(callback):
         return
-    await state.set_state(RecipeManager.ing)
+    await state.set_state(RecipeManager.c_kind)
     await state.update_data(d=_new_draft())
     await callback.message.answer(
-        "🧪 Новый рецепт. Вводи ингредиенты по одному: <b>Название:количество</b>\n"
-        "Например: <code>Сиг:1</code> или <code>Соль 1</code>.\n"
-        "Когда список готов — нажми «✅ Готово».",
+        "➕ Что создаём?\n\n"
+        "📜 <b>Свиток</b> — один рецепт: название, описание, состав, результат.\n"
+        "📖 <b>Книга рецептов</b> — предмет, открывающий набор уже готовых рецептов.",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Готово", callback_data="recadm:ing_done")],
+            [InlineKeyboardButton(text="📜 Свиток — один рецепт",
+                                  callback_data="recadm:kind:scroll")],
+            [InlineKeyboardButton(text="📖 Книга рецептов — набор рецептов",
+                                  callback_data="recadm:kind:book")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="recadm:cancel")],
         ]),
     )
 
 
-# ---------- создание: ингредиенты ----------
+# ---------- создание: тип -> название -> описание ----------
 
-@router.message(RecipeManager.ing)
-async def recadm_ing_add(message: Message, state: FSMContext):
-    parsed = _parse_ingredient(message.text or "")
-    if not parsed:
-        await message.answer(
-            "❌ Не понял. Формат: <code>Название:3</code> или <code>Название 3</code>.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="✅ Готово", callback_data="recadm:ing_done")],
-            ]),
-        )
+@router.callback_query(F.data.startswith("recadm:kind:"))
+async def recadm_kind(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
         return
-    name, qty = parsed
-    data = await state.get_data()
-    d = data.get("d", _new_draft())
-    ing = [list(x) for x in d["ingredients"]]
-    merged = False
-    for i in ing:
-        if i[0] == name:
-            i[1] += qty
-            merged = True
-            break
-    if not merged:
-        ing.append([name, qty])
-    d["ingredients"] = ing
+    kind = callback.data.split(":")[-1]
+    if kind not in KIND_LABELS:
+        return
+    d = (await state.get_data()).get("d", _new_draft())
+    d["kind"] = kind
+    d["ingredients"] = []
+    d["book_recipes"] = []
     await state.update_data(d=d)
-    listed = ", ".join(str(x[0]) + "×" + str(x[1]) for x in ing)
+    await state.set_state(RecipeManager.c_name)
+    what = "рецепта" if kind == "scroll" else "книги"
+    await callback.message.answer(
+        f"{KIND_LABELS[kind]}. Шаг 1/3 — НАЗВАНИЕ {what}:",
+        reply_markup=cancel_keyboard(),
+    )
+
+
+@router.message(RecipeManager.c_name)
+async def recadm_c_name(message: Message, state: FSMContext):
+    name = (message.text or "").strip()
+    if not name:
+        await message.answer("❌ Название не может быть пустым.")
+        return
+    if len(name) > 60:
+        await message.answer("❌ Слишком длинное название (максимум 60 символов).")
+        return
+    d = (await state.get_data()).get("d", _new_draft())
+    if d.get("kind") == "book":
+        item_name = BOOK_ITEM_PREFIX + name
+        if await get_item_by_name(item_name):
+            await message.answer(
+                f"❌ Книга «{item_name}» уже существует. Выбери другое название.")
+            return
+    d["name"] = name
+    await state.update_data(d=d)
+    await state.set_state(RecipeManager.c_desc)
     await message.answer(
-        f"✅ {name} × {qty} {'обновлён' if merged else 'добавлен'}.\n"
-        f"Список: {listed}\n"
-        "Введи следующий или нажми «✅ Готово».",
+        "📝 Описание (как увидит игрок; «-», если не нужно):",
+        reply_markup=cancel_keyboard(),
+    )
+
+
+@router.message(RecipeManager.c_desc)
+async def recadm_c_desc(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    d = (await state.get_data()).get("d", _new_draft())
+    d["description"] = "" if text == "-" else text
+    await state.update_data(d=d)
+    if d.get("kind") == "book":
+        await state.set_state(RecipeManager.c_book)
+        await _show_book_picker(message, state, 0, edit=False)
+        return
+    await state.set_state(RecipeManager.c_ing_cat)
+    await _show_composition(message, state, edit=False)
+
+
+# ---------- создание: состав (каталог предметов) ----------
+
+@router.callback_query(F.data.startswith("recadm:ingcat:"))
+async def recadm_ing_cat(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    parts = callback.data.split(":")
+    cat = parts[2] if len(parts) > 2 else "all"
+    try:
+        page = int(parts[3]) if len(parts) > 3 else 0
+    except ValueError:
+        page = 0
+    await state.set_state(RecipeManager.c_ing_cat)
+    await _show_pick_items(callback.message, state, "ing", cat, page)
+
+
+@router.callback_query(F.data == "recadm:ingcats")
+async def recadm_ing_cats(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    await state.set_state(RecipeManager.c_ing_cat)
+    await _show_composition(callback.message, state)
+
+
+@router.callback_query(F.data == "recadm:ing_more")
+async def recadm_ing_more(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    await state.set_state(RecipeManager.c_ing_cat)
+    await _show_composition(callback.message, state)
+
+
+@router.callback_query(F.data.startswith("recadm:ingpick:"))
+async def recadm_ing_pick(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    item_id_s = callback.data.split(":")[-1]
+    if not item_id_s.isdigit():
+        return
+    item = await get_item(int(item_id_s))
+    if not item:
+        await callback.message.answer("❌ Предмет не найден.")
+        return
+    d = (await state.get_data()).get("d", _new_draft())
+    d["pending_ing"] = {"id": item["id"], "name": item["name"]}
+    await state.update_data(d=d)
+    await state.set_state(RecipeManager.c_ing_qty)
+    cur = next((x[1] for x in (d.get("ingredients") or []) if x[0] == item["name"]), 0)
+    await callback.message.answer(
+        f"🔢 Сколько «{item['name']}» нужно в рецепте?\n"
+        f"Сейчас в составе: {cur}. Введи целое число (0 — убрать из состава).",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Готово", callback_data="recadm:ing_done")],
+            [InlineKeyboardButton(text="🔙 К составу", callback_data="recadm:ingcats")],
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="recadm:cancel")],
+        ]),
+    )
+
+
+@router.message(RecipeManager.c_ing_qty)
+async def recadm_c_ing_qty(message: Message, state: FSMContext):
+    v = _int(message.text, lo=0, hi=9999)
+    if v is None:
+        await message.answer("❌ Введи целое число от 0 до 9999.")
+        return
+    d = (await state.get_data()).get("d", _new_draft())
+    pending = d.get("pending_ing") or {}
+    name = pending.get("name")
+    if not name:
+        await message.answer("❌ Предмет не выбран. Вернись к составу.",
+                             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                                 [InlineKeyboardButton(text="🧪 К составу",
+                                                       callback_data="recadm:ingcats")],
+                             ]))
+        return
+    ings = [list(x) for x in (d.get("ingredients") or [])]
+    found = None
+    for row in ings:
+        if row[0] == name:
+            found = row
+            break
+    if v == 0:
+        if found:
+            ings.remove(found)
+        text = f"🗑 «{name}» убран из состава."
+    elif found:
+        found[1] = v
+        text = f"✅ «{name}» × {v} — обновлён в составе."
+    else:
+        ings.append([name, v])
+        text = f"✅ «{name}» × {v} — добавлен в состав."
+    d["ingredients"] = ings
+    d["pending_ing"] = None
+    await state.update_data(d=d)
+    await state.set_state(RecipeManager.c_ing_cat)
+    await message.answer(
+        f"{text}\nСейчас: {_composition_str(d)}\n\n"
+        "Добавить ещё ингредиент или закончить состав?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Добавить ещё ингредиент",
+                                  callback_data="recadm:ing_more")],
+            [InlineKeyboardButton(text="✅ Состав готов", callback_data="recadm:ing_done")],
             [InlineKeyboardButton(text="❌ Отмена", callback_data="recadm:cancel")],
         ]),
     )
@@ -457,47 +900,159 @@ async def recadm_ing_done(callback: CallbackQuery, state: FSMContext):
     )
 
 
+# ---------- создание: результат из каталога ----------
+
 @router.callback_query(F.data == "recadm:res_existing")
 async def recadm_res_existing(callback: CallbackQuery, state: FSMContext):
     if not await _ok(callback):
         return
-    await state.set_state(RecipeManager.res_pick)
+    await state.set_state(RecipeManager.c_res_cat)
+    await _show_result_categories(callback.message)
+
+
+@router.callback_query(F.data.startswith("recadm:rescat:"))
+async def recadm_res_cat(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    parts = callback.data.split(":")
+    cat = parts[2] if len(parts) > 2 else "all"
+    try:
+        page = int(parts[3]) if len(parts) > 3 else 0
+    except ValueError:
+        page = 0
+    await state.set_state(RecipeManager.c_res_cat)
+    await _show_pick_items(callback.message, state, "res", cat, page)
+
+
+@router.callback_query(F.data == "recadm:rescats")
+async def recadm_res_cats(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    await state.set_state(RecipeManager.c_res_cat)
+    await _show_result_categories(callback.message)
+
+
+@router.callback_query(F.data.startswith("recadm:respick:"))
+async def recadm_res_pick(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    item_id_s = callback.data.split(":")[-1]
+    if not item_id_s.isdigit():
+        return
+    item = await get_item(int(item_id_s))
+    if not item:
+        await callback.message.answer("❌ Предмет не найден.")
+        return
+    d = (await state.get_data()).get("d", _new_draft())
+    d["result_item_name"] = item["name"]
+    d["result_mode"] = "existing"
+    await state.update_data(d=d)
+    await _resolve_result(state, callback.message)
+
+
+# ---------- создание: книга рецептов ----------
+
+@router.callback_query(F.data.startswith("recadm:bookpage:"))
+async def recadm_book_page(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    try:
+        page = int(callback.data.split(":")[-1])
+    except ValueError:
+        page = 0
+    await state.set_state(RecipeManager.c_book)
+    await _show_book_picker(callback.message, state, page)
+
+
+@router.callback_query(F.data.startswith("recadm:bookpick:"))
+async def recadm_book_pick(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    parts = callback.data.split(":")
+    if len(parts) != 4:
+        return
+    page = int(parts[2]) if parts[2].isdigit() else 0
+    if not parts[3].isdigit():
+        return
+    rid = int(parts[3])
+    d = (await state.get_data()).get("d", _new_draft())
+    selected = list(d.get("book_recipes") or [])
+    if rid in selected:
+        selected.remove(rid)
+    else:
+        selected.append(rid)
+    d["book_recipes"] = selected
+    await state.update_data(d=d)
+    await state.set_state(RecipeManager.c_book)
+    await _show_book_picker(callback.message, state, page)
+
+
+@router.callback_query(F.data == "recadm:book_done")
+async def recadm_book_done(callback: CallbackQuery, state: FSMContext):
+    if not await _ok(callback):
+        return
+    d = (await state.get_data()).get("d", _new_draft())
+    if not d.get("book_recipes"):
+        await callback.message.answer(
+            "❌ Отметь хотя бы один рецепт для книги.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 К выбору рецептов",
+                                      callback_data="recadm:bookpage:0")],
+            ]),
+        )
+        return
+    await state.set_state(RecipeManager.c_book_price)
     await callback.message.answer(
-        "🎯 Введи ТОЧНОЕ название предмета-результата из каталога.\n"
-        "Например: <code>Рыбный пирог</code>",
+        f"🏷 Цена книги «{d.get('name') or '—'}» в лавке, НМ\n"
+        "(0 — не продавать, книга будет только лут/выдача):",
         reply_markup=cancel_keyboard(),
     )
 
 
-@router.message(RecipeManager.res_pick)
-async def recadm_res_pick(message: Message, state: FSMContext):
+@router.message(RecipeManager.c_book_price)
+async def recadm_c_book_price(message: Message, state: FSMContext):
+    v = _int(message.text, lo=0, hi=1000000)
+    if v is None:
+        await message.answer("❌ Введи целое число от 0.")
+        return
     d = (await state.get_data()).get("d", _new_draft())
-    name = (message.text or "").strip()
+    name = (d.get("name") or "").strip()
     if not name:
-        await message.answer("❌ Пустое название.")
+        await message.answer("❌ Название книги потеряно. Начни создание заново.")
+        await state.clear()
         return
-    item = await get_item_by_name(name)
-    if not item:
-        await message.answer(
-            f"❌ Предмет «{name}» не найден в каталоге.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="➕ Создать новый предмет",
-                                      callback_data="recadm:res_new")],
-                [InlineKeyboardButton(text="↩ Попробовать ещё раз",
-                                      callback_data="recadm:res_existing")],
-            ]),
-        )
+    item_name = BOOK_ITEM_PREFIX + name
+    if await get_item_by_name(item_name):
+        await message.answer(f"❌ Предмет «{item_name}» уже существует.")
         return
-    d["result_item_name"] = name
-    d["result_mode"] = "existing"
-    await state.update_data(d=d)
-    await _resolve_result(state, _Msg(message))
-
-
-class _Msg:
-    """Обёртка Message под API callback (message.answer)."""
-    def __init__(self, message):
-        self.message = message
+    recipes = []
+    for rid in d.get("book_recipes") or []:
+        recipe = await get_recipe(rid)
+        if recipe and recipe["is_available"]:
+            recipes.append(dict(recipe))
+    if not recipes:
+        await message.answer("❌ Ни один из выбранных рецептов больше не доступен.")
+        return
+    desc = _book_description(d.get("description") or "", recipes)
+    rarity = max((r.get("rarity") or 1) for r in recipes)
+    item_id = await add_item(
+        item_name, desc, v, v // 2, rarity, "recipes", -1, message.from_user.id)
+    await set_recipe_book(item_id, [r["id"] for r in recipes])
+    if v <= 0:
+        await set_recipe_book_visible(item_id, False)
+    await log_action(message.from_user.id, "recipe_book_add", item_id,
+                     f"name={name} recipes={len(recipes)}")
+    await state.clear()
+    listing = "\n".join(f"• {r['name']}" for r in recipes)
+    await message.answer(
+        f"✅ Книга «{name}» создана (id {item_id}).\n\n"
+        f"📖 Открывает рецептов: {len(recipes)}\n{listing}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🗂 Открыть карточку",
+                                  callback_data=f"recadm:bookopen:{item_id}")],
+            [InlineKeyboardButton(text="📜 В менеджер", callback_data="recadm:menu")],
+        ]),
+    )
 
 
 # ---------- создание: новый предмет-результат ----------
@@ -1155,23 +1710,22 @@ async def recadm_ei(callback: CallbackQuery, state: FSMContext):
         return
     d = _new_draft()
     d["ctx"] = "edit"
+    d["kind"] = "scroll"
     d["rid"] = int(rid_s)
+    d["name"] = recipe["name"]
     try:
-        d["ingredients"] = json.loads(recipe["ingredients"] or "[]")
+        d["ingredients"] = [list(x) for x in json.loads(recipe["ingredients"] or "[]")]
     except (TypeError, ValueError):
         d["ingredients"] = []
-    await state.set_state(RecipeManager.ing)
+    await state.set_state(RecipeManager.c_ing_cat)
     await state.update_data(d=d)
-    cur = ", ".join(f"{x[0]}×{x[1]}" for x in d["ingredients"]) or "—"
     await callback.message.answer(
-        f"🧪 Текущие ингредиенты: {cur}\n\n"
-        "Вводи новый список по одному <b>Название:количество</b>. "
-        "Когда готово — «✅ Готово».",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Готово", callback_data="recadm:ing_done")],
-            [InlineKeyboardButton(text="❌ Отмена", callback_data="recadm:cancel")],
-        ]),
+        f"🧪 Состав рецепта «{recipe['name']}»\n\n"
+        f"Сейчас: {_composition_str(d)}\n\n"
+        "Выбери категорию и предмет — спрошу количество (0 — убрать). "
+        "Когда состав готов — «✅ Состав готов».",
     )
+    await _show_composition(callback.message, state, edit=False)
 
 
 @router.callback_query(F.data.startswith("recadm:er:"))

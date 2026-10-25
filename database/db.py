@@ -1012,6 +1012,14 @@ async def init_db():
             learned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (user_id, recipe_id)
         );
+
+        -- Книга рецептов: предмет-книга (items, category='recipes') -> набор рецептов.
+        -- Пустых книг не бывает (менеджер требует минимум один рецепт).
+        CREATE TABLE IF NOT EXISTS recipe_book_items (
+            book_item_id INTEGER NOT NULL,
+            recipe_id INTEGER NOT NULL,
+            PRIMARY KEY (book_item_id, recipe_id)
+        );
     """)
     await conn.commit()
 
@@ -12769,6 +12777,72 @@ async def delete_recipe(recipe_id: int) -> bool:
     return True
 
 
+# ---------- Книги рецептов (менеджер) ----------
+
+async def set_recipe_book(book_item_id: int, recipe_ids) -> int:
+    """Привязывает предмет-книгу к набору рецептов (перезаписывает набор)."""
+    conn = await get_db()
+    await conn.execute(
+        "DELETE FROM recipe_book_items WHERE book_item_id = ?", (book_item_id,))
+    seen = []
+    for rid in recipe_ids:
+        rid = int(rid)
+        if rid in seen:
+            continue
+        seen.append(rid)
+        await conn.execute(
+            "INSERT OR IGNORE INTO recipe_book_items (book_item_id, recipe_id) "
+            "VALUES (?, ?)", (book_item_id, rid))
+    await conn.commit()
+    return len(seen)
+
+
+async def get_recipe_book_recipes(book_item_id: int) -> list:
+    """Рецепты, которые открывает книга (включая скрытые — фильтрует вызывающий)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT r.* FROM recipe_book_items b JOIN recipes r ON r.id = b.recipe_id "
+        "WHERE b.book_item_id = ? ORDER BY r.required_expansion, r.required_level, r.name",
+        (book_item_id,))
+    return await cursor.fetchall()
+
+
+async def list_recipe_books() -> list:
+    """Все предметы-книги (включая скрытые) с числом рецептов — для админ-списка."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT i.*, COUNT(b.recipe_id) AS recipes_count FROM items i "
+        "JOIN recipe_book_items b ON b.book_item_id = i.id "
+        "GROUP BY i.id ORDER BY i.name")
+    return await cursor.fetchall()
+
+
+async def set_recipe_book_visible(book_item_id: int, visible: bool) -> bool:
+    conn = await get_db()
+    exists = await (await conn.execute(
+        "SELECT 1 FROM recipe_book_items WHERE book_item_id = ?", (book_item_id,))).fetchone()
+    if not exists:
+        return False
+    await conn.execute(
+        "UPDATE items SET is_available = ? WHERE id = ?",
+        (1 if visible else 0, book_item_id))
+    await conn.commit()
+    return True
+
+
+async def delete_recipe_book(book_item_id: int) -> bool:
+    """Скрывает книгу из лавки; связка с рецептами остаётся (мягкое удаление)."""
+    conn = await get_db()
+    exists = await (await conn.execute(
+        "SELECT 1 FROM recipe_book_items WHERE book_item_id = ?", (book_item_id,))).fetchone()
+    if not exists:
+        return False
+    await conn.execute(
+        "UPDATE items SET is_available = 0 WHERE id = ?", (book_item_id,))
+    await conn.commit()
+    return True
+
+
 # ---------- Учёт и списание ингредиентов (в т.ч. уловов рыбы) ----------
 
 async def get_ingredient_map(user_id: int) -> dict:
@@ -13512,6 +13586,7 @@ async def get_learned_recipes(user_id: int, expansion: str = None, level: int = 
 # ---------- Рецепты как товары магазина ----------
 
 RECIPE_ITEM_PREFIX = "Рецепт: "
+BOOK_ITEM_PREFIX = "Книга рецептов: "
 
 RECIPE_ITEM_PRICES = {
     "Жареный сиг": 60,
@@ -13639,6 +13714,11 @@ async def ensure_recipe_shop_items():
             "SELECT id, name FROM items WHERE category = 'recipes' AND is_available = 1"
     )).fetchall():
         title = it['name']
+        if title.startswith(BOOK_ITEM_PREFIX):
+            # Книги рецептов — отдельный вид носителя: их состав лежит в
+            # recipe_book_items, а видимостью управляет менеджер книг.
+            # Без этого пропуска старт гасил бы все созданные книги.
+            continue
         if title.startswith(RECIPE_ITEM_PREFIX):
             title = title[len(RECIPE_ITEM_PREFIX):]
         if title not in known:
@@ -13651,9 +13731,14 @@ async def ensure_recipe_shop_items():
 
 
 async def learn_recipe_from_item(user_id: int, item_id: int):
-    """Использование предмета-рецепта: открывает рецепт навсегда.
+    """Использование предмета-рецепта: открывает рецепт(ы) навсегда.
 
-    Возвращает (ok, сообщение). Предмет списывается из инвентаря.
+    Поддерживает два вида носителей в категории 'recipes':
+    - свиток «Рецепт: <название>» — один рецепт, ищется по имени;
+    - книга «Книга рецептов: <название>» — набор из `recipe_book_items`,
+      открывает все рецепты книги, которые ещё не выучены и не скрыты.
+    Возвращает (ok, сообщение). Предмет списывается из инвентаря только если
+    реально открылся хотя бы один рецепт.
     """
     item = await get_item(item_id)
     if not item or item.get('category') != 'recipes':
@@ -13661,6 +13746,31 @@ async def learn_recipe_from_item(user_id: int, item_id: int):
     inv_row = await get_inventory_item(user_id, item_id)
     if not inv_row or (inv_row.get('quantity') or 0) < 1:
         return False, "У тебя нет этого рецепта в инвентаре."
+
+    book_recipes = await get_recipe_book_recipes(item_id)
+    if not book_recipes and item['name'].startswith(BOOK_ITEM_PREFIX):
+        return False, "В этой книге нет рецептов — предмет испорчен."
+    if book_recipes:
+        learned, already = [], []
+        for recipe in book_recipes:
+            if not recipe['is_available']:
+                continue
+            if await has_user_recipe(user_id, recipe['id']):
+                already.append(recipe['name'])
+                continue
+            await learn_recipe(user_id, recipe['id'])
+            learned.append(recipe['name'])
+        if not learned:
+            return False, "Все рецепты из этой книги уже выучены или недоступны."
+        await remove_inventory_item(user_id, item_id, 1)
+        await log_activity(
+            user_id, "recipe_learn",
+            f"Выучил по книге «{item['name']}»: {', '.join(learned)}")
+        msg = f"📖 Ты выучил рецепты: {', '.join(learned)}."
+        if already:
+            msg += f"\n(уже были: {', '.join(already)})"
+        return True, msg
+
     recipe_name = item['name']
     if recipe_name.startswith(RECIPE_ITEM_PREFIX):
         recipe_name = recipe_name[len(RECIPE_ITEM_PREFIX):]

@@ -961,6 +961,19 @@
 | `is_available INTEGER DEFAULT 1` |
 | `created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` |
 
+## `recipe_book_items`
+
+Связка «предмет-книга → рецепты». Книга — обычный предмет категории
+`recipes` с именем `Книга рецептов: <название>`; при использовании открывает
+все свои доступные рецепты (`learn_recipe_from_item`).
+
+| Колонка |
+|---|
+| `book_item_id INTEGER NOT NULL` |
+| `recipe_id INTEGER NOT NULL` |
+
+**Составной PRIMARY KEY:** (book_item_id, recipe_id)
+
 ## `water_fish`
 
 | Колонка |

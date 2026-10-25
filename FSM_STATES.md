@@ -6,7 +6,7 @@
 > Назначение: единый обзор всех `StatesGroup`, где они ставятся и где ловятся,
 > а также реестр `callback_data` — чтобы не допускать конфликтов меню/хендлеров.
 
-Всего классов состояний: **49**; полей-состояний: **213**; уникальных `callback_data`: **252**.
+Всего классов состояний: **49**; полей-состояний: **219**; уникальных `callback_data`: **259**.
 
 ## 1. Классы состояний по модулям
 
@@ -264,30 +264,36 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `ing` | `bot/handlers/admin_recipes.py:374` `recadm_create`<br>`bot/handlers/admin_recipes.py:1163` `recadm_ei` | `bot/handlers/admin_recipes.py:390` `recadm_ing_add` |
-| `res_mode` | `bot/handlers/admin_recipes.py:447` `recadm_ing_done`<br>`bot/handlers/admin_recipes.py:1192` `recadm_er` | — |
-| `res_pick` | `bot/handlers/admin_recipes.py:464` `recadm_res_existing` | `bot/handlers/admin_recipes.py:473` `recadm_res_pick` |
-| `n_name` | `bot/handlers/admin_recipes.py:509` `recadm_res_new` | `bot/handlers/admin_recipes.py:517` `recadm_n_name` |
-| `n_desc` | `bot/handlers/admin_recipes.py:537` `recadm_n_name` | `bot/handlers/admin_recipes.py:543` `recadm_n_desc` |
-| `n_cat` | `bot/handlers/admin_recipes.py:550` `recadm_n_desc` | — |
-| `n_heal` | `bot/handlers/admin_recipes.py:572` `recadm_n_cat` | `bot/handlers/admin_recipes.py:580` `recadm_n_heal` |
-| `n_regen` | `bot/handlers/admin_recipes.py:590` `recadm_n_heal` | `bot/handlers/admin_recipes.py:599` `recadm_n_regen` |
-| `n_ap` | `bot/handlers/admin_recipes.py:609` `recadm_n_regen` | `bot/handlers/admin_recipes.py:617` `recadm_n_ap` |
-| `n_armor` | `bot/handlers/admin_recipes.py:627` `recadm_n_ap` | `bot/handlers/admin_recipes.py:632` `recadm_n_armor` |
-| `n_dmg` | `bot/handlers/admin_recipes.py:642` `recadm_n_armor` | `bot/handlers/admin_recipes.py:647` `recadm_n_dmg` |
-| `n_drink` | `bot/handlers/admin_recipes.py:657` `recadm_n_dmg` | `bot/handlers/admin_recipes.py:665` `recadm_n_drink` |
-| `n_price` | `bot/handlers/admin_recipes.py:672` `recadm_n_drink` | `bot/handlers/admin_recipes.py:680` `recadm_n_price` |
-| `n_rarity` | `bot/handlers/admin_recipes.py:690` `recadm_n_price` | — |
-| `n_photo` | `bot/handlers/admin_recipes.py:711` `recadm_n_rarity` | `bot/handlers/admin_recipes.py:722` `recadm_n_photo` |
-| `c_exp` | `bot/handlers/admin_recipes.py:243` `_resolve_result`<br>`bot/handlers/admin_recipes.py:287` `_newitem_done` | — |
-| `c_lvl` | `bot/handlers/admin_recipes.py:746` `recadm_exp` | — |
-| `c_ap` | `bot/handlers/admin_recipes.py:766` `recadm_lvl` | `bot/handlers/admin_recipes.py:771` `recadm_c_ap` |
-| `c_time` | `bot/handlers/admin_recipes.py:779` `recadm_c_ap` | `bot/handlers/admin_recipes.py:784` `recadm_c_time` |
-| `c_rarity` | `bot/handlers/admin_recipes.py:792` `recadm_c_time` | — |
-| `c_qty` | `bot/handlers/admin_recipes.py:811` `recadm_rar` | `bot/handlers/admin_recipes.py:819` `recadm_c_qty` |
-| `c_shop` | `bot/handlers/admin_recipes.py:827` `recadm_c_qty` | `bot/handlers/admin_recipes.py:836` `recadm_c_shop` |
-| `c_confirm` | `bot/handlers/admin_recipes.py:844` `recadm_c_shop` | — |
-| `e_value` | `bot/handlers/admin_recipes.py:954` `recadm_ef` | `bot/handlers/admin_recipes.py:960` `recadm_e_value` |
+| `c_kind` | `bot/handlers/admin_recipes.py:686` `recadm_create` | — |
+| `c_name` | `bot/handlers/admin_recipes.py:716` `recadm_kind` | `bot/handlers/admin_recipes.py:725` `recadm_c_name` |
+| `c_desc` | `bot/handlers/admin_recipes.py:742` `recadm_c_name` | `bot/handlers/admin_recipes.py:750` `recadm_c_desc` |
+| `c_ing_cat` | `bot/handlers/admin_recipes.py:759` `recadm_c_desc`<br>`bot/handlers/admin_recipes.py:775` `recadm_ing_cat`<br>`bot/handlers/admin_recipes.py:783` `recadm_ing_cats`<br>`bot/handlers/admin_recipes.py:791` `recadm_ing_more`<br>`bot/handlers/admin_recipes.py:856` `recadm_c_ing_qty`<br>`bot/handlers/admin_recipes.py:1720` `recadm_ei` | — |
+| `c_ing_qty` | `bot/handlers/admin_recipes.py:809` `recadm_ing_pick` | `bot/handlers/admin_recipes.py:822` `recadm_c_ing_qty` |
+| `c_book` | `bot/handlers/admin_recipes.py:756` `recadm_c_desc`<br>`bot/handlers/admin_recipes.py:963` `recadm_book_page`<br>`bot/handlers/admin_recipes.py:986` `recadm_book_pick` | — |
+| `c_book_price` | `bot/handlers/admin_recipes.py:1004` `recadm_book_done` | `bot/handlers/admin_recipes.py:1013` `recadm_c_book_price` |
+| `res_mode` | `bot/handlers/admin_recipes.py:890` `recadm_ing_done`<br>`bot/handlers/admin_recipes.py:1746` `recadm_er` | — |
+| `c_res_cat` | `bot/handlers/admin_recipes.py:909` `recadm_res_existing`<br>`bot/handlers/admin_recipes.py:923` `recadm_res_cat`<br>`bot/handlers/admin_recipes.py:931` `recadm_res_cats` | — |
+| `n_name` | `bot/handlers/admin_recipes.py:1064` `recadm_res_new` | `bot/handlers/admin_recipes.py:1072` `recadm_n_name` |
+| `n_desc` | `bot/handlers/admin_recipes.py:1092` `recadm_n_name` | `bot/handlers/admin_recipes.py:1098` `recadm_n_desc` |
+| `n_cat` | `bot/handlers/admin_recipes.py:1105` `recadm_n_desc` | — |
+| `n_heal` | `bot/handlers/admin_recipes.py:1127` `recadm_n_cat` | `bot/handlers/admin_recipes.py:1135` `recadm_n_heal` |
+| `n_regen` | `bot/handlers/admin_recipes.py:1145` `recadm_n_heal` | `bot/handlers/admin_recipes.py:1154` `recadm_n_regen` |
+| `n_ap` | `bot/handlers/admin_recipes.py:1164` `recadm_n_regen` | `bot/handlers/admin_recipes.py:1172` `recadm_n_ap` |
+| `n_armor` | `bot/handlers/admin_recipes.py:1182` `recadm_n_ap` | `bot/handlers/admin_recipes.py:1187` `recadm_n_armor` |
+| `n_dmg` | `bot/handlers/admin_recipes.py:1197` `recadm_n_armor` | `bot/handlers/admin_recipes.py:1202` `recadm_n_dmg` |
+| `n_drink` | `bot/handlers/admin_recipes.py:1212` `recadm_n_dmg` | `bot/handlers/admin_recipes.py:1220` `recadm_n_drink` |
+| `n_price` | `bot/handlers/admin_recipes.py:1227` `recadm_n_drink` | `bot/handlers/admin_recipes.py:1235` `recadm_n_price` |
+| `n_rarity` | `bot/handlers/admin_recipes.py:1245` `recadm_n_price` | — |
+| `n_photo` | `bot/handlers/admin_recipes.py:1266` `recadm_n_rarity` | `bot/handlers/admin_recipes.py:1277` `recadm_n_photo` |
+| `c_exp` | `bot/handlers/admin_recipes.py:468` `_resolve_result`<br>`bot/handlers/admin_recipes.py:512` `_newitem_done` | — |
+| `c_lvl` | `bot/handlers/admin_recipes.py:1301` `recadm_exp` | — |
+| `c_ap` | `bot/handlers/admin_recipes.py:1321` `recadm_lvl` | `bot/handlers/admin_recipes.py:1326` `recadm_c_ap` |
+| `c_time` | `bot/handlers/admin_recipes.py:1334` `recadm_c_ap` | `bot/handlers/admin_recipes.py:1339` `recadm_c_time` |
+| `c_rarity` | `bot/handlers/admin_recipes.py:1347` `recadm_c_time` | — |
+| `c_qty` | `bot/handlers/admin_recipes.py:1366` `recadm_rar` | `bot/handlers/admin_recipes.py:1374` `recadm_c_qty` |
+| `c_shop` | `bot/handlers/admin_recipes.py:1382` `recadm_c_qty` | `bot/handlers/admin_recipes.py:1391` `recadm_c_shop` |
+| `c_confirm` | `bot/handlers/admin_recipes.py:1399` `recadm_c_shop` | — |
+| `e_value` | `bot/handlers/admin_recipes.py:1509` `recadm_ef` | `bot/handlers/admin_recipes.py:1515` `recadm_e_value` |
 
 ### `BankStates` — `bot/handlers/bank.py`
 
@@ -521,7 +527,7 @@
 | `prod:` | 2 | `prod:player`, `prod:state` |
 | `prof:` | 1 | `prof:back` |
 | `profile:` | 5 | `profile`, `profile:awards`, `profile:callsign_buy`, `profile:callsign_cancel`, `profile:open` |
-| `recadm:` | 10 | `recadm:cancel`, `recadm:create`, `recadm:ing_done`, `recadm:list`, `recadm:menu`, `recadm:no_photo`, `recadm:noop`, `recadm:res_existing`, `recadm:res_new`, `recadm:save` |
+| `recadm:` | 17 | `recadm:book_done`, `recadm:bookpage:0`, `recadm:books`, `recadm:cancel`, `recadm:create`, `recadm:ing_done`, `recadm:ing_more`, `recadm:ingcats`, `recadm:kind:book`, `recadm:kind:scroll`, `recadm:list`, `recadm:menu`, `recadm:no_photo`, `recadm:noop`, `recadm:res_existing`, `recadm:res_new`, `recadm:save` |
 | `rep:` | 5 | `rep:auto_approve_edit`, `rep:pay_cap_edit`, `rep:speech`, `rep:speech:delete`, `rep:speech:write` |
 | `report:` | 1 | `report:menu` |
 | `rolop:` | 2 | `rolop:add`, `rolop:remove` |
@@ -706,16 +712,21 @@
 - `profile:pilot_card`: `bot/handlers/profile.py:383`
 - `profile:public_toggle`: `bot/handlers/profile.py:363`
 - `profile:set_photo`: `bot/handlers/profile.py:246`
-- `recadm:cancel`: `bot/handlers/admin_recipes.py:918`
-- `recadm:create`: `bot/handlers/admin_recipes.py:370`
-- `recadm:ing_done`: `bot/handlers/admin_recipes.py:426`
-- `recadm:list`: `bot/handlers/admin_recipes.py:340`
-- `recadm:menu`: `bot/handlers/admin_recipes.py:322`
-- `recadm:no_photo`: `bot/handlers/admin_recipes.py:727`
-- `recadm:noop`: `bot/handlers/admin_recipes.py:317`
-- `recadm:res_existing`: `bot/handlers/admin_recipes.py:460`
-- `recadm:res_new`: `bot/handlers/admin_recipes.py:505`
-- `recadm:save`: `bot/handlers/admin_recipes.py:865`
+- `recadm:book_done`: `bot/handlers/admin_recipes.py:990`
+- `recadm:books`: `bot/handlers/admin_recipes.py:569`
+- `recadm:cancel`: `bot/handlers/admin_recipes.py:1473`
+- `recadm:create`: `bot/handlers/admin_recipes.py:682`
+- `recadm:ing_done`: `bot/handlers/admin_recipes.py:869`
+- `recadm:ing_more`: `bot/handlers/admin_recipes.py:787`
+- `recadm:ingcats`: `bot/handlers/admin_recipes.py:779`
+- `recadm:list`: `bot/handlers/admin_recipes.py:561`
+- `recadm:menu`: `bot/handlers/admin_recipes.py:541`
+- `recadm:no_photo`: `bot/handlers/admin_recipes.py:1282`
+- `recadm:noop`: `bot/handlers/admin_recipes.py:536`
+- `recadm:res_existing`: `bot/handlers/admin_recipes.py:905`
+- `recadm:res_new`: `bot/handlers/admin_recipes.py:1060`
+- `recadm:rescats`: `bot/handlers/admin_recipes.py:927`
+- `recadm:save`: `bot/handlers/admin_recipes.py:1420`
 - `rep:auto_approve_edit`: `bot/handlers/admin.py:4169`
 - `rep:next`: `bot/handlers/admin.py:4611`
 - `rep:pay_cap_edit`: `bot/handlers/admin.py:4208`
@@ -1030,23 +1041,35 @@
 - `rar:`: `bot/handlers/admin.py:1267`
 - `rathaus:`: `bot/handlers/pilots.py:174`
 - `rathaus_prof:`: `bot/handlers/pilots.py:214`
-- `recadm:cat:`: `bot/handlers/admin_recipes.py:560`
-- `recadm:ed:`: `bot/handlers/admin_recipes.py:1225`
-- `recadm:ed_yes:`: `bot/handlers/admin_recipes.py:1248`
-- `recadm:ef:`: `bot/handlers/admin_recipes.py:931`
-- `recadm:ei:`: `bot/handlers/admin_recipes.py:1145`
-- `recadm:eq:`: `bot/handlers/admin_recipes.py:1103`
-- `recadm:er:`: `bot/handlers/admin_recipes.py:1177`
-- `recadm:es:`: `bot/handlers/admin_recipes.py:1053`
-- `recadm:et:`: `bot/handlers/admin_recipes.py:1206`
-- `recadm:exp:`: `bot/handlers/admin_recipes.py:736`
-- `recadm:exv:`: `bot/handlers/admin_recipes.py:1069`
-- `recadm:lvl:`: `bot/handlers/admin_recipes.py:756`
-- `recadm:newrar:`: `bot/handlers/admin_recipes.py:699`
-- `recadm:open:`: `bot/handlers/admin_recipes.py:359`
-- `recadm:page:`: `bot/handlers/admin_recipes.py:348`
-- `recadm:rar:`: `bot/handlers/admin_recipes.py:801`
-- `recadm:rxv:`: `bot/handlers/admin_recipes.py:1118`
+- `recadm:bookdel:`: `bot/handlers/admin_recipes.py:617`
+- `recadm:bookdel_yes:`: `bot/handlers/admin_recipes.py:641`
+- `recadm:bookopen:`: `bot/handlers/admin_recipes.py:588`
+- `recadm:bookpage:`: `bot/handlers/admin_recipes.py:955`
+- `recadm:bookpick:`: `bot/handlers/admin_recipes.py:967`
+- `recadm:bookspage:`: `bot/handlers/admin_recipes.py:577`
+- `recadm:booktoggle:`: `bot/handlers/admin_recipes.py:599`
+- `recadm:cat:`: `bot/handlers/admin_recipes.py:1115`
+- `recadm:ed:`: `bot/handlers/admin_recipes.py:1779`
+- `recadm:ed_yes:`: `bot/handlers/admin_recipes.py:1802`
+- `recadm:ef:`: `bot/handlers/admin_recipes.py:1486`
+- `recadm:ei:`: `bot/handlers/admin_recipes.py:1700`
+- `recadm:eq:`: `bot/handlers/admin_recipes.py:1658`
+- `recadm:er:`: `bot/handlers/admin_recipes.py:1731`
+- `recadm:es:`: `bot/handlers/admin_recipes.py:1608`
+- `recadm:et:`: `bot/handlers/admin_recipes.py:1760`
+- `recadm:exp:`: `bot/handlers/admin_recipes.py:1291`
+- `recadm:exv:`: `bot/handlers/admin_recipes.py:1624`
+- `recadm:ingcat:`: `bot/handlers/admin_recipes.py:765`
+- `recadm:ingpick:`: `bot/handlers/admin_recipes.py:795`
+- `recadm:kind:`: `bot/handlers/admin_recipes.py:704`
+- `recadm:lvl:`: `bot/handlers/admin_recipes.py:1311`
+- `recadm:newrar:`: `bot/handlers/admin_recipes.py:1254`
+- `recadm:open:`: `bot/handlers/admin_recipes.py:671`
+- `recadm:page:`: `bot/handlers/admin_recipes.py:660`
+- `recadm:rar:`: `bot/handlers/admin_recipes.py:1356`
+- `recadm:rescat:`: `bot/handlers/admin_recipes.py:913`
+- `recadm:respick:`: `bot/handlers/admin_recipes.py:935`
+- `recadm:rxv:`: `bot/handlers/admin_recipes.py:1673`
 - `rep:nav:`: `bot/handlers/admin.py:4600`
 - `rep_fix:`: `bot/handlers/admin.py:4399`
 - `rep_no:`: `bot/handlers/admin.py:4585`

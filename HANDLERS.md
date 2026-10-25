@@ -54,7 +54,7 @@
 | `profile.py` | — | `router` | 5 | 16 | `prof:`, `prof_sel_status:`, `profile:` | `ProfileStates` |
 | `bank.py` | — | `router` | 5 | 8 | `bank:` | `BankStates` |
 | `admin.py` | Админ-панель: управление магазином, финансами, отчётами, ролями и логами. | `router` | 89 | 221 | `\d+$:`, `act:`, `addreq:`, `admin:`, `aw:`, `aw_comment:`, `aw_confirm:`, `aw_del:`, `aw_edit:`, `aw_ei:`, `aw_kind:`, `aw_pick:`, `awr_grant:`, `back:`, `cancel:`, `cat:`, `confirm_del_photo:`, `del_item:`, `drinksel:`, `dungeon:`, `eddrop:`, `eddrop_del:`, `eddrop_desc:`, `eddrop_photo:`, `eddrop_set_ch:`, `eddrop_set_q:`, `eddrop_stat:`, `eddrop_stats:`, `eddrop_weff:`, `eddrop_weff_set:`, `edit_item:`, `editem_add:`, `editem_new:`, `editem_pick:`, `editset:`, `enemy:`, `enemy_drops:`, `enemy_field:`, `eqpart:`, `field:`, `field_req:`, `fin:`, `finuser:`, `fishing:`, `fishing_field:`, `fishing_j:`, `forest:`, `forest_field:`, `loc:`, `locstat:`, `lootonly:`, `marketok:`, `news:`, `noop:`, `pickuser:`, `prod:`, `rank_pick:`, `rank_promote:`, `rar:`, `rep:`, `rep_fix:`, `rep_no:`, `rep_ok:`, `role:`, `rolop:`, `salary:`, `salary_period:`, `shop_admin:`, `shop_del:`, `shop_edit:`, `st:`, `st_del:`, `st_key:`, `st_op:`, `st_pick:`, `st_rev:`, `storage:`, `treasury:`, `weff:`, `wing_set:` | `AdminAddItem`, `AdminSaleTax`, `AdminSpecialCode`, `AdminEditItem`, `AdminFinance`, `AdminTreasury`, `AdminStorageRestock`, `AdminStorageDelete`, `AdminTax`, `AdminReportAutoApprove`, `AdminReportPayCap`, `AdminReportFix`, `AdminRoles`, `AdminStatuses`, `AdminAwards`, `AdminFishing`, `AdminForest`, `AdminEnemy`, `AdminCallsign`, `AdminWing`, `AdminStates`, `AdminPlayerLog`, `AdminSalary`, `AdminLocation`, `AdminDungeon` |
-| `admin_recipes.py` | Менеджер рецептов крафта (v0.22.13): создание, правка и удаление рецептов. | `router` | 17 | 27 | `recadm:` | `RecipeManager` |
+| `admin_recipes.py` | Менеджер рецептов крафта (v0.22.13): создание, правка и удаление рецептов. | `router` | 19 | 44 | `recadm:` | `RecipeManager` |
 | `shop.py` | Магазин: каталог по категориям, покупка за Нордмарки и AP. | `router` | 3 | 14 | `buy5_nord:`, `buy_housing:`, `buy_housing_cancel:`, `buy_nord:`, `fishbuy:`, `fishoffer:`, `itembuy:`, `itemoffer:`, `offercancel:`, `shop:`, `shopcat:`, `shopitem:` | `SpecialDeptBuy` |
 | `inventory.py` | Инвентарь: просмотр, использование расходников, продажа и передача предметов. | `router` | 4 | 28 | `eqequip:`, `eqlock:`, `eqslot:`, `equnequip:`, `fishcatch:`, `fishgo:`, `fishmarket:`, `fishprice:`, `fishsell:`, `fishuse:`, `inv_equip:`, `inv_sell:`, `inv_sell_keep1:`, `inv_sell_ok:`, `inv_sellall:`, `inv_sellmore:`, `inv_slot:`, `inv_transfer:`, `inv_unequip:`, `inv_unslot:`, `inv_use:`, `inventory:`, `invitem:`, `itemgo:`, `itemmarket:`, `itemprice:` | `TransferItem` |
 | `reports.py` | — | `router` | 9 | 5 | `\d+$:`, `\d{1,7}$:`, `report:` | `ReportSubmit` |
@@ -123,10 +123,10 @@
 ### `admin_recipes.py` — Менеджер рецептов крафта (v0.22.13): создание, правка и удаление рецептов.
 
 - Роутеры: `router`
-- Хендлеры: message=17, callback_query=27
+- Хендлеры: message=19, callback_query=44
 - FSM: `RecipeManager`
-- `F.data.startswith`: `recadm:cat:`, `recadm:ed:`, `recadm:ed_yes:`, `recadm:ef:`, `recadm:ei:`, `recadm:eq:`, `recadm:er:`, `recadm:es:`, `recadm:et:`, `recadm:exp:`, `recadm:exv:`, `recadm:lvl:`, `recadm:newrar:`, `recadm:open:`, `recadm:page:`, `recadm:rar:`, `recadm:rxv:`
-- `F.data ==`: `recadm:cancel`, `recadm:create`, `recadm:ing_done`, `recadm:list`, `recadm:menu`, `recadm:no_photo`, `recadm:noop`, `recadm:res_existing`, `recadm:res_new`, `recadm:save`
+- `F.data.startswith`: `recadm:bookdel:`, `recadm:bookdel_yes:`, `recadm:bookopen:`, `recadm:bookpage:`, `recadm:bookpick:`, `recadm:bookspage:`, `recadm:booktoggle:`, `recadm:cat:`, `recadm:ed:`, `recadm:ed_yes:`, `recadm:ef:`, `recadm:ei:`, `recadm:eq:`, `recadm:er:`, `recadm:es:`, `recadm:et:`, `recadm:exp:`, `recadm:exv:`, `recadm:ingcat:`, `recadm:ingpick:`, `recadm:kind:`, `recadm:lvl:`, `recadm:newrar:`, `recadm:open:`, `recadm:page:`, `recadm:rar:`, `recadm:rescat:`, `recadm:respick:`, `recadm:rxv:`
+- `F.data ==`: `recadm:book_done`, `recadm:books`, `recadm:cancel`, `recadm:create`, `recadm:ing_done`, `recadm:ing_more`, `recadm:ingcats`, `recadm:list`, `recadm:menu`, `recadm:no_photo`, `recadm:noop`, `recadm:res_existing`, `recadm:res_new`, `recadm:rescats`, `recadm:save`
 
 ### `shop.py` — Магазин: каталог по категориям, покупка за Нордмарки и AP.
 
