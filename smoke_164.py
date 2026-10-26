@@ -213,7 +213,7 @@ async def main():
     await ensure_clan_building(clan_id)
     await set_clan_building_built(clan_id, "manor")
     for slot, et in ((1, "kitchen"), (2, "workbench"),
-                     (3, "shower"), (4, "garden")):
+                     (3, "shower"), (4, "library")):
         ok, msg = await install_clan_expansion(clan_id, LEADER, slot, et)
         check(f"установлено расширение {et} в слот {slot}", ok is True)
 
@@ -294,10 +294,10 @@ async def main():
         cb_empty = FakeCallback(MEMBER, f"clanh:use:{clan_id}:5")
         await clan_hall.clan_hall_use_cb(cb_empty)
         check("пустой слот отклонён", has_alert(cb_empty, "нет расширения"))
-        cb_garden = FakeCallback(MEMBER, f"clanh:use:{clan_id}:4")
-        await clan_hall.clan_hall_use_cb(cb_garden)
-        check("не-крафтовое расширение (сад) пока не работает",
-              has_alert(cb_garden, "пока не работает"))
+        cb_lib = FakeCallback(MEMBER, f"clanh:use:{clan_id}:4")
+        await clan_hall.clan_hall_use_cb(cb_lib)
+        check("расширение следующей фазы (библиотека) пока не работает",
+              has_alert(cb_lib, "пока не работает"))
 
         print("\n3. Экран кухни и список личных рецептов")
         cb_kitchen = FakeCallback(MEMBER, f"clanh:use:{clan_id}:1")

@@ -308,8 +308,8 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `wait_building_photo` | `bot/handlers/clan_hall.py:1298` `clan_hall_admphoto_cb` | `bot/handlers/clan_hall.py:1334` `clan_hall_admphoto_save` |
-| `wait_construction_photo` | `bot/handlers/clan_hall.py:1327` `clan_hall_admconstphoto_cb` | `bot/handlers/clan_hall.py:1352` `clan_hall_admconstphoto_save` |
+| `wait_building_photo` | `bot/handlers/clan_hall.py:1554` `clan_hall_admphoto_cb` | `bot/handlers/clan_hall.py:1590` `clan_hall_admphoto_save` |
+| `wait_construction_photo` | `bot/handlers/clan_hall.py:1583` `clan_hall_admconstphoto_cb` | `bot/handlers/clan_hall.py:1608` `clan_hall_admconstphoto_save` |
 
 ### `ClansCreate` — `bot/handlers/clans.py`
 
@@ -603,7 +603,7 @@
 - `city:pilots:list`: `bot/handlers/pilots.py:129`
 - `city:quarter`: `bot/handlers/locations.py:225`
 - `city:vote`: `bot/handlers/polls.py:70`
-- `clanh:noop`: `bot/handlers/clan_hall.py:1515`
+- `clanh:noop`: `bot/handlers/clan_hall.py:1771`
 - `clans:create_skip`: `bot/handlers/clans.py:656`
 - `clans:noop`: `bot/handlers/clans.py:441`
 - `contracts:list`: `bot/handlers/dungeon.py:738`
@@ -787,29 +787,33 @@
 - `cat:`: `bot/handlers/admin.py:1276`
 - `city/`: `bot/handlers/locations.py:87`
 - `city:pilots:list:`: `bot/handlers/pilots.py:135`
-- `clanh:admconstphoto:`: `bot/handlers/clan_hall.py:1319`
-- `clanh:admnophoto:`: `bot/handlers/clan_hall.py:1305`
-- `clanh:admphoto:`: `bot/handlers/clan_hall.py:1287`
-- `clanh:cancel:`: `bot/handlers/clan_hall.py:1154`
-- `clanh:choose:`: `bot/handlers/clan_hall.py:1123`
-- `clanh:craft:`: `bot/handlers/clan_hall.py:998`
-- `clanh:donate:`: `bot/handlers/clan_hall.py:1385`
-- `clanh:expchoose:`: `bot/handlers/clan_hall.py:867`
-- `clanh:expinstall:`: `bot/handlers/clan_hall.py:880`
-- `clanh:expmanage:`: `bot/handlers/clan_hall.py:856`
-- `clanh:expup:`: `bot/handlers/clan_hall.py:898`
-- `clanh:give:`: `bot/handlers/clan_hall.py:1442`
-- `clanh:hall:`: `bot/handlers/clan_hall.py:1103`
-- `clanh:inside:`: `bot/handlers/clan_hall.py:1230`
-- `clanh:item:`: `bot/handlers/clan_hall.py:1411`
-- `clanh:log:`: `bot/handlers/clan_hall.py:1500`
-- `clanh:recipe:`: `bot/handlers/clan_hall.py:930`
-- `clanh:shower:`: `bot/handlers/clan_hall.py:1067`
-- `clanh:start:`: `bot/handlers/clan_hall.py:1168`
-- `clanh:startfull:`: `bot/handlers/clan_hall.py:1197`
-- `clanh:storage:`: `bot/handlers/clan_hall.py:1364`
-- `clanh:upgrade:`: `bot/handlers/clan_hall.py:1139`
-- `clanh:use:`: `bot/handlers/clan_hall.py:914`
+- `clanh:admconstphoto:`: `bot/handlers/clan_hall.py:1575`
+- `clanh:admnophoto:`: `bot/handlers/clan_hall.py:1561`
+- `clanh:admphoto:`: `bot/handlers/clan_hall.py:1543`
+- `clanh:cancel:`: `bot/handlers/clan_hall.py:1410`
+- `clanh:choose:`: `bot/handlers/clan_hall.py:1379`
+- `clanh:craft:`: `bot/handlers/clan_hall.py:1119`
+- `clanh:donate:`: `bot/handlers/clan_hall.py:1641`
+- `clanh:expchoose:`: `bot/handlers/clan_hall.py:988`
+- `clanh:expinstall:`: `bot/handlers/clan_hall.py:1001`
+- `clanh:expmanage:`: `bot/handlers/clan_hall.py:977`
+- `clanh:expup:`: `bot/handlers/clan_hall.py:1019`
+- `clanh:give:`: `bot/handlers/clan_hall.py:1698`
+- `clanh:hall:`: `bot/handlers/clan_hall.py:1359`
+- `clanh:harvest:`: `bot/handlers/clan_hall.py:1296`
+- `clanh:harvestall:`: `bot/handlers/clan_hall.py:1328`
+- `clanh:inside:`: `bot/handlers/clan_hall.py:1486`
+- `clanh:item:`: `bot/handlers/clan_hall.py:1667`
+- `clanh:log:`: `bot/handlers/clan_hall.py:1756`
+- `clanh:plant:`: `bot/handlers/clan_hall.py:1272`
+- `clanh:plantlist:`: `bot/handlers/clan_hall.py:1224`
+- `clanh:recipe:`: `bot/handlers/clan_hall.py:1051`
+- `clanh:shower:`: `bot/handlers/clan_hall.py:1188`
+- `clanh:start:`: `bot/handlers/clan_hall.py:1424`
+- `clanh:startfull:`: `bot/handlers/clan_hall.py:1453`
+- `clanh:storage:`: `bot/handlers/clan_hall.py:1620`
+- `clanh:upgrade:`: `bot/handlers/clan_hall.py:1395`
+- `clanh:use:`: `bot/handlers/clan_hall.py:1035`
 - `clans:add:`: `bot/handlers/clans.py:446`
 - `clans:addset:`: `bot/handlers/clans.py:463`
 - `clans:cancel:`: `bot/handlers/clans.py:262`

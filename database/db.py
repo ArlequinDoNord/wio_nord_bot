@@ -1018,6 +1018,18 @@ async def init_db():
         CREATE UNIQUE INDEX IF NOT EXISTS idx_clan_expansion_type
             ON clan_expansions(clan_id, expansion_type);
 
+        CREATE TABLE IF NOT EXISTS clan_garden (
+            clan_id INTEGER NOT NULL,
+            plot_index INTEGER NOT NULL,
+            seed_name TEXT NOT NULL,
+            plant_name TEXT,
+            planted_by INTEGER,
+            stage_started_at REAL,
+            last_harvest_at REAL,
+            planted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (clan_id, plot_index)
+        );
+
         CREATE TABLE IF NOT EXISTS user_recipes (
             user_id INTEGER NOT NULL,
             recipe_id INTEGER NOT NULL,
@@ -11951,6 +11963,16 @@ APPLE_NAME = "Яблоко"
 PLANT_NAMES = {
     "Яблочное семечко": "Яблоня",
 }
+# Что даёт сбор с растения: seed_name → название предмета-плода.
+# Новое семечко без записи по умолчанию даёт яблоко (как было в жилье).
+PLANT_HARVEST = {
+    "Яблочное семечко": APPLE_NAME,
+}
+
+
+def plant_harvest_name(seed_name: str | None) -> str:
+    """Название плода, который даёт растение этого семечка."""
+    return PLANT_HARVEST.get(seed_name or "", APPLE_NAME)
 FOOD_SHELF_DAYS = 4  # срок годности жареной рыбы (96 часов)
 # Срок годности сырой (неприготовленной) рыбы: 4 дня с момента поимки.
 RAW_FISH_SHELF_DAYS = 4
@@ -13052,16 +13074,129 @@ async def harvest_plant(user_id: int, slot_index: int):
     fruits = info['fruits']
     if fruits <= 0:
         return False, "Плодов ещё нет."
-    apple = await get_item_by_name(APPLE_NAME)
-    if not apple:
-        return False, "Яблоко не настроено в базе. Сообщи хранителю."
-    await add_inventory_item(user_id, apple['id'], fruits)
+    fruit_name = plant_harvest_name(data.get('seed'))
+    fruit = await get_item_by_name(fruit_name)
+    if not fruit:
+        return False, f"«{fruit_name}» не настроено в базе. Сообщи хранителю."
+    await add_inventory_item(user_id, fruit['id'], fruits)
     # Таймер обновляется только при сборе
     data['last_harvest_at'] = time.time()
     data.pop('fruits', None)
     data.pop('next_fruit_at', None)
     await set_housing_slot(user_id, slot_index, "plant_pot", 1, data)
-    return True, (apple, fruits)
+    return True, (fruit, fruits)
+
+
+# ---------- Клановый сад (Фаза 5) ----------
+
+def clan_garden_plots(level: int | None) -> int:
+    """Сколько грядок даёт сад этого уровня (по умолчанию — как 1-й уровень)."""
+    plots = getattr(config, "CLAN_GARDEN_PLOTS", {}) or {}
+    return int(plots.get(int(level or 1)) or plots.get(1) or 2)
+
+
+async def get_clan_garden(clan_id: int) -> dict:
+    """Грядки клана: plot_index → строка (пустых грядок в таблице нет)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT * FROM clan_garden WHERE clan_id = ? ORDER BY plot_index",
+        (clan_id,))
+    rows = await cursor.fetchall()
+    return {int(r["plot_index"]): dict(r) for r in rows}
+
+
+def clan_plot_info(plot, now: float | None = None) -> dict:
+    """Состояние растения на грядке (стадии/плоды — те же, что в жилье)."""
+    if not plot:
+        return plant_stage_info({}, now or time.time())
+    now = now or time.time()
+    data = {
+        "seed": plot.get("seed_name"),
+        "plant_name": plot.get("plant_name"),
+        "stage_started_at": float(plot.get("stage_started_at") or now),
+        "last_harvest_at": plot.get("last_harvest_at"),
+    }
+    info = plant_stage_info(data, now)
+    info["data"] = data
+    return info
+
+
+async def plant_clan_seed(clan_id: int, user_id: int, plot_index: int,
+                          seed_item_id: int, max_plots: int):
+    """Посадка семечка на общую грядку (семя — из личного инвентаря).
+
+    Возвращает (получилось, сообщение). Грядка запоминает, кто посадил.
+    """
+    plot_index = int(plot_index or 0)
+    if plot_index < 1 or plot_index > int(max_plots or 0):
+        return False, "Такой грядки в саду нет."
+    seed = await get_item(seed_item_id)
+    if not seed or seed.get("category") != "seeds":
+        return False, "Это не семечко."
+    inv = await get_inventory_item(user_id, seed_item_id)
+    if not inv or int(inv["quantity"] or 0) < 1:
+        return False, "Семечка нет в инвентаре."
+
+    plant_name = seed.get("plant_name") or PLANT_NAMES.get(seed["name"], seed["name"])
+    conn = await get_db()
+    cursor = await conn.execute(
+        "INSERT OR IGNORE INTO clan_garden "
+        "(clan_id, plot_index, seed_name, plant_name, planted_by, stage_started_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (clan_id, plot_index, seed["name"], plant_name, user_id, time.time()))
+    await conn.commit()
+    if cursor.rowcount != 1:
+        return False, "Грядка уже занята."
+    if not await remove_inventory_item(user_id, seed_item_id, 1):
+        # Откат: не оставляем «призрак» посадки без списанного семечка.
+        await conn.execute(
+            "DELETE FROM clan_garden WHERE clan_id = ? AND plot_index = ?",
+            (clan_id, plot_index))
+        await conn.commit()
+        return False, "Не удалось списать семечко."
+    return True, seed["name"]
+
+
+async def harvest_clan_plot(clan_id: int, plot_index: int):
+    """Сбор плодов с одной грядки в клановый склад.
+
+    Возвращает (успех, данные {name, qty} или текст ошибки). Оптимистичный
+    лок по `last_harvest_at` не даёт собрать один и тот же урожай дважды.
+    """
+    garden = await get_clan_garden(clan_id)
+    plot = garden.get(int(plot_index or 0))
+    if not plot:
+        return False, "Грядка пуста."
+
+    now = time.time()
+    info = clan_plot_info(plot, now)
+    fruits = int(info["fruits"])
+    if fruits <= 0:
+        return False, "Плодов ещё нет."
+
+    fruit_name = plant_harvest_name(plot.get("seed_name"))
+    fruit = await get_item_by_name(fruit_name)
+    if not fruit:
+        return False, f"«{fruit_name}» не настроено в базе. Сообщи хранителю."
+
+    prev = plot.get("last_harvest_at")
+    conn = await get_db()
+    if prev is None:
+        cursor = await conn.execute(
+            "UPDATE clan_garden SET last_harvest_at = ? "
+            "WHERE clan_id = ? AND plot_index = ? AND last_harvest_at IS NULL",
+            (now, clan_id, int(plot_index)))
+    else:
+        cursor = await conn.execute(
+            "UPDATE clan_garden SET last_harvest_at = ? "
+            "WHERE clan_id = ? AND plot_index = ? AND last_harvest_at = ?",
+            (now, clan_id, int(plot_index), prev))
+    await conn.commit()
+    if cursor.rowcount != 1:
+        return False, "Урожай уже собрали."
+
+    await add_clan_storage(clan_id, fruit["id"], fruits)
+    return True, {"name": fruit["name"], "qty": fruits, "item_id": fruit["id"]}
 
 
 # ---------- Фонтан (восстановление ОД раз в сутки) ----------
@@ -13362,6 +13497,7 @@ async def delete_clan(clan_id: int):
     await conn.execute("DELETE FROM clan_storage WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_build_contrib WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_expansions WHERE clan_id = ?", (clan_id,))
+    await conn.execute("DELETE FROM clan_garden WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_buildings WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clans WHERE id = ?", (clan_id,))
     await conn.commit()

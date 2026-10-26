@@ -27,6 +27,9 @@ from aiogram.types import (
 
 import config
 from database.db import (
+    PLANT_NAMES,
+    PLANT_STAGES,
+    can_harvest_clan_garden,
     can_manage_clan_hall,
     can_use_shower,
     cancel_clan_building,
@@ -36,6 +39,8 @@ from database.db import (
     clan_expansion_max_level,
     clan_expansion_name,
     clan_expansion_slots,
+    clan_garden_plots,
+    clan_plot_info,
     donate_to_clan_storage,
     ensure_clan_building,
     get_clan,
@@ -44,6 +49,7 @@ from database.db import (
     get_clan_contributions,
     get_clan_expansion,
     get_clan_expansions,
+    get_clan_garden,
     get_clan_members,
     get_clan_project_progress,
     get_clan_storage,
@@ -55,10 +61,12 @@ from database.db import (
     get_learned_recipes,
     get_recipe,
     get_user,
+    harvest_clan_plot,
     has_user_recipe,
     install_clan_expansion,
     is_clan_member,
     next_clan_building_type,
+    plant_clan_seed,
     resolve_clan_building_with_event,
     set_clan_building_photo,
     set_clan_construction_photo,
@@ -373,9 +381,10 @@ def build_hall_inside_text(clan, building_row, expansions=None) -> str:
             lines.append(f"  {idx}. ▫️ <i>Пустой слот</i>")
     status = building_row["status"] if "status" in building_row.keys() else None
     usable = [e for e in (expansions or [])
-              if e["expansion_type"] in ("kitchen", "workbench", "shower")]
+              if e["expansion_type"] in ("kitchen", "workbench", "shower", "garden")]
     if usable:
-        lines.append("\n🛠 Кухня, стол и душевые доступны всем членам клана — крафт личный.")
+        lines.append("\n🛠 Кухня, стол, душевые и сад доступны всем членам клана — "
+                     "крафт личный, урожай сада идёт на склад.")
     if status == "upgrading":
         tcfg = _building_cfg(building_row["target_type"])
         tname = tcfg.get("name") or building_row["target_type"] or "новый уровень"
@@ -507,6 +516,50 @@ def build_clan_shower_text(clan, expansion, level: int, can_use: bool) -> str:
         lines.append("Кулдаун личный и общий с душевой в жилье.")
     else:
         lines.append("✅ Сегодня ты уже мылся — приходи после сброса суток.")
+    return "\n".join(lines)
+
+
+def build_clan_garden_text(clan, building_row, expansion, garden_map: dict,
+                           planters: dict, is_leader: bool) -> str:
+    """Экран кланового сада: уровень, число грядок, состояние каждой грядки."""
+    level = int(expansion["expansion_level"] or 1)
+    max_plots = clan_garden_plots(level)
+    cfg = _building_cfg(building_row["building_type"])
+    bname = cfg.get("name") or building_row["building_type"] or "Здание клана"
+    lines = [
+        f"🌱 <b>Сад</b> (ур. {level}) — «{_esc(clan['name'])}»",
+        f"Здание: <b>{_esc(bname)}</b> • Грядок: <b>{max_plots}</b>",
+        "",
+        "Сажать может любой член клана (семя списывается из твоего инвентаря).",
+        "Собирает урожай только глава клана — плоды идут в клановый склад.",
+        "",
+    ]
+    any_ripe = False
+    for plot_idx in range(1, max_plots + 1):
+        plot = (garden_map or {}).get(plot_idx)
+        if not plot:
+            lines.append(f"  {plot_idx}. ▫️ <i>Пустая грядка</i>")
+            continue
+        info = clan_plot_info(plot)
+        stage = int(info["stage"] or 0)
+        stage_name = PLANT_STAGES[stage][0]
+        fruits = int(info["fruits"] or 0)
+        next_in = float(info["next_in"] or 0)
+        seed_name = plot.get("seed_name") or ""
+        plant_name = plot.get("plant_name") or PLANT_NAMES.get(seed_name, seed_name)
+        planter_id = plot.get("planted_by")
+        planter_name = (planters or {}).get(int(planter_id)) if planter_id else None
+        who = f" (посадил: {_esc(planter_name)})" if planter_name else ""
+        if stage < 4 and next_in > 0:
+            tail = f"{stage_name}, до след. стадии {next_in / 86400:.1f} сут."
+        elif fruits > 0:
+            any_ripe = True
+            tail = f"{stage_name}, 🍎 плодов: {fruits}/5"
+        else:
+            tail = f"{stage_name}, до плодов {next_in / 86400:.1f} сут."
+        lines.append(f"  {plot_idx}. 🌿 <b>{_esc(plant_name)}</b> — {tail}{who}")
+    if any_ripe and not is_leader:
+        lines.append("\n<i>Собрать спелые плоды на клановый склад может глава клана.</i>")
     return "\n".join(lines)
 
 
@@ -832,6 +885,9 @@ async def _render_clan_use(cb: CallbackQuery, clan, building, exp):
     if et == "shower":
         return await _render_clan_shower(cb, clan, building, exp)
 
+    if et == "garden":
+        return await _render_clan_garden(cb, clan, building, exp)
+
     await cb.answer(f"❌ {clan_expansion_name(et)} пока не работает.", show_alert=True)
 
 
@@ -847,6 +903,71 @@ async def _render_clan_shower(cb: CallbackQuery, clan, building, exp):
         rows.append([InlineKeyboardButton(
             text=f"🚿 Принять душ (+{ap_gain} ОД)",
             callback_data=f"clanh:shower:{clan_id}:{slot_index}")])
+    rows.append([InlineKeyboardButton(
+        text="🔙 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
+    photo = await resolve_clan_hall_photo(building)
+    await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
+
+
+async def _load_planter_names(garden_map: dict) -> dict:
+    """Словарь user_id -> отображаемое имя для авторов посадки в саду."""
+    planters = {}
+    for plot in (garden_map or {}).values():
+        uid = plot.get("planted_by")
+        if not uid:
+            continue
+        uid = int(uid)
+        if uid in planters:
+            continue
+        u = await get_user(uid)
+        if u:
+            planters[uid] = u["first_name"] or u["username"] or f"ID {uid}"
+        else:
+            planters[uid] = f"ID {uid}"
+    return planters
+
+
+async def _render_clan_garden(cb: CallbackQuery, clan, building, exp):
+    """Экран кланового сада: грядки, посадка любым членом, сбор главой."""
+    clan_id = int(clan["id"])
+    slot_index = int(exp["slot_index"])
+    level = int(exp["expansion_level"] or 1)
+    max_plots = clan_garden_plots(level)
+    garden = await get_clan_garden(clan_id)
+    planters = await _load_planter_names(garden)
+    is_leader = await can_harvest_clan_garden(clan_id, cb.from_user.id)
+    text = build_clan_garden_text(clan, building, exp, garden, planters, is_leader)
+
+    rows = []
+    total_fruits = 0
+    for plot_idx in range(1, max_plots + 1):
+        plot = garden.get(plot_idx)
+        if not plot:
+            rows.append([InlineKeyboardButton(
+                text=f"🌱 Грядка {plot_idx}: посадить семечко",
+                callback_data=f"clanh:plantlist:{clan_id}:{slot_index}:{plot_idx}",
+            )])
+            continue
+        info = clan_plot_info(plot)
+        fruits = int(info["fruits"] or 0)
+        if fruits > 0:
+            total_fruits += fruits
+            if is_leader:
+                seed_name = plot.get("seed_name") or ""
+                plant_name = plot.get("plant_name") or PLANT_NAMES.get(seed_name, seed_name)
+                rows.append([InlineKeyboardButton(
+                    text=f"🍎 Грядка {plot_idx} ({plant_name}): собрать ×{fruits}",
+                    callback_data=f"clanh:harvest:{clan_id}:{slot_index}:{plot_idx}",
+                )])
+
+    if is_leader and total_fruits > 0:
+        rows.append([InlineKeyboardButton(
+            text=f"🧺 Собрать весь урожай ({total_fruits} шт.)",
+            callback_data=f"clanh:harvestall:{clan_id}:{slot_index}",
+        )])
+
+    rows.append([InlineKeyboardButton(
+        text="📦 Склад клана", callback_data=f"clanh:storage:{clan_id}")])
     rows.append([InlineKeyboardButton(
         text="🔙 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
     photo = await resolve_clan_hall_photo(building)
@@ -913,14 +1034,14 @@ async def clan_hall_expup_cb(cb: CallbackQuery):
 
 @router.callback_query(F.data.startswith("clanh:use:"))
 async def clan_hall_use_cb(cb: CallbackQuery):
-    """Использование установленного расширения (кухня/стол/душевые)."""
+    """Использование установленного расширения (кухня/стол/душевые/сад)."""
     parts = cb.data.split(":")
     clan_id = int(parts[2])
     slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
     clan, building, exp = await _load_usable(cb, clan_id, slot_index)
     if not clan:
         return
-    if exp["expansion_type"] not in ("kitchen", "workbench", "shower"):
+    if exp["expansion_type"] not in ("kitchen", "workbench", "shower", "garden"):
         await cb.answer("❌ Это расширение пока не работает.", show_alert=True)
         return
     await cb.answer()
@@ -1100,6 +1221,141 @@ async def clan_hall_shower_cb(cb: CallbackQuery):
     await _render_clan_shower(cb, clan, building, exp)
 
 
+@router.callback_query(F.data.startswith("clanh:plantlist:"))
+async def clan_hall_plantlist_cb(cb: CallbackQuery):
+    """Выбор семечка из личного инвентаря для посадки на общую грядку клана."""
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    plot_index = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0
+    clan, building, exp = await _load_usable(cb, clan_id, slot_index)
+    if not clan:
+        return
+    if exp["expansion_type"] != "garden":
+        await cb.answer("❌ В этом слоте нет сада.", show_alert=True)
+        return
+    level = int(exp["expansion_level"] or 1)
+    max_plots = clan_garden_plots(level)
+    if plot_index < 1 or plot_index > max_plots:
+        await cb.answer("❌ Такой грядки в саду нет.", show_alert=True)
+        return
+    garden = await get_clan_garden(clan_id)
+    if plot_index in garden:
+        await cb.answer("❌ Грядка уже занята.", show_alert=True)
+        await _render_clan_garden(cb, clan, building, exp)
+        return
+
+    inv = await get_inventory(cb.from_user.id)
+    seeds = [i for i in inv if i["category"] == "seeds" and int(i["quantity"] or 0) > 0]
+    lines = [
+        f"🌱 <b>Посадка на грядку {plot_index}</b> — «{_esc(clan['name'])}»",
+        "",
+    ]
+    rows = []
+    if seeds:
+        lines.append("Выбери семечко из личного инвентаря:")
+        for s in seeds:
+            rows.append([InlineKeyboardButton(
+                text=f"🌱 {s['name']} ({s['quantity']} шт.)",
+                callback_data=f"clanh:plant:{clan_id}:{slot_index}:{plot_index}:{s['id']}",
+            )])
+    else:
+        lines.append("В твоём инвентаре нет семян.")
+    rows.append([InlineKeyboardButton(
+        text="🔙 К саду", callback_data=f"clanh:use:{clan_id}:{slot_index}")])
+
+    await cb.answer()
+    photo = await resolve_clan_hall_photo(building)
+    await _paint(cb, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
+
+
+@router.callback_query(F.data.startswith("clanh:plant:"))
+async def clan_hall_plant_cb(cb: CallbackQuery):
+    """Посадка семечка на грядку кланового сада (доступна любому члену клана)."""
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    plot_index = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0
+    seed_id = int(parts[5]) if len(parts) > 5 and parts[5].isdigit() else 0
+    clan, building, exp = await _load_usable(cb, clan_id, slot_index)
+    if not clan:
+        return
+    if exp["expansion_type"] != "garden":
+        await cb.answer("❌ В этом слоте нет сада.", show_alert=True)
+        return
+    max_plots = clan_garden_plots(int(exp["expansion_level"] or 1))
+    ok, msg = await plant_clan_seed(
+        clan_id, cb.from_user.id, plot_index, seed_id, max_plots)
+    if not ok:
+        await cb.answer(f"❌ {msg}", show_alert=True)
+        return
+    await cb.answer(f"🌱 На грядку {plot_index} посажено: {msg}!", show_alert=True)
+    await _render_clan_garden(cb, clan, building, exp)
+
+
+@router.callback_query(F.data.startswith("clanh:harvest:"))
+async def clan_hall_harvest_cb(cb: CallbackQuery):
+    """Сбор урожая с одной грядки на склад клана (только глава клана)."""
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    plot_index = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0
+    clan, building, exp = await _load_usable(cb, clan_id, slot_index)
+    if not clan:
+        return
+    if exp["expansion_type"] != "garden":
+        await cb.answer("❌ В этом слоте нет сада.", show_alert=True)
+        return
+    if not await can_harvest_clan_garden(clan_id, cb.from_user.id):
+        await cb.answer(
+            "❌ Собирать урожай кланового сада может только глава клана.",
+            show_alert=True)
+        return
+    max_plots = clan_garden_plots(int(exp["expansion_level"] or 1))
+    if plot_index < 1 or plot_index > max_plots:
+        await cb.answer("❌ Такой грядки в саду нет.", show_alert=True)
+        return
+    ok, res = await harvest_clan_plot(clan_id, plot_index)
+    if not ok:
+        await cb.answer(f"❌ {res}", show_alert=True)
+        return
+    await cb.answer(
+        f"🍎 Собрано на склад клана: {res['name']} ×{res['qty']}!",
+        show_alert=True)
+    await _render_clan_garden(cb, clan, building, exp)
+
+
+@router.callback_query(F.data.startswith("clanh:harvestall:"))
+async def clan_hall_harvestall_cb(cb: CallbackQuery):
+    """Сбор всего созревшего урожая в клановый склад (только глава клана)."""
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    clan, building, exp = await _load_usable(cb, clan_id, slot_index)
+    if not clan:
+        return
+    if exp["expansion_type"] != "garden":
+        await cb.answer("❌ В этом слоте нет сада.", show_alert=True)
+        return
+    if not await can_harvest_clan_garden(clan_id, cb.from_user.id):
+        await cb.answer(
+            "❌ Собирать урожай кланового сада может только глава клана.",
+            show_alert=True)
+        return
+    max_plots = clan_garden_plots(int(exp["expansion_level"] or 1))
+    totals = {}
+    for plot_idx in range(1, max_plots + 1):
+        ok, res = await harvest_clan_plot(clan_id, plot_idx)
+        if ok:
+            totals[res["name"]] = totals.get(res["name"], 0) + int(res["qty"])
+    if not totals:
+        await cb.answer("❌ Спелых плодов для сбора пока нет.", show_alert=True)
+        return
+    summary = ", ".join(f"{name} ×{qty}" for name, qty in totals.items())
+    await cb.answer(f"🧺 Собрано на склад клана: {summary}!", show_alert=True)
+    await _render_clan_garden(cb, clan, building, exp)
+
+
 @router.callback_query(F.data.startswith("clanh:hall:"))
 async def clan_hall_cb(cb: CallbackQuery):
     await cb.answer()
@@ -1253,12 +1509,12 @@ async def clan_hall_inside_cb(cb: CallbackQuery):
     rows = []
     for exp in expansions:
         et = exp["expansion_type"]
-        if et not in ("kitchen", "workbench", "shower"):
+        if et not in ("kitchen", "workbench", "shower", "garden"):
             continue
         slot_index = int(exp["slot_index"])
         level = int(exp["expansion_level"] or 1)
         action = {"kitchen": "готовить", "workbench": "крафтить",
-                  "shower": "помыться"}.get(et, "открыть")
+                  "shower": "помыться", "garden": "грядки"}.get(et, "открыть")
         rows.append([InlineKeyboardButton(
             text=f"{clan_expansion_icon(et)} {clan_expansion_name(et)} "
                  f"(ур. {level}) — {action}",
