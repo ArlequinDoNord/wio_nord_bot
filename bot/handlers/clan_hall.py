@@ -31,12 +31,17 @@ from database.db import (
     cancel_clan_building,
     choose_clan_building,
     choose_clan_upgrade,
+    clan_expansion_icon,
+    clan_expansion_max_level,
+    clan_expansion_name,
+    clan_expansion_slots,
     donate_to_clan_storage,
     ensure_clan_building,
     get_clan,
     get_clan_building,
     get_clan_construction_photo,
     get_clan_contributions,
+    get_clan_expansions,
     get_clan_members,
     get_clan_project_progress,
     get_clan_storage,
@@ -45,12 +50,14 @@ from database.db import (
     get_inventory_item,
     get_item,
     get_user,
+    install_clan_expansion,
     is_clan_member,
     next_clan_building_type,
     resolve_clan_building_with_event,
     set_clan_building_photo,
     set_clan_construction_photo,
     start_clan_building_project,
+    upgrade_clan_expansion,
 )
 from utils.permissions import has_permission
 
@@ -318,20 +325,33 @@ def build_hall_built_text(clan, building_row) -> str:
     return "\n".join(lines)
 
 
-def build_hall_inside_text(clan, building_row) -> str:
+def build_hall_inside_text(clan, building_row, expansions=None) -> str:
     btype = building_row["building_type"]
     cfg = _building_cfg(btype)
     bname = cfg.get("name") or btype or "Здание клана"
     slots = int(cfg.get("slots") or 0)
     max_lvl = int(cfg.get("max_level") or 1)
+    by_slot = {}
+    for exp in (expansions or []):
+        try:
+            by_slot[int(exp["slot_index"])] = exp
+        except Exception:
+            continue
     lines = [
         f"🚪 <b>Внутри: {_esc(bname)}</b> — «{_esc(clan['name'])}»",
         f"Слоты расширений ({slots} шт., макс. ур. {max_lvl}):",
         "",
     ]
     for idx in range(1, slots + 1):
+        exp = by_slot.get(idx)
         if btype == "castle" and idx == 7:
             lines.append(f"  {idx}. 🔒 <i>Резервный слот</i>")
+        elif exp:
+            et = exp["expansion_type"]
+            lvl = int(exp["expansion_level"] or 1)
+            lines.append(
+                f"  {idx}. {clan_expansion_icon(et)} <b>{_esc(clan_expansion_name(et))}</b>"
+                f" — ур. {lvl}")
         else:
             lines.append(f"  {idx}. ▫️ <i>Пустой слот</i>")
     status = building_row["status"] if "status" in building_row.keys() else None
@@ -349,6 +369,71 @@ def build_hall_inside_text(clan, building_row) -> str:
         )
     lines.append("\n📦 Клановый склад и взносы доступны всем членам клана.")
     return "\n".join(lines)
+
+
+def build_expansions_manage_text(clan, building_row, expansions) -> str:
+    btype = building_row["building_type"]
+    cfg = _building_cfg(btype)
+    bname = cfg.get("name") or btype or "Здание клана"
+    slots = clan_expansion_slots(btype)
+    max_lvl = clan_expansion_max_level(btype)
+    by_slot = {}
+    for exp in (expansions or []):
+        try:
+            by_slot[int(exp["slot_index"])] = exp
+        except Exception:
+            continue
+    lines = [
+        f"⚙️ <b>Расширения</b> — «{_esc(clan['name'])}»",
+        f"Здание: <b>{_esc(bname)}</b>",
+        f"Доступно слотов: <b>{slots}</b> • макс. уровень: <b>{max_lvl}</b>",
+        "",
+    ]
+    for idx in range(1, slots + 1):
+        exp = by_slot.get(idx)
+        if exp:
+            et = exp["expansion_type"]
+            lvl = int(exp["expansion_level"] or 1)
+            lines.append(
+                f"  {idx}. {clan_expansion_icon(et)} <b>{_esc(clan_expansion_name(et))}</b>"
+                f" — ур. {lvl}")
+        else:
+            lines.append(f"  {idx}. ▫️ <i>Пустой слот</i>")
+    if btype == "castle":
+        lines.append(f"  {clan_expansion_slots(btype) + 1}. 🔒 <i>Резервный слот</i>")
+    lines.append("")
+    lines.append("• Установка — бесплатная, тип выбирает глава клана.")
+    lines.append("• Улучшение — мгновенное: НМ главы + ресурсы с кланового склада.")
+    upgrades = getattr(config, "CLAN_EXPANSION_UPGRADE", {})
+    if upgrades:
+        lines.append("")
+        lines.append("<b>Стоимость улучшений:</b>")
+        for lvl in sorted(upgrades):
+            u = upgrades[lvl] or {}
+            req = ", ".join(f"{n} {q}" for n, q in (u.get("required") or {}).items())
+            parts = [f"{int(u.get('nm') or 0)} НМ"]
+            if req:
+                parts.append(req)
+            lines.append(f"• до ур. {lvl}: {' • '.join(parts)}")
+    return "\n".join(lines)
+
+
+def build_expansion_choose_text(clan, building_row, slot_index, available) -> str:
+    cfg = _building_cfg(building_row["building_type"])
+    bname = cfg.get("name") or building_row["building_type"] or "Здание клана"
+    lines = [
+        f"🧩 <b>Выбор расширения — слот {slot_index}</b>",
+        f"Клан «{_esc(clan['name'])}», здание: <b>{_esc(bname)}</b>",
+        "",
+        "Доступные типы (каждый — только один раз на клан):",
+    ]
+    for et in available:
+        lines.append(f"• {clan_expansion_icon(et)} <b>{_esc(clan_expansion_name(et))}</b> — "
+                     f"{_esc(getattr(config, 'CLAN_EXPANSION_INFO', {}).get(et, {}).get('desc') or '')}")
+    lines.append("")
+    lines.append("Установка бесплатна.")
+    return "\n".join(lines)
+
 
 
 # ── Отрисовка и проверки доступа ──────────────────────────────────────────────
@@ -525,6 +610,167 @@ async def _render_hall(cb: CallbackQuery, clan, building_row):
     return await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
 
 
+# ── Расширения (Фаза 3): управление и выбор типа ──────────────────────────────
+
+async def _render_expansions(cb: CallbackQuery, clan, building_row):
+    """Экран управления расширениями (только глава и только готовое здание)."""
+    clan_id = int(clan["id"])
+    if not await can_manage_clan_hall(clan_id, cb.from_user.id):
+        await cb.answer("❌ Управлять расширениями может только глава клана.",
+                        show_alert=True)
+        return
+    if building_row["status"] != "built" or not building_row["building_type"]:
+        await cb.answer("❌ Управление расширениями доступно только в готовом здании.",
+                        show_alert=True)
+        return
+    btype = building_row["building_type"]
+    slots = clan_expansion_slots(btype)
+    max_lvl = clan_expansion_max_level(btype)
+    expansions = await get_clan_expansions(clan_id)
+    by_slot = {}
+    for exp in expansions:
+        try:
+            by_slot[int(exp["slot_index"])] = exp
+        except Exception:
+            continue
+    text = build_expansions_manage_text(clan, building_row, expansions)
+    upgrades = getattr(config, "CLAN_EXPANSION_UPGRADE", {})
+    rows = []
+    for idx in range(1, slots + 1):
+        exp = by_slot.get(idx)
+        if not exp:
+            rows.append([InlineKeyboardButton(
+                text=f"➕ Слот {idx}: выбрать расширение",
+                callback_data=f"clanh:expchoose:{clan_id}:{idx}",
+            )])
+            continue
+        lvl = int(exp["expansion_level"] or 1)
+        if lvl < max_lvl and (lvl + 1) in upgrades:
+            et = exp["expansion_type"]
+            rows.append([InlineKeyboardButton(
+                text=f"⬆️ {clan_expansion_name(et)}: ур. {lvl}→{lvl + 1}",
+                callback_data=f"clanh:expup:{clan_id}:{idx}",
+            )])
+    rows.append([InlineKeyboardButton(text="🚪 Внутрь здания",
+                                      callback_data=f"clanh:inside:{clan_id}")])
+    rows.append([InlineKeyboardButton(text="📦 Склад клана",
+                                      callback_data=f"clanh:storage:{clan_id}")])
+    rows.append([InlineKeyboardButton(text="🔙 К клану",
+                                      callback_data=f"clans:view:{clan_id}")])
+    return await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=None)
+
+
+async def _render_expansion_choose(cb: CallbackQuery, clan, building_row, slot_index: int):
+    """Экран выбора типа расширения для конкретного пустого слота."""
+    clan_id = int(clan["id"])
+    if not await can_manage_clan_hall(clan_id, cb.from_user.id):
+        await cb.answer("❌ Устанавливать расширения может только глава клана.",
+                        show_alert=True)
+        return
+    if building_row["status"] != "built" or not building_row["building_type"]:
+        await cb.answer("❌ Установка расширений доступна только в готовом здании.",
+                        show_alert=True)
+        return
+    btype = building_row["building_type"]
+    max_slot = clan_expansion_slots(btype)
+    if slot_index < 1 or slot_index > max_slot:
+        await cb.answer(f"❌ В этом здании доступно слотов: {max_slot}.", show_alert=True)
+        return await _render_expansions(cb, clan, building_row)
+    expansions = await get_clan_expansions(clan_id)
+    if any(int(exp["slot_index"]) == slot_index for exp in expansions):
+        await cb.answer("❌ Этот слот уже занят расширением.", show_alert=True)
+        return await _render_expansions(cb, clan, building_row)
+    installed = {exp["expansion_type"] for exp in expansions}
+    all_types = getattr(config, "CLAN_EXPANSION_TYPES", ())
+    available = [t for t in all_types if t not in installed]
+    if not available:
+        await cb.answer("❌ Все типы расширений уже установлены.", show_alert=True)
+        return await _render_expansions(cb, clan, building_row)
+    text = build_expansion_choose_text(clan, building_row, slot_index, available)
+    rows = [[InlineKeyboardButton(
+        text=f"{clan_expansion_icon(et)} {clan_expansion_name(et)}",
+        callback_data=f"clanh:expinstall:{clan_id}:{slot_index}:{et}",
+    )] for et in available]
+    rows.append([InlineKeyboardButton(
+        text="🔙 К управлению расширениями",
+        callback_data=f"clanh:expmanage:{clan_id}",
+    )])
+    return await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=None)
+
+
+async def _resolve_hall_for_expansions(cb: CallbackQuery, clan_id: int, clan):
+    """Лениво завершает стройку/апгрейд и возвращает строку здания."""
+    building, event = await resolve_clan_building_with_event(clan_id)
+    if event in ("built", "upgraded"):
+        bname = _building_cfg(building["building_type"]).get("name") or building["building_type"]
+        if event == "built":
+            note = (f"🎉 <b>Строительство завершено!</b>\n"
+                    f"Здание клана «{_esc(clan['name'])}» — <b>{_esc(bname)}</b> — открыто!")
+        else:
+            note = (f"🎉 <b>Улучшение завершено!</b>\n"
+                    f"Здание клана «{_esc(clan['name'])}» улучшено до «<b>{_esc(bname)}</b>»!")
+        await notify_clan_members(getattr(cb, "bot", None), clan_id, note)
+    return building
+
+
+@router.callback_query(F.data.startswith("clanh:expmanage:"))
+async def clan_hall_expmanage_cb(cb: CallbackQuery):
+    clan_id = int(cb.data.split(":")[2])
+    clan = await _member_clan(cb, clan_id)
+    if not clan:
+        return
+    building = await _resolve_hall_for_expansions(cb, clan_id, clan)
+    await cb.answer()
+    await _render_expansions(cb, clan, building)
+
+
+@router.callback_query(F.data.startswith("clanh:expchoose:"))
+async def clan_hall_expchoose_cb(cb: CallbackQuery):
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    clan = await _member_clan(cb, clan_id)
+    if not clan:
+        return
+    building = await _resolve_hall_for_expansions(cb, clan_id, clan)
+    await cb.answer()
+    await _render_expansion_choose(cb, clan, building, slot_index)
+
+
+@router.callback_query(F.data.startswith("clanh:expinstall:"))
+async def clan_hall_expinstall_cb(cb: CallbackQuery):
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    expansion_type = parts[4] if len(parts) > 4 else ""
+    clan = await _member_clan(cb, clan_id)
+    if not clan:
+        return
+    ok, msg = await install_clan_expansion(clan_id, cb.from_user.id,
+                                           slot_index, expansion_type)
+    await cb.answer(msg, show_alert=True)
+    building = await get_clan_building(clan_id)
+    if not building:
+        return
+    await _render_expansions(cb, clan, building)
+
+
+@router.callback_query(F.data.startswith("clanh:expup:"))
+async def clan_hall_expup_cb(cb: CallbackQuery):
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    clan = await _member_clan(cb, clan_id)
+    if not clan:
+        return
+    ok, msg = await upgrade_clan_expansion(clan_id, cb.from_user.id, slot_index)
+    await cb.answer(msg, show_alert=True)
+    building = await get_clan_building(clan_id)
+    if not building:
+        return
+    await _render_expansions(cb, clan, building)
+
+
 @router.callback_query(F.data.startswith("clanh:hall:"))
 async def clan_hall_cb(cb: CallbackQuery):
     await cb.answer()
@@ -674,17 +920,24 @@ async def clan_hall_inside_cb(cb: CallbackQuery):
         return
     await cb.answer()
     photo = await resolve_clan_hall_photo(building)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📦 Склад клана",
-                              callback_data=f"clanh:storage:{clan_id}")],
-        [InlineKeyboardButton(text="➕ Внести ресурсы",
-                              callback_data=f"clanh:donate:{clan_id}")],
-        [InlineKeyboardButton(text="🔙 К фасаду здания",
-                              callback_data=f"clanh:hall:{clan_id}")],
-        [InlineKeyboardButton(text="🔙 К клану",
-                              callback_data=f"clans:view:{clan_id}")],
-    ])
-    await _paint(cb, build_hall_inside_text(clan, building), kb, photo=photo)
+    expansions = await get_clan_expansions(clan_id)
+    rows = []
+    if (building["status"] == "built"
+            and await can_manage_clan_hall(clan_id, cb.from_user.id)):
+        rows.append([InlineKeyboardButton(
+            text="⚙️ Управление расширениями",
+            callback_data=f"clanh:expmanage:{clan_id}",
+        )])
+    rows.append([InlineKeyboardButton(text="📦 Склад клана",
+                                      callback_data=f"clanh:storage:{clan_id}")])
+    rows.append([InlineKeyboardButton(text="➕ Внести ресурсы",
+                                      callback_data=f"clanh:donate:{clan_id}")])
+    rows.append([InlineKeyboardButton(text="🔙 К фасаду здания",
+                                      callback_data=f"clanh:hall:{clan_id}")])
+    rows.append([InlineKeyboardButton(text="🔙 К клану",
+                                      callback_data=f"clans:view:{clan_id}")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    await _paint(cb, build_hall_inside_text(clan, building, expansions), kb, photo=photo)
 
 
 # ── Админская установка индивидуальной картинки здания и заглушки стройки ─────

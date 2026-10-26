@@ -1006,6 +1006,18 @@ async def init_db():
             building_photo_file_id TEXT
         );
 
+        CREATE TABLE IF NOT EXISTS clan_expansions (
+            clan_id INTEGER NOT NULL,
+            slot_index INTEGER NOT NULL,
+            expansion_type TEXT NOT NULL,
+            expansion_level INTEGER DEFAULT 1,
+            installed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (clan_id, slot_index)
+        );
+
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_clan_expansion_type
+            ON clan_expansions(clan_id, expansion_type);
+
         CREATE TABLE IF NOT EXISTS user_recipes (
             user_id INTEGER NOT NULL,
             recipe_id INTEGER NOT NULL,
@@ -13349,6 +13361,7 @@ async def delete_clan(clan_id: int):
     await conn.execute("DELETE FROM clan_members WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_storage WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_build_contrib WHERE clan_id = ?", (clan_id,))
+    await conn.execute("DELETE FROM clan_expansions WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_buildings WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clans WHERE id = ?", (clan_id,))
     await conn.commit()
@@ -14258,3 +14271,148 @@ async def resolve_due_clan_buildings() -> list[dict]:
                 "building_type": updated['building_type'],
             })
     return done
+
+
+# ── Расширения клан-холла (Фаза 3) ────────────────────────────────────────────
+
+CLAN_EXPANSION_RESERVE_SLOT = 7
+
+
+def clan_expansion_slots(building_type: str | None) -> int:
+    """Сколько слотов расширений реально доступно для типа здания.
+
+    У резиденции 7-й слот объявлен в конфиге, но оставлен резервом под будущие
+    механики — устанавливать туда расширения нельзя.
+    """
+    cfg = getattr(config, "CLAN_BUILDING_TYPES", {}).get(building_type or "", {})
+    slots = int(cfg.get("slots") or 0)
+    if building_type == "castle" and slots >= CLAN_EXPANSION_RESERVE_SLOT:
+        slots -= 1
+    return slots
+
+
+def clan_expansion_max_level(building_type: str | None) -> int:
+    """Максимальный уровень расширения для типа здания (дом/поместье 2, резиденция 4)."""
+    cfg = getattr(config, "CLAN_BUILDING_TYPES", {}).get(building_type or "", {})
+    return int(cfg.get("max_level") or 1)
+
+
+def clan_expansion_name(expansion_type: str | None) -> str:
+    info = getattr(config, "CLAN_EXPANSION_INFO", {}).get(expansion_type or "", {})
+    return info.get("name") or expansion_type or "Расширение"
+
+
+def clan_expansion_icon(expansion_type: str | None) -> str:
+    info = getattr(config, "CLAN_EXPANSION_INFO", {}).get(expansion_type or "", {})
+    return info.get("icon") or "🔧"
+
+
+async def get_clan_expansions(clan_id: int) -> list:
+    """Все установленные расширения клана, по порядку слотов."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT * FROM clan_expansions WHERE clan_id = ? ORDER BY slot_index",
+        (clan_id,))
+    return await cur.fetchall()
+
+
+async def get_clan_expansion(clan_id: int, slot_index: int):
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT * FROM clan_expansions WHERE clan_id = ? AND slot_index = ?",
+        (clan_id, int(slot_index)))
+    return await cur.fetchone()
+
+
+async def install_clan_expansion(clan_id: int, user_id: int, slot_index: int,
+                                 expansion_type: str) -> tuple[bool, str]:
+    """Установка расширения в пустой слот: бесплатно, только глава, только `built`."""
+    if not await can_manage_clan_hall(clan_id, user_id):
+        return False, "❌ Устанавливать расширения может только глава клана."
+    row = await get_clan_building(clan_id)
+    if not row or row['status'] != 'built' or not row['building_type']:
+        return False, "❌ Установка расширений доступна только в готовом здании (не во время работ)."
+    btype = row['building_type']
+    max_slot = clan_expansion_slots(btype)
+    slot_index = int(slot_index)
+    if slot_index < 1 or slot_index > max_slot:
+        if btype == "castle" and slot_index == CLAN_EXPANSION_RESERVE_SLOT:
+            return False, "🔒 7-й слот резиденции — резерв под будущие механики."
+        return False, f"❌ В этом здании доступно слотов: {max_slot}."
+    exp_types = getattr(config, "CLAN_EXPANSION_TYPES", ())
+    if expansion_type not in exp_types:
+        return False, "❌ Неизвестный тип расширения."
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT slot_index FROM clan_expansions WHERE clan_id = ? AND slot_index = ?",
+        (clan_id, slot_index))
+    if await cur.fetchone():
+        return False, "❌ Этот слот уже занят расширением."
+    cur = await conn.execute(
+        "SELECT slot_index FROM clan_expansions WHERE clan_id = ? AND expansion_type = ?",
+        (clan_id, expansion_type))
+    existing = await cur.fetchone()
+    if existing:
+        return False, (f"❌ Расширение «{clan_expansion_name(expansion_type)}» "
+                       f"уже установлено в слоте {int(existing['slot_index'])}.")
+    try:
+        await conn.execute(
+            """INSERT INTO clan_expansions (clan_id, slot_index, expansion_type, expansion_level)
+               VALUES (?, ?, ?, 1)""",
+            (clan_id, slot_index, expansion_type))
+        await conn.commit()
+    except aiosqlite.IntegrityError:
+        return False, "❌ Не удалось установить расширение: слот или тип уже занят."
+    return True, (f"✅ В слоте {slot_index} установлено: "
+                  f"{clan_expansion_icon(expansion_type)} {clan_expansion_name(expansion_type)}.")
+
+
+async def upgrade_clan_expansion(clan_id: int, user_id: int,
+                                 slot_index: int) -> tuple[bool, str]:
+    """Мгновенное улучшение расширения: НМ главы + ресурсы с кланового склада."""
+    if not await can_manage_clan_hall(clan_id, user_id):
+        return False, "❌ Улучшать расширения может только глава клана."
+    row = await get_clan_building(clan_id)
+    if not row or row['status'] != 'built' or not row['building_type']:
+        return False, "❌ Улучшать расширения можно только в готовом здании (не во время работ)."
+    exp = await get_clan_expansion(clan_id, slot_index)
+    if not exp:
+        return False, "❌ В этом слоте нет расширения."
+    level = int(exp['expansion_level'] or 1)
+    max_level = clan_expansion_max_level(row['building_type'])
+    if level >= max_level:
+        return False, f"❌ Достигнут максимальный уровень расширения ({max_level})."
+    next_level = level + 1
+    upgrades = getattr(config, "CLAN_EXPANSION_UPGRADE", {})
+    cfg = upgrades.get(next_level) or {}
+    price_nm = int(cfg.get("nm") or 0)
+    required = cfg.get("required") or {}
+    if not cfg:
+        return False, "❌ Для этого уровня не настроена стоимость улучшения."
+    progress, all_ok = await get_clan_project_progress(clan_id, required)
+    if not all_ok:
+        missing = ", ".join(f"{r['name']} {r['have']}/{r['need']}"
+                            for r in progress if not r['ok'])
+        return False, f"❌ На складе клана не хватает ресурсов: {missing}."
+    leader = await get_user(user_id)
+    have_nm = int((leader['nordmarks'] if leader else 0) or 0)
+    if have_nm < price_nm:
+        return False, (f"❌ Недостаточно нордмарок у главы: нужно {price_nm} НМ, "
+                       f"есть {have_nm} НМ.")
+    to_deduct = {r['item_id']: r['need'] for r in progress
+                 if r['item_id'] and r['need'] > 0}
+    if to_deduct:
+        await deduct_clan_storage_items(clan_id, to_deduct)
+    if price_nm > 0:
+        await remove_nordmarks(
+            user_id, price_nm, "clan_expansion",
+            f"Улучшение расширения «{clan_expansion_name(exp['expansion_type'])}» "
+            f"до уровня {next_level}")
+    conn = await get_db()
+    await conn.execute(
+        """UPDATE clan_expansions SET expansion_level = ?
+           WHERE clan_id = ? AND slot_index = ?""",
+        (next_level, clan_id, int(slot_index)))
+    await conn.commit()
+    return True, (f"⬆️ Расширение «{clan_expansion_name(exp['expansion_type'])}» "
+                  f"улучшено до уровня {next_level}.")

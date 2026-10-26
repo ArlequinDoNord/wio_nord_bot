@@ -1272,6 +1272,28 @@ v0.38.0: колонка `on_hit_effects` (у `snake` — яд, у `owl` — «о
 улучшение), `upgrading` (идёт улучшение). При апгрейде `building_type` —
 текущий уровень, `target_type` — цель.
 
+## `clan_expansions`
+
+Слоты расширений клан-холла (Фаза 3).
+
+| Колонка |
+|---|
+| `clan_id INTEGER NOT NULL` |
+| `slot_index INTEGER NOT NULL` |
+| `expansion_type TEXT NOT NULL` |
+| `expansion_level INTEGER DEFAULT 1` |
+| `installed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` |
+
+**Составной PRIMARY KEY:** (clan_id, slot_index)
+
+**Индексы:**
+
+- `idx_clan_expansion_type` — UNIQUE по (clan_id, expansion_type): один тип
+  расширения не может стоять в клане дважды.
+
+Лимит слотов и максимальный уровень берутся из `CLAN_BUILDING_TYPES`
+(`slots`/`max_level`), причём 7-й слот резиденции — резерв и не устанавливается.
+
 ## `user_recipes`
 
 | Колонка |
