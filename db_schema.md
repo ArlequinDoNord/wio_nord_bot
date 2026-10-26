@@ -1267,6 +1267,11 @@ v0.38.0: колонка `on_hit_effects` (у `snake` — яд, у `owl` — «о
 | `updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP` |
 | `building_photo_file_id TEXT` |
 
+**Статусы:** `choosing` (проект не выбран), `funding` (сбор на первый дом),
+`building` (идёт стройка), `built` (готово), `upgrade_funding` (сбор на
+улучшение), `upgrading` (идёт улучшение). При апгрейде `building_type` —
+текущий уровень, `target_type` — цель.
+
 ## `user_recipes`
 
 | Колонка |

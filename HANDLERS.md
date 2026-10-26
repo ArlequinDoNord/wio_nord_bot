@@ -77,7 +77,7 @@
 | `wall.py` | Стена изречений — доска объявлений города. | `router` | 2 | 7 | `wall:` | `WallWrite` |
 | `hq.py` | Штаб ВВС: командование рассылает приказы авиакрыльям. | `router` | 7 | 25 | `hq:` | `HqOrder`, `HqWingCreate`, `HqWingEdit` |
 | `clans.py` | Партии и кланы: реестр из Ратуши. | `router` | 7 | 23 | `city:`, `clans:` | `ClansCreate`, `ClansEdit`, `ClansMessage` |
-| `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 2 | 15 | `clanh:` | `ClanHallAdminPhoto` |
+| `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 2 | 16 | `clanh:` | `ClanHallAdminPhoto` |
 | `nii.py` | НИИ Северной Кибернетики и кремниевых систем — здание обратной связи. | `router` | 2 | 7 | `nii:` | `NiiWrite` |
 | `tourist_booklet.py` | Буклет туриста: чек-лист городских локаций и разовая награда. | `router` | 0 | 2 | `booklet:` | — |
 | `duel.py` | Дом Дуэлей — PvP-арена «зона на зону». | `router` | 0 | 12 | `duel:` | — |
@@ -293,9 +293,9 @@
 ### `clan_hall.py` — Клан-холл: клановый склад и строительство кланового здания (Фаза 1).
 
 - Роутеры: `router`
-- Хендлеры: message=2, callback_query=15
+- Хендлеры: message=2, callback_query=16
 - FSM: `ClanHallAdminPhoto`
-- `F.data.startswith`: `clanh:admconstphoto:`, `clanh:admnophoto:`, `clanh:admphoto:`, `clanh:cancel:`, `clanh:choose:`, `clanh:donate:`, `clanh:give:`, `clanh:hall:`, `clanh:inside:`, `clanh:item:`, `clanh:log:`, `clanh:start:`, `clanh:startfull:`, `clanh:storage:`
+- `F.data.startswith`: `clanh:admconstphoto:`, `clanh:admnophoto:`, `clanh:admphoto:`, `clanh:cancel:`, `clanh:choose:`, `clanh:donate:`, `clanh:give:`, `clanh:hall:`, `clanh:inside:`, `clanh:item:`, `clanh:log:`, `clanh:start:`, `clanh:startfull:`, `clanh:storage:`, `clanh:upgrade:`
 - `F.data ==`: `clanh:noop`
 
 ### `nii.py` — НИИ Северной Кибернетики и кремниевых систем — здание обратной связи.

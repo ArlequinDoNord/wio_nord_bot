@@ -30,6 +30,7 @@ from database.db import (
     can_manage_clan_hall,
     cancel_clan_building,
     choose_clan_building,
+    choose_clan_upgrade,
     donate_to_clan_storage,
     ensure_clan_building,
     get_clan,
@@ -45,6 +46,7 @@ from database.db import (
     get_item,
     get_user,
     is_clan_member,
+    next_clan_building_type,
     resolve_clan_building_with_event,
     set_clan_building_photo,
     set_clan_construction_photo,
@@ -205,7 +207,15 @@ def build_hall_choosing_text(clan, is_leader: bool) -> str:
 
 def build_hall_funding_text(clan, building_row, progress: list[dict],
                             leader_nm: int = 0, is_leader: bool = False) -> str:
-    btype = building_row["building_type"]
+    status = building_row["status"] if "status" in building_row.keys() else None
+    is_upgrade = status == "upgrade_funding"
+    if is_upgrade:
+        cur_cfg = _building_cfg(building_row["building_type"])
+        cur_name = cur_cfg.get("name") or building_row["building_type"] or "Здание клана"
+        btype = building_row["target_type"]
+    else:
+        cur_name = ""
+        btype = building_row["building_type"]
     cfg = _building_cfg(btype)
     bname = cfg.get("name") or btype or "Здание клана"
     slots = cfg.get("slots", 0)
@@ -215,12 +225,22 @@ def build_hall_funding_text(clan, building_row, progress: list[dict],
     mult = int(getattr(config, "CLAN_BUILDING_NO_RESOURCES_MULT", 2) or 2)
     nores_price = price_nm * mult
 
-    lines = [
-        f"🏗 <b>Проект: {_esc(bname)}</b> — «{_esc(clan['name'])}»",
-        f"Этап: <b>Сбор ресурсов</b> (срок постройки: {days} дн., слотов: {slots}, макс. ур.: {max_lvl})",
-        "",
-        "<b>Ресурсы на клановом складе:</b>",
-    ]
+    if is_upgrade:
+        lines = [
+            f"⬆️ <b>Улучшение: {_esc(cur_name)} → {_esc(bname)}</b> — «{_esc(clan['name'])}»",
+            f"Этап: <b>Сбор ресурсов на улучшение</b> "
+            f"(работы: {days} дн., слотов станет: {slots}, макс. ур.: {max_lvl})",
+            "",
+            "<b>Ресурсы на клановом складе:</b>",
+        ]
+    else:
+        lines = [
+            f"🏗 <b>Проект: {_esc(bname)}</b> — «{_esc(clan['name'])}»",
+            f"Этап: <b>Сбор ресурсов</b> (срок постройки: {days} дн., "
+            f"слотов: {slots}, макс. ур.: {max_lvl})",
+            "",
+            "<b>Ресурсы на клановом складе:</b>",
+        ]
     all_ok = bool(progress)
     for r in progress:
         mark = "✅" if r["ok"] else "⏳"
@@ -242,11 +262,13 @@ def build_hall_funding_text(clan, building_row, progress: list[dict],
         lines.append(f"💰 Либо без ресурсов: <b>{nores_price} НМ</b> (двойная цена)")
 
     if all_ok:
-        lines.append("\n✅ Все ресурсы собраны! Глава клана может запустить стройку.")
+        action = "улучшение" if is_upgrade else "стройку"
+        lines.append(f"\n✅ Все ресурсы собраны! Глава клана может запустить {action}.")
     else:
+        action = "улучшения" if is_upgrade else "стройки"
         lines.append(
             "\nВносите ресурсы на склад клана — или глава может оплатить "
-            f"двойную цену ({nores_price} НМ) и начать стройку сразу без ресурсов."
+            f"двойную цену ({nores_price} НМ) и начать {action} сразу без ресурсов."
         )
     return "\n".join(lines)
 
@@ -312,6 +334,19 @@ def build_hall_inside_text(clan, building_row) -> str:
             lines.append(f"  {idx}. 🔒 <i>Резервный слот</i>")
         else:
             lines.append(f"  {idx}. ▫️ <i>Пустой слот</i>")
+    status = building_row["status"] if "status" in building_row.keys() else None
+    if status == "upgrading":
+        tcfg = _building_cfg(building_row["target_type"])
+        tname = tcfg.get("name") or building_row["target_type"] or "новый уровень"
+        completes = str(building_row["completes_at"] or "")[:16].replace("T", " ")
+        lines.append(
+            f"\n🚧 Идёт улучшение до «<b>{_esc(tname)}</b>»"
+            + (f" (до {completes} UTC)" if completes else "")
+        )
+        lines.append(
+            "Пока идут работы, доступны слоты и лимиты текущего уровня; "
+            "ставить и улучшать расширения нельзя."
+        )
     lines.append("\n📦 Клановый склад и взносы доступны всем членам клана.")
     return "\n".join(lines)
 
@@ -390,7 +425,8 @@ async def _render_hall(cb: CallbackQuery, clan, building_row):
                                           callback_data=f"clans:view:{clan_id}")])
         return await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=None)
 
-    if status == "funding":
+    if status in ("funding", "upgrade_funding"):
+        is_upgrade = status == "upgrade_funding"
         try:
             req = json.loads(building_row["required_json"] or "{}")
         except Exception:
@@ -409,17 +445,23 @@ async def _render_hall(cb: CallbackQuery, clan, building_row):
         if is_leader:
             price_nm = int(building_row["price_nm"] or 0)
             mult = int(getattr(config, "CLAN_BUILDING_NO_RESOURCES_MULT", 2) or 2)
+            start_label = ("🚀 Начать улучшение" if is_upgrade
+                           else "🚀 Начать строительство")
             if all_ok:
                 rows.append([InlineKeyboardButton(
-                    text=f"🚀 Начать строительство ({price_nm} НМ)",
+                    text=f"{start_label} ({price_nm} НМ)",
                     callback_data=f"clanh:start:{clan_id}",
                 )])
+            nores_label = ("💰 Начать улучшение без ресурсов" if is_upgrade
+                           else "💰 Начать без ресурсов")
             rows.append([InlineKeyboardButton(
-                text=f"💰 Начать без ресурсов ({price_nm * mult} НМ)",
+                text=f"{nores_label} ({price_nm * mult} НМ)",
                 callback_data=f"clanh:startfull:{clan_id}",
             )])
+            cancel_label = ("↩️ Отменить улучшение" if is_upgrade
+                            else "↩️ Сменить / отменить проект")
             rows.append([InlineKeyboardButton(
-                text="↩️ Сменить / отменить проект",
+                text=cancel_label,
                 callback_data=f"clanh:cancel:{clan_id}",
             )])
         rows.append([InlineKeyboardButton(text="🔙 К клану",
@@ -445,13 +487,26 @@ async def _render_hall(cb: CallbackQuery, clan, building_row):
 
     # built / upgrading
     text = build_hall_built_text(clan, building_row)
-    rows = [
-        [InlineKeyboardButton(text="🚪 Войти в здание",
-                              callback_data=f"clanh:inside:{clan_id}")],
-        [InlineKeyboardButton(text="📦 Склад клана",
-                              callback_data=f"clanh:storage:{clan_id}")],
-    ]
-    if is_admin:
+    rows = []
+    if status == "built" and is_leader:
+        nxt = next_clan_building_type(building_row["building_type"])
+        if nxt:
+            ncfg = _building_cfg(nxt)
+            nname = ncfg.get("name") or nxt
+            rows.append([InlineKeyboardButton(
+                text=f"⬆️ Улучшить до «{nname}»",
+                callback_data=f"clanh:upgrade:{clan_id}",
+            )])
+    rows.append([InlineKeyboardButton(text="🚪 Войти в здание",
+                                      callback_data=f"clanh:inside:{clan_id}")])
+    rows.append([InlineKeyboardButton(text="📦 Склад клана",
+                                      callback_data=f"clanh:storage:{clan_id}")])
+    if is_admin and status == "upgrading":
+        rows.append([InlineKeyboardButton(
+            text="🏗 Фото-заглушка стройки (админ)",
+            callback_data=f"clanh:admconstphoto:{clan_id}",
+        )])
+    if is_admin and status == "built":
         rows.append([InlineKeyboardButton(
             text="🖼 Установить фото здания (админ)",
             callback_data=f"clanh:admphoto:{clan_id}",
@@ -506,6 +561,21 @@ async def clan_hall_choose_cb(cb: CallbackQuery):
     await _render_hall(cb, clan, building)
 
 
+@router.callback_query(F.data.startswith("clanh:upgrade:"))
+async def clan_hall_upgrade_cb(cb: CallbackQuery):
+    """Выбор улучшения построенного здания до следующего уровня."""
+    clan_id = int(cb.data.split(":")[2])
+    clan = await _member_clan(cb, clan_id)
+    if not clan:
+        return
+    ok, msg = await choose_clan_upgrade(clan_id, cb.from_user.id)
+    await cb.answer(msg, show_alert=True)
+    if not ok:
+        return
+    building = await ensure_clan_building(clan_id)
+    await _render_hall(cb, clan, building)
+
+
 @router.callback_query(F.data.startswith("clanh:cancel:"))
 async def clan_hall_cancel_cb(cb: CallbackQuery):
     clan_id = int(cb.data.split(":")[2])
@@ -530,15 +600,22 @@ async def clan_hall_start_cb(cb: CallbackQuery):
     await cb.answer(msg, show_alert=True)
     if not ok or not building:
         return
-    bname = _building_cfg(building["building_type"]).get("name") or building["building_type"]
     completes = str(building["completes_at"] or "")[:10]
-    await notify_clan_members(
-        getattr(cb, "bot", None),
-        clan_id,
-        f"🏗 <b>Стройка начата!</b>\n"
-        f"Клан «{_esc(clan['name'])}» начал возведение здания «<b>{_esc(bname)}</b>».\n"
-        f"Завершение: <b>{completes}</b>.",
-    )
+    if building["status"] == "upgrading":
+        cur_name = (_building_cfg(building["building_type"]).get("name")
+                    or building["building_type"])
+        tgt_name = (_building_cfg(building["target_type"]).get("name")
+                    or building["target_type"])
+        note = (f"⬆️ <b>Улучшение начато!</b>\n"
+                f"Клан «{_esc(clan['name'])}» улучшает «<b>{_esc(cur_name)}</b>» "
+                f"до «<b>{_esc(tgt_name)}</b>».\n"
+                f"Завершение: <b>{completes}</b>.")
+    else:
+        bname = _building_cfg(building["building_type"]).get("name") or building["building_type"]
+        note = (f"🏗 <b>Стройка начата!</b>\n"
+                f"Клан «{_esc(clan['name'])}» начал возведение здания «<b>{_esc(bname)}</b>».\n"
+                f"Завершение: <b>{completes}</b>.")
+    await notify_clan_members(getattr(cb, "bot", None), clan_id, note)
     await _render_hall(cb, clan, building)
 
 
@@ -554,16 +631,24 @@ async def clan_hall_startfull_cb(cb: CallbackQuery):
     await cb.answer(msg, show_alert=True)
     if not ok or not building:
         return
-    bname = _building_cfg(building["building_type"]).get("name") or building["building_type"]
     completes = str(building["completes_at"] or "")[:10]
-    await notify_clan_members(
-        getattr(cb, "bot", None),
-        clan_id,
-        f"🏗 <b>Стройка начата без сбора ресурсов!</b>\n"
-        f"Клан «{_esc(clan['name'])}» начал возведение здания «<b>{_esc(bname)}</b>».\n"
-        f"Глава оплатил двойную цену, склад клана не тронут.\n"
-        f"Завершение: <b>{completes}</b>.",
-    )
+    if building["status"] == "upgrading":
+        cur_name = (_building_cfg(building["building_type"]).get("name")
+                    or building["building_type"])
+        tgt_name = (_building_cfg(building["target_type"]).get("name")
+                    or building["target_type"])
+        note = (f"⬆️ <b>Улучшение начато без сбора ресурсов!</b>\n"
+                f"Клан «{_esc(clan['name'])}» улучшает «<b>{_esc(cur_name)}</b>» "
+                f"до «<b>{_esc(tgt_name)}</b>».\n"
+                f"Глава оплатил двойную цену, склад клана не тронут.\n"
+                f"Завершение: <b>{completes}</b>.")
+    else:
+        bname = _building_cfg(building["building_type"]).get("name") or building["building_type"]
+        note = (f"🏗 <b>Стройка начата без сбора ресурсов!</b>\n"
+                f"Клан «{_esc(clan['name'])}» начал возведение здания «<b>{_esc(bname)}</b>».\n"
+                f"Глава оплатил двойную цену, склад клана не тронут.\n"
+                f"Завершение: <b>{completes}</b>.")
+    await notify_clan_members(getattr(cb, "bot", None), clan_id, note)
     await _render_hall(cb, clan, building)
 
 
@@ -576,12 +661,14 @@ async def clan_hall_inside_cb(cb: CallbackQuery):
     building, event = await resolve_clan_building_with_event(clan_id)
     if event in ("built", "upgraded"):
         bname = _building_cfg(building["building_type"]).get("name") or building["building_type"]
-        await notify_clan_members(
-            getattr(cb, "bot", None),
-            clan_id,
-            f"🎉 <b>Строительство завершено!</b>\n"
-            f"Здание клана «{_esc(clan['name'])}» — <b>{_esc(bname)}</b> — открыто!",
-        )
+        if event == "upgraded":
+            note = (f"🎉 <b>Улучшение завершено!</b>\n"
+                    f"Здание клана «{_esc(clan['name'])}» улучшено до "
+                    f"«<b>{_esc(bname)}</b>» и открыто!")
+        else:
+            note = (f"🎉 <b>Строительство завершено!</b>\n"
+                    f"Здание клана «{_esc(clan['name'])}» — <b>{_esc(bname)}</b> — открыто!")
+        await notify_clan_members(getattr(cb, "bot", None), clan_id, note)
     if not building or building["status"] not in ("built", "upgrading"):
         await cb.answer("❌ Здание клана ещё не построено.", show_alert=True)
         return

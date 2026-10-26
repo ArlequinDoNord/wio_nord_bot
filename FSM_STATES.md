@@ -308,8 +308,8 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `wait_building_photo` | `bot/handlers/clan_hall.py:616` `clan_hall_admphoto_cb` | `bot/handlers/clan_hall.py:652` `clan_hall_admphoto_save` |
-| `wait_construction_photo` | `bot/handlers/clan_hall.py:645` `clan_hall_admconstphoto_cb` | `bot/handlers/clan_hall.py:670` `clan_hall_admconstphoto_save` |
+| `wait_building_photo` | `bot/handlers/clan_hall.py:703` `clan_hall_admphoto_cb` | `bot/handlers/clan_hall.py:739` `clan_hall_admphoto_save` |
+| `wait_construction_photo` | `bot/handlers/clan_hall.py:732` `clan_hall_admconstphoto_cb` | `bot/handlers/clan_hall.py:757` `clan_hall_admconstphoto_save` |
 
 ### `ClansCreate` — `bot/handlers/clans.py`
 
@@ -451,10 +451,10 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `waiting_photo` | `bot/handlers/reports.py:102` `report_submit_start` | `bot/handlers/reports.py:111` `report_receive_photo`<br>`bot/handlers/reports.py:130` `report_photo_expected` |
-| `waiting_daily_troops` | `bot/handlers/reports.py:117` `report_receive_photo` | `bot/handlers/reports.py:135` `report_receive_daily_troops`<br>`bot/handlers/reports.py:160` `report_daily_troops_expected` |
-| `waiting_total_troops` | `bot/handlers/reports.py:147` `report_receive_daily_troops` | `bot/handlers/reports.py:165` `report_receive_total_troops`<br>`bot/handlers/reports.py:196` `report_total_troops_expected` |
-| `waiting_region` | `bot/handlers/reports.py:174` `report_receive_total_troops` | `bot/handlers/reports.py:201` `report_receive_region`<br>`bot/handlers/reports.py:295` `report_region_expected` |
+| `waiting_photo` | `bot/handlers/reports.py:102` `report_submit_start` | `bot/handlers/reports.py:112` `report_receive_photo`<br>`bot/handlers/reports.py:131` `report_photo_expected` |
+| `waiting_daily_troops` | `bot/handlers/reports.py:118` `report_receive_photo` | `bot/handlers/reports.py:136` `report_receive_daily_troops`<br>`bot/handlers/reports.py:161` `report_daily_troops_expected` |
+| `waiting_total_troops` | `bot/handlers/reports.py:148` `report_receive_daily_troops` | `bot/handlers/reports.py:166` `report_receive_total_troops`<br>`bot/handlers/reports.py:197` `report_total_troops_expected` |
+| `waiting_region` | `bot/handlers/reports.py:175` `report_receive_total_troops` | `bot/handlers/reports.py:202` `report_receive_region`<br>`bot/handlers/reports.py:296` `report_region_expected` |
 
 ### `RepSpeech` — `bot/handlers/representative.py`
 
@@ -603,7 +603,7 @@
 - `city:pilots:list`: `bot/handlers/pilots.py:129`
 - `city:quarter`: `bot/handlers/locations.py:225`
 - `city:vote`: `bot/handlers/polls.py:70`
-- `clanh:noop`: `bot/handlers/clan_hall.py:833`
+- `clanh:noop`: `bot/handlers/clan_hall.py:920`
 - `clans:create_skip`: `bot/handlers/clans.py:656`
 - `clans:noop`: `bot/handlers/clans.py:441`
 - `contracts:list`: `bot/handlers/dungeon.py:738`
@@ -734,7 +734,7 @@
 - `rep:speech:delete`: `bot/handlers/representative.py:109`
 - `rep:speech:write`: `bot/handlers/representative.py:89`
 - `report:menu`: `bot/handlers/reports.py:47`
-- `report:my_reports`: `bot/handlers/reports.py:394`
+- `report:my_reports`: `bot/handlers/reports.py:395`
 - `report:submit`: `bot/handlers/reports.py:57`
 - `salary:choose`: `bot/handlers/admin.py:5091`
 - `salary:pay`: `bot/handlers/admin.py:5103`
@@ -767,8 +767,8 @@
 
 ### По префиксу (`F.data.startswith("...")`)
 
-- `\d+$`: `bot/handlers/admin.py:1355`; `bot/handlers/admin.py:5026`; `bot/handlers/admin.py:7490`; `bot/handlers/reports.py:200`
-- `\d{1,7}$`: `bot/handlers/reports.py:134`; `bot/handlers/reports.py:164`
+- `\d+$`: `bot/handlers/admin.py:1355`; `bot/handlers/admin.py:5026`; `bot/handlers/admin.py:7490`; `bot/handlers/reports.py:201`
+- `\d{1,7}$`: `bot/handlers/reports.py:135`; `bot/handlers/reports.py:165`
 - `act:`: `bot/handlers/admin.py:4823`
 - `addreq:`: `bot/handlers/admin.py:1554`
 - `aw_del:`: `bot/handlers/admin.py:3654`
@@ -787,20 +787,21 @@
 - `cat:`: `bot/handlers/admin.py:1276`
 - `city/`: `bot/handlers/locations.py:87`
 - `city:pilots:list:`: `bot/handlers/pilots.py:135`
-- `clanh:admconstphoto:`: `bot/handlers/clan_hall.py:637`
-- `clanh:admnophoto:`: `bot/handlers/clan_hall.py:623`
-- `clanh:admphoto:`: `bot/handlers/clan_hall.py:605`
-- `clanh:cancel:`: `bot/handlers/clan_hall.py:509`
-- `clanh:choose:`: `bot/handlers/clan_hall.py:493`
-- `clanh:donate:`: `bot/handlers/clan_hall.py:703`
-- `clanh:give:`: `bot/handlers/clan_hall.py:760`
-- `clanh:hall:`: `bot/handlers/clan_hall.py:473`
-- `clanh:inside:`: `bot/handlers/clan_hall.py:570`
-- `clanh:item:`: `bot/handlers/clan_hall.py:729`
-- `clanh:log:`: `bot/handlers/clan_hall.py:818`
-- `clanh:start:`: `bot/handlers/clan_hall.py:523`
-- `clanh:startfull:`: `bot/handlers/clan_hall.py:545`
-- `clanh:storage:`: `bot/handlers/clan_hall.py:682`
+- `clanh:admconstphoto:`: `bot/handlers/clan_hall.py:724`
+- `clanh:admnophoto:`: `bot/handlers/clan_hall.py:710`
+- `clanh:admphoto:`: `bot/handlers/clan_hall.py:692`
+- `clanh:cancel:`: `bot/handlers/clan_hall.py:579`
+- `clanh:choose:`: `bot/handlers/clan_hall.py:548`
+- `clanh:donate:`: `bot/handlers/clan_hall.py:790`
+- `clanh:give:`: `bot/handlers/clan_hall.py:847`
+- `clanh:hall:`: `bot/handlers/clan_hall.py:528`
+- `clanh:inside:`: `bot/handlers/clan_hall.py:655`
+- `clanh:item:`: `bot/handlers/clan_hall.py:816`
+- `clanh:log:`: `bot/handlers/clan_hall.py:905`
+- `clanh:start:`: `bot/handlers/clan_hall.py:593`
+- `clanh:startfull:`: `bot/handlers/clan_hall.py:622`
+- `clanh:storage:`: `bot/handlers/clan_hall.py:769`
+- `clanh:upgrade:`: `bot/handlers/clan_hall.py:564`
 - `clans:add:`: `bot/handlers/clans.py:446`
 - `clans:addset:`: `bot/handlers/clans.py:463`
 - `clans:cancel:`: `bot/handlers/clans.py:262`
@@ -1075,8 +1076,8 @@
 - `rep_fix:`: `bot/handlers/admin.py:4399`
 - `rep_no:`: `bot/handlers/admin.py:4585`
 - `rep_ok:`: `bot/handlers/admin.py:4516`
-- `report:my:`: `bot/handlers/reports.py:389`
-- `report:view:`: `bot/handlers/reports.py:401`
+- `report:my:`: `bot/handlers/reports.py:390`
+- `report:view:`: `bot/handlers/reports.py:402`
 - `resv:bait:\d+$`: `bot/handlers/dungeon.py:2090`
 - `resv:bait:set:\d+:[a-z]+$`: `bot/handlers/dungeon.py:2138`
 - `resv:cast:\d+$`: `bot/handlers/dungeon.py:2157`
