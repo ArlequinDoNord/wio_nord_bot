@@ -240,18 +240,27 @@ async def _rod_for(user_id: int):
     return item
 
 
+BAIT_BY_CODE = {
+    "worms": WORMS_NAME,
+    "spider": SPIDER_LEG_NAME,
+    "combined": COMBINED_BAIT_NAME,
+}
+
+
 async def _resolve_bait(user_id: int, chosen: str):
     """Подбирает наживку для заброса.
 
-    chosen: '' — авто (сначала черви, затем лапка), 'worms'/'spider'/'combined' —
-    конкретная, 'none' — без наживки осознанно.
+    chosen: '' — авто (сначала черви, затем лапка, затем комбинированная),
+    'worms'/'spider'/'combined' (или полное название предмета) — конкретная,
+    'none' — без наживки осознанно.
     Возвращает (имя_наживки_или_None, item_id_наживки_или_None).
     """
+    chosen = (chosen or "").strip()
     if chosen == "none":
         return None, None
     candidates = []
     if chosen:
-        candidates.append(chosen)
+        candidates.append(BAIT_BY_CODE.get(chosen, chosen))
     candidates += [n for n in (WORMS_NAME, SPIDER_LEG_NAME, COMBINED_BAIT_NAME) if n not in candidates]
     for name in candidates:
         item = await get_item_by_name(name)

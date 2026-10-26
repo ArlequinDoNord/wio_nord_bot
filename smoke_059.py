@@ -174,6 +174,27 @@ async def run():
     check("гонка: второй заброс отсечён локом", second_rejected)
     check("гонка: лок снят после завершения", uid2 not in FISHING_CASTING)
 
+    # ── 3. выбор наживки по коду ('worms' / 'spider' / 'combined' / 'none') ──
+    await add_user(uid2, "angler", "Рыбак", "")
+    worms_it = await get_item_by_name(fish.WORMS_NAME)
+    spider_it = await get_item_by_name(fish.SPIDER_LEG_NAME)
+    comb_it = await get_item_by_name(fish.COMBINED_BAIT_NAME)
+    await add_inventory_item(uid2, worms_it["id"], 2)
+    await add_inventory_item(uid2, spider_it["id"], 1)
+    await add_inventory_item(uid2, comb_it["id"], 1)
+
+    b_sp, _ = await fish._resolve_bait(uid2, "spider")
+    check("_resolve_bait('spider') выбирает Лапку паука при наличии Червей",
+          b_sp == fish.SPIDER_LEG_NAME)
+    b_cb, _ = await fish._resolve_bait(uid2, "combined")
+    check("_resolve_bait('combined') выбирает Комбинированную наживку при наличии Червей",
+          b_cb == fish.COMBINED_BAIT_NAME)
+    b_wm, _ = await fish._resolve_bait(uid2, "worms")
+    check("_resolve_bait('worms') выбирает Черви",
+          b_wm == fish.WORMS_NAME)
+    b_no, _ = await fish._resolve_bait(uid2, "none")
+    check("_resolve_bait('none') возвращает None", b_no is None)
+
     await close_db()
     print(f"\nSmoke 059: {passed} passed, {failed} failed")
     sys.exit(1 if failed else 0)
