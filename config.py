@@ -86,6 +86,11 @@ CLAN_EXPANSION_UPGRADE = {
     4: {"nm": 9000, "required": {"Доска": 100, "Железная руда": 60}},
 }
 
+# Клановые душевые: +ОД и отрезвление по уровню расширения. Кулдаун личный и
+# общий с душевой в жилье (одна помывка в игровые сутки).
+CLAN_SHOWER_AP_BY_LEVEL = {1: 25, 2: 50, 3: 75, 4: 100}
+CLAN_SHOWER_SOBER_MINUTES = {1: 60, 2: 120, 3: 180, 4: 240}
+
 CLAN_GARDEN_PLOTS = {1: 2, 2: 3, 3: 4, 4: 6}
 CLAN_SHOP_DAILY_LIMIT = 3
 CLAN_SHOP_DISCOUNT = 10

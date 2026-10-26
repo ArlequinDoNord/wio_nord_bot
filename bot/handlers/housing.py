@@ -1,6 +1,5 @@
 """Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение."""
 
-import asyncio
 import json
 import os
 import time
@@ -12,21 +11,23 @@ from database.db import (
     get_user, get_player_housing, set_player_housing, get_housing_slots, set_housing_slot,
     ensure_player_housing, HOUSING_TYPES, HOUSING_ORDER, PLANT_STAGES, FRUIT_EVERY_DAYS,
     PLANT_NAMES,
-    get_recipes, get_recipe, get_ingredient_map, consume_ingredient,
+    get_recipe, get_ingredient_map,
     get_learned_recipes, has_user_recipe,
     plant_seed, plant_stage_info, harvest_plant,
     get_inventory, get_item, get_item_by_name,
-    remove_inventory_item, add_inventory_item, remove_ap, add_ap,
+    remove_inventory_item, add_inventory_item,
     get_inventory_item, get_inventory_plant_data, set_inventory_plant_data,
     user_has_status_tag, log_activity, log_location_visit,
     remove_nordmarks,
-    can_use_shower, mark_shower_used,
+    can_use_shower,
     get_housing_expansions_installed, increment_housing_expansions,
     get_housing_tax_rate, pay_housing_tax, is_housing_tax_paid, pay_housing_debt,
-    bump_achievement, get_achievement_bonus,
+)
+from utils.crafting import (
+    CRAFTING, FOOD_EXPIRY_PREFIXES, FOOD_EXPIRY_SEC, FRIED_PREFIX, FRIED_PREFIXES,
+    CraftError, animate_craft, begin_craft, cancel_craft, end_craft, finish_craft, use_shower,
 )
 from utils.helpers import resolve_image, rarity_emoji, rarity_label, edit_or_replace
-from utils.states import DRUNK_STATES, reduce_state_minutes
 
 router = Router()
 
@@ -94,11 +95,9 @@ PLANT_PHOTOS: dict[str, dict[int, str]] = {
     },
 }
 
-FRIED_PREFIX = "Жареный "
-FRIED_PREFIXES = ("Жареный ", "Жареная ", "Жареное ", "Жареные ")
-FOOD_EXPIRY_SEC = 6 * 86400          # 6 дней
-# Готовая еда протухает через 96 часов: жареные блюда и выпечка (рыбный пирог).
-FOOD_EXPIRY_PREFIXES = FRIED_PREFIXES + ("Рыбный ", "Жареный гриб", "Жареные грибы")
+# Сроки годности и префиксы еды живут в общем ядре крафта (utils/crafting.py),
+# сюда импортированы для обратной совместимости (smoke_126 и другие импорты).
+# Защита от двойного крафта — тоже общая: CRAFTING из utils/crafting.py.
 
 # Перепланировка: первая установка расширения в дом бесплатна, далее платно.
 # Цена зависит от уровня жилья: Квартира (2 слота) — 300 НМ, далее +300 за уровень.
@@ -108,9 +107,6 @@ def replanning_cost(housing_type: str) -> int:
     except ValueError:
         return 0
     return max(0, (idx - 1)) * 300
-
-# Защита от двойного крафта
-CRAFTING: set = set()
 
 # Отрисованное сообщение жилья: user_id → (chat_id, message_id)
 _HMSG: dict = {}
@@ -492,16 +488,15 @@ async def housing_shower(cb: CallbackQuery):
         await cb.answer("🚿 Сегодня ты уже мылся — приходи завтра.", show_alert=True)
         return
     lvl = slot.get("expansion_level", 1)
-    ap_gain = SHOWER_AP_BY_LEVEL.get(lvl, 25)
-    sober = SHOWER_SOBER_MINUTES.get(lvl, 60)
-    await add_ap(uid, ap_gain, reason="душевая")
-    await mark_shower_used(uid)
-    changes = await reduce_state_minutes(
-        uid, DRUNK_STATES, sober, reason="душевая: протрезвел")
-    log_note = f"+{ap_gain} ОД"
-    if changes:
-        log_note += f", опьянение −{sober} мин."
-    await log_activity(uid, "shower", log_note)
+    outcome = await use_shower(
+        uid, lvl, ap_by_level=SHOWER_AP_BY_LEVEL,
+        sober_by_level=SHOWER_SOBER_MINUTES, reason="душевая")
+    if not outcome:
+        await cb.answer("🚿 Сегодня ты уже мылся — приходи завтра.", show_alert=True)
+        return
+    ap_gain = outcome["ap_gain"]
+    sober = outcome["sober"]
+    changes = outcome["changes"]
     alert = f"🚿 Освежился: +{ap_gain} ОД!"
     if changes:
         titles = ", ".join(f"«{c['title']}»" for c in changes)
@@ -625,155 +620,60 @@ async def housing_recipe(cb: CallbackQuery):
 @router.callback_query(F.data.startswith("housing:craft:"))
 async def housing_craft(cb: CallbackQuery):
     uid = cb.from_user.id
-    if uid in CRAFTING:
-        await cb.answer("⏳ Уже готовишься!", show_alert=True)
-        return
-
     _, _, idx_s, rid_s = cb.data.split(":")
     idx, rid = int(idx_s), int(rid_s)
-    r = await get_recipe(rid)
-    if not r:
-        await cb.answer("❌ Рецепт не найден.", show_alert=True)
-        return
-    if not await has_user_recipe(uid, rid):
-        await cb.answer("❌ Ты ещё не изучил этот рецепт.", show_alert=True)
-        return
 
-    # Скидка ОД за ачивку «Крафт» (craft_ap_pct) — процент от базовой стоимости.
-    craft_ap_bonus = await get_achievement_bonus(uid, "craft", "craft_ap_pct")
-    ap_cost = max(1, round(int(r["ap_cost"] or 0) * (100 - craft_ap_bonus) / 100))
-
-    # Проверяем слот и тип расширения
     slots = await get_housing_slots(uid)
-    slot = slots.get(idx)
-    if not slot or slot.get("expansion_type") != r["required_expansion"]:
-        await cb.answer("❌ Это расширение не подходит для рецепта.", show_alert=True)
-        return
-    # Меню рецептов фильтруется по уровню расширения, но само действие
-    # перепроверяет уровень: устаревшая кнопка не должна крафтить рецепт
-    # выше уровня кухни/верстака.
-    if int(slot.get("expansion_level") or 1) < int(r.get("required_level") or 1):
-        await cb.answer("❌ Рецепт выше уровня расширения.", show_alert=True)
+    slot = slots.get(idx) or {}
+    try:
+        ctx = await begin_craft(uid, rid, slot.get("expansion_type"),
+                                int(slot.get("expansion_level") or 1))
+    except CraftError as e:
+        await cb.answer(str(e), show_alert=True)
         return
 
-    ingredients = json.loads(r["ingredients"] or "[]")
-    inv_map = await get_ingredient_map(uid)
-    for ing_name, qty in ingredients:
-        if inv_map.get(ing_name, 0) < qty:
-            await cb.answer(f"❌ Нет «{ing_name}»!", show_alert=True)
-            return
-    user = await get_user(uid)
-    if not user or int(user.get("ap") or 0) < ap_cost:
-        await cb.answer("❌ Не хватает ОД!", show_alert=True)
-        return
-
-    # Списываем ингредиенты, затем ОД. Если ОД не хватило (гонка или острый
-    # дефицит) — возвращаем уже списанное сырьё, иначе крафт съел бы ресурсы
-    # «в никуда».
-    async def _refund(consumed):
-        for ing_name, qty in consumed:
-            it = await get_item_by_name(ing_name)
-            if it:
-                await add_inventory_item(uid, it["id"], qty)
-
-    consumed = []
-    for ing_name, qty in ingredients:
-        if not await consume_ingredient(uid, ing_name, qty):
-            await _refund(consumed)
-            await cb.answer(f"❌ Не удалось списать «{ing_name}»!", show_alert=True)
-            return
-        consumed.append((ing_name, qty))
-
-    if not await remove_ap(uid, ap_cost, reason="крафт"):
-        await _refund(consumed)
-        await cb.answer("❌ Не хватает ОД!", show_alert=True)
-        return
-
-    CRAFTING.add(uid)
+    r = ctx["recipe"]
+    ap_cost = ctx["ap_cost"]
     try:
         await cb.answer("🏭 Начал готовить!")
-        wait = r["production_time"]
         h = await get_player_housing(uid)
-        photo = _housing_photo(h["housing_type"])
-
-        # Показать прогресс
-        progress_lines = [
-            f"🏭 *Готовлю «{r['name']}»…*\n",
-            "⏳ ·",
-        ]
-        kb_wait = InlineKeyboardMarkup(inline_keyboard=[
-            [_inv_row("⏳ Приготовление…", "housing:noop")]])
-        if photo and os.path.isfile(photo):
-            await cb.bot.send_photo(cb.message.chat.id, FSInputFile(photo),
-                                    caption="\n".join(progress_lines),
-                                    reply_markup=kb_wait)
-        else:
-            await cb.bot.send_message(cb.message.chat.id,
-                                      "\n".join(progress_lines),
-                                      reply_markup=kb_wait)
-
-        # Анимация шагами
-        dots = ["⏳ ·", "⏳ ··", "⏳ ···"]
-        for d in dots:
-            await asyncio.sleep(wait / 3)
-
-        await asyncio.sleep(wait % 3)
-
-        result_name = r["result_item_name"]
-        result_qty = r["result_quantity"]
-        result_item = await get_item_by_name(result_name)
-        if not result_item:
-            await cb.bot.send_message(cb.message.chat.id, f"❌ Предмет «{result_name}» не найден.")
+        await animate_craft(cb.bot, cb.message.chat.id, r,
+                            photo=_housing_photo(h["housing_type"]),
+                            noop_data="housing:noop")
+        try:
+            outcome = await finish_craft(uid, ctx)
+        except CraftError as e:
+            await cb.bot.send_message(cb.message.chat.id, str(e))
             return
+        # Результат уже выдан — при сбое отправки сообщения сырьё не возвращаем.
+        ctx["consumed"] = []
 
-        # Жареная рыба, жареные грибные блюда и выпечка — срок годности 6 дней
-        expires_at = None
-        if result_name.startswith(FOOD_EXPIRY_PREFIXES):
-            expires_at = str(int(time.time()) + FOOD_EXPIRY_SEC)
-
-        await add_inventory_item(uid, result_item["id"], result_qty, expires_at=expires_at)
-
-        # Достижения: готовка (кухня) и крафт (верстак)
-        if r["required_expansion"] == "kitchen":
-            await bump_achievement(uid, "cooking", result_qty)
-        else:
-            await bump_achievement(uid, "craft", result_qty)
-
-        lines = [f"✅ *{result_name}* готово!",
-                 f"Количество: ×{result_qty}"]
-        if expires_at:
+        lines = [f"✅ *{outcome['name']}* готово!",
+                 f"Количество: ×{outcome['qty']}"]
+        if outcome["expires_at"]:
             lines.append("⏳ Срок годности: 6 дней")
         lines.append("\nДобавлено в инвентарь.")
 
-        # Проверяем, можно ли готовить ещё
-        inv_map2 = await get_ingredient_map(uid)
-        can_repeat = True
-        for ing_name, qty in ingredients:
-            if inv_map2.get(ing_name, 0) < qty:
-                can_repeat = False
-                break
-        if can_repeat:
-            user = await get_user(uid)
-            if user and user['ap'] < ap_cost:
-                can_repeat = False
-        if can_repeat:
-            remaining = []
-            for ing_name, qty in ingredients:
-                have = inv_map2.get(ing_name, 0)
-                remaining.append(f"• {ing_name}: {have}/{qty}")
+        if outcome["can_repeat"]:
+            inv_map2 = await get_ingredient_map(uid)
             lines.append("\n🔄 *Можно приготовить ещё:*")
-            lines.extend(remaining)
+            for ing_name, qty in ctx["ingredients"]:
+                have = inv_map2.get(ing_name, 0)
+                lines.append(f"• {ing_name}: {have}/{qty}")
 
         rows = []
-        if can_repeat:
-            rows.append([_inv_row(f"🔄 Жарить ещё ({ap_cost} ОД)", f"housing:craft:{idx}:{rid}")])
+        if outcome["can_repeat"]:
+            rows.append([_inv_row(f"🔄 Жарить ещё ({ap_cost} ОД)",
+                                  f"housing:craft:{idx}:{rid}")])
         rows.append([_inv_row("📋 К рецептам", f"housing:room:{idx}")])
         rows.append([_inv_row("🏠 К жилью", "housing:menu")])
         kb = InlineKeyboardMarkup(inline_keyboard=rows)
         await cb.bot.send_message(cb.message.chat.id, "\n".join(lines), reply_markup=kb)
-
+    except Exception:
+        await cancel_craft(uid, ctx)
+        raise
     finally:
-        CRAFTING.discard(uid)
+        end_craft(uid)
 
 
 @router.callback_query(F.data == "housing:noop")

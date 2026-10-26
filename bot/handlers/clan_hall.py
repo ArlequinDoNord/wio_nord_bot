@@ -28,6 +28,7 @@ from aiogram.types import (
 import config
 from database.db import (
     can_manage_clan_hall,
+    can_use_shower,
     cancel_clan_building,
     choose_clan_building,
     choose_clan_upgrade,
@@ -41,15 +42,20 @@ from database.db import (
     get_clan_building,
     get_clan_construction_photo,
     get_clan_contributions,
+    get_clan_expansion,
     get_clan_expansions,
     get_clan_members,
     get_clan_project_progress,
     get_clan_storage,
     get_clan_storage_qty,
+    get_ingredient_map,
     get_inventory,
     get_inventory_item,
     get_item,
+    get_learned_recipes,
+    get_recipe,
     get_user,
+    has_user_recipe,
     install_clan_expansion,
     is_clan_member,
     next_clan_building_type,
@@ -58,6 +64,17 @@ from database.db import (
     set_clan_construction_photo,
     start_clan_building_project,
     upgrade_clan_expansion,
+)
+from utils.crafting import (
+    CraftError,
+    animate_craft,
+    begin_craft,
+    cancel_craft,
+    end_craft,
+    finish_craft,
+    parse_ingredients,
+    recipe_ap_cost,
+    use_shower,
 )
 from utils.permissions import has_permission
 
@@ -355,6 +372,10 @@ def build_hall_inside_text(clan, building_row, expansions=None) -> str:
         else:
             lines.append(f"  {idx}. ▫️ <i>Пустой слот</i>")
     status = building_row["status"] if "status" in building_row.keys() else None
+    usable = [e for e in (expansions or [])
+              if e["expansion_type"] in ("kitchen", "workbench", "shower")]
+    if usable:
+        lines.append("\n🛠 Кухня, стол и душевые доступны всем членам клана — крафт личный.")
     if status == "upgrading":
         tcfg = _building_cfg(building_row["target_type"])
         tname = tcfg.get("name") or building_row["target_type"] or "новый уровень"
@@ -365,7 +386,8 @@ def build_hall_inside_text(clan, building_row, expansions=None) -> str:
         )
         lines.append(
             "Пока идут работы, доступны слоты и лимиты текущего уровня; "
-            "ставить и улучшать расширения нельзя."
+            "ставить и улучшать расширения нельзя, а пользоваться уже "
+            "установленными — можно."
         )
     lines.append("\n📦 Клановый склад и взносы доступны всем членам клана.")
     return "\n".join(lines)
@@ -434,6 +456,58 @@ def build_expansion_choose_text(clan, building_row, slot_index, available) -> st
     lines.append("Установка бесплатна.")
     return "\n".join(lines)
 
+
+def build_clan_room_text(clan, building_row, expansion, learned, level: int) -> str:
+    """Экран кухни/крафтового стола внутри клан-холла (личные рецепты)."""
+    et = expansion["expansion_type"]
+    icon = clan_expansion_icon(et)
+    name = clan_expansion_name(et)
+    cfg = _building_cfg(building_row["building_type"])
+    bname = cfg.get("name") or building_row["building_type"] or "Здание клана"
+
+    available = [r for r in learned if int(r["required_level"] or 1) <= level]
+    locked = [r for r in learned if int(r["required_level"] or 1) > level]
+    lines = [
+        f"{icon} <b>{_esc(name)}</b> (ур. {level}) — «{_esc(clan['name'])}»",
+        f"Здание: <b>{_esc(bname)}</b>",
+        "",
+        "Крафт личный: ингредиенты и ОД списываются у тебя, результат — в твой инвентарь.",
+        "Уровень кланового расширения задаёт, какие рецепты доступны.",
+        "",
+    ]
+    if not learned:
+        lines.append("Нет выученных рецептов.")
+        lines.append("Купи «📜 Рецепты» в Магазине 🏪.")
+    else:
+        if available:
+            lines.append("Доступные рецепты:")
+            for r in available:
+                lines.append(f"  • {_esc(r['name'])}")
+        else:
+            lines.append("Рецептов для этого уровня нет.")
+        if locked:
+            lines.append("")
+            lines.append(f"🔒 Выучено, но нужно расширение выше (твоё — {level} ур.):")
+            for r in locked:
+                lines.append(f"  • {_esc(r['name'])} — нужен ур. {int(r['required_level'] or 1)}")
+    return "\n".join(lines)
+
+
+def build_clan_shower_text(clan, expansion, level: int, can_use: bool) -> str:
+    """Экран клановых душевых: +ОД и отрезвление по уровню."""
+    ap_gain = int(getattr(config, "CLAN_SHOWER_AP_BY_LEVEL", {}).get(level, 25))
+    sober = int(getattr(config, "CLAN_SHOWER_SOBER_MINUTES", {}).get(level, 60))
+    lines = [
+        f"🚿 <b>Душевые</b> (ур. {level}) — «{_esc(clan['name'])}»",
+        "",
+    ]
+    if can_use:
+        lines.append(f"Раз в игровые сутки можно освежиться: <b>+{ap_gain} ОД</b> "
+                     f"и −{sober} мин к состояниям «пьян» и «очень пьян».")
+        lines.append("Кулдаун личный и общий с душевой в жилье.")
+    else:
+        lines.append("✅ Сегодня ты уже мылся — приходи после сброса суток.")
+    return "\n".join(lines)
 
 
 # ── Отрисовка и проверки доступа ──────────────────────────────────────────────
@@ -713,6 +787,72 @@ async def _resolve_hall_for_expansions(cb: CallbackQuery, clan_id: int, clan):
     return building
 
 
+async def _load_usable(cb: CallbackQuery, clan_id: int, slot_index: int):
+    """Членство + готовое/улучшающееся здание + расширение в слоте.
+
+    Возвращает (clan, building, expansion) или (None, None, None) с alert.
+    Использовать расширения можно и во время `upgrading` — работы блокируют
+    только установку/улучшение, но не саму механику.
+    """
+    clan = await _member_clan(cb, clan_id)
+    if not clan:
+        return None, None, None
+    building = await _resolve_hall_for_expansions(cb, clan_id, clan)
+    if not building or building["status"] not in ("built", "upgrading"):
+        await cb.answer("❌ Здание клана ещё не построено.", show_alert=True)
+        return None, None, None
+    exp = await get_clan_expansion(clan_id, slot_index)
+    if not exp:
+        await cb.answer("❌ В этом слоте нет расширения.", show_alert=True)
+        return None, None, None
+    return clan, building, exp
+
+
+async def _render_clan_use(cb: CallbackQuery, clan, building, exp):
+    """Экран использования расширения: рецепты кухни/стола или душевые."""
+    clan_id = int(clan["id"])
+    slot_index = int(exp["slot_index"])
+    level = int(exp["expansion_level"] or 1)
+    et = exp["expansion_type"]
+    photo = await resolve_clan_hall_photo(building)
+
+    if et in ("kitchen", "workbench"):
+        learned = await get_learned_recipes(cb.from_user.id, et)
+        text = build_clan_room_text(clan, building, exp, learned, level)
+        rows = []
+        for r in learned:
+            if int(r["required_level"] or 1) <= level:
+                rows.append([InlineKeyboardButton(
+                    text=f"📋 {r['name']}",
+                    callback_data=f"clanh:recipe:{clan_id}:{slot_index}:{r['id']}")])
+        rows.append([InlineKeyboardButton(
+            text="🔙 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
+        return await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
+
+    if et == "shower":
+        return await _render_clan_shower(cb, clan, building, exp)
+
+    await cb.answer(f"❌ {clan_expansion_name(et)} пока не работает.", show_alert=True)
+
+
+async def _render_clan_shower(cb: CallbackQuery, clan, building, exp):
+    clan_id = int(clan["id"])
+    slot_index = int(exp["slot_index"])
+    level = int(exp["expansion_level"] or 1)
+    can_use = await can_use_shower(cb.from_user.id)
+    text = build_clan_shower_text(clan, exp, level, can_use)
+    rows = []
+    if can_use:
+        ap_gain = int(getattr(config, "CLAN_SHOWER_AP_BY_LEVEL", {}).get(level, 25))
+        rows.append([InlineKeyboardButton(
+            text=f"🚿 Принять душ (+{ap_gain} ОД)",
+            callback_data=f"clanh:shower:{clan_id}:{slot_index}")])
+    rows.append([InlineKeyboardButton(
+        text="🔙 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
+    photo = await resolve_clan_hall_photo(building)
+    await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
+
+
 @router.callback_query(F.data.startswith("clanh:expmanage:"))
 async def clan_hall_expmanage_cb(cb: CallbackQuery):
     clan_id = int(cb.data.split(":")[2])
@@ -769,6 +909,195 @@ async def clan_hall_expup_cb(cb: CallbackQuery):
     if not building:
         return
     await _render_expansions(cb, clan, building)
+
+
+@router.callback_query(F.data.startswith("clanh:use:"))
+async def clan_hall_use_cb(cb: CallbackQuery):
+    """Использование установленного расширения (кухня/стол/душевые)."""
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    clan, building, exp = await _load_usable(cb, clan_id, slot_index)
+    if not clan:
+        return
+    if exp["expansion_type"] not in ("kitchen", "workbench", "shower"):
+        await cb.answer("❌ Это расширение пока не работает.", show_alert=True)
+        return
+    await cb.answer()
+    await _render_clan_use(cb, clan, building, exp)
+
+
+@router.callback_query(F.data.startswith("clanh:recipe:"))
+async def clan_hall_recipe_cb(cb: CallbackQuery):
+    """Карточка личного рецепта в клановой кухне/крафтовом столе."""
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    recipe_id = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0
+    clan, building, exp = await _load_usable(cb, clan_id, slot_index)
+    if not clan:
+        return
+    et = exp["expansion_type"]
+    level = int(exp["expansion_level"] or 1)
+    if et not in ("kitchen", "workbench"):
+        await cb.answer("❌ Здесь нельзя готовить.", show_alert=True)
+        return
+    recipe = await get_recipe(recipe_id)
+    if not recipe:
+        await cb.answer("❌ Рецепт не найден.", show_alert=True)
+        return
+    if not await has_user_recipe(cb.from_user.id, recipe_id):
+        await cb.answer("❌ Ты ещё не изучил этот рецепт.", show_alert=True)
+        return
+    if recipe["required_expansion"] != et:
+        await cb.answer("❌ Это расширение не подходит для рецепта.", show_alert=True)
+        return
+    if int(recipe["required_level"] or 1) > level:
+        await cb.answer("❌ Рецепт выше уровня расширения.", show_alert=True)
+        return
+
+    ingredients = parse_ingredients(recipe)
+    inv_map = await get_ingredient_map(cb.from_user.id)
+    ap_cost = await recipe_ap_cost(cb.from_user.id, recipe)
+    time_sec = int(recipe["production_time"] or 0)
+    lines = [
+        f"📋 <b>{_esc(recipe['name'])}</b>",
+        f"Клан «{_esc(clan['name'])}» • {clan_expansion_name(et)} ур. {level}",
+        f"{_esc(recipe['description'] or '')}",
+        "",
+        "Ингредиенты:",
+    ]
+    can_craft = True
+    for ing_name, qty in ingredients:
+        have = inv_map.get(ing_name, 0)
+        if have < qty:
+            can_craft = False
+        mark = "✅" if have >= qty else "❌"
+        lines.append(f"  {mark} {_esc(ing_name)}: {have}/{qty}")
+    lines.append("")
+    lines.append(f"ОД: <b>{ap_cost}</b> • Время: ~{time_sec} сек")
+    lines.append("Крафт личный: ингредиенты и ОД — твои, результат — тебе.")
+
+    rows = []
+    if can_craft:
+        rows.append([InlineKeyboardButton(
+            text=f"🏭 Готовить ({time_sec} сек)",
+            callback_data=f"clanh:craft:{clan_id}:{slot_index}:{recipe_id}")])
+    else:
+        lines.append("\n⚠️ Не хватает ингредиентов!")
+    rows.append([InlineKeyboardButton(
+        text="🔙 К рецептам", callback_data=f"clanh:use:{clan_id}:{slot_index}")])
+    rows.append([InlineKeyboardButton(
+        text="🚪 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
+
+    await cb.answer()
+    photo = await resolve_clan_hall_photo(building)
+    await _paint(cb, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
+
+
+@router.callback_query(F.data.startswith("clanh:craft:"))
+async def clan_hall_craft_cb(cb: CallbackQuery):
+    """Личный крафт в клан-холле: общий лок CRAFTING, личные ОД/сырьё/результат."""
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    recipe_id = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0
+    clan, building, exp = await _load_usable(cb, clan_id, slot_index)
+    if not clan:
+        return
+    et = exp["expansion_type"]
+    if et not in ("kitchen", "workbench"):
+        await cb.answer("❌ Здесь нельзя готовить.", show_alert=True)
+        return
+
+    uid = cb.from_user.id
+    try:
+        ctx = await begin_craft(uid, recipe_id, et, int(exp["expansion_level"] or 1))
+    except CraftError as e:
+        await cb.answer(str(e), show_alert=True)
+        return
+
+    recipe = ctx["recipe"]
+    ap_cost = ctx["ap_cost"]
+    try:
+        await cb.answer("🏭 Начал готовить!")
+        photo = await resolve_clan_hall_photo(building)
+        await animate_craft(cb.bot, cb.message.chat.id, recipe,
+                            photo=photo, noop_data="clanh:noop")
+        try:
+            outcome = await finish_craft(uid, ctx)
+        except CraftError as e:
+            await cb.bot.send_message(cb.message.chat.id, str(e))
+            return
+        # Результат уже выдан — при сбое отправки сообщения сырьё не возвращаем.
+        ctx["consumed"] = []
+
+        lines = [f"✅ <b>{_esc(outcome['name'])}</b> готово!",
+                 f"Количество: ×{outcome['qty']}"]
+        if outcome["expires_at"]:
+            lines.append("⏳ Срок годности: 6 дней")
+        lines.append("\nДобавлено в твой инвентарь.")
+
+        if outcome["can_repeat"]:
+            inv_map = await get_ingredient_map(uid)
+            lines.append("\n🔄 <b>Можно приготовить ещё:</b>")
+            for ing_name, qty in ctx["ingredients"]:
+                have = inv_map.get(ing_name, 0)
+                lines.append(f"• {_esc(ing_name)}: {have}/{qty}")
+
+        rows = []
+        if outcome["can_repeat"]:
+            rows.append([InlineKeyboardButton(
+                text=f"🔄 Готовить ещё ({ap_cost} ОД)",
+                callback_data=f"clanh:craft:{clan_id}:{slot_index}:{recipe_id}")])
+        rows.append([InlineKeyboardButton(
+            text="📋 К рецептам", callback_data=f"clanh:use:{clan_id}:{slot_index}")])
+        rows.append([InlineKeyboardButton(
+            text="🚪 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
+        await cb.bot.send_message(cb.message.chat.id, "\n".join(lines),
+                                  parse_mode="HTML",
+                                  reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+    except Exception:
+        await cancel_craft(uid, ctx)
+        raise
+    finally:
+        end_craft(uid)
+
+
+@router.callback_query(F.data.startswith("clanh:shower:"))
+async def clan_hall_shower_cb(cb: CallbackQuery):
+    """Клановые душевые: +ОД раз в сутки, кулдаун общий с жильём."""
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    clan, building, exp = await _load_usable(cb, clan_id, slot_index)
+    if not clan:
+        return
+    if exp["expansion_type"] != "shower":
+        await cb.answer("❌ В этом слоте нет душевых.", show_alert=True)
+        return
+
+    level = int(exp["expansion_level"] or 1)
+    outcome = await use_shower(
+        cb.from_user.id, level,
+        ap_by_level=getattr(config, "CLAN_SHOWER_AP_BY_LEVEL", {1: 25}),
+        sober_by_level=getattr(config, "CLAN_SHOWER_SOBER_MINUTES", {1: 60}),
+        reason="клановая душевая")
+    if not outcome:
+        await cb.answer("🚿 Сегодня ты уже мылся — приходи завтра.", show_alert=True)
+        return
+
+    ap_gain = outcome["ap_gain"]
+    sober = outcome["sober"]
+    changes = outcome["changes"]
+    alert = f"🚿 Освежился: +{ap_gain} ОД!"
+    if changes:
+        titles = ", ".join(f"«{c['title']}»" for c in changes)
+        alert += f"\n🍺 {titles}: −{sober} мин."
+        if all(c["removed"] for c in changes):
+            alert += "\n✅ Ты совсем трезв."
+    await cb.answer(alert, show_alert=True)
+    await _render_clan_shower(cb, clan, building, exp)
 
 
 @router.callback_query(F.data.startswith("clanh:hall:"))
@@ -922,6 +1251,19 @@ async def clan_hall_inside_cb(cb: CallbackQuery):
     photo = await resolve_clan_hall_photo(building)
     expansions = await get_clan_expansions(clan_id)
     rows = []
+    for exp in expansions:
+        et = exp["expansion_type"]
+        if et not in ("kitchen", "workbench", "shower"):
+            continue
+        slot_index = int(exp["slot_index"])
+        level = int(exp["expansion_level"] or 1)
+        action = {"kitchen": "готовить", "workbench": "крафтить",
+                  "shower": "помыться"}.get(et, "открыть")
+        rows.append([InlineKeyboardButton(
+            text=f"{clan_expansion_icon(et)} {clan_expansion_name(et)} "
+                 f"(ур. {level}) — {action}",
+            callback_data=f"clanh:use:{clan_id}:{slot_index}",
+        )])
     if (building["status"] == "built"
             and await can_manage_clan_hall(clan_id, cb.from_user.id)):
         rows.append([InlineKeyboardButton(

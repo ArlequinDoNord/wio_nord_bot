@@ -88,6 +88,7 @@ async def run():
         set_player_housing, set_housing_slot, add_user, learn_recipe,
     )
     from bot.handlers import housing as hh
+    import utils.crafting as crafting
 
     await init_db()
     await seed_default_items()
@@ -166,17 +167,17 @@ async def run():
     await add_inventory_item(uid, items_needed["Бутылка чистой воды"]["id"], 1)
     await add_inventory_item(uid, items_needed["Осколок кристалла"]["id"], 1)
 
-    real_remove_ap = hh.remove_ap
+    real_remove_ap = crafting.remove_ap
 
     async def _ap_deny(*a, **k):
         return False
 
-    hh.remove_ap = _ap_deny
+    crafting.remove_ap = _ap_deny
     try:
         cb_refund = FakeCallback(uid, data=f"housing:craft:0:{tincture['id']}")
         await hh.housing_craft(cb_refund)
     finally:
-        hh.remove_ap = real_remove_ap
+        crafting.remove_ap = real_remove_ap
     check("нехватка ОД: алерт «Не хватает ОД!»", any(
         t and "Не хватает ОД" in t for t in cb_refund.alerts))
     imap_refund = await get_ingredient_map(uid)
@@ -190,18 +191,18 @@ async def run():
     # ── 3. Регрессия: счастливый путь (анимация выключена) ──
     # Сырьё уже возвращено предыдущим тестом отката ОД (вода/осколок по 1 шт.).
 
-    real_sleep = hh.asyncio.sleep
+    real_sleep = crafting.asyncio.sleep
 
     async def _nosleep(*a, **k):
         return None
 
-    hh.asyncio.sleep = _nosleep
+    crafting.asyncio.sleep = _nosleep
     try:
         bot_ok = FakeSender()
         cb_ok = FakeCallback(uid, data=f"housing:craft:0:{tincture['id']}", bot=bot_ok)
         await hh.housing_craft(cb_ok)
     finally:
-        hh.asyncio.sleep = real_sleep
+        crafting.asyncio.sleep = real_sleep
     ok_txt, _ = last_bot_send(bot_ok)
     check("счастливый путь: алерт «Начал готовить!»", any(
         t and "Начал готовить" in t for t in cb_ok.alerts))

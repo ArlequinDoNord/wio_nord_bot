@@ -42,6 +42,7 @@ utils/
     chat_guard.py       ChatGuard middleware (фильтр чатов)
     combat.py           общая боевая логика
     combat_model.py     модель боя (урон/защита/уклонение)
+    crafting.py         общее ядро крафта и душевой (жильё + клан-холл)
     wings.py            авиакрылья
     formatters.py       форматирование карточек/сообщений
 assets/                 изображения (сцены по времени суток, дропы)
@@ -71,7 +72,7 @@ smoke_NNN.py            автономные тесты (см. SMOKE_INDEX.md)
 ## Слои и зависимости
 
 ```
-handlers/  ->  utils/ (helpers, permissions, notify, states, combat)
+handlers/  ->  utils/ (helpers, permissions, notify, states, combat, crafting)
            ->  database/db.py  (единственный слой доступа к SQLite)
 keyboards/ <-  handlers (клавиатуры только собираются, логики нет)
 config.py  <-  все слои (константы)
