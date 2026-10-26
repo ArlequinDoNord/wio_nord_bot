@@ -658,6 +658,19 @@ def _reservoir_result_markup(step: int = 0):
     ])
 
 
+def _reservoir_wait_markup():
+    """Кнопка на экране ожидания улова в водохранилище.
+
+    Окно «Поплавок замер неподвижно. Ждёшь...» раньше шло без клавиатуры: если
+    результат не приходил (процесс перезапустился — деплой, OOM-kill), в чате
+    оставалось сообщение без кнопок, и пилот «зависал» в водохранилище.
+    """
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Проверить улов", callback_data="resv:recover")],
+    ])
+
+
 def dungeon_start_keyboard():
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -2220,6 +2233,7 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
             user_id, callback.message,
             f"🎣 Ты забрасываешь удочку{bait_part} в тёмную воду подземного водохранилища...\n"
             "Поплавок замер неподвижно. Ждёшь...",
+            _reservoir_wait_markup(),
             photo=cast_photo)
 
         await asyncio.sleep(random.uniform(4, 7))
@@ -2228,9 +2242,22 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
         # результат не отдаём и улов не пишем.
         run = await get_active_run(user_id)
         if not run or await state.get_state() != DungeonFSM.in_reservoir.state:
+            # Причину фиксируем в activity_log: раньше эта ветка молчала, и
+            # «зависшее» окно заброса нельзя было разобрать по логам.
+            try:
+                await log_activity(
+                    user_id, "resv_cast_lost",
+                    "Заброс в водохранилище без результата: "
+                    f"забег={'нет' if not run else 'есть'}, "
+                    f"состояние={await state.get_state()}")
+            except Exception:
+                pass
             try:
                 await _resv_answer(user_id, callback.message,
-                                   "🌊 Вода в водохранилище снова гладкая…", None)
+                                   "🌊 Вода в водохранилище снова гладкая…\n\n"
+                                   "Заброс прервался (подземелье закрылось или бот "
+                                   "перезапускался). Вернись в водохранилище и попробуй снова.",
+                                   _reservoir_wait_markup())
             except Exception:
                 pass
             return
@@ -2344,6 +2371,37 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                            photo=_reservoir_photo())
     finally:
         FISHING_CASTING.discard(user_id)
+
+
+@router.callback_query(F.data == "resv:recover")
+async def resv_recover(callback: CallbackQuery, state: FSMContext):
+    """Восстановление окна водохранилища, если результат заброса потерялся.
+
+    Единственная кнопка на экране «Ждёшь...»: перерисовывает меню водохранилища
+    заново. ОД и наживку не тратит. Нужна после рестарта процесса (деплой,
+    OOM-kill), когда ждать уже нечего, а окно осталось без кнопок.
+    """
+    user_id = callback.from_user.id
+    if user_id in FISHING_CASTING:
+        await callback.answer("🎣 Результат ещё в пути — подожди пару секунд.",
+                              show_alert=True)
+        return
+    await callback.answer()
+    run = await get_active_run(user_id)
+    if not run:
+        await state.clear()
+        await callback.message.answer(
+            "❌ Активное подземелье не найдено — забег закрыт.\n"
+            "Вернись к списку контрактов и начни новый."
+        )
+        return
+    if await state.get_state() == DungeonFSM.in_reservoir.state:
+        await show_reservoir(callback.message, user_id, state)
+        return
+    await callback.message.answer(
+        "❌ Ты уже не в водохранилище.\n"
+        "Продолжи путь кнопкой «🏃 Продолжить путь» в окне подземелья."
+    )
 
 
 @router.callback_query(F.data.regexp(r"^resv:deeper:\d+$"))

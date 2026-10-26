@@ -58,7 +58,7 @@
 | `shop.py` | Магазин: каталог по категориям, покупка за Нордмарки и AP. | `router` | 3 | 14 | `buy5_nord:`, `buy_housing:`, `buy_housing_cancel:`, `buy_nord:`, `fishbuy:`, `fishoffer:`, `itembuy:`, `itemoffer:`, `offercancel:`, `shop:`, `shopcat:`, `shopitem:` | `SpecialDeptBuy` |
 | `inventory.py` | Инвентарь: просмотр, использование расходников, продажа и передача предметов. | `router` | 4 | 28 | `eqequip:`, `eqlock:`, `eqslot:`, `equnequip:`, `fishcatch:`, `fishgo:`, `fishmarket:`, `fishprice:`, `fishsell:`, `fishuse:`, `inv_equip:`, `inv_sell:`, `inv_sell_keep1:`, `inv_sell_ok:`, `inv_sellall:`, `inv_sellmore:`, `inv_slot:`, `inv_transfer:`, `inv_unequip:`, `inv_unslot:`, `inv_use:`, `inventory:`, `invitem:`, `itemgo:`, `itemmarket:`, `itemprice:` | `TransferItem` |
 | `reports.py` | — | `router` | 9 | 5 | `\d+$:`, `\d{1,7}$:`, `report:` | `ReportSubmit` |
-| `dungeon.py` | — | `router` | 0 | 24 | `city:`, `contract:`, `contracts:`, `dungeon:`, `mollusk:`, `resv:` | `DungeonFSM` |
+| `dungeon.py` | — | `router` | 0 | 25 | `city:`, `contract:`, `contracts:`, `dungeon:`, `mollusk:`, `resv:` | `DungeonFSM` |
 | `pilots.py` | Ратуша: общественный центр города — голосование, пилоты, партии, речь представителя. | `router` | 0 | 5 | `city:`, `rathaus:`, `rathaus_prof:` | — |
 | `polls.py` | Голосование: показ активных опросов, участие в них и создание новых (Хранитель/Представитель). | `router` | 2 | 8 | `city:`, `vote:` | `PollCreate` |
 | `poll_archive.py` | Архив опросов Ратуши — раздел библиотеки «Опросы». | `router` | 0 | 3 | `pollarch:` | — |
@@ -66,7 +66,7 @@
 | `library.py` | Библиотека Нордхайма: разделы, чтение книг, управление книгами, архив опросов. | `router` | 5 | 11 | `city:`, `lib:`, `libadmin:`, `libadmin_del:`, `libadmin_sec:`, `libbook:`, `libdl:`, `libsec:` | `AdminAddBook` |
 | `locations.py` | Универсальные локации города: превью (всем) + вход (по доступу). | `router` | 0 | 5 | `city:`, `location:` | — |
 | `park.py` | Городской парк Аркхольма: озеро (статика), фонтан и аллея статуй. | `router` | 7 | 14 | `park:` | `AdminStatue`, `AdminStatueEdit` |
-| `fishing.py` | Рыбалка на Озере в парке. | `router` | 0 | 4 | `fish:` | — |
+| `fishing.py` | Рыбалка на Озере в парке. | `router` | 0 | 5 | `fish:` | — |
 | `forest.py` | Лес на окраине: опушка и лесная поляна, сбор грибов и кабан. | `router` | 0 | 4 | `forest:` | — |
 | `mine.py` | Железная копи: ресурсная локация (v0.31.0). | `router` | 0 | 6 | `mine:` | — |
 | `logging_site.py` | Лесозаготовка: ресурсная локация в лесу (v0.37.0). | `router` | 0 | 9 | `logsite:` | — |
@@ -155,10 +155,10 @@
 ### `dungeon.py` — —
 
 - Роутеры: `router`
-- Хендлеры: message=0, callback_query=24
+- Хендлеры: message=0, callback_query=25
 - FSM: `DungeonFSM`
 - `F.data.startswith`: `contract:enter:\d+$`, `contract:enter:confirm:`, `contract:pick:`, `dungeon:attack:`, `dungeon:continue:`, `dungeon:escape:`, `dungeon:use_slot:`, `mollusk:flee:\d+$`, `mollusk:hit:\d+$`, `resv:bait:\d+$`, `resv:bait:set:\d+:[a-z]+$`, `resv:cast:\d+$`, `resv:deeper:\d+$`, `resv:enter:\d+$`, `resv:eq:\d+$`, `resv:eqclear:[a-z0-9_]+:\d+$`, `resv:eqset:[a-z0-9_]+:\d+:\d+$`, `resv:eqslot:[a-z0-9_]+:\d+$`, `resv:menu:\d+$`
-- `F.data ==`: `city:dungeon`, `contracts:list`, `dungeon:exit`, `dungeon:exit:cancel`, `dungeon:exit:confirm`
+- `F.data ==`: `city:dungeon`, `contracts:list`, `dungeon:exit`, `dungeon:exit:cancel`, `dungeon:exit:confirm`, `resv:recover`
 
 ### `pilots.py` — Ратуша: общественный центр города — голосование, пилоты, партии, речь представителя.
 
@@ -215,8 +215,9 @@
 ### `fishing.py` — Рыбалка на Озере в парке.
 
 - Роутеры: `router`
-- Хендлеры: message=0, callback_query=4
+- Хендлеры: message=0, callback_query=5
 - `F.data.startswith`: `fish:bait:\d+$`, `fish:bait:set:\d+:[a-z]+$`, `fish:cast:\d+$`, `fish:lake:\d+$`
+- `F.data ==`: `fish:recover`
 
 ### `forest.py` — Лес на окраине: опушка и лесная поляна, сбор грибов и кабан.
 

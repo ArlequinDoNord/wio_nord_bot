@@ -384,6 +384,19 @@ def _result_markup(token: str):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def _wait_markup():
+    """Кнопка на экране ожидания улова.
+
+    Само окно «Ты забросил удочку… ждёшь» раньше шло без клавиатуры: если
+    результат не приходил (процесс перезапустился — деплой, OOM-kill), в чате
+    оставалось сообщение без единой кнопки, и игрок выглядел «зависшим».
+    «Проверить» перерисовывает окно заново и денег/ОД не тратит.
+    """
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Проверить улов", callback_data="fish:recover")],
+    ])
+
+
 def _bait_markup(user_id: int, chosen: str, worms_qty: int, spider_qty: int, combined_qty: int = 0,
                  token: str = ""):
     def row(label: str, value: str):
@@ -480,6 +493,20 @@ async def fishing_lake_menu(callback: CallbackQuery):
 @router.callback_query(F.data.regexp(r"^fish:lake:\d+$"))
 async def fish_lake_cb(callback: CallbackQuery):
     if not await _fish_ok(callback):
+        return
+    await fishing_lake_menu(callback)
+
+
+@router.callback_query(F.data == "fish:recover")
+async def fish_recover_cb(callback: CallbackQuery):
+    """Восстановление окна озера, если результат заброса потерялся.
+
+    Токен не проверяем намеренно: окно могло остаться от прошлого процесса
+    (после рестарта FISH_TOKEN пуст), а игроку нужен рабочий экран.
+    """
+    if callback.from_user.id in FISHING_CASTING:
+        await callback.answer("🎣 Результат ещё в пути — подожди пару секунд.",
+                              show_alert=True)
         return
     await fishing_lake_menu(callback)
 
@@ -597,7 +624,7 @@ async def fish_cast(callback: CallbackQuery):
             f"🎣 Ты забросил удочку{bait_part}...\n"
             f"Результат через {delay} секунд. Наберись терпения!"
         )
-        await _paint(callback, text=cast_text, media_path=_lake_path(), kb=None)
+        await _paint(callback, text=cast_text, media_path=_lake_path(), kb=_wait_markup())
         await log_activity(user_id, "fishing",
                            f"Заброс: наживка={'—' if not bait_name else bait_name}, шанс {chance}%")
         await asyncio.sleep(delay)

@@ -20,9 +20,42 @@ os.environ["DATABASE_PATH"] = _TEST_DB
 sys.path.insert(0, os.path.dirname(__file__))
 
 
+class FakeBot:
+    def __init__(self):
+        self.calls = []
+        self._next = 1000
+
+    async def edit_message_media(self, *a, **kw):
+        self.calls.append(("media", a))
+        return SimpleNamespace(message_id=a[1] if len(a) > 1 else 0)
+
+    async def edit_message_caption(self, *a, **kw):
+        self.calls.append(("caption", a))
+        return SimpleNamespace(message_id=a[1] if len(a) > 1 else 0)
+
+    async def edit_message_text(self, *a, **kw):
+        self.calls.append(("text", a))
+        return SimpleNamespace(message_id=a[1] if len(a) > 1 else 0)
+
+    async def delete_message(self, *a, **kw):
+        self.calls.append(("delete", a))
+
+    async def send_photo(self, *a, **kw):
+        self._next += 1
+        return SimpleNamespace(message_id=self._next)
+
+    async def send_message(self, *a, **kw):
+        self._next += 1
+        return SimpleNamespace(message_id=self._next)
+
+
 class FakeMessage:
     def __init__(self):
         self.sent = []
+        self.chat = SimpleNamespace(id=1)
+        self.message_id = 1
+        self.photo = None
+        self.bot = FakeBot()
 
     async def answer(self, *a, **kw):
         self.sent.append(("answer", a, kw))
@@ -194,6 +227,33 @@ async def run():
           b_wm == fish.WORMS_NAME)
     b_no, _ = await fish._resolve_bait(uid2, "none")
     check("_resolve_bait('none') возвращает None", b_no is None)
+
+    # ── 4. «Проверить улов» на экране ожидания: окно без кнопок не остаётся ──
+    wait_cbs = [b.callback_data for row in fish._wait_markup().inline_keyboard
+                for b in row]
+    check("экран ожидания озера: кнопка fish:recover", wait_cbs == ["fish:recover"])
+    obs = fish.router.observers['callback_query']
+    handler_names = {getattr(h.callback, '__name__', None) for h in obs.handlers}
+    check("router: fish_recover_cb зарегистрирован", "fish_recover_cb" in handler_names)
+
+    # пока заброс реально идёт — только предупреждение
+    FISHING_CASTING.add(uid2)
+    cb_rec = FakeCallback(uid2, data="fish:recover")
+    await fish.fish_recover_cb(cb_rec)
+    check("fish:recover: алерт во время заброса",
+          any(a is not None for a in cb_rec.alerts))
+    FISHING_CASTING.discard(uid2)
+
+    # результат потерян (рестарт/OOM) — окно озера перерисовывается
+    fish.FISH_MSG[uid2] = (1, 1)
+    fish.FISH_TOKEN.pop(uid2, None)
+    cb_rec2 = FakeCallback(uid2, data="fish:recover")
+    await fish.fish_recover_cb(cb_rec2)
+    check("fish:recover: окно озера перерисовано",
+          bool(cb_rec2.message.bot.calls))
+    check("fish:recover: выдан новый токен окна",
+          bool(fish.FISH_TOKEN.get(uid2)))
+    fish.FISH_MSG.pop(uid2, None)
 
     await close_db()
     print(f"\nSmoke 059: {passed} passed, {failed} failed")

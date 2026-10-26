@@ -264,6 +264,43 @@ async def run():
     s2 = await dng.dungeon_new_step(st)
     check("dungeon_new_step инкрементит", s1 == 1 and s2 == 2)
 
+    # ── 12. «Проверить улов»: окно ожидания не остаётся без кнопок ──
+    wait_cbs = [b.callback_data for row in dng._reservoir_wait_markup().inline_keyboard
+                for b in row]
+    check("экран ожидания: кнопка resv:recover", wait_cbs == ["resv:recover"])
+    check("router: resv_recover зарегистрирован", "resv_recover" in cb_names())
+
+    # пока заброс реально идёт — только предупреждение, экран не трогаем
+    FISHING_CASTING.add(uid2)
+    st_rec = FakeState(state=dng.DungeonFSM.in_reservoir.state, data={'dungeon_step': 11})
+    cb_rec = FakeCallback(uid2, data="resv:recover")
+    await dng.resv_recover(cb_rec, st_rec)
+    check("resv_recover: алерт во время заброса",
+          any(a is not None for a in cb_rec.alerts))
+    check("resv_recover: экран не перерисован во время заброса",
+          not cb_rec.message.sent and not cb_rec.message.bot.calls)
+    FISHING_CASTING.discard(uid2)
+
+    # результат потерян (рестарт/OOM) — меню водохранилища возвращается
+    cb_rec2 = FakeCallback(uid2, data="resv:recover")
+    await dng.resv_recover(cb_rec2, st_rec)
+    check("resv_recover: меню водохранилища перерисовано",
+          bool(cb_rec2.message.bot.calls) or bool(cb_rec2.message.sent))
+    check("resv_recover: состояние не сброшено",
+          await st_rec.get_state() == dng.DungeonFSM.in_reservoir.state)
+
+    # забег закрыт — понятный отказ вместо мёртвого окна
+    uid3 = 999412
+    await add_user(uid3, "tester3", "Тест3", "")
+    st_rec3 = FakeState(state=dng.DungeonFSM.in_reservoir.state, data={'dungeon_step': 12})
+    cb_rec3 = FakeCallback(uid3, data="resv:recover")
+    await dng.resv_recover(cb_rec3, st_rec3)
+    check("resv_recover без забега: состояние сброшено",
+          await st_rec3.get_state() is None)
+    check("resv_recover без забега: сообщение «забег закрыт»",
+          any("забег закрыт" in str(m[1][0]) for m in cb_rec3.message.sent
+              if m[0] == "answer" and m[1]))
+
     await close_db()
     print(f"\nSmoke 058: {passed} passed, {failed} failed")
     sys.exit(1 if failed else 0)
