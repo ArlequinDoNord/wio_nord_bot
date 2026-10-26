@@ -101,7 +101,8 @@ async def report_submit_start(callback: CallbackQuery, state: FSMContext):
         return
     await state.set_state(ReportSubmit.waiting_photo)
     await callback.message.answer(
-        "📸 Прикрепи скриншот боя.\n"
+        "📸 Прикрепи скриншот карты братства, где видно твой текущий регион "
+        "с твоим общим кол-вом войск, твой ник и суточное накопление войск.\n"
         f"Отправь фото одним сообщением.\n\nОсталось отчётов на сегодня: {remaining}",
         reply_markup=cancel_keyboard()
     )
