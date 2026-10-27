@@ -220,6 +220,133 @@ async def run():
           (await get_user(uid))["ap"] == ap0 - int(tincture['ap_cost']))
     check("счастливый путь: CRAFTING свободен", uid not in hh.CRAFTING)
 
+    # ── 5. Переработка грибов на кухне без рецепта (1 ОД за гриб) ─────────
+    from database.db import ensure_forest_items
+    from utils.crafting import (
+        MUSHROOM_HEAL_POWDER_NAME, MUSHROOM_ESSENCE_NAME,
+        MUSHROOM_POISON_POWDER_NAME, MUSHROOM_POWDER_SPECS,
+        MUSHROOM_PROCESS_AP_COST, CraftError, process_mushrooms,
+    )
+    await ensure_forest_items()
+    hp_item = await get_item_by_name(MUSHROOM_HEAL_POWDER_NAME)
+    ess_item = await get_item_by_name(MUSHROOM_ESSENCE_NAME)
+    pp_item = await get_item_by_name(MUSHROOM_POISON_POWDER_NAME)
+    check("предмет «Грибной целебный порошок» создан (resource, скрыт из лавки)",
+          bool(hp_item) and hp_item["category"] == "resource"
+          and hp_item["is_available"] == 0 and hp_item["market_ok"] == 1)
+    check("предмет «Грибная эссенция» создан (resource, скрыт из лавки)",
+          bool(ess_item) and ess_item["category"] == "resource"
+          and ess_item["is_available"] == 0 and ess_item["market_ok"] == 1)
+    check("предмет «Ядовитый грибной порошок» создан (resource, скрыт из лавки)",
+          bool(pp_item) and pp_item["category"] == "resource"
+          and pp_item["is_available"] == 0 and pp_item["market_ok"] == 1)
+
+    check("MUSHROOM_PROCESS_AP_COST == 1", MUSHROOM_PROCESS_AP_COST == 1)
+    check("Гиропор: 3–4 порошка и 8% шанс эссенции",
+          MUSHROOM_POWDER_SPECS["Гиропор"]["min"] == 3
+          and MUSHROOM_POWDER_SPECS["Гиропор"]["max"] == 4
+          and MUSHROOM_POWDER_SPECS["Гиропор"]["essence_chance"] == 8)
+    check("Ежовик: 4–5 порошка и 17% шанс эссенции",
+          MUSHROOM_POWDER_SPECS["Ежовик гребенчатый"]["min"] == 4
+          and MUSHROOM_POWDER_SPECS["Ежовик гребенчатый"]["max"] == 5
+          and MUSHROOM_POWDER_SPECS["Ежовик гребенчатый"]["essence_chance"] == 17)
+    check("Мухомор и Бледная поганка дают ядовитый порошок",
+          MUSHROOM_POWDER_SPECS["Мухомор"]["powder"] == MUSHROOM_POISON_POWDER_NAME
+          and MUSHROOM_POWDER_SPECS["Бледная поганка"]["powder"] == MUSHROOM_POISON_POWDER_NAME)
+
+    # Кнопка переработки грибов на экране кухни
+    def _m_cbs(rm):
+        if not rm or not getattr(rm, "inline_keyboard", None):
+            return []
+        return [b.callback_data for row in rm.inline_keyboard for b in row]
+
+    cb_room = FakeCallback(uid, "housing:room:0")
+    await hh.housing_room(cb_room)
+    _, _, _, rm_room = cb_room.bot.sent[-1]
+    check("экран кухни: есть кнопка housing:mushrooms:0",
+          "housing:mushrooms:0" in _m_cbs(rm_room))
+
+    openok = await get_item_by_name("Опёнок")
+    ejovik = await get_item_by_name("Ежовик гребенчатый")
+    muhomor = await get_item_by_name("Мухомор")
+    await add_inventory_item(uid, openok["id"], 3)
+    await add_inventory_item(uid, ejovik["id"], 4)
+    await add_inventory_item(uid, muhomor["id"], 2)
+    conn = await hh.get_db() if hasattr(hh, "get_db") else await (__import__("database.db", fromlist=["get_db"]).get_db())
+    await conn.execute("UPDATE users SET ap = 2 WHERE user_id = ?", (uid,))
+    await conn.commit()
+
+    # Экран переработки показывает грибы и кнопки «1 шт.» и «Все»
+    cb_mush = FakeCallback(uid, "housing:mushrooms:0")
+    await hh.housing_kitchen_mushrooms(cb_mush)
+    _, _, txt_mush, rm_mush = cb_mush.bot.sent[-1]
+    mush_cbs = _m_cbs(rm_mush)
+    check("переработка: показаны Опёнок, Ежовик, Мухомор",
+          "Опёнок" in txt_mush and "Ежовик" in txt_mush and "Мухомор" in txt_mush)
+    check("переработка: кнопки 1 шт. и Все для Опёнка",
+          f"housing:mushproc:0:{openok['id']}:1" in mush_cbs
+          and f"housing:mushproc:0:{openok['id']}:all" in mush_cbs)
+
+    # Недостаточно ОД для «Все ×3» (нужно 3 ОД, а есть 2 ОД)
+    cb_all_fail = FakeCallback(uid, f"housing:mushproc:0:{openok['id']}:all")
+    await hh.housing_kitchen_mushproc(cb_all_fail)
+    check("переработка всех при нехватке ОД: алерт об ОД",
+          any("Не хватает ОД" in (a or "") for a in cb_all_fail.alerts))
+    inv_after_fail = await get_ingredient_map(uid)
+    check("переработка при нехватке ОД: грибы и ОД целы",
+          inv_after_fail.get("Опёнок", 0) == 3 and (await get_user(uid))["ap"] == 2)
+
+    # Переработка 1 шт. Опёнка (−1 ОД → 1–2 целебного порошка)
+    cb_one = FakeCallback(uid, f"housing:mushproc:0:{openok['id']}:1")
+    await hh.housing_kitchen_mushproc(cb_one)
+    inv_after_one = await get_ingredient_map(uid)
+    p_got = inv_after_one.get(MUSHROOM_HEAL_POWDER_NAME, 0)
+    check("переработка 1 Опёнка: осталось 2 гриба, ОД = 1, порошок 1–2",
+          inv_after_one.get("Опёнок", 0) == 2
+          and (await get_user(uid))["ap"] == 1
+          and 1 <= p_got <= 2)
+
+    # Переработка всех Ежовиков с детерминированным RNG (выпадает и эссенция)
+    await conn.execute("UPDATE users SET ap = 20 WHERE user_id = ?", (uid,))
+    await conn.commit()
+
+    class _FixedRng:
+        def randint(self, a, b):
+            return b
+
+        def random(self):
+            return 0.05  # 5% < 17% → эссенция выпадает на каждом грибе
+
+    out_ej = await process_mushrooms(uid, ejovik["id"], mode="all", rng=_FixedRng())
+    inv_after_ej = await get_ingredient_map(uid)
+    check("переработка всех 4 Ежовиков: 4×5=20 порошка и 4 эссенции",
+          out_ej["processed_count"] == 4
+          and out_ej["powder_qty"] == 20
+          and out_ej["essence_qty"] == 4
+          and inv_after_ej.get(MUSHROOM_ESSENCE_NAME, 0) == 4)
+
+    # Переработка всех Мухоморов → ядовитый порошок
+    cb_tox = FakeCallback(uid, f"housing:mushproc:0:{muhomor['id']}:all")
+    await hh.housing_kitchen_mushproc(cb_tox)
+    inv_after_tox = await get_ingredient_map(uid)
+    check("переработка 2 Мухоморов: 0 Мухоморов, 2–4 ядовитого порошка",
+          inv_after_tox.get("Мухомор", 0) == 0
+          and 2 <= inv_after_tox.get(MUSHROOM_POISON_POWDER_NAME, 0) <= 4)
+
+    # Продажа порошка скупщику: не появляется в магазине (is_available=0), но
+    # сохраняется на городском складе (city_storage)
+    from bot.handlers import inventory as inv_mod
+    from database.db import get_city_storage
+    cb_sell = FakeCallback(uid, f"inv_sell_ok:{hp_item['id']}:2")
+    await inv_mod.inv_sell_ok(cb_sell)
+    hp_fresh = await get_item_by_name(MUSHROOM_HEAL_POWDER_NAME)
+    cs_rows = await get_city_storage()
+    cs_hp = next((r for r in cs_rows if r["item_id"] == hp_item["id"]), None)
+    check("после продажи скупщику порошок скрыт из магазина (is_available=0)",
+          hp_fresh["is_available"] == 0 and hp_fresh["stock"] == -1)
+    check("после продажи скупщику порошок лёг на городской склад (city_storage)",
+          cs_hp is not None and cs_hp["qty"] >= 2)
+
     await close_db()
     print(f"\nSmoke 131: {passed} passed, {failed} failed")
     sys.exit(1 if failed else 0)

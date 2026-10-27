@@ -228,10 +228,13 @@ async def run():
     b_no, _ = await fish._resolve_bait(uid2, "none")
     check("_resolve_bait('none') возвращает None", b_no is None)
 
-    # ── 4. «Проверить улов» на экране ожидания: окно без кнопок не остаётся ──
-    wait_cbs = [b.callback_data for row in fish._wait_markup().inline_keyboard
-                for b in row]
+    # ── 4. «Проверить крючок» на экране ожидания: окно без кнопок не остаётся ──
+    wait_btns = [b for row in fish._wait_markup().inline_keyboard
+                 for b in row]
+    wait_cbs = [b.callback_data for b in wait_btns]
     check("экран ожидания озера: кнопка fish:recover", wait_cbs == ["fish:recover"])
+    check("экран ожидания озера: текст «Проверить крючок»",
+          bool(wait_btns) and "Проверить крючок" in wait_btns[0].text)
     obs = fish.router.observers['callback_query']
     handler_names = {getattr(h.callback, '__name__', None) for h in obs.handlers}
     check("router: fish_recover_cb зарегистрирован", "fish_recover_cb" in handler_names)

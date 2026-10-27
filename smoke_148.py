@@ -313,9 +313,56 @@ async def run():
         if uid2 not in mm.MINE_BATTLE:
             break
         await mm.mine_battle_hit(cb_lose)
-    from database.db import get_user
+    from database.db import (
+        get_user, ACHIEVEMENTS_DEF, ensure_achievements,
+        get_achievement_progress, get_achievement_bonus, bump_achievement,
+    )
     check("поражение: бой завершён", uid2 not in mm.MINE_BATTLE)
     check("поражение: −15 ОД", (await get_user(uid2))["ap"] == 35)
+
+    # ── 10. Достижение «⛏️ Шахты» (mining) и «👹 Монстры» в копи ──
+    await ensure_achievements()
+    m_spec = ACHIEVEMENTS_DEF.get("mining")
+    check("ACHIEVEMENTS_DEF[mining] есть", bool(m_spec))
+    m_thresholds = [(lvl["threshold"], lvl["name"], lvl["bonus"].get("mining_pct"))
+                    for lvl in m_spec["levels"]]
+    check(
+        "mining: пороги 10/50/150/400 и названия Осколок/Старатель/Армадило/Глашатай Скади (+2/+4/+7/+10%)",
+        m_thresholds == [
+            (10, "Осколок", 2),
+            (50, "Старатель", 4),
+            (150, "Армадило", 7),
+            (400, "Глашатай Скади", 10),
+        ],
+    )
+    _, mon_prog = await get_achievement_progress(uid, "monsters")
+    check("победа над Летучей мышью двигает monsters", mon_prog >= 1)
+
+    # Добыча руды (mine_dig) без мыши и с 100% броском двигает mining
+    saved_delay = mm.MINE_RESULT_DELAY
+    saved_bat = mm._bat
+    saved_rand = mm.random.random
+    mm.MINE_RESULT_DELAY = (0, 0)
+    async def _no_bat():
+        return None
+    mm._bat = _no_bat
+    mm.random.random = lambda: 0.0
+    try:
+        cb_dig = FakeCallback(uid, data=f"mine:dig:{token}", bot=FakeSender())
+        await mm.mine_dig(cb_dig)
+    finally:
+        mm.MINE_RESULT_DELAY = saved_delay
+        mm._bat = saved_bat
+        mm.random.random = saved_rand
+
+    _, mine_prog = await get_achievement_progress(uid, "mining")
+    check("добыча руды двигает прогресс mining", mine_prog >= 1)
+    await bump_achievement(uid, "mining", max(0, 10 - mine_prog))
+    m_lvl, m_prog2 = await get_achievement_progress(uid, "mining")
+    check("mining: на 10 руды открыт 1 ур. («Осколок»)",
+          m_lvl == 1 and m_prog2 >= 10)
+    check("mining: бонус 1 ур. = +2%",
+          await get_achievement_bonus(uid, "mining", "mining_pct") == 2)
 
     await close_db()
     print(f"\nSmoke 148: {passed} passed, {failed} failed")

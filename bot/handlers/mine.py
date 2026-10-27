@@ -28,6 +28,7 @@ from database.db import (
     get_mine_bat_attempts, set_mine_bat_attempts, reset_mine_bat_counter,
     remove_ap_or_floor, user_is_tourist, log_activity,
     get_location_by_key, location_photo_for_tod, location_mine_level_photo,
+    bump_achievement, get_achievement_bonus,
 )
 from utils.helpers import (
     resolve_image_seasonal, season_key, time_of_day_key, plural_nordmark,
@@ -365,7 +366,8 @@ async def mine_level_cb(callback: CallbackQuery):
     pickaxe = await _pickaxe_for(user_id)
     if pickaxe:
         rank = pickaxe['rarity'] or 1
-        chance = mine_ore_chance(rank)
+        mining_bonus = await get_achievement_bonus(user_id, "mining", "mining_pct")
+        chance = mine_ore_chance(rank, mining_bonus=mining_bonus)
         pickaxe_line = f"⛏ Кирка: {pickaxe['name']} (ступень {rank}, шанс добычи {chance}%)"
         dig_line = "Бей породу — авось блеснёт руда. А может, что и пострашнее."
     else:
@@ -472,7 +474,8 @@ async def mine_dig(callback: CallbackQuery):
 
         # ── находка руды ──
         rank = pickaxe['rarity'] or 1
-        chance = mine_ore_chance(rank)
+        mining_bonus = await get_achievement_bonus(user_id, "mining", "mining_pct")
+        chance = mine_ore_chance(rank, mining_bonus=mining_bonus)
         head = "⛏ ЖЕЛЕЗНАЯ КОПЬ"
         ap_block = f"\n\n{await _ap_line(user_id)}"
         result_kb = _result_markup(MINE_TOKEN.get(user_id, ""))
@@ -480,6 +483,7 @@ async def mine_dig(callback: CallbackQuery):
             ore = await get_item_by_name(MINE_ORE_NAME)
             if ore:
                 await add_inventory_item(user_id, ore['id'], 1)
+                await bump_achievement(user_id, "mining", 1)
                 await log_activity(user_id, "mine", f"Добыл «{ore['name']}»")
                 sell_line = ""
                 if ore['sell_price'] > 0:
@@ -628,6 +632,7 @@ async def mine_battle_hit(callback: CallbackQuery):
     if battle['bat_hp'] <= 0:
         MINE_BATTLE.pop(user_id, None)
         onhit.unregister(user_id)
+        await bump_achievement(user_id, "monsters", 1)
         await log_activity(user_id, "mine", "Победил Летучую мышь в копи")
         loot = await _battle_loot(user_id, battle)
         got = []

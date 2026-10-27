@@ -25,7 +25,10 @@ from database.db import (
 )
 from utils.crafting import (
     CRAFTING, FOOD_EXPIRY_PREFIXES, FOOD_EXPIRY_SEC, FRIED_PREFIX, FRIED_PREFIXES,
-    CraftError, animate_craft, begin_craft, cancel_craft, end_craft, finish_craft, use_shower,
+    MUSHROOM_ESSENCE_NAME, MUSHROOM_HEAL_POWDER_NAME, MUSHROOM_POISON_POWDER_NAME,
+    MUSHROOM_POWDER_SPECS, MUSHROOM_PROCESS_AP_COST,
+    CraftError, animate_craft, begin_craft, cancel_craft, end_craft, finish_craft,
+    get_user_raw_mushrooms, mushroom_powder_spec, process_mushrooms, use_shower,
 )
 from utils.helpers import resolve_image, rarity_emoji, rarity_label, edit_or_replace
 
@@ -374,6 +377,7 @@ async def _room_kitchen(cb, uid, idx, slot, ht, lvl):
     lines.append("Выбери действие:")
     rows = [
         [_inv_row("🍳 Готовить", f"housing:kitchen:{idx}")],
+        [_inv_row("🍄 Переработка грибов", f"housing:mushrooms:{idx}")],
     ]
     if not slot.get("embedded"):
         rows.append([_inv_row("🛠️ Убрать из слота", f"housing:uninstall:{idx}")])
@@ -420,9 +424,110 @@ async def _kitchen_recipes(cb, uid, idx, slot, ht, lvl):
     rows = []
     for r in available:
         rows.append([_inv_row(f"📋 {r['name']}", f"housing:recipe:{idx}:{r['id']}")])
+    rows.append([_inv_row("🍄 Переработка грибов", f"housing:mushrooms:{idx}")])
     rows.append([_inv_row("🔙 К кухне", f"housing:room:{idx}")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
+
+
+async def _kitchen_mushrooms(cb, uid, idx, slot, ht, lvl, notice: str = ""):
+    title = _slot_name(slot)
+    user = await get_user(uid) or {}
+    ap = int(user.get("ap") or 0)
+    ap_max = int(user.get("ap_max") or ap)
+    mushrooms = await get_user_raw_mushrooms(uid)
+
+    lines = [f"🍄 *Переработка грибов* — {title} (слот {idx+1})\n"]
+    if notice:
+        lines.append(notice)
+        lines.append("")
+    lines.append(
+        f"Рецепт не нужен. Стоимость: *{MUSHROOM_PROCESS_AP_COST} ОД* за 1 гриб.\n"
+        f"• Съедобные → «{MUSHROOM_HEAL_POWDER_NAME}» "
+        f"(из Гиропора и Ежовика редко выпадает «{MUSHROOM_ESSENCE_NAME}»).\n"
+        f"• Ядовитые → «{MUSHROOM_POISON_POWDER_NAME}».\n"
+        f"⚡ Твои ОД: *{ap}/{ap_max}*\n"
+    )
+    rows = []
+    if not mushrooms:
+        lines.append("У тебя нет сырых грибов для переработки.")
+    else:
+        lines.append("Твои сырые грибы:")
+        for m in mushrooms:
+            spec = m["spec"]
+            ess = f", эссенция {spec['essence_chance']}%" if spec.get("essence_chance") else ""
+            icon = "☠" if m["kind"] == "toxic" else "🍄"
+            qty = int(m["quantity"])
+            lines.append(
+                f"  • {icon} {m['name']} ×{qty} → "
+                f"{spec['min']}–{spec['max']} порошка{ess}"
+            )
+            iid = int(m["item_id"])
+            btn_one = InlineKeyboardButton(
+                text=f"{icon} {m['name']}: 1 шт. ({MUSHROOM_PROCESS_AP_COST} ОД)",
+                callback_data=f"housing:mushproc:{idx}:{iid}:1",
+            )
+            if qty > 1:
+                all_ap = qty * MUSHROOM_PROCESS_AP_COST
+                btn_all = InlineKeyboardButton(
+                    text=f"Все ×{qty} ({all_ap} ОД)",
+                    callback_data=f"housing:mushproc:{idx}:{iid}:all",
+                )
+                rows.append([btn_one, btn_all])
+            else:
+                rows.append([btn_one])
+
+    rows.append([_inv_row("🔙 К кухне", f"housing:room:{idx}")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
+
+
+@router.callback_query(F.data.startswith("housing:mushrooms:"))
+async def housing_kitchen_mushrooms(cb: CallbackQuery):
+    await cb.answer()
+    uid = cb.from_user.id
+    idx = int(cb.data.split(":")[2])
+    slots = await get_housing_slots(uid)
+    slot = slots.get(idx)
+    if not slot or slot.get("expansion_type") != "kitchen":
+        return
+    lvl = slot.get("expansion_level", 1)
+    ht = (await get_player_housing(uid))["housing_type"]
+    await _kitchen_mushrooms(cb, uid, idx, slot, ht, lvl)
+
+
+@router.callback_query(F.data.startswith("housing:mushproc:"))
+async def housing_kitchen_mushproc(cb: CallbackQuery):
+    uid = cb.from_user.id
+    parts = cb.data.split(":")
+    idx = int(parts[2])
+    item_id = int(parts[3])
+    mode = parts[4] if len(parts) > 4 else "1"
+    slots = await get_housing_slots(uid)
+    slot = slots.get(idx)
+    if not slot or slot.get("expansion_type") != "kitchen":
+        await cb.answer("❌ Здесь нет кухни.", show_alert=True)
+        return
+    try:
+        out = await process_mushrooms(uid, item_id, mode=mode)
+    except CraftError as e:
+        await cb.answer(str(e), show_alert=True)
+        return
+
+    ess_line = (
+        f"\n✨ Редкая удача! «{out['essence_name']}» ×{out['essence_qty']}"
+        if out.get("essence_qty")
+        else ""
+    )
+    notice = (
+        f"✅ Переработано: «{out['mushroom_name']}» ×{out['processed_count']} "
+        f"(−{out['ap_spent']} ОД)\n"
+        f"🎒 Получено: «{out['powder_name']}» ×{out['powder_qty']}{ess_line}"
+    )
+    await cb.answer("✅ Грибы переработаны!")
+    lvl = slot.get("expansion_level", 1)
+    ht = (await get_player_housing(uid))["housing_type"]
+    await _kitchen_mushrooms(cb, uid, idx, slot, ht, lvl, notice=notice)
 
 
 async def _room_workbench(cb, uid, idx, slot, ht, lvl):

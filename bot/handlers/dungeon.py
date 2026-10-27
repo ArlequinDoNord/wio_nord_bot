@@ -667,7 +667,7 @@ def _reservoir_wait_markup():
     """
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Проверить улов", callback_data="resv:recover")],
+        [InlineKeyboardButton(text="🔄 Проверить крючок", callback_data="resv:recover")],
     ])
 
 

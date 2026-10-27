@@ -801,6 +801,34 @@ async def run():
     check("Ратуша: «Пилот 2 класса» в подписи",
           "Пилот 2 класса" in hall_text)
 
+    # ── 20. Достижение «🪓 Лесозаготовка» (logging: 10/50/200/500) ──
+    from database.db import (
+        ACHIEVEMENTS_DEF, ensure_achievements,
+        get_achievement_progress, get_achievement_bonus, bump_achievement,
+    )
+    await ensure_achievements()
+    l_spec = ACHIEVEMENTS_DEF.get("logging")
+    check("ACHIEVEMENTS_DEF[logging] есть", bool(l_spec))
+    l_thresholds = [(lvl["threshold"], lvl["name"], lvl["bonus"].get("logging_pct"))
+                    for lvl in l_spec["levels"]]
+    check(
+        "logging: пороги 10/50/200/500 и названия Обух/Колун/Мастер Лесоруб/Хозяин Леса (+2/+4/+7/+10%)",
+        l_thresholds == [
+            (10, "Обух", 2),
+            (50, "Колун", 4),
+            (200, "Мастер Лесоруб", 7),
+            (500, "Хозяин Леса", 10),
+        ],
+    )
+    _, log_prog = await get_achievement_progress(uid2, "logging")
+    check("рубка дерева двигает прогресс logging", log_prog >= 1)
+    await bump_achievement(uid2, "logging", max(0, 10 - log_prog))
+    l_lvl, l_prog2 = await get_achievement_progress(uid2, "logging")
+    check("logging: на 10 деревьях открыт 1 ур. («Обух»)",
+          l_lvl == 1 and l_prog2 >= 10)
+    check("logging: бонус 1 ур. = +2%",
+          await get_achievement_bonus(uid2, "logging", "logging_pct") == 2)
+
     await close_db()
     print(f"\nSmoke 156: {passed} passed, {failed} failed")
     sys.exit(1 if failed else 0)

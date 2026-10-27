@@ -32,6 +32,7 @@ from database.db import (
     get_logging_owl_attempts, set_logging_owl_attempts, reset_logging_owl_counter,
     remove_ap_or_floor, user_is_tourist, log_activity,
     get_location_by_key, location_logging_photo,
+    bump_achievement, get_achievement_bonus,
 )
 from utils.helpers import (
     resolve_image_seasonal, resolve_image, item_local_photo,
@@ -413,7 +414,9 @@ async def logging_menu_cb(callback: CallbackQuery):
     axe = await _axe_for(callback.from_user.id)
     if axe:
         rank = axe['rarity'] or 1
-        chance = logging_wood_chance(rank)
+        logging_bonus = await get_achievement_bonus(
+            callback.from_user.id, "logging", "logging_pct")
+        chance = logging_wood_chance(rank, logging_bonus=logging_bonus)
         hint = (f"🪓 Топор: {axe['name']} (ступень {rank}, шанс рубки {chance}%) — "
                 "за работу!")
     else:
@@ -540,7 +543,8 @@ async def logging_chop(callback: CallbackQuery):
 
         # Малый шанс: топор отскакивает и бьёт пилота в плечо
         rank = axe['rarity'] or 1
-        chance = logging_wood_chance(rank)
+        logging_bonus = await get_achievement_bonus(user_id, "logging", "logging_pct")
+        chance = logging_wood_chance(rank, logging_bonus=logging_bonus)
         head = "🪓 ЛЕСОЗАГОТОВКА"
         ap_block = f"\n\n{await _ap_line(user_id)}"
         # Малый шанс: топор от усталости/невнимательности отскакивает от
@@ -565,6 +569,7 @@ async def logging_chop(callback: CallbackQuery):
             wood = await get_item_by_name(LOGGING_WOOD_NAME)
             if wood:
                 await add_inventory_item(user_id, wood['id'], 1)
+                await bump_achievement(user_id, "logging", 1)
                 await log_activity(user_id, "logging", f"Срубил «{wood['name']}»")
                 found_wood = True
                 item_meta = wood
@@ -586,6 +591,7 @@ async def logging_chop(callback: CallbackQuery):
             loot_line = ""
             if firewood:
                 await add_inventory_item(user_id, firewood['id'], 1)
+                await bump_achievement(user_id, "logging", 1)
                 await log_activity(user_id, "logging", f"Срубил «{firewood['name']}» (суковатое дерево)")
                 item_meta = firewood
                 loot_line = f"\n\n🎒 Добыча: «{firewood['name']}» — в инвентарь."

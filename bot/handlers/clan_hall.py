@@ -74,13 +74,19 @@ from database.db import (
     upgrade_clan_expansion,
 )
 from utils.crafting import (
+    MUSHROOM_ESSENCE_NAME,
+    MUSHROOM_HEAL_POWDER_NAME,
+    MUSHROOM_POISON_POWDER_NAME,
+    MUSHROOM_PROCESS_AP_COST,
     CraftError,
     animate_craft,
     begin_craft,
     cancel_craft,
     end_craft,
     finish_craft,
+    get_user_raw_mushrooms,
     parse_ingredients,
+    process_mushrooms,
     recipe_ap_cost,
     use_shower,
 )
@@ -878,6 +884,10 @@ async def _render_clan_use(cb: CallbackQuery, clan, building, exp):
                 rows.append([InlineKeyboardButton(
                     text=f"📋 {r['name']}",
                     callback_data=f"clanh:recipe:{clan_id}:{slot_index}:{r['id']}")])
+        if et == "kitchen":
+            rows.append([InlineKeyboardButton(
+                text="🍄 Переработка грибов",
+                callback_data=f"clanh:mushrooms:{clan_id}:{slot_index}")])
         rows.append([InlineKeyboardButton(
             text="🔙 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
         return await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
@@ -1183,6 +1193,119 @@ async def clan_hall_craft_cb(cb: CallbackQuery):
         raise
     finally:
         end_craft(uid)
+
+
+async def _render_clan_mushrooms(cb: CallbackQuery, clan, building, exp,
+                                 notice: str = ""):
+    """Экран переработки сырых грибов в клановой кухне (без рецепта)."""
+    clan_id = int(clan["id"])
+    slot_index = int(exp["slot_index"])
+    level = int(exp["expansion_level"] or 1)
+    uid = cb.from_user.id
+    user = await get_user(uid) or {}
+    ap = int(user.get("ap") or 0)
+    ap_max = int(user.get("ap_max") or ap)
+    mushrooms = await get_user_raw_mushrooms(uid)
+
+    lines = [
+        f"🍄 <b>Переработка грибов</b> — Кухня (ур. {level}) — «{_esc(clan['name'])}»",
+        "",
+    ]
+    if notice:
+        lines.append(notice)
+        lines.append("")
+    lines.append(
+        f"Рецепт не нужен. Стоимость: <b>{MUSHROOM_PROCESS_AP_COST} ОД</b> за 1 гриб.\n"
+        f"• Съедобные → «{_esc(MUSHROOM_HEAL_POWDER_NAME)}» "
+        f"(из Гиропора и Ежовика редко выпадает «{_esc(MUSHROOM_ESSENCE_NAME)}»).\n"
+        f"• Ядовитые → «{_esc(MUSHROOM_POISON_POWDER_NAME)}».\n"
+        f"⚡ Твои ОД: <b>{ap}/{ap_max}</b>"
+    )
+    rows = []
+    if not mushrooms:
+        lines.append("\nУ тебя нет сырых грибов для переработки.")
+    else:
+        lines.append("\nТвои сырые грибы:")
+        for m in mushrooms:
+            spec = m["spec"]
+            ess = f", эссенция {spec['essence_chance']}%" if spec.get("essence_chance") else ""
+            icon = "☠" if m["kind"] == "toxic" else "🍄"
+            qty = int(m["quantity"])
+            lines.append(
+                f"  • {icon} {_esc(m['name'])} ×{qty} → "
+                f"{spec['min']}–{spec['max']} порошка{ess}"
+            )
+            iid = int(m["item_id"])
+            btn_one = InlineKeyboardButton(
+                text=f"{icon} {m['name']}: 1 шт. ({MUSHROOM_PROCESS_AP_COST} ОД)",
+                callback_data=f"clanh:mushproc:{clan_id}:{slot_index}:{iid}:1",
+            )
+            if qty > 1:
+                all_ap = qty * MUSHROOM_PROCESS_AP_COST
+                btn_all = InlineKeyboardButton(
+                    text=f"Все ×{qty} ({all_ap} ОД)",
+                    callback_data=f"clanh:mushproc:{clan_id}:{slot_index}:{iid}:all",
+                )
+                rows.append([btn_one, btn_all])
+            else:
+                rows.append([btn_one])
+
+    rows.append([InlineKeyboardButton(
+        text="🔙 К кухне", callback_data=f"clanh:use:{clan_id}:{slot_index}")])
+    photo = await resolve_clan_hall_photo(building)
+    await _paint(cb, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
+
+
+@router.callback_query(F.data.startswith("clanh:mushrooms:"))
+async def clan_hall_mushrooms_cb(cb: CallbackQuery):
+    """Открыть переработку грибов на клановой кухне."""
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    clan, building, exp = await _load_usable(cb, clan_id, slot_index)
+    if not clan:
+        return
+    if exp["expansion_type"] != "kitchen":
+        await cb.answer("❌ Переработка грибов доступна только на кухне.",
+                        show_alert=True)
+        return
+    await cb.answer()
+    await _render_clan_mushrooms(cb, clan, building, exp)
+
+
+@router.callback_query(F.data.startswith("clanh:mushproc:"))
+async def clan_hall_mushproc_cb(cb: CallbackQuery):
+    """Переработать 1 или все сырые грибы выбранного вида на клановой кухне."""
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    item_id = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0
+    mode = parts[5] if len(parts) > 5 else "1"
+    clan, building, exp = await _load_usable(cb, clan_id, slot_index)
+    if not clan:
+        return
+    if exp["expansion_type"] != "kitchen":
+        await cb.answer("❌ Переработка грибов доступна только на кухне.",
+                        show_alert=True)
+        return
+    try:
+        out = await process_mushrooms(cb.from_user.id, item_id, mode=mode)
+    except CraftError as e:
+        await cb.answer(str(e), show_alert=True)
+        return
+
+    ess_line = (
+        f"\n✨ Редкая удача! «{_esc(out['essence_name'])}» ×{out['essence_qty']}"
+        if out.get("essence_qty")
+        else ""
+    )
+    notice = (
+        f"✅ Переработано: <b>{_esc(out['mushroom_name'])}</b> ×{out['processed_count']} "
+        f"(−{out['ap_spent']} ОД)\n"
+        f"🎒 Получено: <b>{_esc(out['powder_name'])}</b> ×{out['powder_qty']}{ess_line}"
+    )
+    await cb.answer("✅ Грибы переработаны!")
+    await _render_clan_mushrooms(cb, clan, building, exp, notice=notice)
 
 
 @router.callback_query(F.data.startswith("clanh:shower:"))

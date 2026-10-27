@@ -393,7 +393,7 @@ def _wait_markup():
     «Проверить» перерисовывает окно заново и денег/ОД не тратит.
     """
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Проверить улов", callback_data="fish:recover")],
+        [InlineKeyboardButton(text="🔄 Проверить крючок", callback_data="fish:recover")],
     ])
 
 

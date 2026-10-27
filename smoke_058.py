@@ -264,10 +264,13 @@ async def run():
     s2 = await dng.dungeon_new_step(st)
     check("dungeon_new_step инкрементит", s1 == 1 and s2 == 2)
 
-    # ── 12. «Проверить улов»: окно ожидания не остаётся без кнопок ──
-    wait_cbs = [b.callback_data for row in dng._reservoir_wait_markup().inline_keyboard
-                for b in row]
+    # ── 12. «Проверить крючок»: окно ожидания не остаётся без кнопок ──
+    wait_btns = [b for row in dng._reservoir_wait_markup().inline_keyboard
+                 for b in row]
+    wait_cbs = [b.callback_data for b in wait_btns]
     check("экран ожидания: кнопка resv:recover", wait_cbs == ["resv:recover"])
+    check("экран ожидания: текст «Проверить крючок»",
+          bool(wait_btns) and "Проверить крючок" in wait_btns[0].text)
     check("router: resv_recover зарегистрирован", "resv_recover" in cb_names())
 
     # пока заброс реально идёт — только предупреждение, экран не трогаем

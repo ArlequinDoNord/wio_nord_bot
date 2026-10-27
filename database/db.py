@@ -8375,6 +8375,15 @@ FOREST_ITEM_SEEDS = [
      "Мутное зелье, сваренное из ядовитых лесных грибов. На рынок выставлять нельзя — "
      "пригодится кузнецу для улучшения оружия (например, ножа).",
      150, 75, 2, "resource", 0, 0),
+    ("Грибной целебный порошок",
+     "Сухой целебный порошок из перетёртых лесных грибов. Базовый ресурс для алхимии и крафта.",
+     15, 5, 1, "resource", 0, 1),
+    ("Грибная эссенция",
+     "Концентрированная вытяжка из редких лесных грибов. Ценный ингредиент для особых рецептов.",
+     120, 45, 3, "resource", 0, 1),
+    ("Ядовитый грибной порошок",
+     "Едкий порошок из высушенных ядовитых грибов. Опасный ресурс для ядов и ремесла.",
+     20, 6, 2, "resource", 0, 1),
 ]
 
 # Прямая добыча с врагов — только с них и ниоткуда: вне магазина (is_available=0),
@@ -8459,6 +8468,14 @@ async def ensure_forest_items():
     for name in FOREST_ENEMY_DROPS:
         await conn.execute(
             "UPDATE items SET is_available = 0, market_ok = 0, loot_only = 1 WHERE name = ?",
+            (name,))
+
+    # Грибные порошки и эссенция — только через переработку на кухне: в магазин
+    # не выкладываются (is_available=0, stock=-1), при продаже скупщику уходят
+    # на городские склады (category='resource').
+    for name in ("Грибной целебный порошок", "Грибная эссенция", "Ядовитый грибной порошок"):
+        await conn.execute(
+            "UPDATE items SET is_available = 0, stock = -1, category = 'resource' WHERE name = ?",
             (name,))
 
     if added:
@@ -12092,6 +12109,8 @@ BONUS_BONUS_LABELS = {
     "ticket_pct": "скидка на читательский билет",
     "regen_hp": "постоянная регенерация HP",
     "super_rare": "доступ к супер-редкой рыбе",
+    "mining_pct": "% к шансу добычи руды",
+    "logging_pct": "% к шансу рубки деревьев",
 }
 
 
@@ -12148,10 +12167,27 @@ ACHIEVEMENTS_DEF = {
     "mining": {
         "title": "Шахты", "emoji": "⛏️", "metric": "добыто руды",
         "levels": [
-            {"level": 1, "threshold": 10, "name": "Осколок", "bonus": {}},
-            {"level": 2, "threshold": 30, "name": "Старатель", "bonus": {}},
-            {"level": 3, "threshold": 50, "name": "Армадило", "bonus": {}},
-            {"level": 4, "threshold": 100, "name": "Глашатай Скади", "bonus": {}},
+            {"level": 1, "threshold": 10, "name": "Осколок",
+             "bonus": {"mining_pct": 2}},
+            {"level": 2, "threshold": 50, "name": "Старатель",
+             "bonus": {"mining_pct": 4}},
+            {"level": 3, "threshold": 150, "name": "Армадило",
+             "bonus": {"mining_pct": 7}},
+            {"level": 4, "threshold": 400, "name": "Глашатай Скади",
+             "bonus": {"mining_pct": 10}},
+        ],
+    },
+    "logging": {
+        "title": "Лесозаготовка", "emoji": "🪓", "metric": "срублено деревьев",
+        "levels": [
+            {"level": 1, "threshold": 10, "name": "Обух",
+             "bonus": {"logging_pct": 2}},
+            {"level": 2, "threshold": 50, "name": "Колун",
+             "bonus": {"logging_pct": 4}},
+            {"level": 3, "threshold": 200, "name": "Мастер Лесоруб",
+             "bonus": {"logging_pct": 7}},
+            {"level": 4, "threshold": 500, "name": "Хозяин Леса",
+             "bonus": {"logging_pct": 10}},
         ],
     },
     "writer": {

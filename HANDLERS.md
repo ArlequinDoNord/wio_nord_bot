@@ -71,13 +71,13 @@
 | `mine.py` | Железная копи: ресурсная локация (v0.31.0). | `router` | 0 | 6 | `mine:` | — |
 | `logging_site.py` | Лесозаготовка: ресурсная локация в лесу (v0.37.0). | `router` | 0 | 9 | `logsite:` | — |
 | `storage.py` | Городские склады: накопление выкупленных казной ресурсов. | `router` | 0 | 1 | `storage:` | — |
-| `housing.py` | Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение. | `router` | 1 | 16 | `housing:` | — |
+| `housing.py` | Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение. | `router` | 1 | 18 | `housing:` | — |
 | `news.py` | Новости ГосСМИ: лента, публикация, управление выпусками, архив. | `router` | 6 | 9 | `news:` | `NewsWrite`, `NewsEdit` |
 | `kvp.py` | Курс Выживания для Пилотов (К.В.П.) — тренировочный данж. | `router` | 0 | 6 | `kvp:` | `KvpFSM` |
 | `wall.py` | Стена изречений — доска объявлений города. | `router` | 2 | 7 | `wall:` | `WallWrite` |
 | `hq.py` | Штаб ВВС: командование рассылает приказы авиакрыльям. | `router` | 7 | 25 | `hq:` | `HqOrder`, `HqWingCreate`, `HqWingEdit` |
 | `clans.py` | Партии и кланы: реестр из Ратуши. | `router` | 7 | 23 | `city:`, `clans:` | `ClansCreate`, `ClansEdit`, `ClansMessage` |
-| `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 2 | 28 | `clanh:` | `ClanHallAdminPhoto` |
+| `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 2 | 30 | `clanh:` | `ClanHallAdminPhoto` |
 | `nii.py` | НИИ Северной Кибернетики и кремниевых систем — здание обратной связи. | `router` | 2 | 7 | `nii:` | `NiiWrite` |
 | `tourist_booklet.py` | Буклет туриста: чек-лист городских локаций и разовая награда. | `router` | 0 | 2 | `booklet:` | — |
 | `duel.py` | Дом Дуэлей — PvP-арена «зона на зону». | `router` | 0 | 12 | `duel:` | — |
@@ -247,8 +247,8 @@
 ### `housing.py` — Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение.
 
 - Роутеры: `router`
-- Хендлеры: message=1, callback_query=16
-- `F.data.startswith`: `housing:craft:`, `housing:harvest:`, `housing:install:`, `housing:install_item:`, `housing:kitchen:`, `housing:move:`, `housing:plant:`, `housing:recipe:`, `housing:room:`, `housing:shower:`, `housing:uninstall:`, `housing:uninstall_confirm:`
+- Хендлеры: message=1, callback_query=18
+- `F.data.startswith`: `housing:craft:`, `housing:harvest:`, `housing:install:`, `housing:install_item:`, `housing:kitchen:`, `housing:move:`, `housing:mushproc:`, `housing:mushrooms:`, `housing:plant:`, `housing:recipe:`, `housing:room:`, `housing:shower:`, `housing:uninstall:`, `housing:uninstall_confirm:`
 - `F.data ==`: `housing:menu`, `housing:noop`, `housing:pay_debt`, `housing:pay_tax`
 
 ### `news.py` — Новости ГосСМИ: лента, публикация, управление выпусками, архив.
@@ -294,9 +294,9 @@
 ### `clan_hall.py` — Клан-холл: клановый склад и строительство кланового здания (Фаза 1).
 
 - Роутеры: `router`
-- Хендлеры: message=2, callback_query=28
+- Хендлеры: message=2, callback_query=30
 - FSM: `ClanHallAdminPhoto`
-- `F.data.startswith`: `clanh:admconstphoto:`, `clanh:admnophoto:`, `clanh:admphoto:`, `clanh:cancel:`, `clanh:choose:`, `clanh:craft:`, `clanh:donate:`, `clanh:expchoose:`, `clanh:expinstall:`, `clanh:expmanage:`, `clanh:expup:`, `clanh:give:`, `clanh:hall:`, `clanh:harvest:`, `clanh:harvestall:`, `clanh:inside:`, `clanh:item:`, `clanh:log:`, `clanh:plant:`, `clanh:plantlist:`, `clanh:recipe:`, `clanh:shower:`, `clanh:start:`, `clanh:startfull:`, `clanh:storage:`, `clanh:upgrade:`, `clanh:use:`
+- `F.data.startswith`: `clanh:admconstphoto:`, `clanh:admnophoto:`, `clanh:admphoto:`, `clanh:cancel:`, `clanh:choose:`, `clanh:craft:`, `clanh:donate:`, `clanh:expchoose:`, `clanh:expinstall:`, `clanh:expmanage:`, `clanh:expup:`, `clanh:give:`, `clanh:hall:`, `clanh:harvest:`, `clanh:harvestall:`, `clanh:inside:`, `clanh:item:`, `clanh:log:`, `clanh:mushproc:`, `clanh:mushrooms:`, `clanh:plant:`, `clanh:plantlist:`, `clanh:recipe:`, `clanh:shower:`, `clanh:start:`, `clanh:startfull:`, `clanh:storage:`, `clanh:upgrade:`, `clanh:use:`
 - `F.data ==`: `clanh:noop`
 
 ### `nii.py` — НИИ Северной Кибернетики и кремниевых систем — здание обратной связи.
