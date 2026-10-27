@@ -698,8 +698,18 @@ ON_HIT_EFFECTS = {
         ),
         "hint": "Накладывает состояние игрока из STATE_CONF на ходы боя.",
     },
+    "lifesteal": {
+        "emoji": "🩸",
+        "title": "Кровопийца",
+        "until_battle_end": True,
+        "params": (
+            ("chance", "Шанс срабатывания, %", "percent"),
+            ("pct", "Восполнение от нанесённого урона, %", "int"),
+        ),
+        "hint": "Часть нанесённого урона восстанавливает нападающему здоровье.",
+    },
 }
-ON_HIT_KIND_ORDER = ("bleed", "poison", "frostbite", "state")
+ON_HIT_KIND_ORDER = ("bleed", "poison", "frostbite", "state", "lifesteal")
 # Дефолтное число ходов для kind'а state — по ключу состояния.
 ON_HIT_STATE_ROUNDS = {"оглушён": 3, "ослеплён": 4}
 

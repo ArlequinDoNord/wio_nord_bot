@@ -667,6 +667,7 @@ async def mine_battle_hit(callback: CallbackQuery):
     bat_hit = eres['damage']
     if eres['dodged']:
         counter_line = "💨 Ты уклоняешься от когтей! (−0 HP)\n\n"
+        bat_hit = 0
     else:
         extra = ""
         if eres['armor_blocked']:
@@ -675,6 +676,19 @@ async def mine_battle_hit(callback: CallbackQuery):
             extra += "💥 crit! "
         counter_line = f"Мышь вцепляется и бьёт: −{bat_hit} HP. {extra}\n\n"
     battle['player_hp'] -= bat_hit
+    lifesteal_line = ""
+    if not eres['dodged'] and bat_hit > 0 and battle.get('bat_hp', 0) > 0:
+        ls_eff = onhit.roll_lifesteal(battle.get('on_hit_effects') or [])
+        if ls_eff:
+            new_bhp, healed, ls_txt = onhit.apply_lifesteal_to_attacker(
+                battle.get('bat_hp', 0),
+                battle.get('bat_hp_max') or battle.get('bat_hp') or 1,
+                bat_hit,
+                ls_eff,
+            )
+            if healed > 0:
+                battle['bat_hp'] = new_bhp
+                lifesteal_line = f"{ls_txt}\n\n"
     if battle['player_hp'] <= 0:
         MINE_BATTLE.pop(user_id, None)
         onhit.unregister(user_id)
@@ -705,7 +719,7 @@ async def mine_battle_hit(callback: CallbackQuery):
     round_note = "".join(f"{line}\n\n" for line in onhit.end_round(battle))
 
     battle['round'] += 1
-    await _show_battle(callback, prefix=f"{dot_note}{hit_line}{counter_line}{proc_line}{round_note}")
+    await _show_battle(callback, prefix=f"{dot_note}{hit_line}{counter_line}{lifesteal_line}{proc_line}{round_note}")
 
 
 @router.callback_query(F.data.regexp(r"^mine:battle:flee:\d+$"))

@@ -95,6 +95,17 @@ def roll_procs(effects: list) -> list:
         conf = ON_HIT_EFFECTS.get(kind)
         if not conf:
             continue
+        if kind == "lifesteal":
+            chance = int(eff.get('chance') or 0)
+            if chance <= 0:
+                continue
+            if random.randint(1, 100) > chance:
+                continue
+            procs.append({
+                "kind": "lifesteal",
+                "pct": max(0, int(eff.get('pct') or eff.get('heal_pct') or 0)),
+            })
+            continue
         chance = int(eff.get('chance') or 0)
         if chance <= 0:
             continue
@@ -117,6 +128,32 @@ def roll_procs(effects: list) -> list:
     return procs
 
 
+def roll_lifesteal(effects: list) -> dict | None:
+    """Бросок эффекта lifesteal из пула on_hit_effects."""
+    procs = roll_procs(effects or [])
+    for proc in procs:
+        if proc.get('kind') == 'lifesteal':
+            return proc
+    return None
+
+
+def apply_lifesteal_to_attacker(hp: int, hp_max: int, damage_dealt: int,
+                                eff: dict | None) -> tuple[int, int, str | None]:
+    """Лечение атакующего от процента нанесённого урона. lifesteal в коде."""
+    if not eff or eff.get('kind') != 'lifesteal':
+        return int(hp), 0, None
+    pct = max(0, int(eff.get('pct') or eff.get('heal_pct') or 0))
+    if pct <= 0 or damage_dealt <= 0:
+        return int(hp), 0, None
+    healed = max(1, int((int(damage_dealt) * pct + 99) // 100))
+    hp_max = max(1, int(hp_max or hp))
+    new_hp = min(hp_max, int(hp) + healed)
+    healed = max(0, new_hp - int(hp))
+    if healed <= 0:
+        return int(hp), 0, None
+    return new_hp, healed, f"🩸 Кровопийца: +{healed} HP"
+
+
 def apply_procs(user_id: int, store: dict, procs: list, enemy_name: str = "Враг") -> list:
     """Пишет прошедшие эффекты в store боя; возвращает фразы для текста боя."""
     on_hit = get_store(store)
@@ -124,6 +161,8 @@ def apply_procs(user_id: int, store: dict, procs: list, enemy_name: str = "Вр�
     lines = []
     for proc in procs:
         kind = proc['kind']
+        if kind == "lifesteal":
+            continue
         if kind == "bleed":
             on_hit['bleed'] = {"dmg": proc['dmg']}
             lines.append(f"🩸 {enemy_name} ранил тебя! Кровотечение: "

@@ -604,6 +604,21 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         dodge_line = ""
     player_hp = max(0, player_hp - reduced)
     await update_run_hp(run['id'], player_hp)
+    lifesteal_line = ""
+    if reduced > 0 and current_enemy_hp > 0:
+        ls_eff = onhit.roll_lifesteal(
+            onhit.parse_on_hit_effects(enemy_row.get('on_hit_effects')))
+        if ls_eff:
+            new_ehp, healed, ls_txt = onhit.apply_lifesteal_to_attacker(
+                current_enemy_hp,
+                enemy['hp'],
+                reduced,
+                ls_eff,
+            )
+            if healed > 0:
+                current_enemy_hp = new_ehp
+                await state.update_data(current_enemy_hp=current_enemy_hp)
+                lifesteal_line = f"\n{ls_txt}"
 
     # crit_mark и строка уклонения нужны ВСЕГДА: ниже они подставляются в текст
     # безусловно, а раньше задавались только в ветке «враг не уклонился». Когда враг
@@ -628,6 +643,7 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         text += dodge_line
     else:
         text += get_enemy_attack_text(enemy['name'], reduced, player_hp) + blocked_line
+    text += lifesteal_line
 
     if player_hp <= 0:
         await end_run(run['id'], 0)

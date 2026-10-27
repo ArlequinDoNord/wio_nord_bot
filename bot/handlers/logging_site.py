@@ -993,6 +993,7 @@ async def logging_battle_hit(callback: CallbackQuery):
     enemy_hit = eres['damage']
     if eres['dodged']:
         counter_line = "💨 Ты уклоняешься от выпада! (−0 HP)\n\n"
+        enemy_hit = 0
     else:
         extra = ""
         if eres['armor_blocked']:
@@ -1002,6 +1003,19 @@ async def logging_battle_hit(callback: CallbackQuery):
         counter_line = (f"Змея бьёт: −{enemy_hit} HP. {extra}\n\n" if kind == "snake"
                         else f"Неясыть бьёт когтем: −{enemy_hit} HP. {extra}\n\n")
     battle['player_hp'] -= enemy_hit
+    lifesteal_line = ""
+    if not eres['dodged'] and enemy_hit > 0 and battle.get('enemy_hp', 0) > 0:
+        ls_eff = onhit.roll_lifesteal(battle.get('on_hit_effects') or [])
+        if ls_eff:
+            new_ehp, healed, ls_txt = onhit.apply_lifesteal_to_attacker(
+                battle.get('enemy_hp', 0),
+                battle.get('enemy_hp_max') or battle.get('enemy_hp') or 1,
+                enemy_hit,
+                ls_eff,
+            )
+            if healed > 0:
+                battle['enemy_hp'] = new_ehp
+                lifesteal_line = f"{ls_txt}\n\n"
     if battle['player_hp'] <= 0:
         await _battle_defeat(callback, user_id, battle,
                              prefix=f"{dot_note}{hit_line}{counter_line}")
@@ -1022,7 +1036,7 @@ async def logging_battle_hit(callback: CallbackQuery):
     round_note = "".join(f"{line}\n\n" for line in onhit.end_round(battle))
 
     battle['round'] += 1
-    await _show_battle(callback, prefix=f"{dot_note}{hit_line}{counter_line}{proc_line}{round_note}")
+    await _show_battle(callback, prefix=f"{dot_note}{hit_line}{counter_line}{lifesteal_line}{proc_line}{round_note}")
 
 
 async def _battle_defeat(callback: CallbackQuery, user_id: int, battle: dict,

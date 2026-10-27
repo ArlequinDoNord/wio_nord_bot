@@ -1003,6 +1003,7 @@ async def forest_battle_hit(callback: CallbackQuery):
     boar_hit = eres['damage']
     if eres['dodged']:
         counter_line = "💨 Ты уклонился от рывка зверя! (−0 HP)\n\n"
+        boar_hit = 0
     else:
         extra = ""
         if eres['armor_blocked']:
@@ -1011,6 +1012,19 @@ async def forest_battle_hit(callback: CallbackQuery):
             extra += "💥 crit! "
         counter_line = f"Зверь бьёт: −{boar_hit} HP. {extra}\n\n"
     battle['player_hp'] -= boar_hit
+    lifesteal_line = ""
+    if not eres['dodged'] and boar_hit > 0 and battle['boar_hp'] > 0:
+        ls_eff = onhit.roll_lifesteal(battle.get('on_hit_effects') or [])
+        if ls_eff:
+            new_bhp, healed, ls_txt = onhit.apply_lifesteal_to_attacker(
+                battle.get('boar_hp', 0),
+                battle.get('boar_hp_max') or battle.get('boar_hp') or 1,
+                boar_hit,
+                ls_eff,
+            )
+            if healed > 0:
+                battle['boar_hp'] = new_bhp
+                lifesteal_line = f"{ls_txt}\n\n"
     if battle['player_hp'] <= 0:
         if is_white_wolf:
             await _white_wolf_defeat(callback, user_id, battle, big=False,
@@ -1049,7 +1063,7 @@ async def forest_battle_hit(callback: CallbackQuery):
     battle['round'] += 1
     await _show_battle(
         callback,
-        prefix=f"{dot_note}{regen_note}{hit_line}{counter_line}{proc_line}{round_note}"
+        prefix=f"{dot_note}{regen_note}{hit_line}{counter_line}{lifesteal_line}{proc_line}{round_note}"
     )
 
 
