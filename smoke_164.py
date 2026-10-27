@@ -296,8 +296,9 @@ async def main():
         check("пустой слот отклонён", has_alert(cb_empty, "нет расширения"))
         cb_lib = FakeCallback(MEMBER, f"clanh:use:{clan_id}:4")
         await clan_hall.clan_hall_use_cb(cb_lib)
-        check("расширение следующей фазы (библиотека) пока не работает",
-              has_alert(cb_lib, "пока не работает"))
+        check("расширение следующей фазы (библиотека) открыло экран (Фаза 6)",
+              has_alert(cb_lib, "нет расширения")
+              or "Библиотека" in (cb_lib.message.text or ""))
 
         print("\n3. Экран кухни и список личных рецептов")
         cb_kitchen = FakeCallback(MEMBER, f"clanh:use:{clan_id}:1")

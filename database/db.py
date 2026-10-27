@@ -1030,6 +1030,16 @@ async def init_db():
             PRIMARY KEY (clan_id, plot_index)
         );
 
+        -- Клановая библиотека рецептов (Фаза 6).
+        CREATE TABLE IF NOT EXISTS clan_recipes (
+            clan_id INTEGER NOT NULL,
+            recipe_id INTEGER NOT NULL,
+            donated_by INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (clan_id, recipe_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_clan_recipes_clan ON clan_recipes(clan_id);
+
         CREATE TABLE IF NOT EXISTS user_recipes (
             user_id INTEGER NOT NULL,
             recipe_id INTEGER NOT NULL,
@@ -13534,6 +13544,7 @@ async def delete_clan(clan_id: int):
     await conn.execute("DELETE FROM clan_build_contrib WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_expansions WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_garden WHERE clan_id = ?", (clan_id,))
+    await conn.execute("DELETE FROM clan_recipes WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_buildings WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clans WHERE id = ?", (clan_id,))
     await conn.commit()
@@ -14588,3 +14599,85 @@ async def upgrade_clan_expansion(clan_id: int, user_id: int,
     await conn.commit()
     return True, (f"⬆️ Расширение «{clan_expansion_name(exp['expansion_type'])}» "
                   f"улучшено до уровня {next_level}.")
+
+
+# --- Клан-холл: библиотека рецептов (Фаза 6) ---
+
+async def get_clan_recipes(clan_id: int):
+    """Список рецептов, сданных в клановую библиотеку."""
+    conn = await get_db()
+    cur = await conn.execute(
+        """SELECT cr.recipe_id, cr.donated_by, cr.created_at,
+                  r.name as recipe_name, r.result_item_name, r.result_quantity
+           FROM clan_recipes cr
+           LEFT JOIN recipes r ON r.id = cr.recipe_id
+           WHERE cr.clan_id = ?
+           ORDER BY cr.created_at ASC""",
+        (clan_id,),
+    )
+    return await cur.fetchall()
+
+
+async def has_clan_recipe(clan_id: int, recipe_id: int) -> bool:
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT 1 FROM clan_recipes WHERE clan_id = ? AND recipe_id = ?",
+        (clan_id, recipe_id),
+    )
+    row = await cur.fetchone()
+    return row is not None
+
+
+async def donate_recipe_to_clan_library(clan_id: int, user_id: int,
+                                        item_id: int) -> tuple:
+    """Сдаёт предмет-рецепт/книгу в клановую библиотеку (Фаза 6).
+
+    Предмет (items, category='recipes') списывается из инвентаря навсегда;
+    все рецепты, которые он открывает (recipe_book_items), пишутся
+    в clan_recipes и становятся доступны всем членам клана.
+
+    Возвращает (ok, текст_для_игрока, added_recipe_ids).
+    """
+    conn = await get_db()
+    cur = await conn.execute("SELECT * FROM items WHERE id = ?", (item_id,))
+    item = await cur.fetchone()
+    if not item:
+        return False, "Предмет не найден.", []
+    if item.get('category') != 'recipes':
+        return False, "Это не предмет-рецепт.", []
+    inv_row = await get_inventory_item(user_id, item_id)
+    if not inv_row or int(inv_row.get('quantity') or 0) < 1:
+        return False, "У тебя нет этого предмета.", []
+    book_rows = await get_recipe_book_recipes(item_id)
+    if book_rows:
+        recipe_ids = [int(r['id']) for r in book_rows if r.get('is_available')]
+    else:
+        # Свиток «Рецепт: <название>»: рецепт ищется по имени носителя.
+        title = item.get('name') or ''
+        title = title[len(RECIPE_ITEM_PREFIX):] if title.startswith(RECIPE_ITEM_PREFIX) else title
+        cur = await conn.execute(
+            "SELECT id FROM recipes WHERE name = ? AND is_available = 1", (title,))
+        row = await cur.fetchone()
+        recipe_ids = [int(row['id'])] if row else []
+    if not recipe_ids:
+        return False, "В этой книге нет доступных рецептов.", []
+    added = []
+    for rid in recipe_ids:
+        if await has_clan_recipe(clan_id, rid):
+            continue
+        await conn.execute(
+            "INSERT OR IGNORE INTO clan_recipes (clan_id, recipe_id, donated_by) "
+            "VALUES (?, ?, ?)", (clan_id, rid, user_id))
+        added.append(rid)
+    if not added:
+        return False, "Все рецепты из этой книги уже есть в клановой библиотеке.", []
+    if not await remove_inventory_item(user_id, item_id, 1):
+        return False, "Не удалось списать предмет из инвентаря.", []
+    return True, f"Книга сдана в клановую библиотеку. Рецепт(ов) открыто: {len(added)}.", added
+
+
+async def get_clan_recipes_ids(clan_id: int):
+    conn = await get_db()
+    cur = await conn.execute("SELECT recipe_id FROM clan_recipes WHERE clan_id = ?", (clan_id,))
+    res = await cur.fetchall()
+    return {r['recipe_id'] for r in res}

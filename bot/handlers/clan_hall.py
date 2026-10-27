@@ -42,6 +42,7 @@ from database.db import (
     clan_garden_plots,
     clan_plot_info,
     donate_to_clan_storage,
+    donate_recipe_to_clan_library,
     ensure_clan_building,
     get_clan,
     get_clan_building,
@@ -52,6 +53,8 @@ from database.db import (
     get_clan_garden,
     get_clan_members,
     get_clan_project_progress,
+    get_clan_recipes,
+    get_clan_recipes_ids,
     get_clan_storage,
     get_clan_storage_qty,
     get_ingredient_map,
@@ -62,6 +65,7 @@ from database.db import (
     get_recipe,
     get_user,
     harvest_clan_plot,
+    has_clan_recipe,
     has_user_recipe,
     install_clan_expansion,
     is_clan_member,
@@ -387,10 +391,10 @@ def build_hall_inside_text(clan, building_row, expansions=None) -> str:
             lines.append(f"  {idx}. ▫️ <i>Пустой слот</i>")
     status = building_row["status"] if "status" in building_row.keys() else None
     usable = [e for e in (expansions or [])
-              if e["expansion_type"] in ("kitchen", "workbench", "shower", "garden")]
+              if e["expansion_type"] in ("kitchen", "workbench", "shower", "garden", "library")]
     if usable:
-        lines.append("\n🛠 Кухня, стол, душевые и сад доступны всем членам клана — "
-                     "крафт личный, урожай сада идёт на склад.")
+        lines.append("\n🛠 Кухня, стол, душевые, сад и библиотека доступны всем членам — "
+                     "крафт личный, урожай сада и книги идут на нужды клана.")
     if status == "upgrading":
         tcfg = _building_cfg(building_row["target_type"])
         tname = tcfg.get("name") or building_row["target_type"] or "новый уровень"
@@ -472,8 +476,9 @@ def build_expansion_choose_text(clan, building_row, slot_index, available) -> st
     return "\n".join(lines)
 
 
-def build_clan_room_text(clan, building_row, expansion, learned, level: int) -> str:
-    """Экран кухни/крафтового стола внутри клан-холла (личные рецепты)."""
+def build_clan_room_text(clan, building_row, expansion, learned, level: int,
+                         clan_only=()) -> str:
+    """Экран кухни/крафтового стола внутри клан-холла (личные + клановые рецепты)."""
     et = expansion["expansion_type"]
     icon = clan_expansion_icon(et)
     name = clan_expansion_name(et)
@@ -482,6 +487,8 @@ def build_clan_room_text(clan, building_row, expansion, learned, level: int) -> 
 
     available = [r for r in learned if int(r["required_level"] or 1) <= level]
     locked = [r for r in learned if int(r["required_level"] or 1) > level]
+    clan_avail = [r for r in clan_only if int(r["required_level"] or 1) <= level]
+    clan_locked = [r for r in clan_only if int(r["required_level"] or 1) > level]
     lines = [
         f"{icon} <b>{_esc(name)}</b> (ур. {level}) — «{_esc(clan['name'])}»",
         f"Здание: <b>{_esc(bname)}</b>",
@@ -490,20 +497,29 @@ def build_clan_room_text(clan, building_row, expansion, learned, level: int) -> 
         "Уровень кланового расширения задаёт, какие рецепты доступны.",
         "",
     ]
-    if not learned:
+    if not learned and not clan_only:
         lines.append("Нет выученных рецептов.")
-        lines.append("Купи «📜 Рецепты» в Магазине 🏪.")
+        lines.append("Купи «📜 Рецепты» в Магазине 🏪 или сдай книгу в клановую библиотеку.")
     else:
         if available:
             lines.append("Доступные рецепты:")
             for r in available:
                 lines.append(f"  • {_esc(r['name'])}")
-        else:
+        elif not clan_avail:
             lines.append("Рецептов для этого уровня нет.")
+        if clan_avail:
+            lines.append("Из клановой библиотеки:")
+            for r in clan_avail:
+                lines.append(f"  • 📚 {_esc(r['name'])}")
         if locked:
             lines.append("")
             lines.append(f"🔒 Выучено, но нужно расширение выше (твоё — {level} ур.):")
             for r in locked:
+                lines.append(f"  • {_esc(r['name'])} — нужен ур. {int(r['required_level'] or 1)}")
+        if clan_locked:
+            lines.append("")
+            lines.append(f"🔒 В клановой библиотеке, но нужен уровень выше (твой — {level} ур.):")
+            for r in clan_locked:
                 lines.append(f"  • {_esc(r['name'])} — нужен ур. {int(r['required_level'] or 1)}")
     return "\n".join(lines)
 
@@ -566,6 +582,29 @@ def build_clan_garden_text(clan, building_row, expansion, garden_map: dict,
         lines.append(f"  {plot_idx}. 🌿 <b>{_esc(plant_name)}</b> — {tail}{who}")
     if any_ripe and not is_leader:
         lines.append("\n<i>Собрать спелые плоды на клановый склад может глава клана.</i>")
+    return "\n".join(lines)
+
+
+def build_clan_library_text(clan, building_row, expansion, clan_recipe_rows) -> str:
+    """Экран клановой библиотеки рецептов (Фаза 6)."""
+    level = int(expansion["expansion_level"] or 1)
+    cfg = _building_cfg(building_row["building_type"])
+    bname = cfg.get("name") or building_row["building_type"] or "Здание клана"
+    lines = [
+        f"📚 <b>Библиотека рецептов</b> (ур. {level}) — «{_esc(clan['name'])}»",
+        f"Здание: <b>{_esc(bname)}</b>",
+        "",
+        "Рецепты из библиотеки доступны ВСЕМ членам клана в кухне и крафтовом столе",
+        "(гейт по уровню кухни/стола — как обычно). Книга сдаётся навсегда.",
+        "",
+    ]
+    if not clan_recipe_rows:
+        lines.append("Библиотека пуста. Сдай первую книгу рецептов из инвентаря!")
+    else:
+        lines.append("Рецепты клана:")
+        for r in clan_recipe_rows:
+            lines.append(f"  📖 {_esc(r['recipe_name'] or ('#' + str(r['recipe_id'])))}")
+        lines.append(f"\nВсего рецептов: <b>{len(clan_recipe_rows)}</b>")
     return "\n".join(lines)
 
 
@@ -877,12 +916,20 @@ async def _render_clan_use(cb: CallbackQuery, clan, building, exp):
 
     if et in ("kitchen", "workbench"):
         learned = await get_learned_recipes(cb.from_user.id, et)
-        text = build_clan_room_text(clan, building, exp, learned, level)
+        # Рецепты из клановой библиотеки (Фаза 6): видны всем членам клана.
+        clan_only = [r for r in await get_clan_recipes_for_roster(clan_id, et)
+                     if not await has_user_recipe(cb.from_user.id, int(r["id"]))]
+        text = build_clan_room_text(clan, building, exp, learned, level, clan_only=clan_only)
         rows = []
         for r in learned:
             if int(r["required_level"] or 1) <= level:
                 rows.append([InlineKeyboardButton(
                     text=f"📋 {r['name']}",
+                    callback_data=f"clanh:recipe:{clan_id}:{slot_index}:{r['id']}")])
+        for r in clan_only:
+            if int(r["required_level"] or 1) <= level:
+                rows.append([InlineKeyboardButton(
+                    text=f"📚 {r['name']}",
                     callback_data=f"clanh:recipe:{clan_id}:{slot_index}:{r['id']}")])
         if et == "kitchen":
             rows.append([InlineKeyboardButton(
@@ -898,7 +945,72 @@ async def _render_clan_use(cb: CallbackQuery, clan, building, exp):
     if et == "garden":
         return await _render_clan_garden(cb, clan, building, exp)
 
+    if et == "library":
+        return await _render_clan_library(cb, clan, building, exp)
+
     await cb.answer(f"❌ {clan_expansion_name(et)} пока не работает.", show_alert=True)
+
+
+async def get_clan_recipes_for_roster(clan_id: int, expansion_type: str) -> list:
+    """Рецепты клановой библиотеки, пригодные для расширения этого типа."""
+    rows = []
+    for r in await get_clan_recipes(clan_id):
+        full = await get_recipe(int(r["recipe_id"]))
+        if full and full.get("is_available") and full.get("required_expansion") == expansion_type:
+            rows.append(full)
+    return rows
+
+
+async def get_donatable_recipe_items(user_id: int) -> list:
+    """Предметы-книги рецептов из инвентаря пользователя."""
+    items = await get_inventory(user_id)
+    donatable = []
+    for i in items:
+        if i.get("category") == "recipes" and i.get("is_available"):
+            donatable.append(i)
+    return donatable
+
+
+async def _render_clan_library(cb: CallbackQuery, clan, building, exp):
+    """Экран клановой библиотеки: список рецептов + сдача книги."""
+    clan_id = int(clan["id"])
+    slot_index = int(exp["slot_index"])
+    clan_rows = await get_clan_recipes(clan_id)
+    text = build_clan_library_text(clan, building, exp, clan_rows)
+    rows = []
+    for r in await get_donatable_recipe_items(cb.from_user.id):
+        rows.append([InlineKeyboardButton(
+            text=f"📄 Сдать: {r['name']}",
+            callback_data=f"clanh:libgive:{clan_id}:{slot_index}:{r['id']}")])
+    rows.append([InlineKeyboardButton(
+        text="🔙 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
+    photo = await resolve_clan_hall_photo(building)
+    await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
+
+
+@router.callback_query(F.data.startswith("clanh:libgive:"))
+async def clan_hall_libgive_cb(cb: CallbackQuery):
+    """Сдача предмета-книги рецептов в клановую библиотеку (Фаза 6)."""
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    item_id = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0
+    clan = await _member_clan(cb, clan_id)
+    if not clan:
+        return
+    exp = await get_clan_expansion(clan_id, slot_index)
+    if not exp or exp["expansion_type"] != "library":
+        await cb.answer("❌ Библиотека не установлена.", show_alert=True)
+        return
+    building = await get_clan_building(clan_id)
+    if not building or building["status"] not in ("built", "upgrading"):
+        await cb.answer("❌ Здание клана недоступно.", show_alert=True)
+        return
+    ok, msg, _ = await donate_recipe_to_clan_library(clan_id, cb.from_user.id, item_id)
+    await cb.answer(msg, show_alert=True)
+    if not ok:
+        return
+    await _render_clan_library(cb, clan, building, exp)
 
 
 async def _render_clan_shower(cb: CallbackQuery, clan, building, exp):
@@ -1051,7 +1163,7 @@ async def clan_hall_use_cb(cb: CallbackQuery):
     clan, building, exp = await _load_usable(cb, clan_id, slot_index)
     if not clan:
         return
-    if exp["expansion_type"] not in ("kitchen", "workbench", "shower", "garden"):
+    if exp["expansion_type"] not in ("kitchen", "workbench", "shower", "garden", "library"):
         await cb.answer("❌ Это расширение пока не работает.", show_alert=True)
         return
     await cb.answer()
@@ -1077,7 +1189,8 @@ async def clan_hall_recipe_cb(cb: CallbackQuery):
     if not recipe:
         await cb.answer("❌ Рецепт не найден.", show_alert=True)
         return
-    if not await has_user_recipe(cb.from_user.id, recipe_id):
+    if not (await has_user_recipe(cb.from_user.id, recipe_id)
+            or await has_clan_recipe(clan_id, recipe_id)):
         await cb.answer("❌ Ты ещё не изучил этот рецепт.", show_alert=True)
         return
     if recipe["required_expansion"] != et:
@@ -1143,7 +1256,8 @@ async def clan_hall_craft_cb(cb: CallbackQuery):
 
     uid = cb.from_user.id
     try:
-        ctx = await begin_craft(uid, recipe_id, et, int(exp["expansion_level"] or 1))
+        ctx = await begin_craft(uid, recipe_id, et, int(exp["expansion_level"] or 1),
+                                clan_id=clan_id)
     except CraftError as e:
         await cb.answer(str(e), show_alert=True)
         return
@@ -1632,12 +1746,13 @@ async def clan_hall_inside_cb(cb: CallbackQuery):
     rows = []
     for exp in expansions:
         et = exp["expansion_type"]
-        if et not in ("kitchen", "workbench", "shower", "garden"):
+        if et not in ("kitchen", "workbench", "shower", "garden", "library"):
             continue
         slot_index = int(exp["slot_index"])
         level = int(exp["expansion_level"] or 1)
         action = {"kitchen": "готовить", "workbench": "крафтить",
-                  "shower": "помыться", "garden": "грядки"}.get(et, "открыть")
+                  "shower": "помыться", "garden": "грядки",
+                  "library": "читать"}.get(et, "открыть")
         rows.append([InlineKeyboardButton(
             text=f"{clan_expansion_icon(et)} {clan_expansion_name(et)} "
                  f"(ур. {level}) — {action}",

@@ -91,13 +91,16 @@ async def refund_ingredients(user_id: int, consumed) -> None:
 
 
 async def begin_craft(user_id: int, recipe_id: int, expansion_type: str | None,
-                      expansion_level: int) -> dict:
+                      expansion_level: int, clan_id: int | None = None) -> dict:
     """Проверяет рецепт и списывает ингредиенты/ОД.
 
     Уровень расширения проверяется здесь же, поэтому устаревшая кнопка не
     скрафтит рецепт выше уровня. При любой ошибке списанное возвращается, а
     `CRAFTING` освобождается. При успехе лок держится до `finish_craft` /
     `cancel_craft` / `end_craft`.
+
+    clan_id: Фаза 6 — в клан-холле рецепт доступен и из клановой библиотеки
+    (clan_recipes), а не только из личных user_recipes.
     """
     if user_id in CRAFTING:
         raise CraftError("⏳ Уже готовишься!")
@@ -107,7 +110,11 @@ async def begin_craft(user_id: int, recipe_id: int, expansion_type: str | None,
         recipe = await get_recipe(recipe_id)
         if not recipe:
             raise CraftError("❌ Рецепт не найден.")
-        if not await has_user_recipe(user_id, recipe_id):
+        learned = await has_user_recipe(user_id, recipe_id)
+        if not learned and clan_id:
+            from database.db import has_clan_recipe
+            learned = await has_clan_recipe(clan_id, recipe_id)
+        if not learned:
             raise CraftError("❌ Ты ещё не изучил этот рецепт.")
         if not expansion_type or recipe["required_expansion"] != expansion_type:
             raise CraftError("❌ Это расширение не подходит для рецепта.")
