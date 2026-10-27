@@ -324,7 +324,7 @@ async def main():
                 MEMBER, scroll["id"]))["quantity"]) == 1)
             check("в библиотеке ровно 1 рецепт",
                   len(await get_clan_recipes(clan_id)) == 1)
-            check("авта сдачи помнить (donated_by)",
+            check("автор сдачи записан (donated_by)",
                   (await get_clan_recipes(clan_id))[0]["donated_by"] == MEMBER)
 
             cb_g2 = FakeCallback(MEMBER, f"clanh:libgive:{clan_id}:2:{scroll['id']}")
@@ -338,7 +338,7 @@ async def main():
         non_r = await (await conn.execute(
             "SELECT * FROM items WHERE is_available = 1 AND category != 'recipes' "
             "ORDER BY id LIMIT 1")).fetchone()
-        check("найдет не-рецептный предмет", bool(non_r))
+        check("найдётся не-рецептный предмет", bool(non_r))
         board = non_r
         if board:
             await add_inventory_item(MEMBER, board["id"], 1)

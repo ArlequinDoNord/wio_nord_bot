@@ -1040,6 +1040,26 @@ async def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_clan_recipes_clan ON clan_recipes(clan_id);
 
+        -- Клановая лавка (Фаза 7): витрина расширения «shop».
+        CREATE TABLE IF NOT EXISTS clan_shop_items (
+            clan_id INTEGER NOT NULL,
+            item_id INTEGER NOT NULL,
+            price INTEGER NOT NULL,
+            stock INTEGER DEFAULT -1,
+            is_active INTEGER DEFAULT 1,
+            PRIMARY KEY (clan_id, item_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_clan_shop_clan ON clan_shop_items(clan_id);
+
+        -- Суточный лимит покупок (Фаза 7): счётчик на (клан, пилот, день).
+        CREATE TABLE IF NOT EXISTS clan_shop_purchases (
+            clan_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            buy_day TEXT NOT NULL DEFAULT '',
+            qty INTEGER DEFAULT 0,
+            PRIMARY KEY (clan_id, user_id, buy_day)
+        );
+
         CREATE TABLE IF NOT EXISTS user_recipes (
             user_id INTEGER NOT NULL,
             recipe_id INTEGER NOT NULL,
@@ -13545,6 +13565,8 @@ async def delete_clan(clan_id: int):
     await conn.execute("DELETE FROM clan_expansions WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_garden WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_recipes WHERE clan_id = ?", (clan_id,))
+    await conn.execute("DELETE FROM clan_shop_purchases WHERE clan_id = ?", (clan_id,))
+    await conn.execute("DELETE FROM clan_shop_items WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_buildings WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clans WHERE id = ?", (clan_id,))
     await conn.commit()
@@ -14681,3 +14703,134 @@ async def get_clan_recipes_ids(clan_id: int):
     cur = await conn.execute("SELECT recipe_id FROM clan_recipes WHERE clan_id = ?", (clan_id,))
     res = await cur.fetchall()
     return {r['recipe_id'] for r in res}
+
+
+# --- Клан-холл: клановая лавка (Фаза 7) ---
+
+async def get_clan_shop_items(clan_id: int, active_only: bool = True) -> list:
+    """Витрина клановой лавки: позиции расширения «shop» с данными предметов."""
+    conn = await get_db()
+    q = ("SELECT csi.item_id, csi.price, csi.stock, csi.is_active, "
+         "i.name, i.description, i.category, i.rarity, i.is_available "
+         "FROM clan_shop_items csi JOIN items i ON i.id = csi.item_id "
+         "WHERE csi.clan_id = ?")
+    if active_only:
+        q += " AND csi.is_active = 1"
+    q += " ORDER BY i.name COLLATE NOCASE"
+    cur = await conn.execute(q, (clan_id,))
+    return await cur.fetchall()
+
+
+async def get_clan_shop_item(clan_id: int, item_id: int):
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT csi.item_id, csi.price, csi.stock, csi.is_active, "
+        "i.name, i.description, i.category, i.rarity, i.is_available "
+        "FROM clan_shop_items csi JOIN items i ON i.id = csi.item_id "
+        "WHERE csi.clan_id = ? AND csi.item_id = ?", (clan_id, item_id))
+    return await cur.fetchone()
+
+
+async def upsert_clan_shop_item(clan_id: int, item_id: int, price: int,
+                                stock: int = -1, is_active: bool = True) -> bool:
+    """Добавляет/обновляет позицию витрины клановой лавки (админский метод).
+
+    price >= 1, stock = -1 — безлимит. Используется и для клановой накидки
+    (личный предмет каждого клана), и для точечных товаров.
+    """
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO clan_shop_items (clan_id, item_id, price, stock, is_active) "
+        "VALUES (?, ?, ?, ?, ?) "
+        "ON CONFLICT(clan_id, item_id) DO UPDATE SET "
+        "price = excluded.price, stock = excluded.stock, is_active = excluded.is_active",
+        (clan_id, item_id, max(1, int(price)), int(stock), 1 if is_active else 0))
+    await conn.commit()
+    return True
+
+
+async def set_clan_shop_active(clan_id: int, item_id: int, is_active: bool) -> bool:
+    conn = await get_db()
+    cur = await conn.execute(
+        "UPDATE clan_shop_items SET is_active = ? WHERE clan_id = ? AND item_id = ?",
+        (1 if is_active else 0, clan_id, item_id))
+    await conn.commit()
+    return cur.rowcount > 0
+
+
+async def delete_clan_shop_item(clan_id: int, item_id: int) -> bool:
+    conn = await get_db()
+    cur = await conn.execute(
+        "DELETE FROM clan_shop_items WHERE clan_id = ? AND item_id = ?",
+        (clan_id, item_id))
+    await conn.commit()
+    return cur.rowcount > 0
+
+
+def clan_shop_day() -> str:
+    """Игровые сутки лавки (по МСК, как сутки в остальной экономике)."""
+    return time.strftime("%Y-%m-%d")
+
+
+async def get_clan_shop_bought_today(clan_id: int, user_id: int) -> int:
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT qty FROM clan_shop_purchases "
+        "WHERE clan_id = ? AND user_id = ? AND buy_day = ?",
+        (clan_id, user_id, clan_shop_day()))
+    row = await cur.fetchone()
+    return int(row['qty']) if row else 0
+
+
+async def buy_clan_shop_item(clan_id: int, user_id: int, item_id: int) -> tuple:
+    """Покупка в клановой лавке: проверки и списания атомарной цепочкой.
+
+    Проверяются: позиция в витрине, активность, существование предмета,
+    суточный лимит покупок, остаток и баланс НМ. Хранит счётчик в
+    clan_shop_purchases, выдаёт предмет в личный инвентарь.
+    Возвращает (ok, текст, bought_left).
+    """
+    row = await get_clan_shop_item(clan_id, item_id)
+    if not row:
+        return False, "❌ Позиции нет в лавке.", None
+    if not row.get('is_active'):
+        return False, "❌ Товар скрыт из лавки.", None
+    if not row.get('is_available'):
+        return False, "❌ Предмет больше не существует.", None
+
+    limit = int(getattr(config, "CLAN_SHOP_DAILY_LIMIT", 3) or 0)
+    if limit > 0:
+        bought = await get_clan_shop_bought_today(clan_id, user_id)
+        if bought >= limit:
+            return False, (f"❌ Дневной лимит покупок исчерпан "
+                           f"({limit}/день)."), None
+    price = max(1, int(row.get('price') or 1))
+    user = await get_user(user_id)
+    if not user or int(user.get('nordmarks') or 0) < price:
+        return False, "❌ Не хватает НМ.", None
+    stock = row.get('stock')
+    stock = int(stock) if stock is not None else -1
+    if stock == 0:
+        return False, "❌ Распродано.", None
+    conn = await get_db()
+    if stock > 0:
+        cur = await conn.execute(
+            "UPDATE clan_shop_items SET stock = stock - 1 "
+            "WHERE clan_id = ? AND item_id = ? AND stock > 0",
+            (clan_id, item_id))
+        if cur.rowcount == 0:
+            return False, "❌ Распродано.", None
+    await conn.execute(
+        "INSERT INTO clan_shop_purchases (clan_id, user_id, buy_day, qty) "
+        "VALUES (?, ?, ?, 1) "
+        "ON CONFLICT(clan_id, user_id, buy_day) DO UPDATE SET qty = qty + 1",
+        (clan_id, user_id, clan_shop_day()))
+    # Баланс уже подтверждён прямой проверкой — списываем.
+    await remove_nordmarks(user_id, price, "clan_shop",
+                           f"Покупка в клановой лавке")
+    # НМ списаны — зачисляем предмет
+    await add_inventory_item(user_id, item_id, 1)
+    bought_now = await get_clan_shop_bought_today(clan_id, user_id) \
+        if limit > 0 else None
+    left = (limit - bought_now) if limit > 0 else None
+    return True, (f"🏪 Куплено: {row.get('name')} — списано {price} НМ."), left

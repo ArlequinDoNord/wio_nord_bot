@@ -40,10 +40,11 @@
 | 27 | `hq_router` | `bot/handlers/hq.py` |
 | 28 | `clans_router` | `bot/handlers/clans.py` |
 | 29 | `clan_hall_router` | `bot/handlers/clan_hall.py` |
-| 30 | `nii_router` | `bot/handlers/nii.py` |
-| 31 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
-| 32 | `duel_router` | `bot/handlers/duel.py` |
-| 33 | `mvd_router` | `bot/handlers/mvd.py` |
+| 30 | `admin_shop_clan_router` | `bot/handlers/admin_shop_clan.py` |
+| 31 | `nii_router` | `bot/handlers/nii.py` |
+| 32 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
+| 33 | `duel_router` | `bot/handlers/duel.py` |
+| 34 | `mvd_router` | `bot/handlers/mvd.py` |
 
 ## Сводка по модулям
 
@@ -77,7 +78,8 @@
 | `wall.py` | Стена изречений — доска объявлений города. | `router` | 2 | 7 | `wall:` | `WallWrite` |
 | `hq.py` | Штаб ВВС: командование рассылает приказы авиакрыльям. | `router` | 7 | 25 | `hq:` | `HqOrder`, `HqWingCreate`, `HqWingEdit` |
 | `clans.py` | Партии и кланы: реестр из Ратуши. | `router` | 7 | 23 | `city:`, `clans:` | `ClansCreate`, `ClansEdit`, `ClansMessage` |
-| `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 2 | 31 | `clanh:` | `ClanHallAdminPhoto` |
+| `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 2 | 33 | `clanh:` | `ClanHallAdminPhoto` |
+| `admin_shop_clan.py` | Админ-менеджер клановых лавок (Фаза 7). | `router` | 5 | 9 | `clanshopadm:` | `ClanShopAdmin` |
 | `nii.py` | НИИ Северной Кибернетики и кремниевых систем — здание обратной связи. | `router` | 2 | 7 | `nii:` | `NiiWrite` |
 | `tourist_booklet.py` | Буклет туриста: чек-лист городских локаций и разовая награда. | `router` | 0 | 2 | `booklet:` | — |
 | `duel.py` | Дом Дуэлей — PvP-арена «зона на зону». | `router` | 0 | 12 | `duel:` | — |
@@ -294,10 +296,18 @@
 ### `clan_hall.py` — Клан-холл: клановый склад и строительство кланового здания (Фаза 1).
 
 - Роутеры: `router`
-- Хендлеры: message=2, callback_query=31
+- Хендлеры: message=2, callback_query=33
 - FSM: `ClanHallAdminPhoto`
-- `F.data.startswith`: `clanh:admconstphoto:`, `clanh:admnophoto:`, `clanh:admphoto:`, `clanh:cancel:`, `clanh:choose:`, `clanh:craft:`, `clanh:donate:`, `clanh:expchoose:`, `clanh:expinstall:`, `clanh:expmanage:`, `clanh:expup:`, `clanh:give:`, `clanh:hall:`, `clanh:harvest:`, `clanh:harvestall:`, `clanh:inside:`, `clanh:item:`, `clanh:libgive:`, `clanh:log:`, `clanh:mushproc:`, `clanh:mushrooms:`, `clanh:plant:`, `clanh:plantlist:`, `clanh:recipe:`, `clanh:shower:`, `clanh:start:`, `clanh:startfull:`, `clanh:storage:`, `clanh:upgrade:`, `clanh:use:`
+- `F.data.startswith`: `clanh:admconstphoto:`, `clanh:admnophoto:`, `clanh:admphoto:`, `clanh:bitem:`, `clanh:buy:`, `clanh:cancel:`, `clanh:choose:`, `clanh:craft:`, `clanh:donate:`, `clanh:expchoose:`, `clanh:expinstall:`, `clanh:expmanage:`, `clanh:expup:`, `clanh:give:`, `clanh:hall:`, `clanh:harvest:`, `clanh:harvestall:`, `clanh:inside:`, `clanh:item:`, `clanh:libgive:`, `clanh:log:`, `clanh:mushproc:`, `clanh:mushrooms:`, `clanh:plant:`, `clanh:plantlist:`, `clanh:recipe:`, `clanh:shower:`, `clanh:start:`, `clanh:startfull:`, `clanh:storage:`, `clanh:upgrade:`, `clanh:use:`
 - `F.data ==`: `clanh:noop`
+
+### `admin_shop_clan.py` — Админ-менеджер клановых лавок (Фаза 7).
+
+- Роутеры: `router`
+- Хендлеры: message=5, callback_query=9
+- FSM: `ClanShopAdmin`
+- `F.data.startswith`: `clanshopadm:add:`, `clanshopadm:clan:`, `clanshopadm:del:`, `clanshopadm:ep:`, `clanshopadm:es:`, `clanshopadm:hide:`, `clanshopadm:it:`, `clanshopadm:show:`
+- `F.data ==`: `clanshopadm:menu`
 
 ### `nii.py` — НИИ Северной Кибернетики и кремниевых систем — здание обратной связи.
 

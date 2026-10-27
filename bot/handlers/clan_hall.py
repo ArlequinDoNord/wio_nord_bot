@@ -32,6 +32,7 @@ from database.db import (
     can_harvest_clan_garden,
     can_manage_clan_hall,
     can_use_shower,
+    buy_clan_shop_item,
     cancel_clan_building,
     choose_clan_building,
     choose_clan_upgrade,
@@ -55,6 +56,8 @@ from database.db import (
     get_clan_project_progress,
     get_clan_recipes,
     get_clan_recipes_ids,
+    get_clan_shop_items,
+    get_clan_shop_item,
     get_clan_storage,
     get_clan_storage_qty,
     get_ingredient_map,
@@ -66,10 +69,12 @@ from database.db import (
     get_user,
     harvest_clan_plot,
     has_clan_recipe,
+    get_clan_shop_bought_today,
     has_user_recipe,
     install_clan_expansion,
     is_clan_member,
     next_clan_building_type,
+    get_clan_shop_item,
     plant_clan_seed,
     resolve_clan_building_with_event,
     set_clan_building_photo,
@@ -391,9 +396,10 @@ def build_hall_inside_text(clan, building_row, expansions=None) -> str:
             lines.append(f"  {idx}. ▫️ <i>Пустой слот</i>")
     status = building_row["status"] if "status" in building_row.keys() else None
     usable = [e for e in (expansions or [])
-              if e["expansion_type"] in ("kitchen", "workbench", "shower", "garden", "library")]
+              if e["expansion_type"] in ("kitchen", "workbench", "shower",
+                                         "garden", "library", "shop")]
     if usable:
-        lines.append("\n🛠 Кухня, стол, душевые, сад и библиотека доступны всем членам — "
+        lines.append("\n🛠 Кухня, стол, душевые, сад, библиотека и лавка доступны всем — "
                      "крафт личный, урожай сада и книги идут на нужды клана.")
     if status == "upgrading":
         tcfg = _building_cfg(building_row["target_type"])
@@ -605,6 +611,34 @@ def build_clan_library_text(clan, building_row, expansion, clan_recipe_rows) -> 
         for r in clan_recipe_rows:
             lines.append(f"  📖 {_esc(r['recipe_name'] or ('#' + str(r['recipe_id'])))}")
         lines.append(f"\nВсего рецептов: <b>{len(clan_recipe_rows)}</b>")
+    return "\n".join(lines)
+
+
+def build_clan_shop_text(clan, building_row, expansion, shop_rows,
+                         bought: int) -> str:
+    """Экран клановой лавки (Фаза 7)."""
+    level = int(expansion["expansion_level"] or 1)
+    cfg = _building_cfg(building_row["building_type"])
+    bname = cfg.get("name") or building_row["building_type"] or "Здание клана"
+    limit = int(getattr(config, "CLAN_SHOP_DAILY_LIMIT", 3) or 0)
+    lines = [
+        f"🏪 <b>Клановая лавка</b> (ур. {level}) — «{_esc(clan['name'])}»",
+        f"Здание: <b>{_esc(bname)}</b>",
+        "",
+    ]
+    if limit > 0:
+        lines.append(f"Покупок на тебя сегодня: <b>{bought}</b> из {limit}, "
+                     "лимит общий на всю лавку. Сутки — игровое время города.")
+    lines.append("")
+    if not shop_rows:
+        lines.append("Лавка пока пуста — админ добавит товары накидкой и дисплеем.")
+    else:
+        lines.append("Товары:")
+        for r in shop_rows:
+            stock = r.get("stock")
+            stock_txt = "∞" if stock is None or int(stock) < 0 else f"ост. {int(stock)}"
+            lines.append(f"  • {_esc(r['name'])} — 💰 {int(r['price'])} НМ "
+                         f"({stock_txt})")
     return "\n".join(lines)
 
 
@@ -948,7 +982,96 @@ async def _render_clan_use(cb: CallbackQuery, clan, building, exp):
     if et == "library":
         return await _render_clan_library(cb, clan, building, exp)
 
+    if et == "shop":
+        return await _render_clan_shop(cb, clan, building, exp)
+
     await cb.answer(f"❌ {clan_expansion_name(et)} пока не работает.", show_alert=True)
+
+
+async def _render_clan_shop(cb: CallbackQuery, clan, building, exp):
+    """Экран клановой лавки: витрина + покупка (Фаза 7)."""
+    clan_id = int(clan["id"])
+    slot_index = int(exp["slot_index"])
+    shop_rows = await get_clan_shop_items(clan_id, active_only=True)
+    bought = await get_clan_shop_bought_today(clan_id, cb.from_user.id)
+    text = build_clan_shop_text(clan, building, exp, shop_rows, bought)
+    rows = []
+    for r in shop_rows:
+        stock = int(r.get("stock") if r.get("stock") is not None else -1)
+        if stock == 0:
+            continue  # распродано — кнопки нет
+        rows.append([InlineKeyboardButton(
+            text=f"🛒 {r['name']} — 💰 {int(r['price'])} НМ",
+            callback_data=f"clanh:bitem:{clan_id}:{slot_index}:{r['item_id']}")])
+    rows.append([InlineKeyboardButton(
+        text="🔙 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
+    photo = await resolve_clan_hall_photo(building)
+    await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
+
+
+@router.callback_query(F.data.startswith("clanh:bitem:"))
+async def clan_hall_bitem_cb(cb: CallbackQuery):
+    """Карточка товара клановой лавки (подтверждение покупки)."""
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    item_id = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0
+    clan, building, exp = await _load_usable(cb, clan_id, slot_index)
+    if not clan:
+        return
+    if exp["expansion_type"] != "shop":
+        await cb.answer("❌ Лавка не установлена.", show_alert=True)
+        return
+    item = await get_clan_shop_item(clan_id, item_id)
+    if not item or not item.get('is_active'):
+        await cb.answer("❌ Товар скрыт или распродан.", show_alert=True)
+        return
+    limit = int(getattr(config, "CLAN_SHOP_DAILY_LIMIT", 3) or 0)
+    bought = await get_clan_shop_bought_today(clan_id, cb.from_user.id)
+    stock = item.get("stock")
+    stock = int(stock) if stock is not None else -1
+    avail_text = "∞" if stock < 0 else f"{stock} шт.\n"
+    limit_text = f"Лимит: {limit}/день.\n" if limit > 0 else \
+        "Без лимита на день."
+    text = (
+        f"🛒 {_esc(item['name'])} — 💰 {int(item['price'])} НМ\n"
+        f"Оплата НМ со склада клана: {avail_text.strip() or '∞'}\n"
+        f"{limit_text}"
+        f"Осталось за сутки: {(limit - bought) if limit > 0 else 'без лимита'}\n\n"
+        f"{_esc(item['description'] or '')}"
+    )
+    rows = [[InlineKeyboardButton(
+        text="✅ Купить",
+        callback_data=f"clanh:buy:{clan_id}:{slot_index}:{item_id}")],
+        [InlineKeyboardButton(text="🏪 В лавку",
+                              callback_data=f"clanh:use:{clan_id}:{slot_index}")],
+        [InlineKeyboardButton(text="🚪 Внутрь здания",
+                              callback_data=f"clanh:inside:{clan_id}")]]
+    await cb.answer()
+    photo = await resolve_clan_hall_photo(building)
+    await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
+
+
+@router.callback_query(F.data.startswith("clanh:buy:"))
+async def clan_hall_buy_cb(cb: CallbackQuery):
+    """Покупка в клановой лавке: лимиты и остатки считает buy_clan_shop_item в db."""
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
+    item_id = int(parts[4]) if len(parts) > 4 and parts[4].isdigit() else 0
+    clan, building, exp = await _load_usable(cb, clan_id, slot_index)
+    if not clan:
+        return
+    if exp["expansion_type"] != "shop":
+        await cb.answer("❌ Лавка не установлена.", show_alert=True)
+        return
+    ok, msg, left = await buy_clan_shop_item(clan_id, cb.from_user.id, item_id)
+    if not ok:
+        await cb.answer(msg, show_alert=True)
+        return
+    extra = f" Осталось покупок сегодня: {left}." if left is not None else ""
+    await cb.answer(f"✅ {msg}{extra}", show_alert=True)
+    await _render_clan_shop(cb, clan, building, exp)
 
 
 async def get_clan_recipes_for_roster(clan_id: int, expansion_type: str) -> list:
@@ -1163,7 +1286,8 @@ async def clan_hall_use_cb(cb: CallbackQuery):
     clan, building, exp = await _load_usable(cb, clan_id, slot_index)
     if not clan:
         return
-    if exp["expansion_type"] not in ("kitchen", "workbench", "shower", "garden", "library"):
+    if exp["expansion_type"] not in ("kitchen", "workbench", "shower", "garden",
+                                     "library", "shop"):
         await cb.answer("❌ Это расширение пока не работает.", show_alert=True)
         return
     await cb.answer()
@@ -1746,13 +1870,13 @@ async def clan_hall_inside_cb(cb: CallbackQuery):
     rows = []
     for exp in expansions:
         et = exp["expansion_type"]
-        if et not in ("kitchen", "workbench", "shower", "garden", "library"):
+        if et not in ("kitchen", "workbench", "shower", "garden", "library", "shop"):
             continue
         slot_index = int(exp["slot_index"])
         level = int(exp["expansion_level"] or 1)
         action = {"kitchen": "готовить", "workbench": "крафтить",
                   "shower": "помыться", "garden": "грядки",
-                  "library": "читать"}.get(et, "открыть")
+                  "library": "читать", "shop": "покупать"}.get(et, "открыть")
         rows.append([InlineKeyboardButton(
             text=f"{clan_expansion_icon(et)} {clan_expansion_name(et)} "
                  f"(ур. {level}) — {action}",

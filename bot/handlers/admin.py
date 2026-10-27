@@ -310,7 +310,7 @@ async def perm_flags(user_id: int) -> dict:
              # невидимы: Квестор не мог попасть в «Финансы» вообще,
              # а глава МВД — в управление крылом.
              "can_view_balances", "can_add_currency", "can_remove_currency",
-             "can_manage_wing"]
+             "can_manage_wing", "can_manage_clans"]
     return {p: await has_permission(user_id, p) for p in perms}
 
 
