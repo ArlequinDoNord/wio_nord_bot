@@ -79,10 +79,10 @@ async def run():
             print(f"  FAIL: {name}")
 
     # ── 1. Реестр эффектов (config) ──
-    check("реестр: 4 вида эффектов",
-          set(ON_HIT_EFFECTS) == {"bleed", "poison", "frostbite", "state"})
+    check("реестр: 5 видов эффектов",
+          set(ON_HIT_EFFECTS) == {"bleed", "poison", "frostbite", "state", "lifesteal"})
     check("порядок KIND_ORDER", tuple(ON_HIT_KIND_ORDER)
-          == ("bleed", "poison", "frostbite", "state"))
+          == ("bleed", "poison", "frostbite", "state", "lifesteal"))
     check("state-ходы: оглушён 3, ослеплён 4",
           ON_HIT_STATE_ROUNDS.get("оглушён") == 3
           and ON_HIT_STATE_ROUNDS.get("ослеплён") == 4)

@@ -5727,9 +5727,9 @@ async def dungeon_enemy_value(message: Message, state: FSMContext):
 # один эффект на kind/state, шанс и параметр вводятся одним сообщением.
 
 def _onhit_options() -> list:
-    """[(item, label)]: item — 'bleed'/'poison'/'frostbite' либо 'state:<key>'."""
+    """[(item, label)]: item — 'bleed'/'poison'/'frostbite'/'lifesteal' либо 'state:<key>'."""
     opts = []
-    for kind in ("bleed", "poison", "frostbite"):
+    for kind in ("bleed", "poison", "frostbite", "lifesteal"):
         conf = ON_HIT_EFFECTS.get(kind)
         if conf:
             opts.append((kind, f"{conf['emoji']} {conf['title']}"))
@@ -5756,6 +5756,10 @@ def _onhit_effect_line(eff: dict) -> str:
         rounds = int(eff.get('rounds') or ON_HIT_STATE_ROUNDS.get(key) or 3)
         return (f"{sconf.get('emoji', '')} «{sconf.get('title', key)}»: "
                 f"{chance}% на {rounds} х.")
+    if kind == "lifesteal":
+        pct = int(eff.get('pct') or 0)
+        return (f"{conf.get('emoji', '')} {conf.get('title', kind)}: "
+                f"{chance}% — восполняет {pct}% нанесённого урона")
     return f"{kind}: {chance}%"
 
 
@@ -5789,6 +5793,8 @@ def _onhit_prompt(label: str, item: str) -> str:
                   "Эффект длится до конца боя.")
     elif item == "frostbite":
         params = "шанс % и число ходов, например «25 4»."
+    elif item == "lifesteal":
+        params = "шанс % и процент от нанесённого урона, например «25 20»."
     else:
         key = item.split(":", 1)[1]
         rounds = ON_HIT_STATE_ROUNDS.get(key) or 3
@@ -5807,6 +5813,10 @@ def _onhit_parse_params(text: str, item: str):
         return {"kind": item, "chance": chance, "dmg": val}
     if item == "frostbite":
         return {"kind": "frostbite", "chance": chance, "rounds": val}
+    if item == "lifesteal":
+        if val > 100:
+            return None
+        return {"kind": "lifesteal", "chance": chance, "pct": val}
     key = item.split(":", 1)[1]
     if key not in STATE_CONF:
         return None
