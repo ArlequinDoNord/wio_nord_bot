@@ -27,6 +27,7 @@ from database.db import (
     create_fire_lab_session,
     get_active_fire_lab_session,
     end_fire_lab_session,
+    touch_fire_lab_session,
 )
 from keyboards.keyboards import main_menu_kb
 
@@ -108,7 +109,8 @@ async def fire_event_step_cb(cb: CallbackQuery):
     history.append(path)
     conn = await db.get_db()
     await conn.execute(
-        "UPDATE fire_lab_sessions SET steps = steps + 1, path_history = ? WHERE id = ?",
+        "UPDATE fire_lab_sessions SET steps = steps + 1, path_history = ?, "
+        "last_active_at = datetime('now') WHERE id = ?",
         (json.dumps(history, ensure_ascii=False), session_id))
     await conn.commit()
     updated = await _session_of(cb.from_user.id, session_id)

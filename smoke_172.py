@@ -131,6 +131,24 @@ async def main():
     active = await get_active_fire_lab_session(UID)
     check("после leave активной нет", active is None)
 
+    print("\n7.1 TTL: неактивность закрывает сессию")
+    sid_ttl = await create_fire_lab_session(UID, 20)
+    conn2 = await db.get_db()
+    await conn2.execute(
+        "UPDATE fire_lab_sessions SET last_active_at = datetime('now', '-90 minutes') "
+        "WHERE id = ?", (sid_ttl,))
+    await conn2.commit()
+    active = await get_active_fire_lab_session(UID)
+    check("сессия старше 1 ч → expired, активной нет", active is None)
+    cur3 = await conn2.execute("SELECT status FROM fire_lab_sessions WHERE id = ?", (sid_ttl,))
+    row3 = await cur3.fetchone()
+    check("статус в БД = expired", row3 and row3['status'] == 'expired')
+    # свежая сессия живёт
+    sid_fresh = await create_fire_lab_session(UID, 20)
+    active = await get_active_fire_lab_session(UID)
+    check("свежая сессия жива", active is not None and int(active['id']) == sid_fresh)
+    await end_fire_lab_session(sid_fresh, 'left')
+
     print("\n8. Чужая сессия возвращается только владельцу")
     other = 172002
     await add_user(other, 'o', 'O', "")

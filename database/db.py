@@ -1065,7 +1065,7 @@ async def init_db():
         CREATE TABLE IF NOT EXISTS fire_lab_sessions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
-            status TEXT NOT NULL DEFAULT 'active',      -- active/dead/left/finished/event_closed
+            status TEXT NOT NULL DEFAULT 'active',      -- active/dead/left/finished/expired/event_closed
             hp INTEGER NOT NULL DEFAULT 0,
             hp_max INTEGER NOT NULL DEFAULT 0,
             steps INTEGER NOT NULL DEFAULT 0,           -- комнат-развилок пройдено
@@ -1076,6 +1076,7 @@ async def init_db():
             chest_visits INTEGER NOT NULL DEFAULT 0,
             boss_defeated INTEGER NOT NULL DEFAULT 0,
             entered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_active_at TIMESTAMP,
             ended_at TIMESTAMP
         );
         CREATE INDEX IF NOT EXISTS idx_fire_lab_user ON fire_lab_sessions(user_id, status);
@@ -3696,19 +3697,52 @@ async def create_fire_lab_session(user_id: int, hp: int) -> int:
     """Новая сессия лабиринта (status='active'); возвращает id сессии."""
     conn = await get_db()
     cur = await conn.execute(
-        "INSERT INTO fire_lab_sessions (user_id, status, hp, hp_max) "
-        "VALUES (?, 'active', ?, ?)", (user_id, hp, hp))
+        "INSERT INTO fire_lab_sessions (user_id, status, hp, hp_max, last_active_at) "
+        "VALUES (?, 'active', ?, ?, datetime('now'))", (user_id, hp, hp))
     await conn.commit()
     return int(cur.lastrowid or 0)
 
 
+async def touch_fire_lab_session(session_id: int) -> None:
+    """Отметить активность игрока в сессии (продление TTL)."""
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE fire_lab_sessions SET last_active_at = datetime('now') WHERE id = ?",
+        (session_id,))
+    await conn.commit()
+
+
 async def get_active_fire_lab_session(user_id: int):
-    """Активная сессия лабиринта игрока (или None)."""
+    """Активная сессия лабиринта игрока (или None).
+
+    Ленивое закрытие по TTL: если сессия активна, но последнее действие игрока
+    старше `FIRE_LAB_SESSION_TTL_SEC` (1 ч) — сессия закрывается со статусом
+    `expired` и активной не считается (повторный вход — снова платный).
+    """
     conn = await get_db()
     cur = await conn.execute(
         "SELECT * FROM fire_lab_sessions WHERE user_id = ? AND status = 'active' "
         "ORDER BY id DESC LIMIT 1", (user_id,))
-    return await cur.fetchone()
+    s = await cur.fetchone()
+    if not s:
+        return None
+    ttl = int(getattr(config, "FIRE_LAB_SESSION_TTL_SEC", 3600) or 3600)
+    last = s['last_active_at'] or s['entered_at']
+    if last:
+        try:
+            from datetime import datetime, timedelta
+            from utils.helpers import MOSCOW_TZ
+            # SQLite datetime('now') = UTC; приводим к UTC-timezone-aware
+            last_dt = datetime.fromisoformat(last.replace(' ', 'T')).replace(tzinfo=timezone.utc)
+        except Exception:
+            last_dt = None
+        if last_dt:
+            from datetime import timezone as _tz
+            now = datetime.now(_tz.utc)
+            if now - last_dt > timedelta(seconds=ttl):
+                await end_fire_lab_session(int(s['id']), 'expired')
+                return None
+    return s
 
 
 async def end_fire_lab_session(session_id: int, status: str) -> None:
