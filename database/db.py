@@ -961,6 +961,7 @@ async def init_db():
         CREATE TABLE IF NOT EXISTS clan_members (
             clan_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
+            role TEXT NOT NULL DEFAULT 'member',
             joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (clan_id, user_id)
         );
@@ -1081,6 +1082,8 @@ async def init_db():
     await _ensure_column(conn, "items", "required_status", "TEXT")
     await _ensure_column(conn, "buildings", "required_status", "TEXT")
     await _ensure_column(conn, "statuses", "sort_order", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "clan_members", "role", "TEXT NOT NULL DEFAULT 'member'")
+    await _backfill_clan_member_roles()
     await _ensure_column(conn, "users", "promoted_rank", "TEXT")
     # Тратимый опыт: копится 1:1 с суточным фармом, не облагается налогом, звание
     # по нему НЕ считается (звание — по users.troops). Создан для будущего магазина
@@ -13554,6 +13557,10 @@ async def set_clan_leader(clan_id: int, leader_id: int = None):
     conn = await get_db()
     await conn.execute("UPDATE clans SET leader_id = ? WHERE id = ?", (leader_id, clan_id))
     await conn.commit()
+    try:
+        await _backfill_clan_member_roles()
+    except Exception:
+        pass
 
 
 async def delete_clan(clan_id: int):
@@ -13673,7 +13680,7 @@ async def get_clan_contributions(clan_id: int, limit: int = 50) -> list:
 async def add_clan_member(clan_id: int, user_id: int):
     conn = await get_db()
     await conn.execute(
-        "INSERT OR IGNORE INTO clan_members (clan_id, user_id) VALUES (?, ?)",
+        "INSERT OR IGNORE INTO clan_members (clan_id, user_id, role) VALUES (?, ?, 'member')",
         (clan_id, user_id))
     await conn.execute("DELETE FROM clan_requests WHERE clan_id = ? AND user_id = ?",
                        (clan_id, user_id))
@@ -14061,26 +14068,107 @@ def location_clearing_photo(loc):
         except Exception:
             return None
 
-async def can_manage_clan_hall(clan_id: int, user_id: int) -> bool:
-    """Право управлять клан-холлом (выбор/старт/отмена стройки, расширения).
+async def _backfill_clan_member_roles():
+    """Синхронизирует роли членов клана с главой клана (leader_id)."""
+    try:
+        conn = await get_db()
+        await conn.execute(
+            "UPDATE clan_members SET role = 'leader' WHERE role <> 'leader' AND EXISTS ("
+            "SELECT 1 FROM clans WHERE clans.id = clan_members.clan_id AND clans.leader_id = clan_members.user_id"
+            ")"
+        )
+        await conn.execute(
+            "UPDATE clan_members SET role = 'member' WHERE role = 'leader' AND NOT EXISTS ("
+            "SELECT 1 FROM clans WHERE clans.id = clan_members.clan_id AND clans.leader_id = clan_members.user_id"
+            ")"
+        )
+        await conn.commit()
+    except Exception:
+        pass
 
-    В v1 — только действующий глава клана (kind='clan'). В следующем этапе
-    подключится иерархия клана.
+
+async def get_clan_member_role(clan_id: int, user_id: int) -> str:
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT role FROM clan_members WHERE clan_id = ? AND user_id = ?",
+        (clan_id, user_id))
+    row = await cur.fetchone()
+    if not row:
+        return ''
+    return (row['role'] or 'member').strip().lower()
+
+
+async def get_clan_member_roles(clan_id: int) -> dict:
+    """{user_id: role} по всем членам клана (для экрана иерархии)."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT user_id, role FROM clan_members WHERE clan_id = ?", (clan_id,))
+    out = {}
+    for r in await cur.fetchall():
+        out[int(r['user_id'])] = (r['role'] or 'member').strip().lower()
+    return out
+
+
+async def set_clan_member_role(clan_id: int, user_id: int, role: str) -> bool:
+    """Назначает роль члену клана.
+
+    seneschal/banner/elder — эксклюзивные должности: носитель прежний
+    автоматически понижается до 'member'. 'leader' идёт через set_clan_leader.
     """
+    import config as _config
+    role = (role or '').strip().lower()
+    # 'leader' смена через set_clan_leader (перекидывает роль автоматически)
+    if role == 'leader' or role not in getattr(_config, 'CLAN_ROLES', {}):
+        return False
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT 1 FROM clan_members WHERE clan_id = ? AND user_id = ?",
+        (clan_id, user_id))
+    if not await cur.fetchone():
+        return False
+    # эксклюзивность должности
+    await conn.execute(
+        "UPDATE clan_members SET role = 'member' WHERE clan_id = ? AND role = ? AND user_id <> ?",
+        (clan_id, role, user_id))
+    cur = await conn.execute(
+        "UPDATE clan_members SET role = ? WHERE clan_id = ? AND user_id = ?",
+        (role, clan_id, user_id))
+    await conn.commit()
+    return cur.rowcount > 0
+
+
+async def can_manage_clan_hall(clan_id: int, user_id: int) -> bool:
+    """Право управлять клан-холлом (выбор/старт/отмена стройки, расширения)."""
     clan = await get_clan(clan_id)
     if not clan or clan['kind'] != 'clan':
         return False
+    role = await get_clan_member_role(clan_id, user_id)
+    if role in ('leader', 'seneschal'):
+        return True
+    # fallback на главу клана
     return bool(clan['leader_id'] and int(clan['leader_id']) == int(user_id))
 
 
 async def can_withdraw_clan_storage(clan_id: int, user_id: int) -> bool:
-    """Заглушка права вывода со склада (пока привязана к главе клана)."""
-    return await can_manage_clan_hall(clan_id, user_id)
+    """Вывод со склада клана — только глава клана."""
+    clan = await get_clan(clan_id)
+    if not clan or clan['kind'] != 'clan':
+        return False
+    role = await get_clan_member_role(clan_id, user_id)
+    if role == 'leader':
+        return True
+    return bool(clan['leader_id'] and int(clan['leader_id']) == int(user_id))
 
 
 async def can_harvest_clan_garden(clan_id: int, user_id: int) -> bool:
-    """Право собирать урожай в клановом саду (пока только глава клана)."""
-    return await can_manage_clan_hall(clan_id, user_id)
+    """Сбор урожая в клановом саду — лидер или офицер клана."""
+    clan = await get_clan(clan_id)
+    if not clan or clan['kind'] != 'clan':
+        return False
+    role = await get_clan_member_role(clan_id, user_id)
+    if role in ('leader', 'seneschal'):
+        return True
+    return bool(clan['leader_id'] and int(clan['leader_id']) == int(user_id))
 
 
 async def get_clan_building(clan_id: int):

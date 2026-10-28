@@ -713,6 +713,19 @@ ON_HIT_KIND_ORDER = ("bleed", "poison", "frostbite", "state", "lifesteal")
 # Дефолтное число ходов для kind'а state — по ключу состояния.
 ON_HIT_STATE_ROUNDS = {"оглушён": 3, "ослеплён": 4}
 
+# --- Иерархия клана (Фаза 7.5) ---
+# Роли членов клана по убыванию значимости. Хранятся в clan_members.role.
+# 'leader' держится синхронизированным с clans.leader_id (_backfill_clan_member_roles).
+# Должности seneschal/banner/elder — эксклюзивные: по одной на клан.
+CLAN_ROLES = {
+    "leader":    "👑 Глава клана",
+    "seneschal": "🛡 Сенешаль клана",
+    "banner":    "🚩 Знаменосец клана",
+    "elder":     "⭐ Старшина",
+    "member":    "▪️ Член клана",
+}
+CLAN_ROLE_ORDER = ("leader", "seneschal", "banner", "elder", "member")
+
 # --- Лесозаготовка (v0.37.0) ---
 # Ресурсная локация в лесу, вход кнопкой с Лесной поляны. Рубка деревьев
 # по образцу добычи руды: 15 ОД за попытку, результат через 7–15 секунд,

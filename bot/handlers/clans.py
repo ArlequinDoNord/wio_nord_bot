@@ -19,7 +19,8 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
     get_user, get_all_users, get_clan, get_clans, create_clan, update_clan,
-    delete_clan, get_clan_members, get_clan_member_ids, get_clan_pending_requests,
+    delete_clan, get_clan_members, get_clan_member_ids, get_clan_member_roles,
+    get_clan_member_role, set_clan_member_role, get_clan_pending_requests,
     is_clan_member, add_clan_member, remove_clan_member, get_user_clan,
     is_clan_leader, add_clan_request, remove_clan_request, has_clan_request,
     add_user_role, remove_user_role, log_location_visit,
@@ -190,11 +191,17 @@ async def clan_view_cb(callback: CallbackQuery):
 
     lines.append("\nСостав:")
     m_users = await get_clan_members(clan['id'])
+    roles_map = await get_clan_member_roles(clan['id']) if clan['kind'] == 'clan' else {}
+    role_emoji = {k: v.split(' ')[0] for k, v in
+                  getattr(config, "CLAN_ROLES", {}).items()} if clan['kind'] == 'clan' else {}
     if not m_users:
         lines.append("  — пока никого —")
     else:
         for i, mu in enumerate(m_users[:15], 1):
-            tag = " 👑" if mu['user_id'] == clan['leader_id'] else ""
+            _rank = role_emoji.get(roles_map.get(mu['user_id'], ''), '▪')
+            tag = f" {_rank}" if clan['kind'] == 'clan' else ""
+            if mu['user_id'] == clan['leader_id']:
+                tag = " 👑"
             lines.append(f"  {i}. {await player_display(mu)}{tag}")
         if len(m_users) > 15:
             lines.append(f"  … и ещё {len(m_users) - 15}")
@@ -206,6 +213,10 @@ async def clan_view_cb(callback: CallbackQuery):
                                             callback_data=f"clanh:hall:{clan['id']}")])
             kb.append([InlineKeyboardButton(text="📦 Склад клана",
                                             callback_data=f"clanh:storage:{clan['id']}")])
+        if (clan['kind'] == 'clan' and is_member
+                and getattr(config, "CLAN_ROLES", {})):
+            kb.append([InlineKeyboardButton(text="⚜ Иерархия клана",
+                                            callback_data=f"clanhier:{clan['id']}")])
         if not is_leader:
             kb.append([InlineKeyboardButton(text="🚪 Выйти", callback_data=f"clans:leave:{clan['id']}")])
     else:
@@ -217,6 +228,129 @@ async def clan_view_cb(callback: CallbackQuery):
         kb.append([InlineKeyboardButton(text="⚙️ Управление", callback_data=f"clans:manage:{clan['id']}")])
     kb.append([InlineKeyboardButton(text="🔙 К списку", callback_data="city:clans")])
     await _redraw(callback, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=kb),
+                  photo=clan.get('photo_file_id'))
+
+
+# ----- Иерархия клана (Фаза 7.5) -----
+
+async def _hierarchy_screen(callback: CallbackQuery, clan_id: int):
+    """Экран «⚜ Иерархия клана»: роли по значимости + назначение (глава)."""
+    import config as _config
+    clan = await get_clan(clan_id)
+    if not clan or clan['kind'] != 'clan':
+        await callback.message.answer("❌ Клан не найден.")
+        return
+    uid = callback.from_user.id
+    members = await get_clan_member_ids(clan_id)
+    is_leader = clan['leader_id'] == uid
+    can_admin = await has_permission(uid, "can_manage_clans")
+    if uid not in members and not can_admin:
+        await callback.answer("⚠️ Только членам клана.", show_alert=True)
+        return
+    roles_map = await get_clan_member_roles(clan_id)
+    order = getattr(_config, "CLAN_ROLE_ORDER", ())
+    titles = getattr(_config, "CLAN_ROLES", {})
+
+    role_rows = {r: [] for r in order}
+    for mu in await get_clan_members(clan_id):
+        r = roles_map.get(mu['user_id'], 'member')
+        role_rows.setdefault(r, []).append(mu)
+
+    lines = [f"⚜ ИЕРАРХИЯ КЛАНА «{clan['name']}»\n"]
+    for r in order:
+        seq = role_rows.get(r) or []
+        names = ", ".join(await player_display(u) for u in seq) or "— вакансия —"
+        lines.append(f"{titles.get(r, r)}: {names}")
+    lines.append("\nДолжности Сенешаль, Знаменосец и Старшина — по одному носителю.")
+    if not is_leader and not can_admin:
+        lines.append("Назначения делает глава клана.")
+
+    rows = []
+    if is_leader or can_admin:
+        # каждому члену (кроме главы) — кнопка назначения
+        for mu in await get_clan_members(clan_id):
+            if mu['user_id'] == clan['leader_id']:
+                continue
+            r = roles_map.get(mu['user_id'], 'member')
+            rows.append([InlineKeyboardButton(
+                text=f"{titles.get(r, r).split(' ', 1)[-1]} — {await player_display(mu)}",
+                callback_data=f"clanhier:set:{clan_id}:{mu['user_id']}")])
+    rows.append([InlineKeyboardButton(text="🔙 В карточку клана",
+                                      callback_data=f"clans:view:{clan_id}")])
+    await _redraw(callback, "\n".join(lines),
+                  InlineKeyboardMarkup(inline_keyboard=rows),
+                  photo=clan.get('photo_file_id'))
+
+
+@router.callback_query(F.data.startswith("clanhier:"))
+async def clan_hierarchy_cb(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    await callback.answer()
+    if len(parts) < 2:
+        return
+    clan_id = int(parts[1])
+    clan = await get_clan(clan_id)
+    if not clan:
+        await callback.message.answer("❌ Клан не найден.")
+        return
+    uid = callback.from_user.id
+    is_leader = clan['leader_id'] == uid
+    can_admin = await has_permission(uid, "can_manage_clans")
+
+    # Назначение роли
+    if len(parts) >= 5 and parts[2] == "pick":
+        if not (is_leader or can_admin):
+            await callback.answer("⚠️ Только глава клана.", show_alert=True)
+            return
+        target_uid, role = int(parts[3]), parts[4]
+        if not await is_clan_member(clan_id, target_uid):
+            await callback.answer("⚠️ Уже не член клана.", show_alert=True)
+            return
+        ok = await set_clan_member_role(clan_id, target_uid, role)
+        if ok:
+            await log_action(uid, 'clan_role_set', None,
+                             f"clan={clan_id} user={target_uid} role={role}")
+            _t = getattr(config, "CLAN_ROLES", {}).get(role, role)
+            await callback.answer(f"✅ {_t} — назначено.", show_alert=False)
+        # перерисовка экрана выбора остаётся; обновим её
+        await _hierarchy_set_screen(callback, clan_id, target_uid)
+        return
+
+    # Экран выбора роли для члена
+    if len(parts) >= 4 and parts[2] == "set":
+        if not (is_leader or can_admin):
+            await callback.answer("⚠️ Только глава клана.", show_alert=True)
+            return
+        await _hierarchy_set_screen(callback, clan_id, int(parts[3]))
+        return
+
+    await _hierarchy_screen(callback, clan_id)
+
+
+async def _hierarchy_set_screen(callback: CallbackQuery, clan_id: int, target_uid: int):
+    import config as _config
+    clan = await get_clan(clan_id)
+    if not clan:
+        return
+    titles = getattr(_config, "CLAN_ROLES", {})
+    order = getattr(_config, "CLAN_ROLE_ORDER", ())
+    cur_role = await get_clan_member_role(clan_id, target_uid)
+    tu = await get_user(target_uid)
+    name = await player_display(tu) if tu else f"#{target_uid}"
+    lines = [f"⚜ {name} — назначить должность",
+             f"Сейчас: {titles.get(cur_role, cur_role)}\n"]
+    rows = []
+    for r in order:
+        if r == 'leader':
+            continue  # смена главы — через «⚙️ Управление»
+        mark = "✅ " if cur_role == r else "▫️ "
+        rows.append([InlineKeyboardButton(
+            text=f"{mark}{titles.get(r, r)}",
+            callback_data=f"clanhier:{clan_id}:pick:{target_uid}:{r}")])
+    rows.append([InlineKeyboardButton(text="🔙 К иерархии",
+                                      callback_data=f"clanhier:{clan_id}")])
+    await _redraw(callback, "\n".join(lines),
+                  InlineKeyboardMarkup(inline_keyboard=rows),
                   photo=clan.get('photo_file_id'))
 
 

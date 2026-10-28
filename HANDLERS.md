@@ -77,7 +77,7 @@
 | `kvp.py` | Курс Выживания для Пилотов (К.В.П.) — тренировочный данж. | `router` | 0 | 6 | `kvp:` | `KvpFSM` |
 | `wall.py` | Стена изречений — доска объявлений города. | `router` | 2 | 7 | `wall:` | `WallWrite` |
 | `hq.py` | Штаб ВВС: командование рассылает приказы авиакрыльям. | `router` | 7 | 25 | `hq:` | `HqOrder`, `HqWingCreate`, `HqWingEdit` |
-| `clans.py` | Партии и кланы: реестр из Ратуши. | `router` | 7 | 23 | `city:`, `clans:` | `ClansCreate`, `ClansEdit`, `ClansMessage` |
+| `clans.py` | Партии и кланы: реестр из Ратуши. | `router` | 7 | 24 | `city:`, `clanhier:`, `clans:` | `ClansCreate`, `ClansEdit`, `ClansMessage` |
 | `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 2 | 33 | `clanh:` | `ClanHallAdminPhoto` |
 | `admin_shop_clan.py` | Админ-менеджер клановых лавок (Фаза 7). | `router` | 5 | 9 | `clanshopadm:` | `ClanShopAdmin` |
 | `nii.py` | НИИ Северной Кибернетики и кремниевых систем — здание обратной связи. | `router` | 2 | 7 | `nii:` | `NiiWrite` |
@@ -288,9 +288,9 @@
 ### `clans.py` — Партии и кланы: реестр из Ратуши.
 
 - Роутеры: `router`
-- Хендлеры: message=7, callback_query=23
+- Хендлеры: message=7, callback_query=24
 - FSM: `ClansCreate`, `ClansEdit`, `ClansMessage`
-- `F.data.startswith`: `clans:add:`, `clans:addset:`, `clans:cancel:`, `clans:create:`, `clans:del:`, `clans:delyes:`, `clans:edit:`, `clans:editf:`, `clans:join:`, `clans:kick:`, `clans:leader:`, `clans:leaderset:`, `clans:leaderunset:`, `clans:leave:`, `clans:list:`, `clans:manage:`, `clans:msg:`, `clans:reqno:`, `clans:reqok:`, `clans:view:`
+- `F.data.startswith`: `clanhier:`, `clans:add:`, `clans:addset:`, `clans:cancel:`, `clans:create:`, `clans:del:`, `clans:delyes:`, `clans:edit:`, `clans:editf:`, `clans:join:`, `clans:kick:`, `clans:leader:`, `clans:leaderset:`, `clans:leaderunset:`, `clans:leave:`, `clans:list:`, `clans:manage:`, `clans:msg:`, `clans:reqno:`, `clans:reqok:`, `clans:view:`
 - `F.data ==`: `city:clans`, `clans:create_skip`, `clans:noop`
 
 ### `clan_hall.py` — Клан-холл: клановый склад и строительство кланового здания (Фаза 1).
