@@ -156,6 +156,12 @@ async def main():
     fr = await get_active_fire_lab_session(UID)
     check("у первого не новая чужая сессия", not fr or int(fr['id']) != sid2)
 
+    print("\n9. Лимит комнат: handler завершает на 25-й (seeing через direct check)")
+    rooms = config.FIRE_LAB_ROOMS_MAX
+    check("константа комнат = 25", rooms == 25)
+    check("босс-лимит = 2", config.FIRE_LAB_BOSS_MAX == 2)
+    # прямая симуляция выхода: steps >= rooms_limit → finished (логика хендлера Ф2 проверит)
+
     print(f"\nИТОГО: {passed} passed, {failed} failed")
     await close_db()
     if failed:

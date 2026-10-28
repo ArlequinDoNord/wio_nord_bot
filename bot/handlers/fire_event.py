@@ -114,6 +114,28 @@ async def fire_event_step_cb(cb: CallbackQuery):
         (json.dumps(history, ensure_ascii=False), session_id))
     await conn.commit()
     updated = await _session_of(cb.from_user.id, session_id)
+    if not updated:
+        return
+    # Выход автоматом после FIRE_LAB_ROOMS_MAX комнат (25): сессия пройдена.
+    rooms_limit = int(getattr(config, "FIRE_LAB_ROOMS_MAX", 25) or 25)
+    if rooms_limit > 0 and int(updated['steps']) >= rooms_limit:
+        await end_fire_lab_session(session_id, 'finished')
+        await cb.answer("🏁 Лабиринт пройден до конца!", show_alert=True)
+        try:
+            await cb.message.edit_text(
+                f"🏁 <b>Ты прошёл все {rooms_limit} комнат Огненного Лабиринта!</b>\n"
+                f"Пламя памяти остаётся тёплым. Сессия завершена.\n"
+                f"Хочешь дальше — оплати новый заход.",
+                reply_markup=await main_menu_kb(cb.from_user.id),
+                parse_mode="HTML")
+        except Exception:
+            await cb.message.answer(
+                f"🏁 <b>Ты прошёл все {rooms_limit} комнат Огненного Лабиринта!</b>\n"
+                f"Пламя памяти остаётся тёплым. Сессия завершена.\n"
+                f"Хочешь дальше — оплати новый заход.",
+                reply_markup=await main_menu_kb(cb.from_user.id),
+                parse_mode="HTML")
+        return
     await cb.answer(f"🔀 {PATH_LABELS[path]}. Двигаемся дальше…")
     # Фаза 2/3: здесь будут броски встреч (враги/Колодец/Древо/Сундук/босс).
     # Пока — следующая развилка (пустая) с учётом паттерна геометрии.
