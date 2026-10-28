@@ -3646,6 +3646,19 @@ def _role_pay_out(amounts: list) -> int:
     return amounts[-1] + sum(int(a * 0.5) for a in amounts[:-1])
 
 
+async def get_user_db_roles(telegram_id: int) -> list:
+    """Реальные роли из user_roles (без подмены супер-админом из ADMIN_IDS).
+
+    get_user_role() для владельца возвращает только ['super_admin'], из-за чего
+    его фактические оплачиваемые должности (у super_admin оклада нет) не
+    участвовали в расчёте окладов. Оклады считают по этой функции.
+    """
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT role FROM user_roles WHERE telegram_id = ?", (telegram_id,))
+    return [row['role'] for row in await cursor.fetchall()]
+
+
 async def role_salary_info(user_id: int) -> dict:
     """Оклады пилота для профиля: {'entries': [{role, amount}...], 'total': int}.
 
@@ -3654,8 +3667,7 @@ async def role_salary_info(user_id: int) -> dict:
     применяется только к выплате).
     """
     sals = await get_role_salary_map()
-    from utils.permissions import get_user_role
-    roles = await get_user_role(user_id)
+    roles = await get_user_db_roles(user_id)
     entries = [{"role": r, "amount": sals[r]} for r in roles if r in sals]
     entries.sort(key=lambda e: e["amount"], reverse=True)
     return {"entries": entries, "total": _role_pay_out([e["amount"] for e in entries])}
@@ -3683,7 +3695,7 @@ async def pay_role_salaries() -> dict:
     reserves = 0
 
     for uid in ids:
-        roles = await get_user_role(uid)
+        roles = await get_user_db_roles(uid)
         total = _role_pay_out([sals[r] for r in roles if r in sals])
         if total <= 0:
             skipped += 1
@@ -3727,8 +3739,7 @@ async def pay_role_salary_on_revoke(user_id: int, role: str):
     if sals.get(role, 0) <= 0:
         return None
     conn = await get_db()
-    from utils.permissions import get_user_role
-    roles = await get_user_role(user_id)
+    roles = await get_user_db_roles(user_id)
     if role not in roles:
         return None
     marginal = (_role_pay_out([sals[r] for r in roles if r in sals])
