@@ -1061,6 +1061,33 @@ async def init_db():
             PRIMARY KEY (clan_id, user_id, buy_day)
         );
 
+        -- Дни Пламенного Круговорота: сессии Огненного Лабиринта (событие).
+        CREATE TABLE IF NOT EXISTS fire_lab_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',      -- active/dead/left/finished/event_closed
+            hp INTEGER NOT NULL DEFAULT 0,
+            hp_max INTEGER NOT NULL DEFAULT 0,
+            steps INTEGER NOT NULL DEFAULT 0,           -- комнат-развилок пройдено
+            path_history TEXT NOT NULL DEFAULT '[]',    -- выбранные пути ('L'/'S'/'R')
+            blessing INTEGER NOT NULL DEFAULT 0,        -- благословение Древа Огня (эта сессия)
+            well_visits INTEGER NOT NULL DEFAULT 0,
+            tree_visits INTEGER NOT NULL DEFAULT 0,
+            chest_visits INTEGER NOT NULL DEFAULT 0,
+            boss_defeated INTEGER NOT NULL DEFAULT 0,
+            entered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ended_at TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_fire_lab_user ON fire_lab_sessions(user_id, status);
+
+        -- Учёт входов в лабиринт (дневной лимит: (user, day) → count).
+        CREATE TABLE IF NOT EXISTS fire_lab_entries (
+            user_id INTEGER NOT NULL,
+            day TEXT NOT NULL DEFAULT '',
+            qty INTEGER DEFAULT 0,
+            PRIMARY KEY (user_id, day)
+        );
+
         CREATE TABLE IF NOT EXISTS user_recipes (
             user_id INTEGER NOT NULL,
             recipe_id INTEGER NOT NULL,
@@ -3622,6 +3649,75 @@ async def get_treasury_debts() -> dict:
         "shortfall": max(next_pay_need - balance, 0),
         "balance": balance,
     }
+
+
+# ============ ДНИ ПЛАМЕННОГО КРУГОВОРОТА (событие, ТЗ — FIRE_EVENT.md) ============
+
+def fire_event_active() -> bool:
+    """Сейчас ли идёт событие (окно дат по МСК, рубильник FIRE_EVENT_ENABLED)."""
+    if not getattr(config, "FIRE_EVENT_ENABLED", False):
+        return False
+    from utils.helpers import MOSCOW_TZ
+    from datetime import timedelta
+    msk = datetime.now(MOSCOW_TZ)
+    y, mo, d, hh, mm = (getattr(config, "FIRE_EVENT_START", None) or (2026, 10, 30, 0, 0))
+    start = msk.replace(year=y, month=mo, day=d, hour=hh, minute=mm, second=0, microsecond=0)
+    end = start + timedelta(days=int(getattr(config, "FIRE_EVENT_DURATION_DAYS", 5) or 5))
+    return start <= msk < end
+
+
+def fire_event_visible() -> bool:
+    """Кнопка города: событие активно И лабиринт открыт (FIRE_LAB_ENABLED)."""
+    return bool(getattr(config, "FIRE_LAB_ENABLED", False)) and fire_event_active()
+
+
+async def get_fire_lab_entries_today(user_id: int, day: str) -> int:
+    """Сколько заходов в лабиринт сделал игрок за указанный игровой день."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT qty FROM fire_lab_entries WHERE user_id = ? AND day = ?",
+        (user_id, day))
+    row = await cur.fetchone()
+    return int(row['qty'] or 0) if row else 0
+
+
+async def inc_fire_lab_entries(user_id: int, day: str) -> int:
+    """+1 вход в лабиринт; возвращает обновлённое число за день."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "INSERT INTO fire_lab_entries (user_id, day, qty) VALUES (?, ?, 1) "
+        "ON CONFLICT(user_id, day) DO UPDATE SET qty = qty + 1",
+        (user_id, day))
+    await conn.commit()
+    return await get_fire_lab_entries_today(user_id, day)
+
+
+async def create_fire_lab_session(user_id: int, hp: int) -> int:
+    """Новая сессия лабиринта (status='active'); возвращает id сессии."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "INSERT INTO fire_lab_sessions (user_id, status, hp, hp_max) "
+        "VALUES (?, 'active', ?, ?)", (user_id, hp, hp))
+    await conn.commit()
+    return int(cur.lastrowid or 0)
+
+
+async def get_active_fire_lab_session(user_id: int):
+    """Активная сессия лабиринта игрока (или None)."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT * FROM fire_lab_sessions WHERE user_id = ? AND status = 'active' "
+        "ORDER BY id DESC LIMIT 1", (user_id,))
+    return await cur.fetchone()
+
+
+async def end_fire_lab_session(session_id: int, status: str) -> None:
+    """Закрыть сессию лабиринта со статусом dead/left/finished/event_closed."""
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE fire_lab_sessions SET status = ?, ended_at = datetime('now') "
+        "WHERE id = ?", (status, session_id))
+    await conn.commit()
 
 
 # ============ ОКЛАДЫ ЗА ДОЛЖНОСТИ (ролевые, раз в месяц 28-го) ============

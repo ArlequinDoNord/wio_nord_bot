@@ -651,6 +651,7 @@
 - `field:photo`: `bot/handlers/admin.py:1884`
 - `field:weapon_effect`: `bot/handlers/admin.py:1904`
 - `fin:manual`: `bot/handlers/admin.py:2531`
+- `fireevent:enter`: `bot/handlers/fire_event.py:152`
 - `fish:recover`: `bot/handlers/fishing.py:500`
 - `forest:addlist`: `bot/handlers/admin.py:7647`
 - `forest:new`: `bot/handlers/admin.py:7800`
@@ -948,6 +949,8 @@
 - `field_req:`: `bot/handlers/admin.py:1867`
 - `fin:`: `bot/handlers/admin.py:2541`
 - `finuser:`: `bot/handlers/admin.py:2571`
+- `fireevent:leave:`: `bot/handlers/fire_event.py:123`
+- `fireevent:step:`: `bot/handlers/fire_event.py:96`
 - `fish:bait:\d+$`: `bot/handlers/fishing.py:514`
 - `fish:bait:set:\d+:[a-z]+$`: `bot/handlers/fishing.py:556`
 - `fish:cast:\d+$`: `bot/handlers/fishing.py:566`

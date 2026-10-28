@@ -227,12 +227,19 @@ COUNTRYSIDE_TEXT = "🌲 Загородные территории"
 QUARTER_HIDDEN_KEYS = ADMIN_QUARTER_KEYS + BUSINESS_QUARTER_KEYS + COUNTRYSIDE_KEYS
 
 
-def city_keyboard(is_pilot: bool = True, locations: list = None):
+def city_keyboard(is_pilot: bool = True, locations: list = None,
+                  event_visible: bool = False):
     buttons = [
         [InlineKeyboardButton(text=BUSINESS_QUARTER_TEXT, callback_data="city:business")],
         [InlineKeyboardButton(text=ADMIN_QUARTER_TEXT, callback_data="city:quarter")],
         [InlineKeyboardButton(text=COUNTRYSIDE_TEXT, callback_data="city:countryside")],
     ]
+    # Дни Пламенного Круговорота: праздничная кнопка — видна только в окне дат
+    # и при открытом лабиринте (решает вызывающий код; до Фазы 5 — скрыта,
+    # см. FIRE_EVENT.md §2).
+    if event_visible:
+        buttons.append([InlineKeyboardButton(
+            text="🪔 Дни Пламенного Круговорота", callback_data="fireevent:enter")])
     for loc in (locations or []):
         if loc.get('key') in QUARTER_HIDDEN_KEYS:
             continue
