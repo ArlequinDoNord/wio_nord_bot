@@ -52,6 +52,7 @@ from database.db import (
     get_clan_expansion,
     get_clan_expansions,
     get_clan_garden,
+    get_clan_expansion_photo,
     get_clan_members,
     get_clan_project_progress,
     get_clan_recipes,
@@ -79,6 +80,7 @@ from database.db import (
     resolve_clan_building_with_event,
     set_clan_building_photo,
     set_clan_construction_photo,
+    set_clan_expansion_photo,
     start_clan_building_project,
     upgrade_clan_expansion,
 )
@@ -100,6 +102,7 @@ from utils.crafting import (
     use_shower,
 )
 from utils.permissions import has_permission
+from keyboards.keyboards import cancel_keyboard
 
 router = Router()
 
@@ -132,6 +135,7 @@ STORAGE_PAGE = 12
 class ClanHallAdminPhoto(StatesGroup):
     wait_building_photo = State()
     wait_construction_photo = State()
+    wait_expansion_photo = State()
 
 
 def _esc(text) -> str:
@@ -159,6 +163,21 @@ async def resolve_clan_hall_photo(building_row) -> str | None:
         photo = building_row["building_photo_file_id"] if "building_photo_file_id" in building_row.keys() else None
         return (photo or "").strip() or None
     return None
+
+
+async def resolve_expansion_photo(building_row, exp) -> str | None:
+    """Фото экрана расширения (Фаза 8):
+
+    1) индивидуальная картинка расширения (settings clanh_exp_photo_<type>);
+    2) иначе — общее фото здания (resolve_clan_hall_photo);
+    3) иначе None (текстовый экран).
+    """
+    if not exp:
+        return await resolve_clan_hall_photo(building_row)
+    custom = await get_clan_expansion_photo(exp["expansion_type"])
+    if custom:
+        return custom
+    return await resolve_clan_hall_photo(building_row)
 
 
 async def notify_clan_members(bot, clan_id: int, text: str) -> int:
@@ -946,7 +965,7 @@ async def _render_clan_use(cb: CallbackQuery, clan, building, exp):
     slot_index = int(exp["slot_index"])
     level = int(exp["expansion_level"] or 1)
     et = exp["expansion_type"]
-    photo = await resolve_clan_hall_photo(building)
+    photo = await resolve_expansion_photo(building, exp)
 
     if et in ("kitchen", "workbench"):
         learned = await get_learned_recipes(cb.from_user.id, et)
@@ -971,6 +990,10 @@ async def _render_clan_use(cb: CallbackQuery, clan, building, exp):
                 callback_data=f"clanh:mushrooms:{clan_id}:{slot_index}")])
         rows.append([InlineKeyboardButton(
             text="🔙 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
+        if await has_permission(cb.from_user.id, "can_manage_clans"):
+            rows.append([InlineKeyboardButton(
+                text="🖼 Картинка (админ)",
+                callback_data=f"clanh:admexphoto:{clan_id}:{slot_index}:{et}")])
         return await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
 
     if et == "shower":
@@ -1005,7 +1028,11 @@ async def _render_clan_shop(cb: CallbackQuery, clan, building, exp):
             callback_data=f"clanh:bitem:{clan_id}:{slot_index}:{r['item_id']}")])
     rows.append([InlineKeyboardButton(
         text="🔙 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
-    photo = await resolve_clan_hall_photo(building)
+    if await has_permission(cb.from_user.id, "can_manage_clans"):
+        rows.append([InlineKeyboardButton(
+            text="🖼 Картинка (админ)",
+            callback_data=f"clanh:admexphoto:{clan_id}:{slot_index}:shop")])
+    photo = await resolve_expansion_photo(building, exp)
     await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
 
 
@@ -1048,7 +1075,7 @@ async def clan_hall_bitem_cb(cb: CallbackQuery):
         [InlineKeyboardButton(text="🚪 Внутрь здания",
                               callback_data=f"clanh:inside:{clan_id}")]]
     await cb.answer()
-    photo = await resolve_clan_hall_photo(building)
+    photo = await resolve_expansion_photo(building, exp)
     await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
 
 
@@ -1107,7 +1134,11 @@ async def _render_clan_library(cb: CallbackQuery, clan, building, exp):
             callback_data=f"clanh:libgive:{clan_id}:{slot_index}:{r['id']}")])
     rows.append([InlineKeyboardButton(
         text="🔙 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
-    photo = await resolve_clan_hall_photo(building)
+    if await has_permission(cb.from_user.id, "can_manage_clans"):
+        rows.append([InlineKeyboardButton(
+            text="🖼 Картинка (админ)",
+            callback_data=f"clanh:admexphoto:{clan_id}:{slot_index}:library")])
+    photo = await resolve_expansion_photo(building, exp)
     await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
 
 
@@ -1150,7 +1181,11 @@ async def _render_clan_shower(cb: CallbackQuery, clan, building, exp):
             callback_data=f"clanh:shower:{clan_id}:{slot_index}")])
     rows.append([InlineKeyboardButton(
         text="🔙 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
-    photo = await resolve_clan_hall_photo(building)
+    if await has_permission(cb.from_user.id, "can_manage_clans"):
+        rows.append([InlineKeyboardButton(
+            text="🖼 Картинка (админ)",
+            callback_data=f"clanh:admexphoto:{clan_id}:{slot_index}:shower")])
+    photo = await resolve_expansion_photo(building, exp)
     await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
 
 
@@ -1215,7 +1250,11 @@ async def _render_clan_garden(cb: CallbackQuery, clan, building, exp):
         text="📦 Склад клана", callback_data=f"clanh:storage:{clan_id}")])
     rows.append([InlineKeyboardButton(
         text="🔙 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
-    photo = await resolve_clan_hall_photo(building)
+    if await has_permission(cb.from_user.id, "can_manage_clans"):
+        rows.append([InlineKeyboardButton(
+            text="🖼 Картинка (админ)",
+            callback_data=f"clanh:admexphoto:{clan_id}:{slot_index}:garden")])
+    photo = await resolve_expansion_photo(building, exp)
     await _paint(cb, text, InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
 
 
@@ -1359,7 +1398,7 @@ async def clan_hall_recipe_cb(cb: CallbackQuery):
         text="🚪 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
 
     await cb.answer()
-    photo = await resolve_clan_hall_photo(building)
+    photo = await resolve_expansion_photo(building, exp)
     await _paint(cb, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
 
 
@@ -1390,7 +1429,7 @@ async def clan_hall_craft_cb(cb: CallbackQuery):
     ap_cost = ctx["ap_cost"]
     try:
         await cb.answer("🏭 Начал готовить!")
-        photo = await resolve_clan_hall_photo(building)
+        photo = await resolve_expansion_photo(building, exp)
         await animate_craft(cb.bot, cb.message.chat.id, recipe,
                             photo=photo, noop_data="clanh:noop")
         try:
@@ -1490,7 +1529,11 @@ async def _render_clan_mushrooms(cb: CallbackQuery, clan, building, exp,
 
     rows.append([InlineKeyboardButton(
         text="🔙 К кухне", callback_data=f"clanh:use:{clan_id}:{slot_index}")])
-    photo = await resolve_clan_hall_photo(building)
+    if await has_permission(cb.from_user.id, "can_manage_clans"):
+        rows.append([InlineKeyboardButton(
+            text="🖼 Картинка (админ)",
+            callback_data=f"clanh:admexphoto:{clan_id}:{slot_index}:kitchen")])
+    photo = await resolve_expansion_photo(building, exp)
     await _paint(cb, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
 
 
@@ -1626,7 +1669,7 @@ async def clan_hall_plantlist_cb(cb: CallbackQuery):
         text="🔙 К саду", callback_data=f"clanh:use:{clan_id}:{slot_index}")])
 
     await cb.answer()
-    photo = await resolve_clan_hall_photo(building)
+    photo = await resolve_expansion_photo(building, exp)
     await _paint(cb, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
 
 
@@ -1975,6 +2018,57 @@ async def clan_hall_admconstphoto_save(message: Message, state: FSMContext):
     await set_clan_construction_photo(file_id)
     await state.clear()
     await message.answer("✅ Общая картинка-заглушка стройки кланового здания сохранена.")
+
+
+@router.callback_query(F.data.startswith("clanh:admexphoto:"))
+async def clan_hall_admexphoto_cb(cb: CallbackQuery, state: FSMContext):
+    """Запрос картинки расширения (глобальная на тип, Фаза 8)."""
+    await cb.answer()
+    if not await has_permission(cb.from_user.id, "can_manage_clans"):
+        return
+    parts = cb.data.split(":")
+    if len(parts) < 5:
+        return
+    et = parts[4]
+    if et not in getattr(config, "CLAN_EXPANSION_TYPES", ()):
+        await cb.message.answer("❌ Неизвестное расширение.")
+        return
+    await state.update_data(clanh_exp_photo_type=et)
+    await state.set_state(ClanHallAdminPhoto.wait_expansion_photo)
+    cur_photo = await get_clan_expansion_photo(et)
+    hint = "Картинка сейчас есть." if cur_photo else "Картинки пока нет."
+    await cb.message.answer(
+        f"🖼 Картинка «{clan_expansion_name(et)}».\n"
+        f"{hint}\n"
+        f"Отправь фото — оно станет фоном этого расширения во всех кланах.\n"
+        f"«-» — убрать картинку.",
+        reply_markup=cancel_keyboard())
+
+
+@router.message(ClanHallAdminPhoto.wait_expansion_photo)
+async def clan_hall_admexphoto_save(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_clans"):
+        await state.clear()
+        return
+    data = await state.get_data()
+    et = data.get("clanh_exp_photo_type")
+    if not et:
+        await state.clear()
+        await message.answer("❌ Расширение не распознано. Открой заново с экрана расширения.")
+        return
+    if message.photo:
+        await set_clan_expansion_photo(et, message.photo[-1].file_id)
+        await state.clear()
+        await message.answer(f"✅ Картинка «{clan_expansion_name(et)}» обновлена.")
+        return
+    text_in = (message.text or "").strip()
+    if text_in == "-":
+        await set_clan_expansion_photo(et, None)
+        await state.clear()
+        await message.answer(f"✅ Картинка «{clan_expansion_name(et)}» сброшена.")
+        return
+    await state.clear()
+    await message.answer("❌ Нужно фото (или «-» чтобы убрать). Открой заново с экрана расширения.")
 
 
 # ── Экраны кланового склада ───────────────────────────────────────────────────

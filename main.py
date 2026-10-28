@@ -627,6 +627,7 @@ async def main():
               fishing_router, forest_router, mine_router, logging_site_router,
               storage_router, housing_router, news_router, kvp_router,
               wall_router, hq_router, clans_router, clan_hall_router, nii_router,
+              admin_shop_clan_router,
               tourist_booklet_router, duel_router, mvd_router):
         r.message.middleware(ChatGuard())
         r.message.middleware(FishingActiveLock())

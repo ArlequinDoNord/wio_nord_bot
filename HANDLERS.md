@@ -53,7 +53,7 @@
 | `start.py` | — | `router` | 3 | 1 | `city:` | — |
 | `changelog.py` | Команда /changelog — «что нового» в боте. | `router` | 1 | 0 | — | — |
 | `profile.py` | — | `router` | 5 | 16 | `prof:`, `prof_sel_status:`, `profile:` | `ProfileStates` |
-| `bank.py` | — | `router` | 5 | 9 | `bank:`, `noop:` | `BankStates` |
+| `bank.py` | — | `router` | 5 | 9 | `bank:` | `BankStates` |
 | `admin.py` | Админ-панель: управление магазином, финансами, отчётами, ролями и логами. | `router` | 89 | 221 | `\d+$:`, `act:`, `addreq:`, `admin:`, `aw:`, `aw_comment:`, `aw_confirm:`, `aw_del:`, `aw_edit:`, `aw_ei:`, `aw_kind:`, `aw_pick:`, `awr_grant:`, `back:`, `cancel:`, `cat:`, `confirm_del_photo:`, `del_item:`, `drinksel:`, `dungeon:`, `eddrop:`, `eddrop_del:`, `eddrop_desc:`, `eddrop_photo:`, `eddrop_set_ch:`, `eddrop_set_q:`, `eddrop_stat:`, `eddrop_stats:`, `eddrop_weff:`, `eddrop_weff_set:`, `edit_item:`, `editem_add:`, `editem_new:`, `editem_pick:`, `editset:`, `enemy:`, `enemy_drops:`, `enemy_field:`, `eqpart:`, `field:`, `field_req:`, `fin:`, `finuser:`, `fishing:`, `fishing_field:`, `fishing_j:`, `forest:`, `forest_field:`, `loc:`, `locstat:`, `lootonly:`, `marketok:`, `news:`, `noop:`, `pickuser:`, `prod:`, `rank_pick:`, `rank_promote:`, `rar:`, `rep:`, `rep_fix:`, `rep_no:`, `rep_ok:`, `role:`, `rolop:`, `salary:`, `salary_period:`, `shop_admin:`, `shop_del:`, `shop_edit:`, `st:`, `st_del:`, `st_key:`, `st_op:`, `st_pick:`, `st_rev:`, `storage:`, `treasury:`, `weff:`, `wing_set:` | `AdminAddItem`, `AdminSaleTax`, `AdminSpecialCode`, `AdminEditItem`, `AdminFinance`, `AdminTreasury`, `AdminStorageRestock`, `AdminStorageDelete`, `AdminTax`, `AdminReportAutoApprove`, `AdminReportPayCap`, `AdminReportFix`, `AdminRoles`, `AdminStatuses`, `AdminAwards`, `AdminFishing`, `AdminForest`, `AdminEnemy`, `AdminCallsign`, `AdminWing`, `AdminStates`, `AdminPlayerLog`, `AdminSalary`, `AdminLocation`, `AdminDungeon` |
 | `admin_recipes.py` | Менеджер рецептов крафта (v0.22.13): создание, правка и удаление рецептов. | `router` | 19 | 44 | `recadm:` | `RecipeManager` |
 | `shop.py` | Магазин: каталог по категориям, покупка за Нордмарки и AP. | `router` | 3 | 14 | `buy5_nord:`, `buy_housing:`, `buy_housing_cancel:`, `buy_nord:`, `fishbuy:`, `fishoffer:`, `itembuy:`, `itemoffer:`, `offercancel:`, `shop:`, `shopcat:`, `shopitem:` | `SpecialDeptBuy` |
@@ -78,7 +78,7 @@
 | `wall.py` | Стена изречений — доска объявлений города. | `router` | 2 | 7 | `wall:` | `WallWrite` |
 | `hq.py` | Штаб ВВС: командование рассылает приказы авиакрыльям. | `router` | 7 | 25 | `hq:` | `HqOrder`, `HqWingCreate`, `HqWingEdit` |
 | `clans.py` | Партии и кланы: реестр из Ратуши. | `router` | 7 | 24 | `city:`, `clanhier:`, `clans:` | `ClansCreate`, `ClansEdit`, `ClansMessage` |
-| `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 2 | 33 | `clanh:` | `ClanHallAdminPhoto` |
+| `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 3 | 34 | `clanh:` | `ClanHallAdminPhoto` |
 | `admin_shop_clan.py` | Админ-менеджер клановых лавок (Фаза 7). | `router` | 5 | 9 | `clanshopadm:` | `ClanShopAdmin` |
 | `nii.py` | НИИ Северной Кибернетики и кремниевых систем — здание обратной связи. | `router` | 2 | 7 | `nii:` | `NiiWrite` |
 | `tourist_booklet.py` | Буклет туриста: чек-лист городских локаций и разовая награда. | `router` | 0 | 2 | `booklet:` | — |
@@ -112,7 +112,7 @@
 - Хендлеры: message=5, callback_query=9
 - FSM: `BankStates`
 - `F.data.startswith`: `bank:history`, `bank:pickrecipient:`, `bank:transfer:list:`
-- `F.data ==`: `bank:balance`, `bank:menu`, `bank:transfer`, `bank:transfer_manual`, `bank:treasury`, `noop`
+- `F.data ==`: `bank:balance`, `bank:menu`, `bank:noop`, `bank:transfer`, `bank:transfer_manual`, `bank:treasury`
 
 ### `admin.py` — Админ-панель: управление магазином, финансами, отчётами, ролями и логами.
 
@@ -296,9 +296,9 @@
 ### `clan_hall.py` — Клан-холл: клановый склад и строительство кланового здания (Фаза 1).
 
 - Роутеры: `router`
-- Хендлеры: message=2, callback_query=33
+- Хендлеры: message=3, callback_query=34
 - FSM: `ClanHallAdminPhoto`
-- `F.data.startswith`: `clanh:admconstphoto:`, `clanh:admnophoto:`, `clanh:admphoto:`, `clanh:bitem:`, `clanh:buy:`, `clanh:cancel:`, `clanh:choose:`, `clanh:craft:`, `clanh:donate:`, `clanh:expchoose:`, `clanh:expinstall:`, `clanh:expmanage:`, `clanh:expup:`, `clanh:give:`, `clanh:hall:`, `clanh:harvest:`, `clanh:harvestall:`, `clanh:inside:`, `clanh:item:`, `clanh:libgive:`, `clanh:log:`, `clanh:mushproc:`, `clanh:mushrooms:`, `clanh:plant:`, `clanh:plantlist:`, `clanh:recipe:`, `clanh:shower:`, `clanh:start:`, `clanh:startfull:`, `clanh:storage:`, `clanh:upgrade:`, `clanh:use:`
+- `F.data.startswith`: `clanh:admconstphoto:`, `clanh:admexphoto:`, `clanh:admnophoto:`, `clanh:admphoto:`, `clanh:bitem:`, `clanh:buy:`, `clanh:cancel:`, `clanh:choose:`, `clanh:craft:`, `clanh:donate:`, `clanh:expchoose:`, `clanh:expinstall:`, `clanh:expmanage:`, `clanh:expup:`, `clanh:give:`, `clanh:hall:`, `clanh:harvest:`, `clanh:harvestall:`, `clanh:inside:`, `clanh:item:`, `clanh:libgive:`, `clanh:log:`, `clanh:mushproc:`, `clanh:mushrooms:`, `clanh:plant:`, `clanh:plantlist:`, `clanh:recipe:`, `clanh:shower:`, `clanh:start:`, `clanh:startfull:`, `clanh:storage:`, `clanh:upgrade:`, `clanh:use:`
 - `F.data ==`: `clanh:noop`
 
 ### `admin_shop_clan.py` — Админ-менеджер клановых лавок (Фаза 7).

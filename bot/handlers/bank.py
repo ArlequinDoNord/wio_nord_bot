@@ -442,7 +442,7 @@ async def bank_history(callback: CallbackQuery):
     nav = []
     if page > 0:
         nav.append(InlineKeyboardButton(text="⬅️ Новее", callback_data=f"bank:history:{page - 1}"))
-    nav.append(InlineKeyboardButton(text=f"• {page + 1} •", callback_data="noop"))
+    rows.append([InlineKeyboardButton(text=f"• {page + 1} •", callback_data="bank:noop")])
     if has_next:
         nav.append(InlineKeyboardButton(text="Старее ▶️", callback_data=f"bank:history:{page + 1}"))
     rows.append(nav)
@@ -450,6 +450,6 @@ async def bank_history(callback: CallbackQuery):
     await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
-@router.callback_query(F.data == "noop")
+@router.callback_query(F.data == "bank:noop")
 async def bank_noop(callback: CallbackQuery):
     await callback.answer()

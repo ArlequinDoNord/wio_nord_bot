@@ -14228,6 +14228,36 @@ async def set_clan_construction_photo(photo_file_id: str | None) -> None:
     await conn.commit()
 
 
+# --- Картинки расширений клан-холла (Фаза 8) ---
+def clan_expansion_photo_key(exp_type: str) -> str:
+    """Ключ settings для индивидуальной картинки расширения."""
+    return f"clanh_exp_photo_{exp_type}"
+
+
+async def get_clan_expansion_photo(exp_type: str) -> str | None:
+    """Индивидуальная картинка экрана расширения (file_id из settings или None)."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT value FROM settings WHERE key = ?",
+        (clan_expansion_photo_key(exp_type),))
+    row = await cur.fetchone()
+    val = (row['value'] or '').strip() if row and row['value'] else ''
+    return val or None
+
+
+async def set_clan_expansion_photo(exp_type: str, photo_file_id: str | None) -> None:
+    """Установить/сбросить картинку расширения (None — удалить ключ)."""
+    conn = await get_db()
+    key = clan_expansion_photo_key(exp_type)
+    if photo_file_id:
+        await conn.execute(
+            "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+            (key, photo_file_id.strip()))
+    else:
+        await conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+    await conn.commit()
+
+
 async def set_clan_building_photo(clan_id: int, photo_file_id: str | None):
     """Установить или сбросить индивидуальную картинку готового здания клана."""
     await ensure_clan_building(clan_id)

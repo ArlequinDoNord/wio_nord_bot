@@ -6,7 +6,7 @@
 > Назначение: единый обзор всех `StatesGroup`, где они ставятся и где ловятся,
 > а также реестр `callback_data` — чтобы не допускать конфликтов меню/хендлеров.
 
-Всего классов состояний: **50**; полей-состояний: **224**; уникальных `callback_data`: **261**.
+Всего классов состояний: **50**; полей-состояний: **225**; уникальных `callback_data`: **262**.
 
 ## 1. Классы состояний по модулям
 
@@ -318,8 +318,9 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `wait_building_photo` | `bot/handlers/clan_hall.py:1916` `clan_hall_admphoto_cb` | `bot/handlers/clan_hall.py:1952` `clan_hall_admphoto_save` |
-| `wait_construction_photo` | `bot/handlers/clan_hall.py:1945` `clan_hall_admconstphoto_cb` | `bot/handlers/clan_hall.py:1970` `clan_hall_admconstphoto_save` |
+| `wait_building_photo` | `bot/handlers/clan_hall.py:1959` `clan_hall_admphoto_cb` | `bot/handlers/clan_hall.py:1995` `clan_hall_admphoto_save` |
+| `wait_construction_photo` | `bot/handlers/clan_hall.py:1988` `clan_hall_admconstphoto_cb` | `bot/handlers/clan_hall.py:2013` `clan_hall_admconstphoto_save` |
+| `wait_expansion_photo` | `bot/handlers/clan_hall.py:2037` `clan_hall_admexphoto_cb` | `bot/handlers/clan_hall.py:2049` `clan_hall_admexphoto_save` |
 
 ### `ClansCreate` — `bot/handlers/clans.py`
 
@@ -499,7 +500,7 @@
 | `aw_confirm:` | 1 | `aw_confirm` |
 | `aw_kind:` | 2 | `aw_kind:ach`, `aw_kind:reg` |
 | `back:` | 2 | `back:main`, `back:to_main` |
-| `bank:` | 2 | `bank:menu`, `bank:transfer_manual` |
+| `bank:` | 3 | `bank:menu`, `bank:noop`, `bank:transfer_manual` |
 | `booklet:` | 1 | `booklet:claim` |
 | `cancel:` | 1 | `cancel` |
 | `city:` | 5 | `city:clans`, `city:menu`, `city:pilots`, `city:pilots:list`, `city:vote` |
@@ -598,6 +599,7 @@
 - `back:main`: `bot/handlers/admin.py:4921`
 - `bank:balance`: `bot/handlers/bank.py:72`
 - `bank:menu`: `bot/handlers/bank.py:191`
+- `bank:noop`: `bot/handlers/bank.py:453`
 - `bank:transfer`: `bot/handlers/bank.py:131`
 - `bank:transfer_manual`: `bot/handlers/bank.py:147`
 - `bank:treasury`: `bot/handlers/bank.py:204`
@@ -614,7 +616,7 @@
 - `city:pilots:list`: `bot/handlers/pilots.py:129`
 - `city:quarter`: `bot/handlers/locations.py:225`
 - `city:vote`: `bot/handlers/polls.py:70`
-- `clanh:noop`: `bot/handlers/clan_hall.py:2133`
+- `clanh:noop`: `bot/handlers/clan_hall.py:2227`
 - `clans:create_skip`: `bot/handlers/clans.py:790`
 - `clans:noop`: `bot/handlers/clans.py:575`
 - `clanshopadm:menu`: `bot/handlers/admin_shop_clan.py:103`
@@ -700,7 +702,7 @@
 - `nii:mine`: `bot/handlers/nii.py:228`
 - `nii:no_photo`: `bot/handlers/nii.py:130`
 - `nii:write`: `bot/handlers/nii.py:77`
-- `noop`: `bot/handlers/admin.py:4916`; `bot/handlers/bank.py:453`
+- `noop`: `bot/handlers/admin.py:4916`
 - `park:admin`: `bot/handlers/park.py:274`
 - `park:admin:add`: `bot/handlers/park.py:289`
 - `park:admin:editlist`: `bot/handlers/park.py:459`
@@ -802,38 +804,39 @@
 - `cat:`: `bot/handlers/admin.py:1276`
 - `city/`: `bot/handlers/locations.py:87`
 - `city:pilots:list:`: `bot/handlers/pilots.py:135`
-- `clanh:admconstphoto:`: `bot/handlers/clan_hall.py:1937`
-- `clanh:admnophoto:`: `bot/handlers/clan_hall.py:1923`
-- `clanh:admphoto:`: `bot/handlers/clan_hall.py:1905`
-- `clanh:bitem:`: `bot/handlers/clan_hall.py:1012`
-- `clanh:buy:`: `bot/handlers/clan_hall.py:1055`
-- `clanh:cancel:`: `bot/handlers/clan_hall.py:1771`
-- `clanh:choose:`: `bot/handlers/clan_hall.py:1740`
-- `clanh:craft:`: `bot/handlers/clan_hall.py:1366`
-- `clanh:donate:`: `bot/handlers/clan_hall.py:2003`
-- `clanh:expchoose:`: `bot/handlers/clan_hall.py:1233`
-- `clanh:expinstall:`: `bot/handlers/clan_hall.py:1246`
-- `clanh:expmanage:`: `bot/handlers/clan_hall.py:1222`
-- `clanh:expup:`: `bot/handlers/clan_hall.py:1264`
-- `clanh:give:`: `bot/handlers/clan_hall.py:2060`
-- `clanh:hall:`: `bot/handlers/clan_hall.py:1720`
-- `clanh:harvest:`: `bot/handlers/clan_hall.py:1657`
-- `clanh:harvestall:`: `bot/handlers/clan_hall.py:1689`
-- `clanh:inside:`: `bot/handlers/clan_hall.py:1847`
-- `clanh:item:`: `bot/handlers/clan_hall.py:2029`
-- `clanh:libgive:`: `bot/handlers/clan_hall.py:1114`
-- `clanh:log:`: `bot/handlers/clan_hall.py:2118`
-- `clanh:mushproc:`: `bot/handlers/clan_hall.py:1514`
-- `clanh:mushrooms:`: `bot/handlers/clan_hall.py:1497`
-- `clanh:plant:`: `bot/handlers/clan_hall.py:1633`
-- `clanh:plantlist:`: `bot/handlers/clan_hall.py:1585`
-- `clanh:recipe:`: `bot/handlers/clan_hall.py:1297`
-- `clanh:shower:`: `bot/handlers/clan_hall.py:1549`
-- `clanh:start:`: `bot/handlers/clan_hall.py:1785`
-- `clanh:startfull:`: `bot/handlers/clan_hall.py:1814`
-- `clanh:storage:`: `bot/handlers/clan_hall.py:1982`
-- `clanh:upgrade:`: `bot/handlers/clan_hall.py:1756`
-- `clanh:use:`: `bot/handlers/clan_hall.py:1280`
+- `clanh:admconstphoto:`: `bot/handlers/clan_hall.py:1980`
+- `clanh:admexphoto:`: `bot/handlers/clan_hall.py:2023`
+- `clanh:admnophoto:`: `bot/handlers/clan_hall.py:1966`
+- `clanh:admphoto:`: `bot/handlers/clan_hall.py:1948`
+- `clanh:bitem:`: `bot/handlers/clan_hall.py:1039`
+- `clanh:buy:`: `bot/handlers/clan_hall.py:1082`
+- `clanh:cancel:`: `bot/handlers/clan_hall.py:1814`
+- `clanh:choose:`: `bot/handlers/clan_hall.py:1783`
+- `clanh:craft:`: `bot/handlers/clan_hall.py:1405`
+- `clanh:donate:`: `bot/handlers/clan_hall.py:2097`
+- `clanh:expchoose:`: `bot/handlers/clan_hall.py:1272`
+- `clanh:expinstall:`: `bot/handlers/clan_hall.py:1285`
+- `clanh:expmanage:`: `bot/handlers/clan_hall.py:1261`
+- `clanh:expup:`: `bot/handlers/clan_hall.py:1303`
+- `clanh:give:`: `bot/handlers/clan_hall.py:2154`
+- `clanh:hall:`: `bot/handlers/clan_hall.py:1763`
+- `clanh:harvest:`: `bot/handlers/clan_hall.py:1700`
+- `clanh:harvestall:`: `bot/handlers/clan_hall.py:1732`
+- `clanh:inside:`: `bot/handlers/clan_hall.py:1890`
+- `clanh:item:`: `bot/handlers/clan_hall.py:2123`
+- `clanh:libgive:`: `bot/handlers/clan_hall.py:1145`
+- `clanh:log:`: `bot/handlers/clan_hall.py:2212`
+- `clanh:mushproc:`: `bot/handlers/clan_hall.py:1557`
+- `clanh:mushrooms:`: `bot/handlers/clan_hall.py:1540`
+- `clanh:plant:`: `bot/handlers/clan_hall.py:1676`
+- `clanh:plantlist:`: `bot/handlers/clan_hall.py:1628`
+- `clanh:recipe:`: `bot/handlers/clan_hall.py:1336`
+- `clanh:shower:`: `bot/handlers/clan_hall.py:1592`
+- `clanh:start:`: `bot/handlers/clan_hall.py:1828`
+- `clanh:startfull:`: `bot/handlers/clan_hall.py:1857`
+- `clanh:storage:`: `bot/handlers/clan_hall.py:2076`
+- `clanh:upgrade:`: `bot/handlers/clan_hall.py:1799`
+- `clanh:use:`: `bot/handlers/clan_hall.py:1319`
 - `clanhier:`: `bot/handlers/clans.py:285`
 - `clans:add:`: `bot/handlers/clans.py:580`
 - `clans:addset:`: `bot/handlers/clans.py:597`
@@ -1166,12 +1169,7 @@
 
 ## 4. ⚠️ Возможные конфликты
 
-**Один `callback_data` ловится несколькими `F.data ==`-хендлерами**
-(побеждает зарегистрированный раньше — второй код мёртв):
-
-- `noop`:
-    - `bot/handlers/admin.py:4916`
-    - `bot/handlers/bank.py:453`
+- Дублей точных `F.data ==` фильтров не найдено.
 
 **Префиксный фильтр перекрывает точный ключ** (проверь порядок регистрации):
 
