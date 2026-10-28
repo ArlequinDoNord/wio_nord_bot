@@ -70,6 +70,7 @@ def admin_panel_keyboard(permissions: dict):
         buttons.append([InlineKeyboardButton(text="📦 Хранилище", callback_data="admin:storage")])
     if permissions.get('can_manage_clans'):
         buttons.append([InlineKeyboardButton(text="🏪 Клановые лавки", callback_data="clanshopadm:menu")])
+        buttons.append([InlineKeyboardButton(text="🖼 Картинки клан-холла", callback_data="clanhph:menu")])
     buttons.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

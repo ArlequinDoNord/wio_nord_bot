@@ -6,7 +6,7 @@
 > Назначение: единый обзор всех `StatesGroup`, где они ставятся и где ловятся,
 > а также реестр `callback_data` — чтобы не допускать конфликтов меню/хендлеров.
 
-Всего классов состояний: **50**; полей-состояний: **225**; уникальных `callback_data`: **262**.
+Всего классов состояний: **51**; полей-состояний: **228**; уникальных `callback_data`: **265**.
 
 ## 1. Классы состояний по модулям
 
@@ -260,6 +260,14 @@
 | `drop_item_value` | `bot/handlers/admin.py:6449` `enemy_drop_item_stat_pick` | `bot/handlers/admin.py:6460` `enemy_drop_item_stat_value` |
 | `pending_enemy_id` | — | — |
 
+### `ClanPhotosAdmin` — `bot/handlers/admin_clanphotos.py`
+
+| Состояние | Ставится (`set_state`) | Ловится (хендлер) |
+|---|---|---|
+| `wait_exp_photo` | `bot/handlers/admin_clanphotos.py:134` `clanph_exp_cb` | `bot/handlers/admin_clanphotos.py:146` `clanph_exp_photo_save` |
+| `wait_building_photo` | `bot/handlers/admin_clanphotos.py:259` `clanph_bclan_cb` | `bot/handlers/admin_clanphotos.py:269` `clanph_building_photo_save` |
+| `wait_construction_photo` | `bot/handlers/admin_clanphotos.py:178` `clanph_construction_cb` | `bot/handlers/admin_clanphotos.py:189` `clanph_construction_photo_save` |
+
 ### `RecipeManager` — `bot/handlers/admin_recipes.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
@@ -505,6 +513,7 @@
 | `cancel:` | 1 | `cancel` |
 | `city:` | 5 | `city:clans`, `city:menu`, `city:pilots`, `city:pilots:list`, `city:vote` |
 | `clanh:` | 1 | `clanh:noop` |
+| `clanhph:` | 3 | `clanhph:buildings`, `clanhph:construction`, `clanhph:menu` |
 | `clans:` | 4 | `clans:create_skip`, `clans:list:clan`, `clans:list:party`, `clans:noop` |
 | `contracts:` | 1 | `contracts:list` |
 | `duel:` | 5 | `duel:card:buy`, `duel:help`, `duel:list`, `duel:menu`, `duel:top` |
@@ -617,6 +626,8 @@
 - `city:quarter`: `bot/handlers/locations.py:225`
 - `city:vote`: `bot/handlers/polls.py:70`
 - `clanh:noop`: `bot/handlers/clan_hall.py:2227`
+- `clanhph:construction`: `bot/handlers/admin_clanphotos.py:172`
+- `clanhph:menu`: `bot/handlers/admin_clanphotos.py:114`
 - `clans:create_skip`: `bot/handlers/clans.py:790`
 - `clans:noop`: `bot/handlers/clans.py:575`
 - `clanshopadm:menu`: `bot/handlers/admin_shop_clan.py:103`
@@ -838,6 +849,9 @@
 - `clanh:upgrade:`: `bot/handlers/clan_hall.py:1799`
 - `clanh:use:`: `bot/handlers/clan_hall.py:1319`
 - `clanhier:`: `bot/handlers/clans.py:285`
+- `clanhph:bclan:`: `bot/handlers/admin_clanphotos.py:247`
+- `clanhph:buildings`: `bot/handlers/admin_clanphotos.py:208`
+- `clanhph:exp:`: `bot/handlers/admin_clanphotos.py:123`
 - `clans:add:`: `bot/handlers/clans.py:580`
 - `clans:addset:`: `bot/handlers/clans.py:597`
 - `clans:cancel:`: `bot/handlers/clans.py:396`

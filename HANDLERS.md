@@ -41,10 +41,11 @@
 | 28 | `clans_router` | `bot/handlers/clans.py` |
 | 29 | `clan_hall_router` | `bot/handlers/clan_hall.py` |
 | 30 | `admin_shop_clan_router` | `bot/handlers/admin_shop_clan.py` |
-| 31 | `nii_router` | `bot/handlers/nii.py` |
-| 32 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
-| 33 | `duel_router` | `bot/handlers/duel.py` |
-| 34 | `mvd_router` | `bot/handlers/mvd.py` |
+| 31 | `admin_clanphotos_router` | `bot/handlers/admin_clanphotos.py` |
+| 32 | `nii_router` | `bot/handlers/nii.py` |
+| 33 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
+| 34 | `duel_router` | `bot/handlers/duel.py` |
+| 35 | `mvd_router` | `bot/handlers/mvd.py` |
 
 ## Сводка по модулям
 
@@ -80,6 +81,7 @@
 | `clans.py` | Партии и кланы: реестр из Ратуши. | `router` | 7 | 24 | `city:`, `clanhier:`, `clans:` | `ClansCreate`, `ClansEdit`, `ClansMessage` |
 | `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 3 | 34 | `clanh:` | `ClanHallAdminPhoto` |
 | `admin_shop_clan.py` | Админ-менеджер клановых лавок (Фаза 7). | `router` | 5 | 9 | `clanshopadm:` | `ClanShopAdmin` |
+| `admin_clanphotos.py` | Админ-менеджер картинок клан-холла (Фаза 8). | `router` | 3 | 5 | `clanhph:` | `ClanPhotosAdmin` |
 | `nii.py` | НИИ Северной Кибернетики и кремниевых систем — здание обратной связи. | `router` | 2 | 7 | `nii:` | `NiiWrite` |
 | `tourist_booklet.py` | Буклет туриста: чек-лист городских локаций и разовая награда. | `router` | 0 | 2 | `booklet:` | — |
 | `duel.py` | Дом Дуэлей — PvP-арена «зона на зону». | `router` | 0 | 12 | `duel:` | — |
@@ -308,6 +310,14 @@
 - FSM: `ClanShopAdmin`
 - `F.data.startswith`: `clanshopadm:add:`, `clanshopadm:clan:`, `clanshopadm:del:`, `clanshopadm:ep:`, `clanshopadm:es:`, `clanshopadm:hide:`, `clanshopadm:it:`, `clanshopadm:show:`
 - `F.data ==`: `clanshopadm:menu`
+
+### `admin_clanphotos.py` — Админ-менеджер картинок клан-холла (Фаза 8).
+
+- Роутеры: `router`
+- Хендлеры: message=3, callback_query=5
+- FSM: `ClanPhotosAdmin`
+- `F.data.startswith`: `clanhph:bclan:`, `clanhph:buildings`, `clanhph:exp:`
+- `F.data ==`: `clanhph:construction`, `clanhph:menu`
 
 ### `nii.py` — НИИ Северной Кибернетики и кремниевых систем — здание обратной связи.
 

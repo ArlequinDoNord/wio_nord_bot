@@ -67,6 +67,7 @@ from bot.handlers.hq import router as hq_router
 from bot.handlers.clans import router as clans_router
 from bot.handlers.clan_hall import router as clan_hall_router
 from bot.handlers.admin_shop_clan import router as admin_shop_clan_router
+from bot.handlers.admin_clanphotos import router as admin_clanphotos_router
 from bot.handlers.nii import router as nii_router
 from bot.handlers.tourist_booklet import router as tourist_booklet_router
 from bot.handlers.duel import router as duel_router
@@ -615,6 +616,7 @@ async def main():
     dp.include_router(clans_router)
     dp.include_router(clan_hall_router)
     dp.include_router(admin_shop_clan_router)
+    dp.include_router(admin_clanphotos_router)
     dp.include_router(nii_router)
     dp.include_router(tourist_booklet_router)
     dp.include_router(duel_router)
@@ -627,7 +629,7 @@ async def main():
               fishing_router, forest_router, mine_router, logging_site_router,
               storage_router, housing_router, news_router, kvp_router,
               wall_router, hq_router, clans_router, clan_hall_router, nii_router,
-              admin_shop_clan_router,
+              admin_shop_clan_router, admin_clanphotos_router,
               tourist_booklet_router, duel_router, mvd_router):
         r.message.middleware(ChatGuard())
         r.message.middleware(FishingActiveLock())

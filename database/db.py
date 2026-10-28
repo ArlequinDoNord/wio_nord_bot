@@ -14197,6 +14197,16 @@ async def get_clan_building(clan_id: int):
     return await cur.fetchone()
 
 
+async def get_all_clan_buildings() -> list:
+    """Все здания кланов (для админ-менеджера картинок). Пропускают и без статуса."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT b.*, c.name AS clan_name FROM clan_buildings b "
+        "JOIN clans c ON c.id = b.clan_id WHERE c.kind = 'clan' "
+        "ORDER BY c.name COLLATE NOCASE")
+    return await cur.fetchall()
+
+
 async def ensure_clan_building(clan_id: int):
     conn = await get_db()
     await conn.execute(
