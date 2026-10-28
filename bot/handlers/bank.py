@@ -400,17 +400,23 @@ async def process_message(message: Message, state: FSMContext):
     await message.answer(reply, reply_markup=await main_menu_kb(message.from_user.id))
 
 
-@router.callback_query(F.data == "bank:history")
+@router.callback_query(F.data.startswith("bank:history"))
 async def bank_history(callback: CallbackQuery):
+    """История транзакций с постраничным листанием (15 записей на страницу)."""
+    parts = callback.data.split(":")
+    page = int(parts[2]) if len(parts) > 2 and parts[2].lstrip('-').isdigit() else 0
+    page = max(0, page)
+    PER_PAGE = 15
     await callback.answer()
-    txns = await get_transactions_history(callback.from_user.id)
+    txns, has_next = await get_transactions_history(
+        callback.from_user.id, page=page, per_page=PER_PAGE)
 
     if not txns:
         await callback.message.answer("Пока нет транзакций.")
         return
 
-    text = "📜 История транзакций:\n\n"
-    for t in txns[:10]:
+    text = f"📜 История транзакций (стр. {page + 1}):\n\n"
+    for t in txns:
         me = callback.from_user.id
         incoming = t['to_user'] == me and t['from_user'] != me
         sign = "+" if incoming else "-"
@@ -431,4 +437,19 @@ async def bank_history(callback: CallbackQuery):
         if t['description']:
             text += f"  {t['description']}\n"
 
-    await callback.message.answer(text)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = []
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="⬅️ Новее", callback_data=f"bank:history:{page - 1}"))
+    nav.append(InlineKeyboardButton(text=f"• {page + 1} •", callback_data="noop"))
+    if has_next:
+        nav.append(InlineKeyboardButton(text="Старее ▶️", callback_data=f"bank:history:{page + 1}"))
+    rows.append(nav)
+    rows.append([InlineKeyboardButton(text="🔙 В банк", callback_data="bank:menu")])
+    await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data == "noop")
+async def bank_noop(callback: CallbackQuery):
+    await callback.answer()

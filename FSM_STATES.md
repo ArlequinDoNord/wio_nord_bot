@@ -597,7 +597,6 @@
 - `aw_confirm`: `bot/handlers/admin.py:3609`
 - `back:main`: `bot/handlers/admin.py:4921`
 - `bank:balance`: `bot/handlers/bank.py:72`
-- `bank:history`: `bot/handlers/bank.py:403`
 - `bank:menu`: `bot/handlers/bank.py:191`
 - `bank:transfer`: `bot/handlers/bank.py:131`
 - `bank:transfer_manual`: `bot/handlers/bank.py:147`
@@ -701,7 +700,7 @@
 - `nii:mine`: `bot/handlers/nii.py:228`
 - `nii:no_photo`: `bot/handlers/nii.py:130`
 - `nii:write`: `bot/handlers/nii.py:77`
-- `noop`: `bot/handlers/admin.py:4916`
+- `noop`: `bot/handlers/admin.py:4916`; `bot/handlers/bank.py:453`
 - `park:admin`: `bot/handlers/park.py:274`
 - `park:admin:add`: `bot/handlers/park.py:289`
 - `park:admin:editlist`: `bot/handlers/park.py:459`
@@ -793,6 +792,7 @@
 - `aw_pick:`: `bot/handlers/admin.py:3994`
 - `awr_grant:`: `bot/handlers/admin.py:4061`
 - `bait:set:`: `bot/handlers/fishing.py:176`
+- `bank:history`: `bot/handlers/bank.py:403`
 - `bank:pickrecipient:`: `bot/handlers/bank.py:177`
 - `bank:transfer:list:`: `bot/handlers/bank.py:137`
 - `buy5_nord:`: `bot/handlers/shop.py:493`
@@ -1166,7 +1166,12 @@
 
 ## 4. ⚠️ Возможные конфликты
 
-- Дублей точных `F.data ==` фильтров не найдено.
+**Один `callback_data` ловится несколькими `F.data ==`-хендлерами**
+(побеждает зарегистрированный раньше — второй код мёртв):
+
+- `noop`:
+    - `bot/handlers/admin.py:4916`
+    - `bot/handlers/bank.py:453`
 
 **Префиксный фильтр перекрывает точный ключ** (проверь порядок регистрации):
 

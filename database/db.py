@@ -5925,14 +5925,23 @@ async def get_user_buildings(user_id: int):
     return await cursor.fetchall()
 
 
-async def get_transactions_history(user_id: int, limit: int = 10):
+async def get_transactions_history(user_id: int, page: int = 0, per_page: int = 15):
+    """История транзакций постранично (от новых к старым).
+
+    Возвращает (rows, has_next): rows — пер_page записей c OFFSET page*per_page,
+    has_next — есть ли следующая страница (запрошен лишний ряд).
+    """
     conn = await get_db()
+    off = max(0, int(page)) * per_page
     cursor = await conn.execute("""
         SELECT * FROM transactions
         WHERE from_user = ? OR to_user = ?
-        ORDER BY created_at DESC LIMIT ?
-    """, (user_id, user_id, limit))
-    return await cursor.fetchall()
+        ORDER BY created_at DESC, id DESC
+        LIMIT ? OFFSET ?
+    """, (user_id, user_id, per_page + 1, off))
+    rows = await cursor.fetchall()
+    has_next = len(rows) > per_page
+    return rows[:per_page], has_next
 
 
 def _citizens_sql(user_id_expr: str = "users.user_id") -> str:
