@@ -43,9 +43,9 @@ async def main():
     )
     await init_db()
 
-    print("\n0. Флаг не включён")
-    check("CLAN_HALL_ENABLED = False",
-          getattr(config, "CLAN_HALL_ENABLED", False) is False)
+    print("\n0. Флаг включён (v0.39.8 — открытие клан-холла)")
+    check("CLAN_HALL_ENABLED = True",
+          getattr(config, "CLAN_HALL_ENABLED", False) is True)
 
     print("\n1. Админ-панель: кнопка")
     kb_src = io.open(os.path.join(os.path.dirname(os.path.abspath(__file__)),

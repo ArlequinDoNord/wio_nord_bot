@@ -43,8 +43,8 @@ async def main():
     uid_leader = 170091
     await add_user(uid_leader, 'a', 'A', "")
 
-    print("\n0. Флаг не включён")
-    check("CLAN_HALL_ENABLED = False", getattr(config, "CLAN_HALL_ENABLED", False) is False)
+    print("\n0. Флаг включён (v0.39.8 — открытие клан-холла)")
+    check("CLAN_HALL_ENABLED = True", getattr(config, "CLAN_HALL_ENABLED", False) is True)
 
     print("\n1. db-хелперы фото расширений")
     check("ключ по типу", clan_expansion_photo_key('library') == 'clanh_exp_photo_library')
