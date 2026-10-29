@@ -303,7 +303,7 @@ CLAN_BUILDING_TYPES = {
 # клана не тратится. С ресурсами цена остаётся базовой (price_nm).
 CLAN_BUILDING_NO_RESOURCES_MULT = 2
 
-CLAN_EXPANSION_TYPES = ("kitchen", "workbench", "shower", "garden", "library", "shop")
+CLAN_EXPANSION_TYPES = ("kitchen", "workbench", "shower", "garden", "library", "shop", "tree")
 
 CLAN_EXPANSION_INFO = {
     "kitchen":   {"name": "Кухня", "icon": "🍳",
@@ -318,7 +318,19 @@ CLAN_EXPANSION_INFO = {
                   "desc": "Клановые рецепты, доступные всем членам клана."},
     "shop":      {"name": "Клановая лавка", "icon": "🏪",
                   "desc": "Скидки на расходники и снаряжение, клановая накидка."},
+    "tree":      {"name": "Древо Пламенного Круговорота", "icon": "🌳",
+                  "desc": ("Праздничное клановое Древо (требуется 7 Ламп у членов): "
+                           "медитация +20 ОД у Древа всем членам в сутки (отдельно "
+                           "от домашней Лампы), Эссенция Памяти раз в 30 дней — "
+                           "глава собирает в инвентарь или на склад клана.")},
 }
+
+# ── Древо Пламенного Круговорота (клановое расширение 'tree') ──────
+FIRE_TREE_CLAN_REQ_LAMPS = 7           # сколько чланов с Лампой нужно для установки
+FIRE_TREE_CLAN_MEDIT_AP = 20           # 🧘 медитация у Древа (в доп. к домашней)
+FIRE_TREE_CLAN_ESSENCE_NAME = "Эссенция Памяти"
+FIRE_TREE_CLAN_ESSENCE_DAYS = 30       # раз в 30 дней (от установки/сбора)
+FIRE_TREE_CLAN_ESSENCE_SELL = 500      # продажа кристалла на скупке
 
 CLAN_EXPANSION_UPGRADE = {
     2: {"nm": 1500, "required": {"Доска": 20,  "Железная руда": 10}},

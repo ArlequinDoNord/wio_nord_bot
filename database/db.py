@@ -980,6 +980,7 @@ async def init_db():
             photo_file_id TEXT,
             leader_id INTEGER,
             created_by INTEGER,
+            tree_amber_at TEXT DEFAULT NULL,            -- Древо: таймер Эссии
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -1445,6 +1446,9 @@ async def init_db():
     # v0.41.2 Ф4б: Лампа Круговорота в личном жилье (генератор, не привязан к празднику)
     await _ensure_column(conn, "users", "lantern_medit_day", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "users", "lantern_amber_at", "TEXT DEFAULT NULL")
+    # v0.41.4: Древо Пламенного Круговорота (клан. расширение 'tree')
+    await _ensure_column(conn, "clans", "tree_amber_at", "TEXT DEFAULT NULL")
+    await conn.execute(FIRE_TREE_MEDIT_TABLE_SQL)
     await _ensure_column(conn, "users", "shower_used_today", "INTEGER DEFAULT 0")
     # Выкуп рыбы казной: суточный лимит НМ на игрока (FISH_TREASURY_DAILY_LIMIT)
     await _ensure_column(conn, "users", "fish_sold_day", "TEXT DEFAULT NULL")
@@ -9668,6 +9672,12 @@ async def ensure_firelab_items() -> dict:
          "Кусок янтаря с тёплым пламенем внутри. Можно продать за 100 НМ "
          "или сберечь как ресурс будущих крафтов.",
          0, 100, 3, "resource", 0, 0),
+        (config.FIRE_TREE_CLAN_ESSENCE_NAME,
+         "Большой кристалл янтаря из Древа Круговорота: тёплый, как очаг всех "
+         "домов разом. Продаётся скупщику за 500 НМ или пойдёт на склад клана "
+         "под будущие крафты.",
+         0, int(getattr(config, "FIRE_TREE_CLAN_ESSENCE_SELL", 500) or 500),
+         4, "resource", 0, 0),
     )
     for name, desc, price, sell, rarity, cat, heal, loot_only in items:
         item = await get_item_by_name(name)
@@ -14089,6 +14099,130 @@ async def get_lantern_owners() -> list[int]:
     return [int(r['user_id']) for r in await cursor.fetchall()]
 
 
+# ============ ДРЕВО ПЛАМЕННОГО КРУГОВОРОТА (клановое расширение 'tree') ============
+
+async def count_clan_lanterns(clan_id: int) -> int:
+    """Сколько чланов клана имеют Лампу Круговорота (в инвентаре, qty>0)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id FROM items WHERE name = ?",
+        (getattr(config, "FIRE_LANTERN_NAME", "Лампа Круговорота"),))
+    lamp = await cursor.fetchone()
+    if not lamp:
+        return 0
+    cursor = await conn.execute("""
+        SELECT COUNT(DISTINCT cm.user_id) AS c
+        FROM clan_members cm
+        JOIN inventory i ON i.user_id = cm.user_id AND i.item_id = ? AND i.quantity > 0
+        WHERE cm.clan_id = ?
+    """, (lamp['id'], clan_id))
+    row = await cursor.fetchone()
+    return int(row['c'] or 0)
+
+
+FIRE_TREE_MEDIT_TABLE_SQL = """
+    CREATE TABLE IF NOT EXISTS clan_tree_medit (
+        clan_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        medit_day TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (clan_id, user_id)
+    )
+"""
+
+
+async def can_meditate_clan_tree(clan_id: int, user_id: int) -> bool:
+    """Медитация у Древа — раз в сутки у каждого члена (в доп. к домашней Лампе)."""
+    conn = await get_db()
+    today = today_report_day()
+    await conn.execute(FIRE_TREE_MEDIT_TABLE_SQL)
+    cur = await conn.execute(
+        "SELECT medit_day FROM clan_tree_medit WHERE clan_id = ? AND user_id = ?",
+        (clan_id, user_id))
+    row = await cur.fetchone()
+    return not (row and row['medit_day'] == today)
+
+
+async def get_clan_tree_medit_day(clan_id: int, user_id: int) -> str | None:
+    """Последний день медитации у Древа (для подсказки «приходи завтра»)."""
+    conn = await get_db()
+    await conn.execute(FIRE_TREE_MEDIT_TABLE_SQL)
+    cur = await conn.execute(
+        "SELECT medit_day FROM clan_tree_medit WHERE clan_id = ? AND user_id = ?",
+        (clan_id, user_id))
+    row = await cur.fetchone()
+    return row['medit_day'] if row else None
+
+
+async def use_clan_tree_meditation(clan_id: int, user_id: int) -> int:
+    """🧘 Медитация у Древа: +AP раз в сутки (у каждого члена своя отметка).
+
+    Возвращает сколько ОД начислено (0 — уже сегодня).
+    """
+    if not await can_meditate_clan_tree(clan_id, user_id):
+        return 0
+    ap = int(getattr(config, "FIRE_TREE_CLAN_MEDIT_AP", 20) or 20)
+    conn = await get_db()
+    await conn.execute(FIRE_TREE_MEDIT_TABLE_SQL)
+    await conn.execute(
+        "INSERT INTO clan_tree_medit (clan_id, user_id, medit_day) VALUES (?, ?, ?) "
+        "ON CONFLICT(clan_id, user_id) DO UPDATE SET medit_day = ?",
+        (clan_id, user_id, today_report_day(), today_report_day()))
+    await conn.commit()
+    await add_ap(user_id, ap, reason="Древо Круговорота: медитация")
+    await log_activity(user_id, "firelab",
+                       f"Медитация у Древа клана #{clan_id}: +{ap} ОД")
+    return ap
+
+
+async def set_clan_tree_essence_next(clan_id: int, ts: float | None = None):
+    """Точка следующей Эссенции Памяти (unix ts); старт — с установки Древа."""
+    if ts is None:
+        ts = (datetime.now(MOSCOW_TZ)
+              + timedelta(days=int(getattr(config, "FIRE_TREE_CLAN_ESSENCE_DAYS", 30) or 30))
+              ).timestamp()
+    await update_clan(clan_id, tree_amber_at=str(int(ts)))
+
+
+async def get_clan_tree_essence_at(clan_id: int) -> float | None:
+    """unix ts следующей Эссенции (или None — таймер не запущен)."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT tree_amber_at FROM clans WHERE id = ?", (clan_id,))
+    row = await cur.fetchone()
+    raw = (row or {}).get('tree_amber_at')
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+async def collect_clan_tree_essence(clan_id: int) -> tuple[bool, str]:
+    """Сбор Эссии Памяти главой (кнопка). Двa способа хранить — независимо:
+
+    Возвращает (ok, сообщение). Складывается в клановый склад или инвентарь —
+    решает вызывающий код, этот хелпер только проверяет таймер и переставляет.
+    """
+    from utils.helpers import MOSCOW_TZ
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT tree_amber_at FROM clans WHERE id = ?", (clan_id,))
+    row = await cur.fetchone()
+    if not row or not row['tree_amber_at']:
+        return False, "⏳ Древо ещё начало жить — таймер Эссии уже запущен, ждём."
+    try:
+        ts = float(row['tree_amber_at'])
+    except (TypeError, ValueError):
+        return False, "⚠️ Таймер Эссии повреждён — сообщи хранителю."
+    now = datetime.now(MOSCOW_TZ).timestamp()
+    if now < ts:
+        left_days = (ts - now) / 86400
+        return False, (f"⏳ Эссенция Памяти ещё зреет: осталось ~{max(0, int(left_days)) + 1} сут.")
+    await set_clan_tree_essence_next(clan_id)
+    return True, "🌿 Эссенция Памяти созрела!"
+
+
 # ============ ЛОГ АКТИВНОСТИ ИГРОКОВ ============
 
 async def log_ap_change(user_id: int, delta: int, reason: str = None):
@@ -14317,7 +14451,7 @@ async def get_clans(kind: str = None):
 
 
 async def update_clan(clan_id: int, name=None, description=None, photo_file_id=None,
-                      leader_id=None):
+                      leader_id=None, tree_amber_at=None):
     conn = await get_db()
     sets, vals = [], []
     if name is not None:
@@ -14332,6 +14466,9 @@ async def update_clan(clan_id: int, name=None, description=None, photo_file_id=N
     if leader_id is not None:
         sets.append("leader_id = ?")
         vals.append(leader_id)
+    if tree_amber_at is not None:
+        sets.append("tree_amber_at = ?")
+        vals.append(str(tree_amber_at))
     if sets:
         vals.append(clan_id)
         await conn.execute(f"UPDATE clans SET {', '.join(sets)} WHERE id = ?", vals)
@@ -14359,6 +14496,7 @@ async def delete_clan(clan_id: int):
     await conn.execute("DELETE FROM clan_recipes WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_shop_purchases WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_shop_items WHERE clan_id = ?", (clan_id,))
+    await conn.execute("DELETE FROM clan_tree_medit WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clan_buildings WHERE clan_id = ?", (clan_id,))
     await conn.execute("DELETE FROM clans WHERE id = ?", (clan_id,))
     await conn.commit()
@@ -15479,11 +15617,26 @@ async def install_clan_expansion(clan_id: int, user_id: int, slot_index: int,
     if existing:
         return False, (f"❌ Расширение «{clan_expansion_name(expansion_type)}» "
                        f"уже установлено в слоте {int(existing['slot_index'])}.")
+    # Гейт «Древа Пламенного Круговорота»: нужно N Ламп у членов клана.
+    if expansion_type == "tree":
+        req = int(getattr(config, "FIRE_TREE_CLAN_REQ_LAMPS", 7) or 7)
+        have = await count_clan_lanterns(clan_id)
+        if have < req:
+            return False, (f"🔒 «{clan_expansion_name('tree')}» открывается "
+                           f"при {req} Лампах у членов клана — сейчас их {have}.")
     try:
         await conn.execute(
             """INSERT INTO clan_expansions (clan_id, slot_index, expansion_type, expansion_level)
                VALUES (?, ?, ?, 1)""",
             (clan_id, slot_index, expansion_type))
+        if expansion_type == "tree":
+            # старт таймера Эссии Памяти с момента установки Древа
+            ts = (datetime.now(MOSCOW_TZ)
+                  + timedelta(days=int(getattr(config, "FIRE_TREE_CLAN_ESSENCE_DAYS", 30) or 30))
+                  ).timestamp()
+            await conn.execute(
+                "UPDATE clans SET tree_amber_at = ? WHERE id = ?",
+                (str(int(ts)), clan_id))
         await conn.commit()
     except aiosqlite.IntegrityError:
         return False, "❌ Не удалось установить расширение: слот или тип уже занят."
@@ -15496,6 +15649,9 @@ async def upgrade_clan_expansion(clan_id: int, user_id: int,
     """Мгновенное улучшение расширения: НМ главы + ресурсы с кланового склада."""
     if not await can_manage_clan_hall(clan_id, user_id):
         return False, "❌ Улучшать расширения может только глава клана."
+    exp0 = await get_clan_expansion(clan_id, slot_index)
+    if exp0 and exp0['expansion_type'] == 'tree':
+        return False, "❌ Древо Пламенного Круговорота не улучшается."
     row = await get_clan_building(clan_id)
     if not row or row['status'] != 'built' or not row['building_type']:
         return False, "❌ Улучшать расширения можно только в готовом здании (не во время работ)."

@@ -27,6 +27,7 @@ from aiogram.types import (
 
 import config
 from database.db import (
+    add_inventory_item, add_clan_storage, get_item_by_name, log_activity,
     PLANT_NAMES,
     PLANT_STAGES,
     can_harvest_clan_garden,
@@ -73,6 +74,9 @@ from database.db import (
     get_clan_shop_bought_today,
     has_user_recipe,
     install_clan_expansion,
+    count_clan_lanterns, can_meditate_clan_tree, use_clan_tree_meditation,
+    set_clan_tree_essence_next, get_clan_tree_essence_at, collect_clan_tree_essence,
+    add_clan_storage,
     is_clan_member,
     next_clan_building_type,
     get_clan_shop_item,
@@ -999,6 +1003,9 @@ async def _render_clan_use(cb: CallbackQuery, clan, building, exp):
     if et == "shower":
         return await _render_clan_shower(cb, clan, building, exp)
 
+    if et == "tree":
+        return await _render_clan_tree(cb, clan, building, exp)
+
     if et == "garden":
         return await _render_clan_garden(cb, clan, building, exp)
 
@@ -1009,6 +1016,178 @@ async def _render_clan_use(cb: CallbackQuery, clan, building, exp):
         return await _render_clan_shop(cb, clan, building, exp)
 
     await cb.answer(f"❌ {clan_expansion_name(et)} пока не работает.", show_alert=True)
+
+
+# ───────── Древо Пламенного Круговорота (клановое расширение 'tree') ─────────
+
+async def _render_clan_tree(cb: CallbackQuery, clan, building, exp):
+    """Древо Пламенного Круговорота: 🧘 медитация у Древа (+ОД всем членам,
+    раз в сутки, дополнительно к домашней Лампе) + 🪵 Эссенция Памяти
+    (раз в 30 дней — только глава: в инвентарь или на склад клана)."""
+    import config as _cfg
+    import database.db as _db
+    from datetime import datetime
+    from utils.helpers import MOSCOW_TZ
+    clan_id = int(clan["id"])
+    slot_index = int(exp["slot_index"])
+    is_leader = await can_manage_clan_hall(clan_id, cb.from_user.id)
+    medit_ap = int(_cfg.FIRE_TREE_CLAN_MEDIT_AP)
+    can_medit = await _db.can_meditate_clan_tree(clan_id, cb.from_user.id)
+    lines = [f"🌳 *{clan_expansion_name('tree')}* (слот {slot_index})\n"]
+    lines.append("Тёплое клановое Древо из Круговорота: члены клана медитируют "
+                 "у его корней, а крона со временем зреет Эссенцией Памяти.")
+    if can_medit:
+        lines.append(f"\n🧘 Раз в сутки у Древа: медитация — +{medit_ap} ОД "
+                     "(в дополнение к домашней Лампе).")
+    else:
+        lines.append("\n🧘 Ты уже медитировал у Древа сегодня — приходи завтра.")
+    ess_name = _cfg.FIRE_TREE_CLAN_ESSENCE_NAME
+    ts = await _db.get_clan_tree_essence_at(clan_id)
+    if ts:
+        nxt = datetime.fromtimestamp(ts, MOSCOW_TZ)
+        left = nxt - datetime.now(MOSCOW_TZ)
+        if left.total_seconds() > 0:
+            days_left = int(left.total_seconds() // 86400) + 1
+            lines.append(f"\n🌿 Эссенция Памяти зреет: через ~{days_left} сут. "
+                         f"({nxt.strftime('%d.%m %H:%M')}), каждые "
+                         f"{int(_cfg.FIRE_TREE_CLAN_ESSENCE_DAYS)} суток.")
+        else:
+            lines.append(f"\n🌿 Эссенция Памяти созрела! Глава может её собрать.")
+    else:
+        lines.append(f"\n🌿 Таймер Эссии запустится при установке Древа.")
+    lamps_now = await _db.count_clan_lanterns(clan_id)
+    lines.append(f"\n🪔 Ламп у членов клана: {lamps_now}/"
+                 f"{int(_cfg.FIRE_TREE_CLAN_REQ_LAMPS)} (уходит вместе с Древом).")
+    rows = []
+    if can_medit:
+        rows.append([InlineKeyboardButton(
+            text=f"🧘 Медитировать у Древа (+{medit_ap} ОД)",
+            callback_data=f"clanh:tree_medit:{clan_id}:{slot_index}")])
+    if is_leader:
+        due = ts and datetime.now(MOSCOW_TZ).timestamp() >= ts
+        label = f"🍯 Собрать {ess_name}" if due else f"🌿 {ess_name} зреет…"
+        if due:
+            rows.append([InlineKeyboardButton(
+                text=label, callback_data=f"clanh:tree_essence:{clan_id}:{slot_index}")])
+        else:
+            rows.append([InlineKeyboardButton(text=label, callback_data="clanh:noop")])
+    rows.append([InlineKeyboardButton(
+        text="📦 Склад клана", callback_data=f"clanh:storage:{clan_id}")])
+    rows.append([InlineKeyboardButton(
+        text="🔙 Внутрь здания", callback_data=f"clanh:inside:{clan_id}")])
+    if await has_permission(cb.from_user.id, "can_manage_clans"):
+        rows.append([InlineKeyboardButton(
+            text="🖼 Картинка (админ)",
+            callback_data=f"clanh:admexphoto:{clan_id}:{slot_index}:tree")])
+    photo = await resolve_expansion_photo(building, exp)
+    await _paint(cb, "\n".join(lines),
+                 InlineKeyboardMarkup(inline_keyboard=rows), photo=photo)
+
+
+@router.callback_query(F.data.startswith("clanh:tree_medit:"))
+async def clan_hall_tree_medit_cb(cb: CallbackQuery):
+    parts = cb.data.split(":")
+    clan_id, slot_index = int(parts[2]), int(parts[3])
+    clan, building, exp = await _load_usable(cb, clan_id, slot_index)
+    if not clan:
+        return
+    gained = await use_clan_tree_meditation(clan_id, cb.from_user.id)
+    if not gained:
+        await cb.answer("🧘 Ты уже медитировал у Древа сегодня — приходи завтра.",
+                        show_alert=True)
+        return
+    await cb.answer(f"🧘 Медитация у Древа: +{gained} ОД!", show_alert=True)
+    await _render_clan_tree(cb, clan, building, exp)
+
+
+@router.callback_query(F.data.startswith("clanh:tree_essence:"))
+async def clan_hall_tree_essence_cb(cb: CallbackQuery):
+    """Сбор Эссии Памяти (только глава): в инвентарь или на склад клана."""
+    parts = cb.data.split(":")
+    clan_id, slot_index = int(parts[2]), int(parts[3])
+    if not await can_manage_clan_hall(clan_id, cb.from_user.id):
+        await cb.answer("❌ Собрать Эссенцию может только глава клана.",
+                        show_alert=True)
+        return
+    ok, msg = await collect_clan_tree_essence(clan_id)
+    if not ok:
+        await cb.answer(msg, show_alert=True)
+        return
+    essence = await get_item_by_name(
+        getattr(config, "FIRE_TREE_CLAN_ESSENCE_NAME", "Эссенция Памяти"))
+    if not essence:
+        await cb.answer("⚠️ Предмет Эссии не заведён.", show_alert=True)
+        return
+    # Выбор: в инвентарь (продать) или на склад клана (к следующим крафтам)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="🎒 В инвентарь (на продажу)",
+            callback_data=f"clanh:tree_essence_inv:{clan_id}:{slot_index}")],
+        [InlineKeyboardButton(
+            text="📦 На склад клана (в запас)",
+            callback_data=f"clanh:tree_essence_store:{clan_id}:{slot_index}")],
+        [InlineKeyboardButton(text="🔙 К Древу",
+                              callback_data=f"clanh:use:{clan_id}:{slot_index}")],
+    ])
+    await _paint(cb, f"🌿 <b>{_esc(msg)}</b>\n\n"
+                 f"Большой кристалл янтаря «{_esc(essence['name'])}» созрел!\n"
+                 f"Куда поместить?",
+                 kb, photo=None)
+
+
+@router.callback_query(F.data.startswith("clanh:tree_essence_inv:"))
+async def clan_hall_tree_essence_inv_cb(cb: CallbackQuery):
+    parts = cb.data.split(":")
+    clan_id, slot_index = int(parts[2]), int(parts[3])
+    if not await can_manage_clan_hall(clan_id, cb.from_user.id):
+        await cb.answer("❌ Только глава клана.", show_alert=True)
+        return
+    essence = await get_item_by_name(
+        getattr(config, "FIRE_TREE_CLAN_ESSENCE_NAME", "Эссенция Памяти"))
+    if not essence:
+        await cb.answer("⚠️ Предмет Эссии не заведён.", show_alert=True)
+        return
+    await add_inventory_item(cb.from_user.id, essence['id'], 1)
+    await log_activity(cb.from_user.id, "firelab",
+                       f"Собрал «{essence['name']}» с Древа клана #{clan_id} "
+                       f"(в инвентарь)")
+    await cb.answer(f"🎒 «{essence['name']}» в инвентаре: продать за "
+                    f"{getattr(config, 'FIRE_TREE_CLAN_ESSENCE_SELL', 500)} НМ "
+                    f"на скупке или сберечь.", show_alert=True)
+    clan = await _member_clan(cb, clan_id)
+    if not clan:
+        return
+    building = await get_clan_building(clan_id)
+    exp = await get_clan_expansion(clan_id, slot_index)
+    if clan and building and exp:
+        await _render_clan_tree(cb, clan, building, exp)
+
+
+@router.callback_query(F.data.startswith("clanh:tree_essence_store:"))
+async def clan_hall_tree_essence_store_cb(cb: CallbackQuery):
+    parts = cb.data.split(":")
+    clan_id, slot_index = int(parts[2]), int(parts[3])
+    if not await can_manage_clan_hall(clan_id, cb.from_user.id):
+        await cb.answer("❌ Только глава клана.", show_alert=True)
+        return
+    essence = await get_item_by_name(
+        getattr(config, "FIRE_TREE_CLAN_ESSENCE_NAME", "Эссенция Памяти"))
+    if not essence:
+        await cb.answer("⚠️ Предмет Эссии не заведён.", show_alert=True)
+        return
+    await add_clan_storage(clan_id, essence['id'], 1)
+    await log_activity(cb.from_user.id, "firelab",
+                       f"Собрал «{essence['name']}» с Древа клана #{clan_id} "
+                       f"(на склад клана)")
+    await cb.answer(f"📦 «{essence['name']}» отправлен на склад клана — "
+                    f"в запас для будущих крафтов.", show_alert=True)
+    clan = await _member_clan(cb, clan_id)
+    if not clan:
+        return
+    building = await get_clan_building(clan_id)
+    exp = await get_clan_expansion(clan_id, slot_index)
+    if clan and building and exp:
+        await _render_clan_tree(cb, clan, building, exp)
 
 
 async def _render_clan_shop(cb: CallbackQuery, clan, building, exp):
@@ -1326,7 +1505,7 @@ async def clan_hall_use_cb(cb: CallbackQuery):
     if not clan:
         return
     if exp["expansion_type"] not in ("kitchen", "workbench", "shower", "garden",
-                                     "library", "shop"):
+                                     "library", "shop", "tree"):
         await cb.answer("❌ Это расширение пока не работает.", show_alert=True)
         return
     await cb.answer()

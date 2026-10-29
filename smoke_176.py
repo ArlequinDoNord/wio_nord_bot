@@ -64,7 +64,7 @@ async def main():
     await add_user(UID, 't', 'Пилот Ф4', "")
     await update_user(UID, nordmarks=1000)
 
-    print("\n1. Сид предметов (21 шт., идемпотентно)")
+    print("\n1. Сид предметов (22 шт., идемпотентно)")
     items = await ensure_firelab_items()
     names = [
         config.FIRE_LAB_FISH_OSETR_NAME, config.FIRE_LAB_FISH_SOUL_NAME,
@@ -77,18 +77,19 @@ async def main():
         config.FIRE_CROWN_NAME, config.FIRE_CLOAK_NAME,
         config.FIRE_GLOVES_NAME, config.FIRE_KEYS_NAME, config.FIRE_CANE_NAME,
         config.FIRE_LANTERN_NAME, config.FIRE_AMBER_NAME,
+        config.FIRE_TREE_CLAN_ESSENCE_NAME,
     ]
-    check("все 21 предмета на месте", set(items) == set(names))
+    check("все 22 предмета праздника на месте", set(items) == set(names))
     cur = await conn.execute(
         "SELECT name, COUNT(*) AS c FROM items GROUP BY name HAVING c > 1")
     dups = await cur.fetchall()
     if dups:
         print("   [dups] " + ", ".join(dict(d)['name'] for d in dups))
-    check("дублей нет (21 во всей БД)", not dups)
+    check("дублей нет (22 во всей БД)", not dups)
     await ensure_firelab_items()
     cur = await conn.execute("SELECT COUNT(*) AS c FROM items")
     dbg_count2 = (await cur.fetchone())['c']
-    check("повтор сид — по-прежнему 21", dbg_count2 == 21)
+    check("повтор сид — по-прежнему 22", dbg_count2 == len(names))
 
     print("\n2. Спец-колонки новых предметов")
     seed = await get_item_by_name(config.FIRE_PUMPKIN_SEED_NAME)

@@ -80,7 +80,7 @@
 | `wall.py` | Стена изречений — доска объявлений города. | `router` | 2 | 7 | `wall:` | `WallWrite` |
 | `hq.py` | Штаб ВВС: командование рассылает приказы авиакрыльям. | `router` | 7 | 25 | `hq:` | `HqOrder`, `HqWingCreate`, `HqWingEdit` |
 | `clans.py` | Партии и кланы: реестр из Ратуши. | `router` | 7 | 24 | `city:`, `clanhier:`, `clans:` | `ClansCreate`, `ClansEdit`, `ClansMessage` |
-| `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 3 | 34 | `clanh:` | `ClanHallAdminPhoto` |
+| `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 3 | 38 | `clanh:` | `ClanHallAdminPhoto` |
 | `admin_shop_clan.py` | Админ-менеджер клановых лавок (Фаза 7). | `router` | 5 | 9 | `clanshopadm:` | `ClanShopAdmin` |
 | `admin_clanphotos.py` | Админ-менеджер картинок клан-холла (Фаза 8). | `router` | 3 | 5 | `clanhph:` | `ClanPhotosAdmin` |
 | `fire_event.py` | Дни Пламенного Круговорота — праздничное событие (ТЗ — FIRE_EVENT.md). | `router` | 0 | 7 | `fireevent:` | — |
@@ -300,9 +300,9 @@
 ### `clan_hall.py` — Клан-холл: клановый склад и строительство кланового здания (Фаза 1).
 
 - Роутеры: `router`
-- Хендлеры: message=3, callback_query=34
+- Хендлеры: message=3, callback_query=38
 - FSM: `ClanHallAdminPhoto`
-- `F.data.startswith`: `clanh:admconstphoto:`, `clanh:admexphoto:`, `clanh:admnophoto:`, `clanh:admphoto:`, `clanh:bitem:`, `clanh:buy:`, `clanh:cancel:`, `clanh:choose:`, `clanh:craft:`, `clanh:donate:`, `clanh:expchoose:`, `clanh:expinstall:`, `clanh:expmanage:`, `clanh:expup:`, `clanh:give:`, `clanh:hall:`, `clanh:harvest:`, `clanh:harvestall:`, `clanh:inside:`, `clanh:item:`, `clanh:libgive:`, `clanh:log:`, `clanh:mushproc:`, `clanh:mushrooms:`, `clanh:plant:`, `clanh:plantlist:`, `clanh:recipe:`, `clanh:shower:`, `clanh:start:`, `clanh:startfull:`, `clanh:storage:`, `clanh:upgrade:`, `clanh:use:`
+- `F.data.startswith`: `clanh:admconstphoto:`, `clanh:admexphoto:`, `clanh:admnophoto:`, `clanh:admphoto:`, `clanh:bitem:`, `clanh:buy:`, `clanh:cancel:`, `clanh:choose:`, `clanh:craft:`, `clanh:donate:`, `clanh:expchoose:`, `clanh:expinstall:`, `clanh:expmanage:`, `clanh:expup:`, `clanh:give:`, `clanh:hall:`, `clanh:harvest:`, `clanh:harvestall:`, `clanh:inside:`, `clanh:item:`, `clanh:libgive:`, `clanh:log:`, `clanh:mushproc:`, `clanh:mushrooms:`, `clanh:plant:`, `clanh:plantlist:`, `clanh:recipe:`, `clanh:shower:`, `clanh:start:`, `clanh:startfull:`, `clanh:storage:`, `clanh:tree_essence:`, `clanh:tree_essence_inv:`, `clanh:tree_essence_store:`, `clanh:tree_medit:`, `clanh:upgrade:`, `clanh:use:`
 - `F.data ==`: `clanh:noop`
 
 ### `admin_shop_clan.py` — Админ-менеджер клановых лавок (Фаза 7).
