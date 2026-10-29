@@ -31,7 +31,7 @@ from database.db import (
     get_sale_tax_percent, set_sale_tax_percent,
     get_special_dept_code, set_special_dept_code,
     get_salaried_users, get_user_salary, set_user_salary, pay_salaries,
-    get_role_salary_recipients,
+    get_role_salary_recipients, get_transactions_history,
     get_treasury_debts,
     get_all_locations, get_location, create_location, update_location_access,
     update_location_content, update_location_photos, location_access_label,
@@ -2198,6 +2198,9 @@ async def admin_finance(callback: CallbackQuery):
         buttons.append([InlineKeyboardButton(text="Начислить НМ", callback_data="fin:nord:add")])
     if can_remove:
         buttons.append([InlineKeyboardButton(text="Списать НМ", callback_data="fin:nord:sub")])
+    if 'super_admin' in await get_user_role(callback.from_user.id):
+        buttons.append([InlineKeyboardButton(text="📜 История пилота",
+                                             callback_data="finh:open")])
     if can_full:
         buttons.append([InlineKeyboardButton(text="🏛️ Казна", callback_data="admin:treasury")])
         buttons.append([InlineKeyboardButton(text="📊 Налог на отчёты", callback_data="admin:tax")])
@@ -2558,10 +2561,15 @@ async def finance_pick(callback: CallbackQuery, state: FSMContext):
 FIN_USERS_PAGE_SIZE = 50
 
 
-async def _finance_users_markup(currency: str, action: str, page: int):
-    """Список ВСЕХ пилотов с постраничной навигацией (Telegram не любит стены кнопок)."""
+async def _users_page_markup(users, page: int, *, user_prefix: str,
+                             nav_base: str, extra_rows: list = None,
+                             counter_text: str = None):
+    """Универсальная постраничная раскладка списка пилотов.
+
+    nav_base — база навигации: к нему добавляются ':N' (текущая, prev/next).
+    user_prefix — префикс callback для выбора пилота: f'{user_prefix}:{uid}'.
+    """
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    users = await get_all_users()
     total = len(users)
     total_pages = max(1, (total + FIN_USERS_PAGE_SIZE - 1) // FIN_USERS_PAGE_SIZE)
     page = max(0, min(page, total_pages - 1))
@@ -2573,25 +2581,34 @@ async def _finance_users_markup(currency: str, action: str, page: int):
         if u['username']:
             label += f" (@{u['username']})"
         rows.append([InlineKeyboardButton(text=label,
-                                          callback_data=f"finuser:{u['user_id']}")])
+                                          callback_data=f"{user_prefix}:{u['user_id']}")])
     if total_pages > 1:
+        counter_text = counter_text or f"📄 {page + 1}/{total_pages} (всего {total})"
         nav = []
         if page > 0:
             nav.append(InlineKeyboardButton(
-                text="⬅️ Назад",
-                callback_data=f"fin:{currency}:{action}:{page - 1}"))
+                text="⬅️ Назад", callback_data=f"{nav_base}:{page - 1}"))
         nav.append(InlineKeyboardButton(
-            text=f"📄 {page + 1}/{total_pages} (всего {total})",
-            callback_data=f"fin:{currency}:{action}:{page}"))
+            text=counter_text, callback_data=f"{nav_base}:{page}"))
         if page < total_pages - 1:
             nav.append(InlineKeyboardButton(
-                text="Вперёд ➡️",
-                callback_data=f"fin:{currency}:{action}:{page + 1}"))
+                text="Вперёд ➡️", callback_data=f"{nav_base}:{page + 1}"))
         rows.append(nav)
-    rows.append([InlineKeyboardButton(text="✍️ Ввести вручную",
-                                      callback_data="fin:manual")])
-    rows.append([InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:menu")])
+    rows.extend(extra_rows or [])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _finance_users_markup(currency: str, action: str, page: int):
+    """Список ВСЕХ пилотов с постраничной навигацией (Telegram не любит стены кнопок)."""
+    extra = [
+        [InlineKeyboardButton(text="✍️ Ввести вручную",
+                              callback_data="fin:manual")],
+        [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:menu")],
+    ]
+    return await _users_page_markup(
+        await get_all_users(), page,
+        user_prefix="finuser", nav_base=f"fin:{currency}:{action}",
+        extra_rows=extra)
 
 
 @router.callback_query(F.data.startswith("finuser:"))
@@ -2609,6 +2626,143 @@ async def finance_pick_user(callback: CallbackQuery, state: FSMContext):
         _finance_target_line(target, data.get('currency', 'nord'), data.get('action', 'add')),
         reply_markup=cancel_keyboard()
     )
+
+
+# ============ ИСТОРИЯ ТРАНЗАКЦИЙ ПИЛОТА (только супер-админ) ============
+
+FINHIST_PER_PAGE = 15
+
+
+async def _is_super_admin(user_id: int) -> bool:
+    return 'super_admin' in await get_user_role(user_id)
+
+
+def _txn_line(t, uid: int) -> str:
+    """Одна строка транзакции: дата, метка, направление, сумма, контрагент."""
+    incoming = t['to_user'] == uid and t['from_user'] != uid
+    sign = "+" if incoming else "-"
+    if t['tx_type'] == "shop_purchase":
+        label = "🛒 Покупка"
+    elif t['tx_type'] == "shop_sale":
+        label = "💵 Продажа товара"
+    elif incoming:
+        label = "📥 Зачисление"
+    else:
+        label = "📤 Списание"
+    counter = ""
+    if incoming and t['from_user']:
+        counter = f" ← от #{t['from_user']}"
+    elif not incoming and t['to_user'] and t['to_user'] != uid:
+        counter = f" → к #{t['to_user']}"
+    date_str = t['created_at'][:16] if t['created_at'] else ""
+    line = f"{date_str} {label}{counter}: {sign}{abs(int(t['amount']))} НМ"
+    if t['description']:
+        line += f"\n  «{t['description']}»"
+    return line
+
+
+async def _finhist_paint(callback: CallbackQuery, target, page: int):
+    """Окно истории транзакций пилота (постранично)."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    uid = int(target['user_id'])
+    name = target['first_name'] or target['username'] or f"#{uid}"
+    username = target['username'] or ""
+    kmount = int(target.get('nordmarks') or 0)
+    txns, has_next = await get_transactions_history(uid, page=page,
+                                                    per_page=FINHIST_PER_PAGE)
+    head = (f"📜 ТРАНЗАКЦИИ ПИЛОТА\n\n"
+            f"👤 {name}" + (f" (@{username})" if username else "") +
+            f" · ID {uid}\n"
+            f"💰 Текущий баланс: {kmount} {plural_nordmark(kmount)}\n")
+    if not txns:
+        await callback.message.answer(
+            head + "\nПока нет ни одной транзакции.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 К списку пилотов",
+                                      callback_data="finh:open")],
+                [InlineKeyboardButton(text="🔙 В финансы",
+                                      callback_data="admin:finance")],
+            ]))
+        return
+    body = "\n".join(_txn_line(t, uid) for t in txns)
+    text = (head + f"\nСтр. {page + 1}\n\n{body}")
+
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(
+            text="⬅️ Новее", callback_data=f"finh:h:{uid}:{page - 1}"))
+    nav.append(InlineKeyboardButton(
+        text=f"• {page + 1} •", callback_data=f"finh:h:{uid}:{page}"))
+    if has_next:
+        nav.append(InlineKeyboardButton(
+            text="Старее ▶️", callback_data=f"finh:h:{uid}:{page + 1}"))
+    await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(
+        inline_keyboard=[
+            nav,
+            [InlineKeyboardButton(text="🔙 К списку пилотов",
+                                  callback_data="finh:open")],
+            [InlineKeyboardButton(text="🔙 В финансы",
+                                  callback_data="admin:finance")],
+        ]))
+
+
+async def _finhist_list_markup(page: int):
+    extra = [
+        [InlineKeyboardButton(text="🔙 В финансы", callback_data="admin:finance")],
+    ]
+    return await _users_page_markup(
+        await get_all_users(), page,
+        user_prefix="finh:u", nav_base="finh:list", extra_rows=extra)
+
+
+@router.callback_query(F.data == "finh:open")
+async def finance_history_open(callback: CallbackQuery):
+    await callback.answer()
+    if not await _is_super_admin(callback.from_user.id):
+        await callback.message.answer("❌ История транзакций — только для супер-админа.")
+        return
+    await callback.message.answer(
+        "📜 Выбери пилота, чтобы посмотреть его начисления и траты:",
+        reply_markup=await _finhist_list_markup(0))
+
+
+@router.callback_query(F.data.startswith("finh:list:"))
+async def finance_history_list(callback: CallbackQuery):
+    await callback.answer()
+    if not await _is_super_admin(callback.from_user.id):
+        return
+    raw = callback.data.split(":")[2]
+    page = int(raw) if raw.isdigit() else 0
+    await callback.message.answer(
+        "📜 Выбери пилота:",
+        reply_markup=await _finhist_list_markup(page))
+
+
+@router.callback_query(F.data.startswith("finh:u:"))
+async def finance_history_user(callback: CallbackQuery):
+    await callback.answer()
+    if not await _is_super_admin(callback.from_user.id):
+        return
+    target = await get_user(int(callback.data.split(":")[2]))
+    if not target:
+        await callback.message.answer("❌ Игрок не найден.")
+        return
+    await _finhist_paint(callback, target, 0)
+
+
+@router.callback_query(F.data.startswith("finh:h:"))
+async def finance_history_page(callback: CallbackQuery):
+    await callback.answer()
+    if not await _is_super_admin(callback.from_user.id):
+        return
+    parts = callback.data.split(":")
+    uid, raw_page = int(parts[2]), parts[3]
+    page = int(raw_page) if raw_page.isdigit() else 0
+    target = await get_user(uid)
+    if not target:
+        await callback.message.answer("❌ Игрок не найден.")
+        return
+    await _finhist_paint(callback, target, page)
 
 
 def _finance_target_line(target: dict, currency: str, action: str) -> str:
