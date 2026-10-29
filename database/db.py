@@ -1616,6 +1616,26 @@ async def init_db():
     # heal_bonus_pct — % к лечению расходников; dodge_bonus — +пп к уклонению.
     await _ensure_column(conn, "items", "heal_bonus_pct", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "dodge_bonus", "INTEGER DEFAULT 0")
+    # v0.41.3: переименование трёх праздничных рыб (скрытые лут-предметы, а не
+    # магазинные) — для БД, засеянной ещё со старыми именами v0.41.2.
+    await conn.execute(
+        "UPDATE items SET name = 'Спектральная Латимерия' WHERE name = 'Призрачный Осетр'")
+    await conn.execute(
+        "UPDATE items SET name = 'Скелетная Арована' WHERE name = 'Костяная Душа'")
+    await conn.execute(
+        "UPDATE items SET name = 'Пылающая Душа' WHERE name = 'Пламенный Карп'")
+    # v0.41.3: праздничные предметы не видны в магазине (только лут/крафт);
+    # лов/рынок/скупка не трогаются — правила «как у обычного улова» остаются.
+    await conn.execute(
+        "UPDATE items SET is_available = 0 WHERE name IN ("
+        "'Спектральная Латимерия', 'Скелетная Арована', 'Пылающая Душа',"
+        "'Пучок сена', 'Ветка дерева', 'Рецепт: Тыквенный пирог',"
+        "'Рецепт: Обжигающая трость', 'Леденец языков пламени',"
+        "'Кусочек тыквенного пирога', 'Семечко тыквы', 'Тыква',"
+        "'Перо ворона', 'Моток железной проволоки', 'Ручное пламенеющее устройство',"
+        "'Сахар', 'Яйца', 'Огненный венец', 'Плащ Памяти',"
+        "'Перчатки стража посевов', 'Вилы', 'Обжигающая трость',"
+        "'Лампа Круговорота', 'Пламя Памяти', 'Эссенция Памяти')")
     # v0.15.0: авиакрыло пилота ('1'/'2'/'3' → метка в utils/wings.py; NULL — нет крыла).
     await _ensure_column(conn, "users", "wing", "TEXT")
     # v0.21.0: users.legioner — «легионерный» флаг. НЕ в иерархии статусов:
@@ -9745,6 +9765,12 @@ async def ensure_firelab_items() -> dict:
                         ensure_ascii=False),
              8, 120, 4, 1))
     await conn.commit()
+    # Праздничные предметы НЕ продаются в магазине (только лут/крафт/улов);
+    # рынок/скупка работают как у обычного улова. Безопасно повторять.
+    await conn.execute(
+        "UPDATE items SET is_available = 0 WHERE name IN ("
+        + ",".join("?" * len(out)) + ")", tuple(out.keys()))
+    await conn.commit()
     return out
 
 
@@ -14105,6 +14131,42 @@ async def get_lantern_owners() -> list[int]:
     cursor = await conn.execute(
         "SELECT DISTINCT user_id FROM housing_slots WHERE expansion_type = 'lantern'")
     return [int(r['user_id']) for r in await cursor.fetchall()]
+
+
+# ============ Картинки праздника (админ-менеджер, file_id) ============
+
+FIRE_PHOTO_KEYS = ("entry", "fork", "well", "tree", "chest")
+
+FIRE_PHOTO_LABELS = {
+    "entry": "🚪 Вход в Лабиринт",
+    "fork": "🔀 Развилка (выбор пути)",
+    "well": "🪣 Колодец",
+    "tree": "🌳 Древо Огня (комната)",
+    "chest": "🎁 Сундук сокровищ",
+}
+
+
+async def get_fire_photo(key: str) -> str | None:
+    """file_id картинки праздника из Картинки-менеджера (или None)."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT value FROM settings WHERE key = ?", (f"fire_photo:{key}",))
+    row = await cur.fetchone()
+    return (row['value'] or None) if row else None
+
+
+async def set_fire_photo(key: str, file_id: str | None):
+    """Задать (file_id) или убрать (None) картинку точки праздника."""
+    conn = await get_db()
+    skey = f"fire_photo:{key}"
+    if file_id is None:
+        await conn.execute("DELETE FROM settings WHERE key = ?", (skey,))
+    else:
+        await conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (skey, file_id))
+    await conn.commit()
 
 
 # ============ ДРЕВО ПЛАМЕННОГО КРУГОВОРОТА (клановое расширение 'tree') ============

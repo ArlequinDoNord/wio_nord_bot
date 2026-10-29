@@ -6,7 +6,7 @@
 > Назначение: единый обзор всех `StatesGroup`, где они ставятся и где ловятся,
 > а также реестр `callback_data` — чтобы не допускать конфликтов меню/хендлеров.
 
-Всего классов состояний: **51**; полей-состояний: **226**; уникальных `callback_data`: **264**.
+Всего классов состояний: **52**; полей-состояний: **227**; уникальных `callback_data`: **264**.
 
 ## 1. Классы состояний по модулям
 
@@ -178,17 +178,17 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `field` | `bot/handlers/admin.py:9399` `admin_enemies_field_pick` | `bot/handlers/admin.py:9405` `admin_enemies_field_value` |
-| `photo` | `bot/handlers/admin.py:9456` `admin_enemies_photo_pick` | `bot/handlers/admin.py:9462` `admin_enemies_photo_value` |
+| `field` | `bot/handlers/admin.py:9408` `admin_enemies_field_pick` | `bot/handlers/admin.py:9414` `admin_enemies_field_value` |
+| `photo` | `bot/handlers/admin.py:9465` `admin_enemies_photo_pick` | `bot/handlers/admin.py:9471` `admin_enemies_photo_value` |
 | `onhit_value` | `bot/handlers/admin.py:6119` `source_enemy_effect_toggle` | `bot/handlers/admin.py:6125` `source_enemy_onhit_value` |
-| `drop_chance` | `bot/handlers/admin.py:9616` `admin_enemies_drop_edit_chance`<br>`bot/handlers/admin.py:9690` `admin_enemies_drop_add_pick` | `bot/handlers/admin.py:9696` `admin_enemies_drop_chance_value` |
-| `drop_qty` | `bot/handlers/admin.py:9629` `admin_enemies_drop_edit_qty`<br>`bot/handlers/admin.py:9717` `admin_enemies_drop_chance_value` | `bot/handlers/admin.py:9723` `admin_enemies_drop_qty_value` |
-| `c_name` | `bot/handlers/admin.py:9762` `admin_enemies_new` | `bot/handlers/admin.py:9767` `admin_enemies_new_name` |
-| `c_hp` | `bot/handlers/admin.py:9773` `admin_enemies_new_name` | `bot/handlers/admin.py:9778` `admin_enemies_new_hp` |
-| `c_dmg` | `bot/handlers/admin.py:9784` `admin_enemies_new_hp` | `bot/handlers/admin.py:9789` `admin_enemies_new_dmg` |
-| `c_dodge` | `bot/handlers/admin.py:9802` `admin_enemies_new_dmg` | `bot/handlers/admin.py:9807` `admin_enemies_new_dodge` |
-| `c_chance` | `bot/handlers/admin.py:9813` `admin_enemies_new_dodge` | `bot/handlers/admin.py:9819` `admin_enemies_new_chance` |
-| `c_loss_ap` | `bot/handlers/admin.py:9825` `admin_enemies_new_chance` | `bot/handlers/admin.py:9831` `admin_enemies_new_done` |
+| `drop_chance` | `bot/handlers/admin.py:9625` `admin_enemies_drop_edit_chance`<br>`bot/handlers/admin.py:9699` `admin_enemies_drop_add_pick` | `bot/handlers/admin.py:9705` `admin_enemies_drop_chance_value` |
+| `drop_qty` | `bot/handlers/admin.py:9638` `admin_enemies_drop_edit_qty`<br>`bot/handlers/admin.py:9726` `admin_enemies_drop_chance_value` | `bot/handlers/admin.py:9732` `admin_enemies_drop_qty_value` |
+| `c_name` | `bot/handlers/admin.py:9771` `admin_enemies_new` | `bot/handlers/admin.py:9776` `admin_enemies_new_name` |
+| `c_hp` | `bot/handlers/admin.py:9782` `admin_enemies_new_name` | `bot/handlers/admin.py:9787` `admin_enemies_new_hp` |
+| `c_dmg` | `bot/handlers/admin.py:9793` `admin_enemies_new_hp` | `bot/handlers/admin.py:9798` `admin_enemies_new_dmg` |
+| `c_dodge` | `bot/handlers/admin.py:9811` `admin_enemies_new_dmg` | `bot/handlers/admin.py:9816` `admin_enemies_new_dodge` |
+| `c_chance` | `bot/handlers/admin.py:9822` `admin_enemies_new_dodge` | `bot/handlers/admin.py:9828` `admin_enemies_new_chance` |
+| `c_loss_ap` | `bot/handlers/admin.py:9834` `admin_enemies_new_chance` | `bot/handlers/admin.py:9840` `admin_enemies_new_done` |
 
 ### `AdminCallsign` — `bot/handlers/admin.py`
 
@@ -265,6 +265,12 @@
 | `wait_exp_photo` | `bot/handlers/admin_clanphotos.py:134` `clanph_exp_cb` | `bot/handlers/admin_clanphotos.py:146` `clanph_exp_photo_save` |
 | `wait_building_photo` | `bot/handlers/admin_clanphotos.py:259` `clanph_bclan_cb` | `bot/handlers/admin_clanphotos.py:269` `clanph_building_photo_save` |
 | `wait_construction_photo` | `bot/handlers/admin_clanphotos.py:178` `clanph_construction_cb` | `bot/handlers/admin_clanphotos.py:189` `clanph_construction_photo_save` |
+
+### `FirePhotosAdmin` — `bot/handlers/admin_firephotos.py`
+
+| Состояние | Ставится (`set_state`) | Ловится (хендлер) |
+|---|---|---|
+| `wait_photo` | `bot/handlers/admin_firephotos.py:92` `fire_photo_pick_cb` | `bot/handlers/admin_firephotos.py:104` `fire_photo_save` |
 
 ### `RecipeManager` — `bot/handlers/admin_recipes.py`
 
@@ -572,7 +578,7 @@
 - `admin:callsign`: `bot/handlers/admin.py:752`
 - `admin:del_photo`: `bot/handlers/admin.py:726`
 - `admin:dungeons`: `bot/handlers/admin.py:5389`
-- `admin:enemies`: `bot/handlers/admin.py:9205`
+- `admin:enemies`: `bot/handlers/admin.py:9214`
 - `admin:finance`: `bot/handlers/admin.py:2184`
 - `admin:fishing`: `bot/handlers/admin.py:6907`
 - `admin:forest`: `bot/handlers/admin.py:7469`
@@ -642,7 +648,7 @@
 - `dungeon:exit:confirm`: `bot/handlers/dungeon.py:2639`
 - `dungeon:photos`: `bot/handlers/admin.py:5472`
 - `dungeon:photos:clear`: `bot/handlers/admin.py:5516`
-- `enemy:fi`: `bot/handlers/admin.py:9243`
+- `enemy:fi`: `bot/handlers/admin.py:9252`
 - `field:drink`: `bot/handlers/admin.py:1964`
 - `field:loot_only`: `bot/handlers/admin.py:2028`
 - `field:market_ok`: `bot/handlers/admin.py:2008`
@@ -650,7 +656,8 @@
 - `field:weapon_effect`: `bot/handlers/admin.py:1905`
 - `fin:manual`: `bot/handlers/admin.py:2535`
 - `finh:open`: `bot/handlers/admin.py:2720`
-- `fireevent:enter`: `bot/handlers/fire_event.py:540`
+- `fireevent:enter`: `bot/handlers/fire_event.py:593`
+- `fireph:menu`: `bot/handlers/admin_firephotos.py:73`
 - `fish:recover`: `bot/handlers/fishing.py:500`
 - `forest:addlist`: `bot/handlers/admin.py:7800`
 - `forest:new`: `bot/handlers/admin.py:7953`
@@ -920,26 +927,26 @@
 - `editem_pick:`: `bot/handlers/admin.py:6237`
 - `editset:drink:`: `bot/handlers/admin.py:1987`
 - `editset:weff:`: `bot/handlers/admin.py:1921`
-- `enemy:card:`: `bot/handlers/admin.py:9378`
-- `enemy:dcard:`: `bot/handlers/admin.py:9305`
-- `enemy:del:`: `bot/handlers/admin.py:9504`
-- `enemy:dn:\d+$`: `bot/handlers/admin.py:9215`
-- `enemy:dropadd:`: `bot/handlers/admin.py:9681`
-- `enemy:dropch:`: `bot/handlers/admin.py:9608`
-- `enemy:dropdel:`: `bot/handlers/admin.py:9634`
-- `enemy:dropedit:`: `bot/handlers/admin.py:9570`
-- `enemy:dropitem:`: `bot/handlers/admin.py:9646`
-- `enemy:dropq:`: `bot/handlers/admin.py:9621`
-- `enemy:drops:`: `bot/handlers/admin.py:9560`
+- `enemy:card:`: `bot/handlers/admin.py:9387`
+- `enemy:dcard:`: `bot/handlers/admin.py:9314`
+- `enemy:del:`: `bot/handlers/admin.py:9513`
+- `enemy:dn:\d+$`: `bot/handlers/admin.py:9224`
+- `enemy:dropadd:`: `bot/handlers/admin.py:9690`
+- `enemy:dropch:`: `bot/handlers/admin.py:9617`
+- `enemy:dropdel:`: `bot/handlers/admin.py:9643`
+- `enemy:dropedit:`: `bot/handlers/admin.py:9579`
+- `enemy:dropitem:`: `bot/handlers/admin.py:9655`
+- `enemy:dropq:`: `bot/handlers/admin.py:9630`
+- `enemy:drops:`: `bot/handlers/admin.py:9569`
 - `enemy:effects:\d+$`: `bot/handlers/admin.py:5999`
-- `enemy:fld:`: `bot/handlers/admin.py:9388`
+- `enemy:fld:`: `bot/handlers/admin.py:9397`
 - `enemy:fx:src:`: `bot/handlers/admin.py:6072`
 - `enemy:fx:tog:\d+:\d+$`: `bot/handlers/admin.py:6018`
 - `enemy:fxt:`: `bot/handlers/admin.py:6092`
-- `enemy:list:[a-z]+:[\w-]+$`: `bot/handlers/admin.py:9263`
-- `enemy:new:`: `bot/handlers/admin.py:9755`
-- `enemy:photo:`: `bot/handlers/admin.py:9448`
-- `enemy:tog:`: `bot/handlers/admin.py:9485`
+- `enemy:list:[a-z]+:[\w-]+$`: `bot/handlers/admin.py:9272`
+- `enemy:new:`: `bot/handlers/admin.py:9764`
+- `enemy:photo:`: `bot/handlers/admin.py:9457`
+- `enemy:tog:`: `bot/handlers/admin.py:9494`
 - `enemy_drops:`: `bot/handlers/admin.py:6224`
 - `enemy_field:`: `bot/handlers/admin.py:5750`
 - `eqequip:[a-z0-9_]+:\d+$`: `bot/handlers/inventory.py:500`
@@ -955,12 +962,13 @@
 - `finh:list:`: `bot/handlers/admin.py:2731`
 - `finh:u:`: `bot/handlers/admin.py:2743`
 - `finuser:`: `bot/handlers/admin.py:2616`
-- `fireevent:attack:`: `bot/handlers/fire_event.py:725`
-- `fireevent:cont:`: `bot/handlers/fire_event.py:306`
-- `fireevent:fishing:`: `bot/handlers/fire_event.py:360`
-- `fireevent:leave:`: `bot/handlers/fire_event.py:511`
-- `fireevent:potion:`: `bot/handlers/fire_event.py:823`
-- `fireevent:step:`: `bot/handlers/fire_event.py:219`
+- `fireevent:attack:`: `bot/handlers/fire_event.py:773`
+- `fireevent:cont:`: `bot/handlers/fire_event.py:370`
+- `fireevent:fishing:`: `bot/handlers/fire_event.py:431`
+- `fireevent:leave:`: `bot/handlers/fire_event.py:568`
+- `fireevent:potion:`: `bot/handlers/fire_event.py:871`
+- `fireevent:step:`: `bot/handlers/fire_event.py:290`
+- `fireph:set:`: `bot/handlers/admin_firephotos.py:82`
 - `fish:bait:\d+$`: `bot/handlers/fishing.py:514`
 - `fish:bait:set:\d+:[a-z]+$`: `bot/handlers/fishing.py:556`
 - `fish:cast:\d+$`: `bot/handlers/fishing.py:566`

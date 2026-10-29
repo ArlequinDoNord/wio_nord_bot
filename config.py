@@ -235,6 +235,12 @@ FIRE_EVENT_LAB_FEE = 42                   # вход в лабиринт, НМ
 FIRE_EVENT_MAX_ENTRIES_DAY = 4            # максимум заходов за сутки
 FIRE_LAB_SESSION_TTL_SEC = 3600           # неактивность: сессия закрывается автоматически (1 ч)
 
+# Картинки локаций Лабиринта (assets/img/<ключ>.jpg; постфиксы _day/_night не обязательны)
+FIRE_LAB_FORK_KEY = "city/fire_maze"      # развилка (вход/смерть/уход/финиш)
+FIRE_LAB_WELL_KEY = "city/fire_well"      # Колодец
+FIRE_LAB_TREE_KEY = "city/fire_tree"      # Древо Огня
+FIRE_LAB_CHEST_KEY = "city/fire_chest"    # Сундук
+
 # --- Огненный Лабиринт: боевые статы (Фаза 2) ---
 # Обычные враги: source 'firelab'; характеристики хранятся в карточках врагов,
 # но фирменные эффекты и лимиты — константами:
@@ -278,9 +284,10 @@ FIRE_LAB_PATTERN_TREE = ("L", "L", "S", "S", "R", "R")     # ЛЛППНН → Д
 # --- Огненный Лабиринт: особые комнаты (Фаза 3) ---
 FIRE_LAB_WELL_FISH_TRIES = 6              # попыток рыбалки за один визит в Колодец
 FIRE_LAB_FISH_BITE_P = 0.75               # шанс поклёвки за попытку
-FIRE_LAB_FISH_OSETR_NAME = "Призрачный Осетр"     # рыба 1 (rarity 2)
-FIRE_LAB_FISH_SOUL_NAME = "Костяная Душа"         # рыба 2 (rarity 3)
-FIRE_LAB_FISH_CARP_NAME = "Пламенный Карп"        # рыба 3 (rarity 4, редкая)
+# Названия праздничных рыб (v0.41.3): только улов в Колодце, в магазине скрыты
+FIRE_LAB_FISH_OSETR_NAME = "Спектральная Латимерия"    # рыба 1 (rarity 2)
+FIRE_LAB_FISH_SOUL_NAME = "Скелетная Арована"          # рыба 2 (rarity 3)
+FIRE_LAB_FISH_CARP_NAME = "Пылающая Душа"              # рыба 3 (rarity 4, редкая)
 FIRE_LAB_FISH_TABLE = (                   # взвешенный выбор улова
     (FIRE_LAB_FISH_OSETR_NAME, 60),
     (FIRE_LAB_FISH_SOUL_NAME, 25),

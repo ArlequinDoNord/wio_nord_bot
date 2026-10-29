@@ -42,11 +42,12 @@
 | 29 | `clan_hall_router` | `bot/handlers/clan_hall.py` |
 | 30 | `admin_shop_clan_router` | `bot/handlers/admin_shop_clan.py` |
 | 31 | `admin_clanphotos_router` | `bot/handlers/admin_clanphotos.py` |
-| 32 | `fire_event_router` | `bot/handlers/fire_event.py` |
-| 33 | `nii_router` | `bot/handlers/nii.py` |
-| 34 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
-| 35 | `duel_router` | `bot/handlers/duel.py` |
-| 36 | `mvd_router` | `bot/handlers/mvd.py` |
+| 32 | `admin_firephotos_router` | `bot/handlers/admin_firephotos.py` |
+| 33 | `fire_event_router` | `bot/handlers/fire_event.py` |
+| 34 | `nii_router` | `bot/handlers/nii.py` |
+| 35 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
+| 36 | `duel_router` | `bot/handlers/duel.py` |
+| 37 | `mvd_router` | `bot/handlers/mvd.py` |
 
 ## Сводка по модулям
 
@@ -83,6 +84,7 @@
 | `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 3 | 38 | `clanh:` | `ClanHallAdminPhoto` |
 | `admin_shop_clan.py` | Админ-менеджер клановых лавок (Фаза 7). | `router` | 5 | 9 | `clanshopadm:` | `ClanShopAdmin` |
 | `admin_clanphotos.py` | Админ-менеджер картинок клан-холла (Фаза 8). | `router` | 3 | 5 | `clanhph:` | `ClanPhotosAdmin` |
+| `admin_firephotos.py` | Админ-менеджер картинок праздника «Пламенный Круговорот». | `router` | 1 | 2 | `fireph:` | `FirePhotosAdmin` |
 | `fire_event.py` | Дни Пламенного Круговорота — праздничное событие (ТЗ — FIRE_EVENT.md). | `router` | 0 | 7 | `fireevent:` | — |
 | `nii.py` | НИИ Северной Кибернетики и кремниевых систем — здание обратной связи. | `router` | 2 | 7 | `nii:` | `NiiWrite` |
 | `tourist_booklet.py` | Буклет туриста: чек-лист городских локаций и разовая награда. | `router` | 0 | 2 | `booklet:` | — |
@@ -320,6 +322,14 @@
 - FSM: `ClanPhotosAdmin`
 - `F.data.startswith`: `clanhph:bclan:`, `clanhph:buildings`, `clanhph:exp:`
 - `F.data ==`: `clanhph:construction`, `clanhph:menu`
+
+### `admin_firephotos.py` — Админ-менеджер картинок праздника «Пламенный Круговорот».
+
+- Роутеры: `router`
+- Хендлеры: message=1, callback_query=2
+- FSM: `FirePhotosAdmin`
+- `F.data.startswith`: `fireph:set:`
+- `F.data ==`: `fireph:menu`
 
 ### `fire_event.py` — Дни Пламенного Круговорота — праздничное событие (ТЗ — FIRE_EVENT.md).
 

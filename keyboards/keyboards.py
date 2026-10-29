@@ -71,6 +71,8 @@ def admin_panel_keyboard(permissions: dict):
     if permissions.get('can_manage_clans'):
         buttons.append([InlineKeyboardButton(text="🏪 Клановые лавки", callback_data="clanshopadm:menu")])
         buttons.append([InlineKeyboardButton(text="🖼 Картинки клан-холла", callback_data="clanhph:menu")])
+    if permissions.get('can_manage_locations'):
+        buttons.append([InlineKeyboardButton(text="🪔 Картинки Круговорота", callback_data="fireph:menu")])
     buttons.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

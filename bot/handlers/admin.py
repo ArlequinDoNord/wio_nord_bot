@@ -9107,6 +9107,7 @@ ENEMY_SRC_FISHING = 'fishing'
 ENEMY_SRC_MINE = 'mine'
 ENEMY_SRC_LOGGING = 'logging'
 ENEMY_SRC_DUNGEON = 'dn'
+ENEMY_SRC_FIRELAB = 'firelab'
 
 # Человеческие названия источников.
 ENEMY_SOURCE_TITLES = {
@@ -9115,6 +9116,7 @@ ENEMY_SOURCE_TITLES = {
     ENEMY_SRC_FISHING: "🎣 Рыбалка",
     ENEMY_SRC_MINE: "⛏️ Железная копи",
     ENEMY_SRC_LOGGING: "🪓 Лесозаготовка",
+    ENEMY_SRC_FIRELAB: "🎃 Огненный Круговорот",
 }
 
 # Названия водоёмов рыбалки для меню.
@@ -9155,6 +9157,8 @@ def _enemy_loc_title(src: str, loc: str) -> str:
         return ENEMY_SOURCE_TITLES[ENEMY_SRC_MINE]
     if src == ENEMY_SRC_LOGGING:
         return ENEMY_SOURCE_TITLES[ENEMY_SRC_LOGGING]
+    if src == ENEMY_SRC_FIRELAB:
+        return ENEMY_SOURCE_TITLES[ENEMY_SRC_FIRELAB]
     return FISHING_SPOT_TITLES.get(loc, f"🎣 Рыбалка: {loc}")
 
 
@@ -9197,6 +9201,11 @@ async def _admin_enemies_root(callback: CallbackQuery):
     rows.append([InlineKeyboardButton(
         text="🪓 Лесозаготовка",
         callback_data=_enemy_list_cb(ENEMY_SRC_LOGGING, 'logging'))])
+    firelab_enemies = await get_source_enemies(ENEMY_SRC_FIRELAB)
+    lines.append(f"\n🎃 Огненный Круговорот — врагов: {len(firelab_enemies)}")
+    rows.append([InlineKeyboardButton(
+        text="🎃 Огненный Круговорот",
+        callback_data=_enemy_list_cb(ENEMY_SRC_FIRELAB, 'firelab'))])
     rows.append([InlineKeyboardButton(text="🔙 В админ-панель", callback_data="admin:menu")])
     await callback.message.edit_text("".join(lines),
                                      reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))

@@ -117,9 +117,30 @@ async def main():
 
     print("\n4. Колодец: полное лечение + сброс попыток")
 
+    class FakeBot:
+        last_text = None
+        last_kb = None
+        async def send_message(self, chat_id, text, **kw):
+            FakeBot.last_text = text
+            FakeBot.last_kb = kw.get('reply_markup')
+            return type("M", (), {"message_id": 43,
+                                  "chat": type("C", (), {"id": chat_id})()})()
+        async def send_photo(self, *a, **kw):
+            FakeBot.last_text = kw.get('caption') or (a[1] if len(a) > 1 else "")
+            FakeBot.last_kb = kw.get('reply_markup')
+            return type("M", (), {"message_id": 44,
+                                  "chat": type("C", (), {"id": (a[0] or 0)})()})()
+        async def delete_message(self, *a, **kw):
+            return True
+        async def edit_message_reply_markup(self, **kw):
+            return True
+
     class FakeMsg:
         text = None
         kb = None
+        chat = type("C", (), {"id": 175001})()
+        message_id = 42
+        bot = FakeBot()
         async def edit_text(self, t=None, reply_markup=None, **kw):
             self.text = t
             self.kb = reply_markup
@@ -136,6 +157,7 @@ async def main():
             self.from_user = type("U", (), {"id": uid})()
             self.data = data
             self.message = FakeMsg()
+            self.bot = FakeBot()
         async def answer(self, *a, **kw):
             return True
 

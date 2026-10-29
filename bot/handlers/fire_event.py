@@ -12,6 +12,7 @@
 
 import html
 import json
+import os
 import random
 
 import config
@@ -19,6 +20,7 @@ import config
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import FSInputFile
 
 import database.db as db
 from database.db import (
@@ -29,11 +31,68 @@ from database.db import (
     get_active_fire_lab_session,
     end_fire_lab_session,
     touch_fire_lab_session,
+    get_fire_photo,
 )
-from utils.helpers import plural_nordmark
+from utils.helpers import plural_nordmark, resolve_image_seasonal, resolve_image
 from keyboards.keyboards import main_menu_kb
 
 router = Router()
+
+# ───────── Единая отрисовка Лабиринта (одно сообщение на игрока, как в лесу) ─────────
+# Храним последнее сообщение лабиринта: user → (chat_id, message_id)
+FIRELAB_MSG: dict[int, tuple[int, int]] = {}
+
+
+async def _fire_paint(cb: CallbackQuery, *, text: str = None,
+                      kb: InlineKeyboardMarkup = None,
+                      media_path: str = None,
+                      photo_id: str = None) -> None:
+    """Рисование/замена окна Лабиринта: фото локации/врага внутри сообщения.
+
+    media_path — путь в assets/img (resolve_image), photo_id — file_id из
+    админ-редактора врага (перебивает файл). Одно сообщение на игрока (edit).
+    """
+    bot = cb.message.bot
+    chat_id = cb.message.chat.id
+    uid = cb.from_user.id
+    entry = FIRELAB_MSG.get(uid)
+    target_id = entry[1] if entry and entry[0] == chat_id else None
+
+    sent = None
+    if photo_id:
+        try:
+            sent = await bot.send_photo(
+                chat_id, photo_id,
+                caption=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            sent = None
+    elif media_path and os.path.isfile(media_path):
+        try:
+            sent = await bot.send_photo(
+                chat_id, FSInputFile(media_path),
+                caption=text, reply_markup=kb, parse_mode="HTML")
+        except Exception:
+            sent = None
+
+    if sent is not None:
+        FIRELAB_MSG[uid] = (chat_id, sent.message_id)
+        return
+    # медиа нет или потерялась — рисуем текст в самом старом сообщении
+    if target_id is not None:
+        try:
+            await bot.delete_message(chat_id, target_id)
+        except Exception:
+            pass
+        FIRELAB_MSG.pop(uid, None)
+        try:
+            sent = await bot.send_message(chat_id, text, reply_markup=kb,
+                                          parse_mode="HTML")
+            if sent:
+                FIRELAB_MSG[uid] = (chat_id, sent.message_id)
+            return
+        except Exception:
+            pass
+    await cb.message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 # Пока лабиринт закрыт (FIRE_LAB_ENABLED=False), все fireevent:-хендлеры
 # отвечают заглушкой (аналог гварда клан-холла).
@@ -151,6 +210,9 @@ def _tier_enemy(e, tier: int):
         'dmg_max': int(e.get('dmg_max') or 0),
         'is_boss': e['key'] == FIRELAB_BOSS_KEY,
         'drops': drops,
+        # картинки: file_id из админ-редактора перебивает локальные файлы
+        'image': e.get('image'),
+        'photo_key': e.get('photo_key') or f"city/fire_{(e.get('key') or '')}",
     }
 
 
@@ -216,6 +278,15 @@ def _fork_kb(session_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+async def _paint_fork(cb, session, session_id: int, prefix: str = ""):
+    """Развилка: единое сообщение с картинкой лабиринта (prefix — текст перед ней)."""
+    await _fire_paint(cb, text=(prefix or "") + _fork_text(session),
+                      kb=_fork_kb(session_id),
+                      media_path=resolve_image(
+                          getattr(config, "FIRE_LAB_FORK_KEY",
+                                  "city/fire_maze")))
+
+
 @router.callback_query(F.data.startswith("fireevent:step:"))
 async def fire_event_step_cb(cb: CallbackQuery):
     """Выбор пути: запись шага + броски комнаты (Фаза 2/3 добавит встречи)."""
@@ -256,23 +327,16 @@ async def fire_event_step_cb(cb: CallbackQuery):
             f"{tier_note}"
         )
         await cb.answer("🏁 Лабиринт пройден до конца!", show_alert=True)
-        try:
-            await cb.message.edit_text(
-                finish_text,
-                reply_markup=await main_menu_kb(cb.from_user.id),
-                parse_mode="HTML")
-        except Exception:
-            await cb.message.answer(
-                finish_text,
-                reply_markup=await main_menu_kb(cb.from_user.id),
-                parse_mode="HTML")
+        await _fire_paint(
+            cb, text=finish_text,
+            kb=await main_menu_kb(cb.from_user.id),
+            media_path=resolve_image(
+                getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze")))
         return
     await cb.answer(f"🔀 {PATH_LABELS[path]}. Двигаемся дальше…")
     room = await _roll_room(cb.from_user.id, updated, path, history)
     if room == "empty":
-        await cb.message.answer(_fork_text(updated),
-                                reply_markup=_fork_kb(session_id),
-                                parse_mode="HTML")
+        await _paint_fork(cb, updated, session_id)
         return
     if room in ("enemy", "boss"):
         await _start_battle(cb, updated, session_id, room,
@@ -311,14 +375,7 @@ async def fire_event_cont_cb(cb: CallbackQuery):
     if not session:
         return
     await cb.answer()
-    try:
-        await cb.message.edit_text(_fork_text(session),
-                                   reply_markup=_fork_kb(session_id),
-                                   parse_mode="HTML")
-    except Exception:
-        await cb.message.answer(_fork_text(session),
-                                reply_markup=_fork_kb(session_id),
-                                parse_mode="HTML")
+    await _paint_fork(cb, session, session_id)
 
 
 # ------------------------------ КОЛОДЕЦ ------------------------------
@@ -351,10 +408,24 @@ async def _enter_well(cb, session, session_id: int):
         [InlineKeyboardButton(text="🚶 Идти дальше",
                               callback_data=f"fireevent:cont:{session_id}")],
     ])
-    try:
-        await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    except Exception:
-        await cb.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await _fire_paint(cb, text=text, kb=kb,
+                      media_path=await _room_media('well'))
+
+
+async def _room_media(room_key: str) -> str | None:
+    """Картинка комнаты праздника: file_id из админ-менеджера — потом
+    локальный файл assets/img; None — рисовать без фото."""
+    photo_id = await get_fire_photo(room_key)
+    if photo_id:
+        return None  # фото рисуется по photo_id в _fire_paint
+    base = {
+        "fork": getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze"),
+        "entry": getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze"),
+        "well": getattr(config, "FIRE_LAB_WELL_KEY", "city/fire_well"),
+        "tree": getattr(config, "FIRE_LAB_TREE_KEY", "city/fire_tree"),
+        "chest": getattr(config, "FIRE_LAB_CHEST_KEY", "city/fire_chest"),
+    }.get(room_key)
+    return resolve_image(base) if base else None
 
 
 @router.callback_query(F.data.startswith("fireevent:fishing:"))
@@ -385,9 +456,9 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
             f"Осталось попыток: {left_now}.")
         await cb.answer("🎣 Пусто…")
     else:
-        table = ((getattr(config, "FIRE_LAB_FISH_OSETR_NAME", "Призрачный Осетр"), 60),
-                 (getattr(config, "FIRE_LAB_FISH_SOUL_NAME", "Костяная Душа"), 25),
-                 (getattr(config, "FIRE_LAB_FISH_CARP_NAME", "Пламенный Карп"), 15))
+        table = ((getattr(config, "FIRE_LAB_FISH_OSETR_NAME", "Спектральная Латимерия"), 60),
+                 (getattr(config, "FIRE_LAB_FISH_SOUL_NAME", "Скелетная Арована"), 25),
+                 (getattr(config, "FIRE_LAB_FISH_CARP_NAME", "Пылающая Душа"), 15))
         weights = [w for _, w in table]
         fish_name = random.choices([n for n, _ in table], weights=weights, k=1)[0]
         conn = await db.get_db()
@@ -417,24 +488,16 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
         text = _room_chrome("🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА",
                             line + ach_note)
         await cb.answer("🐟 Улов!")
-    try:
-        await cb.message.edit_text(text, reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(
-                    text=f"🎣 Ловить ({left_now})",
-                    callback_data=f"fireevent:fishing:{session_id}")],
-                [InlineKeyboardButton(text="🚶 Идти дальше",
-                                      callback_data=f"fireevent:cont:{session_id}")],
-            ]), parse_mode="HTML")
-    except Exception:
-        await cb.message.answer(text, reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(
-                    text=f"🎣 Ловить ({left_now})",
-                    callback_data=f"fireevent:fishing:{session_id}")],
-                [InlineKeyboardButton(text="🚶 Идти дальше",
-                                      callback_data=f"fireevent:cont:{session_id}")],
-            ]), parse_mode="HTML")
+    fish_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"🎣 Ловить ({left_now})",
+            callback_data=f"fireevent:fishing:{session_id}")],
+        [InlineKeyboardButton(text="🚶 Идти дальше",
+                              callback_data=f"fireevent:cont:{session_id}")],
+    ])
+    await _fire_paint(cb, text=text, kb=fish_kb,
+                      photo_id=await get_fire_photo('well'),
+                      media_path=await _room_media('well'))
 
 
 # ------------------------------ ДРЕВО ОГНЯ ------------------------------
@@ -456,12 +519,9 @@ async def _enter_tree(cb, session, session_id: int):
         f"💙 Сейчас: {int(session['hp'])}/{int(session['hp_max'])} HP."
     )
     text = _room_chrome("🌳 ДРЕВО ОГНЯ", body)
-    try:
-        await cb.message.edit_text(text, reply_markup=_cont_kb(session_id),
-                                   parse_mode="HTML")
-    except Exception:
-        await cb.message.answer(text, reply_markup=_cont_kb(session_id),
-                                parse_mode="HTML")
+    await _fire_paint(cb, text=text, kb=_cont_kb(session_id),
+                      photo_id=await get_fire_photo('tree'),
+                      media_path=await _room_media('tree'))
 
 
 # ------------------------------ СУНДУК ------------------------------
@@ -500,12 +560,9 @@ async def _enter_chest(cb, session, session_id: int):
             chest_note = f"\n🎒 Получено: «{item['name']}»."
     text = _room_chrome("🎁 СУНДУК СОКРОВИЩ", body,
                         hint=chest_note)
-    try:
-        await cb.message.edit_text(text, reply_markup=_cont_kb(session_id),
-                                   parse_mode="HTML")
-    except Exception:
-        await cb.message.answer(text, reply_markup=_cont_kb(session_id),
-                                parse_mode="HTML")
+    await _fire_paint(cb, text=text, kb=_cont_kb(session_id),
+                      photo_id=await get_fire_photo('chest'),
+                      media_path=await _room_media('chest'))
 
 
 @router.callback_query(F.data.startswith("fireevent:leave:"))
@@ -517,16 +574,12 @@ async def fire_event_leave_cb(cb: CallbackQuery):
         return
     await end_fire_lab_session(session_id, 'left')
     await cb.answer("🚪 Ты покинул лабиринт.", show_alert=True)
-    try:
-        await cb.message.edit_text("🚪 Ты покинул Огненный Лабиринт. Пламя остаётся тёплым.\n"
-                                   "До встречи в следующий заход!",
-                                   reply_markup=await main_menu_kb(cb.from_user.id),
-                                   parse_mode="HTML")
-    except Exception:
-        await cb.message.answer(
-            "🚪 Ты покинул Огненный Лабиринт.\nДо встречи в следующий заход!",
-            reply_markup=await main_menu_kb(cb.from_user.id),
-            parse_mode="HTML")
+    await _fire_paint(
+        cb, text=("🚪 Ты покинул Огненный Лабиринт. Пламя остаётся тёплым.\n"
+                  "До встречи в следующий заход!"),
+        kb=await main_menu_kb(cb.from_user.id),
+        media_path=resolve_image(
+            getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze")))
 
 
 async def _session_of(user_id: int, session_id: int):
@@ -553,9 +606,7 @@ async def fire_event_enter_cb(cb: CallbackQuery, state: FSMContext):
     if already:
         # незакрытая сессия — просто вернёмся в неё, повторно не платим
         await cb.answer("🔥 Ты уже внутри лабиринта.")
-        await cb.message.answer(_fork_text(already),
-                                reply_markup=_fork_kb(already['id']),
-                                parse_mode="HTML")
+        await _paint_fork(cb, already, already['id'])
         return
     day = db.today_report_day()
     max_entries = int(getattr(config, "FIRE_EVENT_MAX_ENTRIES_DAY", 4) or 0)
@@ -580,12 +631,12 @@ async def fire_event_enter_cb(cb: CallbackQuery, state: FSMContext):
     session_id = await create_fire_lab_session(cb.from_user.id, hp)
     updated = await get_active_fire_lab_session(cb.from_user.id)
     await cb.answer("🔥 Вход оплачен!")
-    await cb.message.answer(
-        f"🔥 <b>Дни Пламенного Круговорота</b>\n"
-        f"Вход оплачен: −{fee} НМ (заход {n}/{max_entries} за сутки).\n\n"
-        + _fork_text(updated),
-        reply_markup=_fork_kb(session_id),
-        parse_mode="HTML")
+    text = (f"🔥 <b>Дни Пламенного Круговорота</b>\n"
+            f"Вход оплачен: −{fee} НМ (заход {n}/{max_entries} за сутки).\n\n"
+            + _fork_text(updated))
+    await _fire_paint(cb, text=text, kb=_fork_kb(session_id),
+                      media_path=resolve_image(
+                          getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze")))
 
 
 # ============================== БОЕВОЙ ЦИКЛ (Фаза 2) ==============================
@@ -610,8 +661,7 @@ async def _start_battle(cb, session, session_id: int, room: str, tier: int):
             if e:
                 obstacles.append(e)
         if not obstacles:
-            await cb.message.answer(_fork_text(session), reply_markup=_fork_kb(session_id),
-                                    parse_mode="HTML")
+            await _paint_fork(cb, session, session_id)
             return
         enemy = random.choice(obstacles)
     eng = _tier_enemy(enemy, tier)
@@ -710,16 +760,14 @@ async def _battle_kb(user_id: int, session_id: int) -> InlineKeyboardMarkup:
 
 async def _paint_battle(cb, session, enemy, log: str = ""):
     kb = await _battle_kb(cb.from_user.id, int(session['id']))
-    try:
-        await cb.message.edit_text(
-            _battle_text(session, enemy, json.loads(session['effects_json'] or '{}'), log),
-            reply_markup=kb,
-            parse_mode="HTML")
-    except Exception:
-        await cb.message.answer(
-            _battle_text(session, enemy, json.loads(session['effects_json'] or '{}'), log),
-            reply_markup=kb,
-            parse_mode="HTML")
+    media = resolve_image_seasonal(enemy.get('photo_key')
+                                   or "city/fire_scarecrow")
+    await _fire_paint(
+        cb, text=_battle_text(session, enemy,
+                              json.loads(session['effects_json'] or '{}'), log),
+        kb=kb,
+        photo_id=enemy.get('image'),
+        media_path=None if enemy.get('image') else media)
 
 
 @router.callback_query(F.data.startswith("fireevent:attack:"))
@@ -901,14 +949,8 @@ async def _after_player_tick(cb, session, session_id: int, enemy, effects, playe
         loot_text = ("\n\n🎉 <b>Добыча:</b>\n" + "\n".join(loot_notes)
                      if loot_notes else "")
         await cb.answer("💀 Враг повержен!", show_alert=True)
-        text = (f"💀 <b>{_esc(enemy['name'])} повержен!</b>{loot_text}\n\n"
-                + _fork_text(updated))
-        try:
-            await cb.message.edit_text(text, reply_markup=_fork_kb(session_id),
-                                       parse_mode="HTML")
-        except Exception:
-            await cb.message.answer(text, reply_markup=_fork_kb(session_id),
-                                    parse_mode="HTML")
+        text = (f"💀 <b>{_esc(enemy['name'])} повержен!</b>{loot_text}\n\n")
+        await _paint_fork(cb, updated, session_id, prefix=text)
         return
     # фиксация врага и эффектов
     await conn.execute("UPDATE fire_lab_sessions SET enemy_json = ? WHERE id = ?",
@@ -1012,7 +1054,6 @@ async def _player_death(cb, session_id: int):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🏠 В город", callback_data="city:menu")],
     ])
-    try:
-        await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    except Exception:
-        await cb.message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await _fire_paint(cb, text=text, kb=kb,
+                      media_path=resolve_image(
+                          getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze")))

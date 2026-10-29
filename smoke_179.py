@@ -111,9 +111,30 @@ async def main():
 
     print("\n4. Выдача лута при победе (случай зажат: всё бросаем)")
 
+    class FakeBot:
+        last_text = None
+        last_kb = None
+        async def send_message(self, chat_id, text, **kw):
+            FakeBot.last_text = text
+            FakeBot.last_kb = kw.get('reply_markup')
+            return type("M", (), {"message_id": 43,
+                                  "chat": type("C", (), {"id": chat_id})()})()
+        async def send_photo(self, *a, **kw):
+            FakeBot.last_text = kw.get('caption') or (a[1] if len(a) > 1 else "")
+            FakeBot.last_kb = kw.get('reply_markup')
+            return type("M", (), {"message_id": 44,
+                                  "chat": type("C", (), {"id": (a[0] or 0)})()})()
+        async def delete_message(self, *a, **kw):
+            return True
+        async def edit_message_reply_markup(self, **kw):
+            return True
+
     class FakeMsg:
         text = None
         kb = None
+        chat = type("C", (), {"id": 179001})()
+        message_id = 42
+        bot = FakeBot()
         async def edit_text(self, t=None, reply_markup=None, **kw):
             self.text = t
             self.kb = reply_markup
@@ -130,6 +151,7 @@ async def main():
             self.from_user = type("U", (), {"id": uid})()
             self.data = data
             self.message = FakeMsg()
+            self.bot = FakeBot()
         async def answer(self, *a, **kw):
             return True
 
@@ -156,7 +178,8 @@ async def main():
         UID, (await get_item_by_name(config.FIRE_CROW_FEATHER_NAME))['id'])
     check("ветка дерева выпала с победы", branch and int(branch['quantity'] or 0) >= 1)
     check("перо ворона выпало с победы", feather and int(feather['quantity'] or 0) >= 1)
-    check("текст победы: «Добыча»", "Добыча" in (cb.message.text or ""))
+    painted = (getattr(cb.message.bot, 'last_text', None) or cb.message.text or "")
+    check("текст победы: «Добыча»", "Добыча" in painted)
     cur = await conn.execute(
         "SELECT status FROM fire_lab_sessions WHERE id = ?", (sid,))
     check("враг умер, сессия жива (статус активен)",
