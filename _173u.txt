@@ -1,0 +1,45 @@
+Traceback (most recent call last):
+  File "G:\PyBOT\Projects\wio_nord_bot\smoke_173.py", line 290, in <module>
+    asyncio.run(main())
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\WindowsApps\PythonSoftwareFoundation.Python.3.12_3.12.2800.0_x64__qbz5n2kfra8p0\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "G:\PyBOT\Projects\wio_nord_bot\smoke_173.py", line 106, in main
+    e0 = fe._tier_enemy(row_scarecrow, 0)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "G:\PyBOT\Projects\wio_nord_bot\bot\handlers\fire_event.py", line 130, in _tier_enemy
+    raw = json.loads(e['drops'] or '[]') if isinstance(e, dict) else []
+                     ~^^^^^^^^^
+KeyError: 'drops'
+
+1. Сид врагов Огненного Лабиринта
+  OK  5 врагов засеяны
+  OK  Пугало 25/4/1/10
+  OK  Дитя Яблони 27
+  OK  Ворон 16/20%
+  OK  Хуб 24/15% (был призрак)
+  OK  Босс 60/атк4-7/бр2/укл5
+
+2. Тир «Огненного эха»
+  OK  тир изначально 0
+  OK  бонус HP на 0 тире = 0
+  OK  после 1-го прохождения тир 1
+  OK  бонус HP на тире 1 = 2
+  OK  лут-множитель тир 1 = 1.02
+  OK  после 4 усилений тир 4
+  OK  бонус HP на тире 4 = 8
+  OK  лут-множитель тир 4 = 1.08
+  OK  5-й тир достигнут
+  OK  5-й тир: разово +8 (итого +16)
+  OK  лут-множитель тир 5 = 1.18 (4×2% + 10%)
+  OK  кап: 6-й прогон не растит тир
+  OK  но runs продолжает копиться
+  OK  runs = 6
+
+3. _tier_enemy: сдвиг HP по Тиру

@@ -9678,6 +9678,14 @@ async def ensure_firelab_items() -> dict:
          "под будущие крафты.",
          0, int(getattr(config, "FIRE_TREE_CLAN_ESSENCE_SELL", 500) or 500),
          4, "resource", 0, 0),
+        (config.FIRE_FLAME_DEVICE_NAME,
+         "Ручное пламенеющее устройство: тлеет, точно маленький майак. "
+         "Сердце Обжигающей трости.",
+         0, 60, 3, "resource", 0, 1),
+        ("Рецепт: Обжигающая трость",
+         "Свиток, снятый с алтаря Тыквы: правила заковки трости в огонь. "
+         "Используй, чтобы выучить рецепт навсегда.",
+         0, 0, 3, "recipes", 0, 1),
     )
     for name, desc, price, sell, rarity, cat, heal, loot_only in items:
         item = await get_item_by_name(name)

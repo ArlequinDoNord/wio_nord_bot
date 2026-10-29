@@ -119,7 +119,28 @@ async def _get_forelab_enemy(kind: str = None):
 
 
 def _tier_enemy(e, tier: int):
-    """Словарь врага со сдвигом по Тиру Огненного эха (HP +bonus)."""
+    """Словарь врага со сдвигом по Тиру Огненного эха (HP +bonus) и дропами.
+
+    Дроп-карточки читаются из строки firelab_enemies (drops_json), шанс каждой
+    умножается на tier-множитель и капсится на 1: min(1, base × (1+bonus)).
+    """
+    loot_mult = db.firelab_tier_loot_mult(tier)
+    drops = []
+    try:
+        raw = e.get('drops') if hasattr(e, 'get') else None
+        if isinstance(raw, str):
+            raw = json.loads(raw or '[]')
+        if not isinstance(raw, (list, tuple)):
+            raw = []
+    except (TypeError, ValueError):
+        raw = []
+    for d in raw:
+        try:
+            base = float(d['chance'] or 0) * loot_mult
+            drops.append({"item_id": int(d['item_id']), "qty": int(d.get('qty') or 1),
+                          "chance": min(1.0, base), "base": base})
+        except (KeyError, TypeError, ValueError):
+            continue
     return {
         'key': e['key'], 'name': e['name'],
         'hp': int(e['hp']) + db.firelab_tier_enemy_bonus(tier),
@@ -129,7 +150,17 @@ def _tier_enemy(e, tier: int):
         'dmg_min': int(e.get('dmg_min') or 0),
         'dmg_max': int(e.get('dmg_max') or 0),
         'is_boss': e['key'] == FIRELAB_BOSS_KEY,
+        'drops': drops,
     }
+
+
+def _roll_enemy_loot(enemy: dict) -> list[tuple[str, int, float]]:
+    """Броски по дроп-карточкам врага: [(имя, qty, шанс_броска)] по факту выпадения."""
+    loot = []
+    for d in enemy.get('drops') or []:
+        if random.random() < float(d['chance']):
+            loot.append(d)
+    return loot
 
 
 def _esc(text) -> str:
@@ -852,9 +883,26 @@ async def _after_player_tick(cb, session, session_id: int, enemy, effects, playe
                 "WHERE id = ?", (session_id,))
         await conn.commit()
         updated = await db.get_active_fire_lab_session(cb.from_user.id)
-        # TODO(Ф3/Ф5): лут врага (drops × Тир) — опишет владелец
+        # Фаза 5: лут врага (drops × Тир «Огненного эха»)
+        loot_notes = []
+        for d in _roll_enemy_loot(enemy):
+            try:
+                await db.add_inventory_item(cb.from_user.id, int(d['item_id']),
+                                            int(d.get('qty') or 1))
+                it = await db.get_item(int(d['item_id']))
+                it_name = it['name'] if it else f"#{d['item_id']}"
+                loot_notes.append(f"🎁 «{it_name}» ×{int(d.get('qty') or 1)}")
+            except Exception:
+                pass
+        if loot_notes:
+            await db.log_activity(cb.from_user.id, "firelab",
+                                  f"Лут с {enemy['name']}: "
+                                  + "; ".join(loot_notes))
+        loot_text = ("\n\n🎉 <b>Добыча:</b>\n" + "\n".join(loot_notes)
+                     if loot_notes else "")
         await cb.answer("💀 Враг повержен!", show_alert=True)
-        text = f"💀 <b>{_esc(enemy['name'])} повержен!</b>\n\n" + _fork_text(updated)
+        text = (f"💀 <b>{_esc(enemy['name'])} повержен!</b>{loot_text}\n\n"
+                + _fork_text(updated))
         try:
             await cb.message.edit_text(text, reply_markup=_fork_kb(session_id),
                                        parse_mode="HTML")

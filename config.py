@@ -65,6 +65,23 @@ FIRELAB_PUMPKIN_DMG = (4, 7)
 FIRELAB_PUMPKIN_DODGE = 5
 FIRELAB_PUMPKIN_ARMOR = 2                 # броня босса
 
+# Имена предметов праздника, используемые в сидах врагов (Ф5) — объявлены
+# раньше самих сидов; перечень см. ниже (Ф3/Ф4). Дублирование осознанное.
+FIRE_LAB_PIE_NAME = "Кусочек тыквенного пирога"
+FIRE_LAB_CANDY_NAME = "Леденец языков пламени"
+FIRE_LAB_HAY_NAME = "Пучок сена"
+FIRE_LAB_BRANCH_NAME = "Ветка дерева"
+FIRE_LAB_RECIPE_NAME = "Рецепт: Тыквенный пирог"
+FIRE_PUMPKIN_SEED_NAME = "Семечко тыквы"
+FIRE_CROW_FEATHER_NAME = "Перо ворона"
+FIRE_WIRE_NAME = "Моток железной проволоки"
+FIRE_EGGS_NAME = "Яйца"
+FIRE_CROWN_NAME = "Огненный венец"
+FIRE_CLOAK_NAME = "Плащ Памяти"
+FIRE_GLOVES_NAME = "Перчатки стража посевов"
+FIRE_KEYS_NAME = "Вилы"
+FIRE_FLAME_DEVICE_NAME = "Ручное пламенеющее устройство"
+
 FIRELAB_SCARECROW_SEED = {
     "key": "scarecrow",
     "spot": "firelab",
@@ -83,7 +100,13 @@ FIRELAB_SCARECROW_SEED = {
         "Соломенный нелюдимоватый: бьёт на 3–5 HP, уклоняется в 10% ударов. "
         "Иногда швыряет сено в лицо — ослепление (15%)."
     ),
-    "loot": [],   # дроп опишет владелец позже
+    # Дроп Ф5: сено/ветки, редкие перчатки, супер-редкие Вилы
+    "loot": (
+        (FIRE_LAB_HAY_NAME, 45),
+        (FIRE_LAB_BRANCH_NAME, 30),
+        (FIRE_GLOVES_NAME, 6),
+        (FIRE_KEYS_NAME, 2),
+    ),
 }
 
 FIRELAB_APPLE_CHILD_SEED = {
@@ -103,7 +126,14 @@ FIRELAB_APPLE_CHILD_SEED = {
         "Розовощёкий веснушчатый хитрец: бьёт на 2–4 HP, уклоняется в 9%. "
         "Иногда бросает спелое яблоко — оглушение (10%)."
     ),
-    "loot": [],   # дроп опишет владелец позже
+    # Дроп Ф5: ветки/сено, редкие яблоко и леденец, супер-редкое яблочное семечко
+    "loot": (
+        (FIRE_LAB_BRANCH_NAME, 35),
+        (FIRE_LAB_HAY_NAME, 35),
+        ("Яблоко", 12),
+        (FIRE_LAB_CANDY_NAME, 10),
+        ("Яблочное семечко", 1),
+    ),
 }
 
 FIRELAB_CROW_SEED = {
@@ -123,7 +153,12 @@ FIRELAB_CROW_SEED = {
         "Верткий вестник вечера: HP мал, зато уклоняется в 20% ударов. "
         "Может наложить ослепление (15%) — как неясыть в лесу."
     ),
-    "loot": [],
+    # Дроп Ф5: веточка + проволока, редкое Перо ворона
+    "loot": (
+        (FIRE_LAB_BRANCH_NAME, 45),
+        (FIRE_WIRE_NAME, 15),
+        (FIRE_CROW_FEATHER_NAME, 8),
+    ),
 }
 
 FIRELAB_HUB_SEED = {
@@ -144,7 +179,13 @@ FIRELAB_HUB_SEED = {
         "Быстрое, цепкое: с шансом 25% опутывает паутиной — замедление на 3 хода: "
         "сильно снижает уклонение пилота (−35%), а самому Хубу добавляет +10% уклонения."
     ),
-    "loot": [],
+    # Дроп Ф5: сено/ветки, редкие яйца, очень редкий Плащ Памяти
+    "loot": (
+        (FIRE_LAB_HAY_NAME, 40),
+        (FIRE_LAB_BRANCH_NAME, 30),
+        (FIRE_EGGS_NAME, 15),
+        (FIRE_CLOAK_NAME, 1),
+    ),
 }
 
 FIRELAB_PUMPKIN_SEED = {
@@ -165,7 +206,16 @@ FIRELAB_PUMPKIN_SEED = {
         "Босс Огненного Лабиринта: HP 60, урон 4–7, броня 2. При своём ударе "
         "с шансом 25% поджигает пилота — −2 HP каждый ход, 3 хода (угасание)."
     ),
-    "loot": [],
+    # Дроп Ф5: леденец/пирог, редкие рецепт-свитки, очень редкие венец/РПУ и семечко
+    "loot": (
+        (FIRE_LAB_CANDY_NAME, 40),
+        (FIRE_LAB_PIE_NAME, 30),
+        (FIRE_LAB_RECIPE_NAME, 6),
+        ("Рецепт: Обжигающая трость", 5),
+        (FIRE_CROWN_NAME, 1),
+        (FIRE_FLAME_DEVICE_NAME, 1),
+        (FIRE_PUMPKIN_SEED_NAME, 1),
+    ),
 }
 
 FIRELAB_ENEMY_SEEDS = (FIRELAB_SCARECROW_SEED, FIRELAB_APPLE_CHILD_SEED,
