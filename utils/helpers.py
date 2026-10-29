@@ -77,6 +77,23 @@ def plural_nordmark(n: int) -> str:
     return "нордмарок"
 
 
+def plural_choose(n, forms: tuple) -> str:
+    """Общая форма «1 бревно / 2 бревна / 5 брёвен» по правилам числительных.
+
+    forms = (один, немного (2–4), много (5+, включая 11–14)). Работает и для
+    именительного (2 бревна), и для винительного («распилить 2 бревна»), и для
+    родительного (5 брёвен) — у неодушевлённых эти падежи совпадают.
+    """
+    n = abs(int(n or 0))
+    n10 = n % 10
+    n100 = n % 100
+    if n10 == 1 and n100 != 11:
+        return forms[0]
+    if 2 <= n10 <= 4 and not (12 <= n100 <= 14):
+        return forms[1]
+    return forms[2]
+
+
 def format_amount(amount: int) -> str:
     return f"{amount:,}".replace(",", " ")
 

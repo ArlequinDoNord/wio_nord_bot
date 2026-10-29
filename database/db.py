@@ -3540,24 +3540,26 @@ async def set_user_salary(user_id: int, amount: int, period_days: int = 7, admin
 
 
 async def get_salaries_due() -> list:
-    """Пилоты, которым пора выплатить зарплату.
+    """Пилоты, которым пора выплатить зарплату (месячный график).
 
-    Фиксированный календарный график: выплата один раз в неделю,
-    в воскресенье (UTC). Не зависит от даты назначения зарплаты.
-    Защита от дублей: платим, только если в текущей календарной
-    неделе выплата ещё не проводилась.
+    Фиксированный график: выплата один раз в месяц — с 28-го числа (МСК),
+    та же дата, что и у окладов за должности. Не зависит от даты назначения
+    зарплаты. Защита от дублей: платим, только если в текущем календарном
+    месяце выплата ещё не проводилась (last_salary_date — прошлый месяц
+    или отсутствует). 29–31-е числа добивают тех, кто не был оплачен 28-го
+    (если бот лежал).
     """
     conn = await get_db()
-    # date('now','weekday 0','-6 days') — понедельник текущей календарной недели (UTC)
-    # В список попадают и те, у кого назначенной зарплаты нет, но есть долг казны
-    # (salary_debt от неоплаченных наградных премий): он погашается тем же циклом.
+    # MSK = UTC+3 (без перехода на летнее время): берём «сейчас» в МСК,
+    # чтобы 28-е не срезалось/не дублировалось около полуночи по UTC.
     cursor = await conn.execute(
         "SELECT user_id, username, first_name, salary, salary_debt FROM users "
         "WHERE (salary IS NOT NULL AND salary > 0 "
         "      OR salary_debt IS NOT NULL AND salary_debt > 0) "
-        "AND strftime('%w', 'now') = '0' "
+        "AND CAST(strftime('%d', datetime('now', '+3 hours')) AS INTEGER) >= 28 "
         "AND (last_salary_date IS NULL OR "
-        "     date(last_salary_date) < date('now', 'weekday 0', '-6 days'))"
+        "     strftime('%Y-%m', last_salary_date) < "
+        "     strftime('%Y-%m', datetime('now', '+3 hours')))"
     )
     return await cursor.fetchall()
 
@@ -3571,12 +3573,12 @@ async def mark_salary_paid(user_id: int):
 
 
 async def pay_salaries() -> dict:
-    """Выплачивает зарплаты всем, кому пора (календарное воскресенье).
+    """Выплачивает зарплаты всем, кому пора (месячный график: с 28-го числа).
 
-    Логика: оплачивается ставка за неделю + накопленный ранее долг.
+    Логика: оплачивается ставка за месяц + накопленный ранее долг.
     Если казны не хватает — платим сколько возможно (если есть хоть что-то),
     остаток копится в salary_debt, last_salary_date не меняется (долг растёт
-    каждую пропущенную неделю). Возвращает статистику для уведомления.
+    каждую пропущенную выплату). Возвращает статистику для уведомления.
     """
     balance = await get_treasury_balance()
     due = await get_salaries_due()
@@ -3934,6 +3936,40 @@ async def pay_role_salaries() -> dict:
             paid.append((uid, total))
     await conn.commit()
     return {"paid": paid, "debt": debt, "reserves": reserves, "skipped": skipped}
+
+
+async def get_role_salary_recipients() -> list:
+    """Список получателей окладов за должности (для раздела «Зарплаты»).
+
+    Возвращает [{user_id, first_name, username, roles: [ключ роли...],
+    total}] — total по формуле _role_pay_out (самая дорогая полностью,
+    остальные −50%). Роли без оклада в справочнике не попадают; пилоты без
+    оплачиваемых ролей отбрасываются.
+    """
+    conn = await get_db()
+    sals = await get_role_salary_map()
+    cursor = await conn.execute(
+        "SELECT DISTINCT ur.telegram_id, u.first_name, u.username "
+        "FROM user_roles ur LEFT JOIN users u ON u.user_id = ur.telegram_id "
+        "ORDER BY u.first_name"
+    )
+    out = []
+    for r in await cursor.fetchall():
+        cur = await conn.execute(
+            "SELECT role FROM user_roles WHERE telegram_id = ?", (r['telegram_id'],))
+        roles = [row['role'] for row in await cur.fetchall()]
+        paid_roles = [ro for ro in roles if ro in sals]
+        if not paid_roles:
+            continue
+        paid_roles.sort(key=lambda ro: sals[ro], reverse=True)
+        out.append({
+            'user_id': r['telegram_id'],
+            'first_name': r['first_name'],
+            'username': r['username'],
+            'roles': paid_roles,
+            'total': _role_pay_out([sals[ro] for ro in paid_roles]),
+        })
+    return out
 
 
 async def pay_role_salary_on_revoke(user_id: int, role: str):

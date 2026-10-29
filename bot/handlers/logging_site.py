@@ -36,7 +36,7 @@ from database.db import (
 )
 from utils.helpers import (
     resolve_image_seasonal, resolve_image, item_local_photo,
-    season_key, time_of_day_key, plural_nordmark,
+    season_key, time_of_day_key, plural_nordmark, plural_choose,
 )
 from utils import onhit
 from config import (
@@ -347,20 +347,24 @@ def _mill_markup(token: str, planks: int, firewood: int, planks_one: int,
         row = []
         if planks_one > 0:
             row.append(InlineKeyboardButton(
-                text=f"🪚 1 бревно ({planks_one} дос.)",
+                text=f"🪚 1 бревно ({planks_one} "
+                     f"{plural_choose(planks_one, ('доска', 'доски', 'досок'))})",
                 callback_data=f"logsite:plank:1:{token}"))
         row.append(InlineKeyboardButton(
-            text=f"🪚 Всё ({planks} досок)",
+            text=f"🪚 Всё ({planks} "
+                 f"{plural_choose(planks, ('доска', 'доски', 'досок'))})",
             callback_data=f"logsite:plank:all:{token}"))
         rows.append(row)
     if firewood > 0:
         row = []
         if firewood_one > 0:
             row.append(InlineKeyboardButton(
-                text=f"🪓 1 бревно ({firewood_one} пак.)",
+                text=f"🪓 1 бревно ({firewood_one} "
+                     f"{plural_choose(firewood_one, ('пак', 'пака', 'паков'))} дров)",
                 callback_data=f"logsite:fire:1:{token}"))
         row.append(InlineKeyboardButton(
-            text=f"🪓 Всё ({firewood} паков)",
+            text=f"🪓 Всё ({firewood} "
+                 f"{plural_choose(firewood, ('пак', 'пака', 'паков'))} дров)",
             callback_data=f"logsite:fire:all:{token}"))
         rows.append(row)
     rows.append([InlineKeyboardButton(text="🔙 Назад",
@@ -426,8 +430,9 @@ async def logging_menu_cb(callback: CallbackQuery):
     wood_qty = await _wood_count(callback.from_user.id)
     mill_hint = ""
     if wood_qty > 0:
-        mill_hint = (f"\n\n🪚 В сарае {wood_qty} брёвен — их можно распилить "
-                     "на доски в артели или наколоть дров.")
+        mill_hint = (f"\n\n🪚 В сарае {wood_qty} "
+                     f"{plural_choose(wood_qty, ('бревно', 'бревна', 'брёвен'))} — "
+                     "можно распилить их на доски в артели или наколоть дров.")
 
     caption = (
         "🪓 ЛЕСОЗАГОТОВКА\n\n"
@@ -640,22 +645,31 @@ async def logging_mill(callback: CallbackQuery):
     fw_wood = min(wood_qty, ap // max(1, LOGGING_FIREWOOD_AP_COST))
 
     lines = [f"🪚 ПЕРЕРАБОТКА БРЁВЕН", ""]
-    lines.append(f"🎒 Брёвен в инвентаре: {wood_qty} шт.")
+    lines.append(f"🎒 В инвентаре: {wood_qty} "
+                 f"{plural_choose(wood_qty, ('бревно', 'бревна', 'брёвен'))}")
     lines.append(f"💰 Кошелёк: {nordmarks} {plural_nordmark(nordmarks)} НМ")
     lines.append(f"⚡ ОД: {ap}")
     lines.append("")
     lines.append(
         f"🪚 Распил на доски (артель)\n"
-        f"   1 бревно → {LOGGING_PLANK_YIELD} «{LOGGING_PLANK_NAME}», "
-        f"плата {LOGGING_PLANK_FEE} НМ за бревно (в казну), топор не нужен.\n"
-        f"   Доступно: {paid_wood} бревён → {planks} досок."
+        f"   1 бревно → {LOGGING_PLANK_YIELD} "
+        f"{plural_choose(LOGGING_PLANK_YIELD, ('доска', 'доски', 'досок'))} "
+        f"«{LOGGING_PLANK_NAME}», плата {LOGGING_PLANK_FEE} НМ за бревно "
+        f"(в казну), топор не нужен.\n"
+        f"   Доступно: {paid_wood} "
+        f"{plural_choose(paid_wood, ('бревно', 'бревна', 'брёвен'))} → {planks} "
+        f"{plural_choose(planks, ('доска', 'доски', 'досок'))}."
     )
     lines.append("")
     lines.append(
         f"🪓 Рубка дров (самостоятельно)\n"
-        f"   1 бревно → {LOGGING_FIREWOOD_YIELD} «{LOGGING_FIREWOOD_NAME}», "
-        f"тратит {LOGGING_FIREWOOD_AP_COST} ОД за бревно, нужен топор.\n"
-        f"   Доступно: {fw_wood} бревён → {firewood} паков дров."
+        f"   1 бревно → {LOGGING_FIREWOOD_YIELD} "
+        f"{plural_choose(LOGGING_FIREWOOD_YIELD, ('пак', 'пака', 'паков'))} "
+        f"«{LOGGING_FIREWOOD_NAME}», тратит {LOGGING_FIREWOOD_AP_COST} ОД за "
+        f"бревно, нужен топор.\n"
+        f"   Доступно: {fw_wood} "
+        f"{plural_choose(fw_wood, ('бревно', 'бревна', 'брёвен'))} → {firewood} "
+        f"{plural_choose(firewood, ('пак', 'пака', 'паков'))} дров."
     )
     await _logging_paint(callback, text="\n".join(lines),
                          kb=_mill_markup(token, planks, firewood,
@@ -703,19 +717,23 @@ async def logging_plank(callback: CallbackQuery):
     await transfer_to_treasury(user_id, total_fee, "Распил брёвен на доски")
     await add_inventory_item(user_id, plank_item['id'], planks)
     await log_activity(user_id, "logging",
-                       f"Распилил {n} брёвен → {planks} «{plank_item['name']}» "
+                       f"Распилил {n} "
+                       f"{plural_choose(n, ('бревно', 'бревна', 'брёвен'))} → "
+                       f"{planks} «{plank_item['name']}» "
                        f"(−{total_fee} НМ в казну)")
     await callback.answer()
 
     left_wood = await _wood_count(user_id)
+    left_word = plural_choose(left_wood, ('бревно', 'бревна', 'брёвен'))
+    verb = "превращается" if n == 1 else "превращаются"
     text = (
         "🪚 РАСПИЛ БРЁВЕН\n\n"
-        f"Артельные пилы визжат, опилки летят в лицо: {n} брёвен "
-        f"превращаются в {planks} {plural_nordmark(planks)} "
-        f"«{plank_item['name']}».\n\n"
+        f"Артельные пилы визжат, опилки летят в лицо: {n} "
+        f"{plural_choose(n, ('бревно', 'бревна', 'брёвен'))} {verb} в {planks} "
+        f"{plural_choose(planks, ('доску', 'доски', 'досок'))}.\n\n"
         f"💰 Заплачено артели: {total_fee} НМ (ушло в казну).\n"
         f"🎒 Получено: «{plank_item['name']}» x{planks}.\n"
-        f"📦 Брёвен осталось: {left_wood} шт."
+        f"📦 Осталось: {left_wood} {left_word}."
     )
     await _item_paint(callback, plank_item, text=text,
                       kb=_enter_markup_extra(token, left_wood > 0))
@@ -774,18 +792,22 @@ async def logging_firewood(callback: CallbackQuery):
     firewood = n * LOGGING_FIREWOOD_YIELD
     await add_inventory_item(user_id, fw_item['id'], firewood)
     await log_activity(user_id, "logging",
-                       f"Нарубил дров: {n} брёвен → {firewood} «{fw_item['name']}» "
+                       f"Нарубил дров: {n} "
+                       f"{plural_choose(n, ('бревно', 'бревна', 'брёвен'))} → "
+                       f"{firewood} «{fw_item['name']}» "
                        f"(−{n * LOGGING_FIREWOOD_AP_COST} ОД)")
 
     left_wood = await _wood_count(user_id)
+    pack_verb = "сложен" if firewood % 10 == 1 and firewood % 100 != 11 else "сложены"
     text = (
         "🪓 РУБКА ДРОВ\n\n"
         f"Ты ставишь бревно на плаху и работаешь топором: щепки веером, "
-        f"{firewood} {plural_nordmark(firewood)} "
-        f"«{fw_item['name']}» сложены у сторожки.\n\n"
+        f"из {n} {plural_choose(n, ('бревна', 'брёвен', 'брёвен'))} "
+        f"вышло {firewood} «{fw_item['name']}» — {pack_verb} у сторожки.\n\n"
         f"⚡ Потрачено ОД: {n * LOGGING_FIREWOOD_AP_COST}.\n"
         f"🎒 Получено: «{fw_item['name']}» x{firewood}.\n"
-        f"📦 Брёвен осталось: {left_wood} шт.\n\n"
+        f"📦 Осталось: {left_wood} "
+        f"{plural_choose(left_wood, ('бревно', 'бревна', 'брёвен'))}.\n\n"
         f"{await _ap_line(user_id)}"
     )
     await _item_paint(callback, fw_item, text=text,

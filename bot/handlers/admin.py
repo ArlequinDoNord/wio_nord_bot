@@ -31,6 +31,7 @@ from database.db import (
     get_sale_tax_percent, set_sale_tax_percent,
     get_special_dept_code, set_special_dept_code,
     get_salaried_users, get_user_salary, set_user_salary, pay_salaries,
+    get_role_salary_recipients,
     get_treasury_debts,
     get_all_locations, get_location, create_location, update_location_access,
     update_location_content, update_location_photos, location_access_label,
@@ -261,9 +262,7 @@ class AdminPlayerLog(StatesGroup):
 
 
 class AdminSalary(StatesGroup):
-    target = State()
     amount = State()
-    period = State()
 
 
 class AdminLocation(StatesGroup):
@@ -529,9 +528,9 @@ async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer(
             f"💰 Назначение зарплаты\nИгрок: {target['first_name'] if 'first_name' in target.keys() else ''} "
             f"(@{target['username'] if 'username' in target.keys() else ''})\n"
-            f"Текущая зарплата: {cur['salary']} {plural_nordmark(cur['salary'])} "
-            f"(период {cur['salary_period_days']} дн.)\n\n"
-            f"Введи сумму зарплаты за один период (цифрой). 0 — снять зарплату.",
+            f"Текущая зарплата: {cur['salary']} {plural_nordmark(cur['salary'])}/мес\n\n"
+            f"Введи сумму зарплаты за месяц (цифрой). 0 — снять зарплату.\n"
+            f"Выплата — 28-го числа каждого месяца.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:salaries")],
             ])
@@ -2273,7 +2272,7 @@ async def treasury_debts(callback: CallbackQuery):
             name = d['first_name'] or d['username'] or f"#{d['user_id']}"
             line = f"  • {name} — долг {d['salary_debt']} {plural_nordmark(d['salary_debt'])}"
             if d['salary']:
-                line += f" (ставка {d['salary']}/{d['salary_period_days']} дн.)"
+                line += f" (оклад {d['salary']}/мес)"
             if d['last_salary_date']:
                 line += f" — посл. выплата {str(d['last_salary_date'])[:10]}"
             lines.append(line)
@@ -2547,25 +2546,52 @@ async def finance_pick(callback: CallbackQuery, state: FSMContext):
         return
     currency = parts[1]
     action = parts[2]
+    page = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0
     await state.update_data(currency=currency, action=action)
     await state.set_state(AdminFinance.target)
+    await callback.message.answer(
+        f"Выбери пилота или введи @username/ID:",
+        reply_markup=await _finance_users_markup(currency, action, page)
+    )
 
+
+FIN_USERS_PAGE_SIZE = 50
+
+
+async def _finance_users_markup(currency: str, action: str, page: int):
+    """Список ВСЕХ пилотов с постраничной навигацией (Telegram не любит стены кнопок)."""
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     users = await get_all_users()
-    rows = []
-    if users:
-        for u in users[:50]:
-            label = u['first_name'] or u['username'] or str(u['user_id'])
-            if u['username']:
-                label += f" (@{u['username']})"
-            rows.append([InlineKeyboardButton(text=label, callback_data=f"finuser:{u['user_id']}")])
-    rows.append([InlineKeyboardButton(text="✍️ Ввести вручную", callback_data="fin:manual")])
-    rows.append([InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:menu")])
+    total = len(users)
+    total_pages = max(1, (total + FIN_USERS_PAGE_SIZE - 1) // FIN_USERS_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    chunk = users[page * FIN_USERS_PAGE_SIZE:(page + 1) * FIN_USERS_PAGE_SIZE]
 
-    await callback.message.answer(
-        "Выбери пилота или введи @username/ID:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
-    )
+    rows = []
+    for u in chunk:
+        label = u['first_name'] or u['username'] or str(u['user_id'])
+        if u['username']:
+            label += f" (@{u['username']})"
+        rows.append([InlineKeyboardButton(text=label,
+                                          callback_data=f"finuser:{u['user_id']}")])
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(
+                text="⬅️ Назад",
+                callback_data=f"fin:{currency}:{action}:{page - 1}"))
+        nav.append(InlineKeyboardButton(
+            text=f"📄 {page + 1}/{total_pages} (всего {total})",
+            callback_data=f"fin:{currency}:{action}:{page}"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton(
+                text="Вперёд ➡️",
+                callback_data=f"fin:{currency}:{action}:{page + 1}"))
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text="✍️ Ввести вручную",
+                                      callback_data="fin:manual")])
+    rows.append([InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @router.callback_query(F.data.startswith("finuser:"))
@@ -5057,19 +5083,37 @@ async def admin_salaries(callback: CallbackQuery):
         return
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     balance = await get_treasury_balance()
-    salaried = await get_salaried_users()
     lines = []
     lines.append(f"🏛️ ЗАРПЛАТЫ ПИЛОТОВ\n\nКазна: {balance} {plural_nordmark(balance)}\n")
+
+    # 1) Оклады за должности (ролевая система, роль salaries из role_salaries).
+    recipients = await get_role_salary_recipients()
+    if recipients:
+        lines.append("💼 Оклады за должности — 28-го числа каждого месяца:")
+        for r in recipients:
+            name = r['first_name'] or r['username'] or f"#{r['user_id']}"
+            roles_txt = " + ".join(role_label(rt) for rt in r['roles'])
+            line = f"  • {name} — {roles_txt} — оклад {r['total']} {plural_nordmark(r['total'])}/мес"
+            if len(r['roles']) > 1:
+                line += " (старшая должность полностью, за остальные −50%)"
+            lines.append(line)
+    else:
+        lines.append("💼 Окладов за должности никто не получает.")
+
+    # 2) Персональные зарплаты (users.salary — «Назначить/Изменить» ниже).
+    salaried = await get_salaried_users()
+    lines.append("")
     if salaried:
-        lines.append("💼 Получатели (еженедельно, в воскресенье):")
+        lines.append("💵 Персональные зарплаты — 28-го числа каждого месяца:")
         for u in salaried:
             name = u['first_name'] or u['username'] or f"#{u['user_id']}"
-            line = f"  • {name} — {u['salary']} {plural_nordmark(u['salary'])}"
+            line = f"  • {name} — {u['salary']} {plural_nordmark(u['salary'])}/мес"
             if u['salary_debt']:
                 line += f"  (долг {u['salary_debt']} {plural_nordmark(u['salary_debt'])})"
             lines.append(line)
     else:
-        lines.append("Получателей пока нет.")
+        lines.append("💵 Персональных зарплат нет — назначь через «➕ Назначить/Изменить».")
+
     debts = await get_treasury_debts()
     if debts['total_debt']:
         lines.append(f"\n⚠️ Накопленный долг: {debts['total_debt']} "
@@ -5077,7 +5121,8 @@ async def admin_salaries(callback: CallbackQuery):
     if debts['shortfall']:
         lines.append(f"💡 На следующую выплату не хватает: {debts['shortfall']} "
                      f"{plural_nordmark(debts['shortfall'])}")
-    lines.append("\nВыплата — один раз в неделю, в воскресенье.")
+    lines.append("\nВыплата — 28-го числа каждого месяца (персональные зарплаты "
+                 "и оклады за должности — в один день).")
     await callback.message.edit_text(
         "\n".join(lines),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -5149,64 +5194,16 @@ async def admin_salary_amount(message: Message, state: FSMContext):
         return
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     if amount == 0:
-        await set_user_salary(target_id, 0, 7, message.from_user.id)
+        await set_user_salary(target_id, 0, 30, message.from_user.id)
         await state.clear()
         await message.answer(f"✅ Зарплата снята с игрока: {target_name}.")
         return
-    await state.update_data(amount=amount)
-    await state.set_state(AdminSalary.period)
-    await message.answer(
-        f"💰 Сумма: {amount} {plural_nordmark(amount)}\n\n"
-        f"Введи период выплаты в днях (по умолчанию 7):",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="7 дней", callback_data="salary_period:7")],
-            [InlineKeyboardButton(text="30 дней", callback_data="salary_period:30")],
-        ])
-    )
-
-
-@router.callback_query(AdminSalary.period, F.data.startswith("salary_period:"))
-async def admin_salary_period_cb(callback: CallbackQuery, state: FSMContext):
-    await callback.answer()
-    period = int(callback.data.split(":")[1])
-    data = await state.get_data()
-    target_id = data.get('target_id')
-    target_name = data.get('target_name', '')
-    amount = data.get('amount')
-    if not target_id or amount is None:
-        await state.clear()
-        await callback.message.answer("❌ Сессия не найдена, начни заново.")
-        return
-    await set_user_salary(target_id, amount, period, callback.from_user.id)
-    await state.clear()
-    await callback.message.edit_text(
-        f"✅ Зарплата назначена: {target_name} — {amount} {plural_nordmark(amount)} / {period} дн."
-    )
-
-
-@router.message(AdminSalary.period)
-async def admin_salary_period_text(message: Message, state: FSMContext):
-    text = message.text.strip()
-    try:
-        period = int(text)
-    except ValueError:
-        await message.answer("❌ Введи период цифрой (дни) или выбери кнопку.")
-        return
-    if period <= 0:
-        await message.answer("❌ Период должен быть больше 0.")
-        return
-    data = await state.get_data()
-    target_id = data.get('target_id')
-    target_name = data.get('target_name', '')
-    amount = data.get('amount')
-    if not target_id or amount is None:
-        await state.clear()
-        await message.answer("❌ Сессия не найдена, начни заново.")
-        return
-    await set_user_salary(target_id, amount, period, message.from_user.id)
+    # Период больше не спрашиваем: выплата фиксированно 28-го числа месяца.
+    await set_user_salary(target_id, amount, 30, message.from_user.id)
     await state.clear()
     await message.answer(
-        f"✅ Зарплата назначена: {target_name} — {amount} {plural_nordmark(amount)} / {period} дн."
+        f"✅ Зарплата назначена: {target_name} — {amount} {plural_nordmark(amount)}/мес "
+        f"(выплата 28-го числа)."
     )
 
 @router.callback_query(F.data == "admin:locations")

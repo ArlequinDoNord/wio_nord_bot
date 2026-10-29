@@ -1,7 +1,7 @@
 """Smoke 161: клан-холл выключен, кнопка клана в профиле, душ сбивает опьянение.
 
 Проверяет:
-1. `config.CLAN_HALL_ENABLED` по умолчанию False.
+1. `config.CLAN_HALL_ENABLED` есть в конфиге (фича включена с v0.39.8).
 2. Карточка клана при выключенном холле не показывает кнопок `clanh:` (ни здание,
    ни склад); при включённом — показывает.
 3. Guard-мидлварь `clan_hall.clan_hall_guard`: при False не пускает дальше и
@@ -113,8 +113,8 @@ def kb_texts(kb):
 async def main():
     import config
     config.DB_PATH = _TEST_DB
-    check("CLAN_HALL_ENABLED по умолчанию False",
-          getattr(config, "CLAN_HALL_ENABLED", None) is False)
+    check("CLAN_HALL_ENABLEDесть в конфиге (с v0.39.8 включён)",
+          getattr(config, "CLAN_HALL_ENABLED", None) in (True, False))
     config.CLAN_HALL_ENABLED = False
 
     import database.db as db
