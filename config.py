@@ -13,11 +13,11 @@ load_dotenv()
 # При бампе: пишем в VERSION_NOTES только то, что изменилось в этом деплое, а
 # прошлые сдвигаем в PREV_VERSION / PREV_VERSION_NOTES. Больше двух записей не
 # держим — иначе приветствие превращается в простыню из трёх-четырёх деплоев.
-VERSION = "0.39.11"
-VERSION_NOTES = ("Подготовка к празднику: правила стали чуть строже и честнее.")
+VERSION = "0.40.0"
+VERSION_NOTES = ("Коридоры упырей потемнели: в лабиринте объявились стражи.")
 
-PREV_VERSION = "0.39.10"
-PREV_VERSION_NOTES = ("Подготовка к празднику продолжается: мелочи отточены.")
+PREV_VERSION = "0.39.11"
+PREV_VERSION_NOTES = ("Подготовка к празднику: правила стали чуть строже и честнее.")
 
 # ── Буклет туриста ─────────────────────────────────────────────────────────────
 TOURIST_BOOKLET_NAME = "Буклет туриста"
@@ -42,6 +42,131 @@ TOURIST_BOOKLET_LOCATIONS = (
 # Клан-холл (проект)
 # Открыт с v0.39.8 (Фазы 1–8 готовы, смоки 158–171 зелёные; подробности — CLAN_HALL.md).
 CLAN_HALL_ENABLED = True
+
+# --- Огненный Лабиринт: враги (Фаза 2, ТЗ — FIRE_EVENT.md §4) ---
+FIRELAB_SCARECROW_HP = 25
+FIRELAB_SCARECROW_DMG = (3, 5)
+FIRELAB_SCARECROW_DODGE = 10
+FIRELAB_SCARECROW_ARMOR = 1               # броня Пугала (стены соломы)
+FIRELAB_APPLE_CHILD_HP = 27
+FIRELAB_APPLE_CHILD_DMG = (2, 4)
+FIRELAB_APPLE_CHILD_DODGE = 9
+FIRELAB_CROW_HP = 16
+FIRELAB_CROW_DMG = (2, 4)
+FIRELAB_CROW_DODGE = 20
+FIRELAB_GHOST_HP = 24
+FIRELAB_GHOST_DMG = (2, 4)
+FIRELAB_GHOST_DODGE = 15
+FIRELAB_PUMPKIN_HP = 60
+FIRELAB_PUMPKIN_DMG = (4, 7)
+FIRELAB_PUMPKIN_DODGE = 5
+FIRELAB_PUMPKIN_ARMOR = 2                 # броня босса
+
+FIRELAB_SCARECROW_SEED = {
+    "key": "scarecrow",
+    "spot": "firelab",
+    "name": "Пугало",
+    "hp": FIRELAB_SCARECROW_HP,
+    "dmg_min": FIRELAB_SCARECROW_DMG[0],
+    "dmg_max": FIRELAB_SCARECROW_DMG[1],
+    "dodge": FIRELAB_SCARECROW_DODGE,
+    "armor": FIRELAB_SCARECROW_ARMOR,
+    "loss_ap": 0,
+    "chance": 0,          # шанс встречи задаёт механика развилок, не пул
+    "pity_target": 0,
+    "reward_nm": 0,
+    "photo_key": "city/fire_scarecrow",
+    "description": (
+        "Соломенный нелюдимоватый: бьёт на 3–5 HP, уклоняется в 10% ударов. "
+        "Иногда швыряет сено в лицо — ослепление (15%)."
+    ),
+    "loot": [],   # дроп опишет владелец позже
+}
+
+FIRELAB_APPLE_CHILD_SEED = {
+    "key": "apple_child",
+    "spot": "firelab",
+    "name": "Дитя Яблони",
+    "hp": FIRELAB_APPLE_CHILD_HP,
+    "dmg_min": FIRELAB_APPLE_CHILD_DMG[0],
+    "dmg_max": FIRELAB_APPLE_CHILD_DMG[1],
+    "dodge": FIRELAB_APPLE_CHILD_DODGE,
+    "loss_ap": 0,
+    "chance": 0,
+    "pity_target": 0,
+    "reward_nm": 0,
+    "photo_key": "city/fire_apple_child",
+    "description": (
+        "Розовощёкий веснушчатый хитрец: бьёт на 2–4 HP, уклоняется в 9%. "
+        "Иногда бросает спелое яблоко — оглушение (10%)."
+    ),
+    "loot": [],   # дроп опишет владелец позже
+}
+
+FIRELAB_CROW_SEED = {
+    "key": "crow",
+    "spot": "firelab",
+    "name": "Ворон",
+    "hp": FIRELAB_CROW_HP,
+    "dmg_min": FIRELAB_CROW_DMG[0],
+    "dmg_max": FIRELAB_CROW_DMG[1],
+    "dodge": FIRELAB_CROW_DODGE,
+    "loss_ap": 0,
+    "chance": 0,
+    "pity_target": 0,
+    "reward_nm": 0,
+    "photo_key": "city/fire_crow",
+    "description": (
+        "Верткий вестник вечера: HP мал, зато уклоняется в 20% ударов. "
+        "Может наложить ослепление (15%) — как неясыть в лесу."
+    ),
+    "loot": [],
+}
+
+FIRELAB_GHOST_SEED = {
+    "key": "ghost",
+    "spot": "firelab",
+    "name": "Призрак",
+    "hp": FIRELAB_GHOST_HP,
+    "dmg_min": FIRELAB_GHOST_DMG[0],
+    "dmg_max": FIRELAB_GHOST_DMG[1],
+    "dodge": FIRELAB_GHOST_DODGE,
+    "loss_ap": 0,
+    "chance": 0,
+    "pity_target": 0,
+    "reward_nm": 0,
+    "photo_key": "city/fire_ghost",
+    "description": (
+        "Полуматериальный странник: уклонение 15%. Колдовским холодом "
+        "накладывает обморожение (20%, лечение −50% на 3 хода)."
+    ),
+    "loot": [],
+}
+
+FIRELAB_PUMPKIN_SEED = {
+    "key": "pumpkin_boss",
+    "spot": "firelab",
+    "name": "Мощный Мистер Огненная Тыква",
+    "hp": FIRELAB_PUMPKIN_HP,
+    "dmg_min": FIRELAB_PUMPKIN_DMG[0],
+    "dmg_max": FIRELAB_PUMPKIN_DMG[1],
+    "dodge": FIRELAB_PUMPKIN_DODGE,
+    "armor": FIRELAB_PUMPKIN_ARMOR,
+    "loss_ap": 0,
+    "chance": 0,
+    "pity_target": 0,
+    "reward_nm": 0,
+    "photo_key": "city/fire_pumpkin_boss",
+    "description": (
+        "Босс Огненного Лабиринта: HP 60, урон 4–7, броня 2. При своём ударе "
+        "с шансом 25% поджигает пилота — −2 HP каждый ход, 3 хода (угасание)."
+    ),
+    "loot": [],
+}
+
+FIRELAB_ENEMY_SEEDS = (FIRELAB_SCARECROW_SEED, FIRELAB_APPLE_CHILD_SEED,
+                       FIRELAB_CROW_SEED, FIRELAB_GHOST_SEED,
+                       FIRELAB_PUMPKIN_SEED)
 
 # --- Дни Пламенного Круговорота (праздничное событие, ТЗ — FIRE_EVENT.md) ---
 # Пока идут фазы разработки, лабиринт закрыт флагом: городская кнопка скрыта,

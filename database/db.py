@@ -915,6 +915,31 @@ async def init_db():
             admin_tuned INTEGER DEFAULT 0
         );
 
+        -- Враги Огненного Лабиринта (событие «Дни Пламенного Круговорота»).
+        CREATE TABLE IF NOT EXISTS firelab_enemies (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            key TEXT,
+            spot TEXT DEFAULT 'firelab',
+            name TEXT NOT NULL,
+            hp INTEGER DEFAULT 30,
+            dmg_min INTEGER DEFAULT 5,
+            dmg_max INTEGER DEFAULT 9,
+            armor INTEGER DEFAULT 0,
+            dodge INTEGER DEFAULT 0,
+            loss_ap INTEGER DEFAULT 0,
+            bleed_chance INTEGER DEFAULT 0,
+            bleed_dmg INTEGER DEFAULT 0,
+            chance REAL DEFAULT 0,
+            pity_target INTEGER DEFAULT 0,
+            reward_nm INTEGER DEFAULT 0,
+            drops TEXT DEFAULT '[]',
+            description TEXT,
+            image TEXT,
+            photo_key TEXT,
+            enabled INTEGER DEFAULT 1,
+            admin_tuned INTEGER DEFAULT 0
+        );
+
         CREATE TABLE IF NOT EXISTS wall_posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -1087,6 +1112,14 @@ async def init_db():
             day TEXT NOT NULL DEFAULT '',
             qty INTEGER DEFAULT 0,
             PRIMARY KEY (user_id, day)
+        );
+
+        -- Огненное эхо: Тир сложности лабиринта у пилота (кап FIRE_LAB_TIER_MAX).
+        CREATE TABLE IF NOT EXISTS fire_lab_tier (
+            user_id INTEGER PRIMARY KEY,
+            tier INTEGER NOT NULL DEFAULT 0,
+            runs INTEGER NOT NULL DEFAULT 0,            -- сколько раз пройдено 25 комнат
+            updated_at TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS user_recipes (
@@ -1683,6 +1716,11 @@ async def init_db():
     await _migrate_reservoir_balance()
     # Клан-холл: фото готового здания (добавляет клан, админ проставляет)
     await _ensure_column(conn, "clan_buildings", "building_photo_file_id", "TEXT")
+    await _ensure_column(conn, "firelab_enemies", "on_hit_effects", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "firelab_enemies", "armor", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "fire_lab_sessions", "enemy_json", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "fire_lab_sessions", "effects_json", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "fire_lab_sessions", "boss_encounters", "INTEGER DEFAULT 0")
     await conn.commit()
 
 
@@ -3746,12 +3784,57 @@ async def get_active_fire_lab_session(user_id: int):
 
 
 async def end_fire_lab_session(session_id: int, status: str) -> None:
-    """Закрыть сессию лабиринта со статусом dead/left/finished/event_closed."""
+    """Закрыть сессию лабиринта со статусом dead/left/finished/expired/event_closed."""
     conn = await get_db()
     await conn.execute(
         "UPDATE fire_lab_sessions SET status = ?, ended_at = datetime('now') "
         "WHERE id = ?", (status, session_id))
     await conn.commit()
+
+
+async def get_fire_lab_tier(user_id: int) -> int:
+    """Тир «Огненного эха» пилота (0..FIRE_LAB_TIER_MAX)."""
+    conn = await get_db()
+    cur = await conn.execute("SELECT tier FROM fire_lab_tier WHERE user_id = ?", (user_id,))
+    row = await cur.fetchone()
+    return int(row['tier'] or 0) if row else 0
+
+
+async def inc_fire_lab_tier(user_id: int) -> int:
+    """+1 к Тиру за полное прохождение 25 комнат; кап FIRE_LAB_TIER_MAX.
+
+    Возвращает новый Тир. runs (полных прогонов) учитывает все, даже после капа.
+    """
+    conn = await get_db()
+    cap = int(getattr(config, "FIRE_LAB_TIER_MAX", 5) or 5)
+    cur = await conn.execute(
+        "INSERT INTO fire_lab_tier (user_id, tier, runs, updated_at) "
+        "VALUES (?, 1, 1, datetime('now')) "
+        "ON CONFLICT(user_id) DO UPDATE SET "
+        "tier = CASE WHEN tier < ? THEN tier + 1 ELSE tier END, "
+        "runs = runs + 1, updated_at = datetime('now')",
+        (user_id, cap))
+    await conn.commit()
+    return await get_fire_lab_tier(user_id)
+
+
+def firelab_tier_enemy_bonus(tier: int) -> int:
+    """Доп. HP всем врагам на указанном Тире: 1–4 по +2, 5-й разово +8 (итог +16)."""
+    step = int(getattr(config, "FIRE_LAB_TIER_HP_STEP", 2) or 2)
+    last = int(getattr(config, "FIRE_LAB_TIER_HP_LAST", 8) or 8)
+    cap = int(getattr(config, "FIRE_LAB_TIER_MAX", 5) or 5)
+    tier = max(0, min(int(tier), cap))
+    return step * min(tier, cap - 1) + (last if tier >= cap else 0)
+
+
+def firelab_tier_loot_mult(tier: int) -> float:
+    """Множитель шансов лута: Тир 1–4 → ×(1+2%)…, Тир 5 → ×(1+10%)."""
+    step = float(getattr(config, "FIRE_LAB_TIER_LOOT_STEP", 0.02) or 0.02)
+    last = float(getattr(config, "FIRE_LAB_TIER_LOOT_LAST", 0.10) or 0.10)
+    cap = int(getattr(config, "FIRE_LAB_TIER_MAX", 5) or 5)
+    tier = max(0, min(int(tier), cap))
+    bonus = step * min(tier, cap - 1) + (last if tier >= cap else 0)
+    return 1.0 + bonus
 
 
 # ============ ОКЛАДЫ ЗА ДОЛЖНОСТИ (ролевые, раз в месяц 28-го) ============
@@ -9221,7 +9304,8 @@ async def get_forest_mushroom_candidates():
 # Враги подземелья остаются в dungeon_enemies — их боевой код не трогаем.
 
 ENEMY_SOURCE_TABLES = {"forest": "forest_enemies", "fishing": "fishing_enemies",
-                       "mine": "mine_enemies", "logging": "logging_enemies"}
+                       "mine": "mine_enemies", "logging": "logging_enemies",
+                       "firelab": "firelab_enemies"}
 
 # Поля врага, которые админ правит через бота.
 SOURCE_ENEMY_FIELDS = ("name", "hp", "dmg_min", "dmg_max", "dodge", "armor",
@@ -9263,6 +9347,25 @@ async def ensure_forest_enemies():
         "UPDATE forest_enemies SET chance = ? "
         "WHERE key = 'boar' AND ROUND(chance, 2) = ?",
         (config.FOREST_BOAR_CHANCE, legacy_chance))
+    await conn.commit()
+    return created
+
+
+async def ensure_firelab_enemies() -> bool:
+    """Идемпотентно засевает врагов Огненного Лабиринта (4 обычных + босс).
+
+    ENEMY_SEED_FIELDS не знает колонку armor — после посева дотягиваем её
+    отдельным UPDATE (только нетронутые админом строки admin_tuned=0).
+    """
+    conn = await get_db()
+    created = False
+    for seed in getattr(config, "FIRELAB_ENEMY_SEEDS", ()):
+        ok = await _ensure_source_enemies("firelab", seed)
+        created = created or ok
+        armor = int(seed.get("armor") or 0)
+        await conn.execute(
+            "UPDATE firelab_enemies SET armor = ? WHERE key = ? AND admin_tuned = 0",
+            (armor, seed.get("key")))
     await conn.commit()
     return created
 
