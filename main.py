@@ -28,7 +28,8 @@ from database.db import (
     ensure_water_fish, migrate_legacy_junk,
     ensure_forest_items, ensure_forest_mushrooms, ensure_forest_zones,
     ensure_forest_enemies, ensure_fishing_enemies, ensure_mollusk_items,
-    ensure_mine_items, ensure_mine_enemies,
+    ensure_mine_items, ensure_mine_enemies, ensure_firelab_enemies,
+    ensure_firelab_items,
     ensure_logging_items, ensure_logging_enemies,
     ensure_recipe_shop_items, ensure_user_recipes_backfill,
     log_activity, prune_activity_log, prune_location_visits, recompute_region_stats,
@@ -493,6 +494,14 @@ async def main():
     logging_enemy_seeded = await ensure_logging_enemies()
     if logging_enemy_seeded:
         logger.info("Враги лесозаготовки (змея, неясыть) добавлены в logging_enemies")
+
+    firelab_seeded = await ensure_firelab_enemies()
+    if firelab_seeded:
+        logger.info("Враги Огненного Лабиринта (4 + босс) добавлены в firelab_enemies")
+
+    firelab_items = await ensure_firelab_items()
+    logger.info("Огненный Лабиринт: предметы Фазы 3 проверены (%s шт.)",
+                len(firelab_items))
 
     license_seeded = await ensure_market_license_item()
     if license_seeded:

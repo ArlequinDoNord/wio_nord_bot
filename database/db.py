@@ -1721,6 +1721,16 @@ async def init_db():
     await _ensure_column(conn, "fire_lab_sessions", "enemy_json", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "fire_lab_sessions", "effects_json", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "fire_lab_sessions", "boss_encounters", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "fire_lab_sessions", "fish_used", "INTEGER DEFAULT 0")
+    # Праздничная рыбалка (Колодец): отмеченные виды рыбы пилота (UNIQUE).
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_fire_fish (
+            user_id INTEGER NOT NULL,
+            item_id INTEGER NOT NULL,
+            marked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, item_id)
+        )
+    """)
     await conn.commit()
 
 
@@ -3737,10 +3747,96 @@ async def create_fire_lab_session(user_id: int, hp: int) -> int:
     """Новая сессия лабиринта (status='active'); возвращает id сессии."""
     conn = await get_db()
     cur = await conn.execute(
-        "INSERT INTO fire_lab_sessions (user_id, status, hp, hp_max, last_active_at) "
-        "VALUES (?, 'active', ?, ?, datetime('now'))", (user_id, hp, hp))
+        "INSERT INTO fire_lab_sessions (user_id, status, hp, hp_max, last_active_at, fish_used) "
+        "VALUES (?, 'active', ?, ?, datetime('now'), 0)", (user_id, hp, hp))
     await conn.commit()
     return int(cur.lastrowid or 0)
+
+
+async def bump_fire_lab_room_visit(session_id: int, room: str) -> int:
+    """+1 к счётчику посещений особой комнаты (well/tree/chest); возвращает новое значение.
+
+    Вход в Колодец обнуляет попытки праздничной рыбалки (fish_used=0): лимит —
+    per visit, не за сессию.
+    """
+    col = {"well": "well_visits", "tree": "tree_visits", "chest": "chest_visits"}.get(room)
+    if not col:
+        return 0
+    conn = await get_db()
+    if room == "well":
+        await conn.execute(
+            f"UPDATE fire_lab_sessions SET {col} = {col} + 1, fish_used = 0 "
+            "WHERE id = ?", (session_id,))
+    else:
+        await conn.execute(
+            f"UPDATE fire_lab_sessions SET {col} = {col} + 1 WHERE id = ?",
+            (session_id,))
+    await conn.commit()
+    cur = await conn.execute(
+        f"SELECT {col} AS v FROM fire_lab_sessions WHERE id = ?", (session_id,))
+    row = await cur.fetchone()
+    return int(row['v'] or 0) if row else 0
+
+
+async def set_fire_lab_blessing(session_id: int) -> None:
+    """Благословение Древа Огня на остаток сессии (после визита в Древо)."""
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE fire_lab_sessions SET blessing = 1 WHERE id = ?", (session_id,))
+    await conn.commit()
+
+
+async def get_fire_lab_fish_used(session_id: int) -> int:
+    """Сколько попыток рыбалки потрачено в текущем визите в Колодец."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT fish_used FROM fire_lab_sessions WHERE id = ?", (session_id,))
+    row = await cur.fetchone()
+    return int(row['fish_used'] or 0) if row else 0
+
+
+async def inc_fire_lab_fish_used(session_id: int) -> int:
+    """+1 попытка рыбалки; атомарно допускает только в пределах лимита за визит.
+
+    Возвращает НОВОЕ значение (0 — попытка не зачлась: лимит уже исчерпан).
+    """
+    conn = await get_db()
+    cap = int(getattr(config, "FIRE_LAB_WELL_FISH_TRIES", 6) or 6)
+    cur = await conn.execute(
+        "UPDATE fire_lab_sessions SET fish_used = fish_used + 1 "
+        "WHERE id = ? AND fish_used < ?", (session_id, cap))
+    if not cur.rowcount:
+        await conn.commit()
+        return 0
+    await conn.commit()
+    return await get_fire_lab_fish_used(session_id)
+
+
+async def mark_fire_fish_caught(user_id: int, item_id: int) -> bool:
+    """Отметить пойманную праздничную рыбу (UNIQUE per user+item).
+
+    Возвращает True, если этот вид пойман впервые (для текста «Новая рыба!»).
+    """
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT 1 FROM user_fire_fish WHERE user_id = ? AND item_id = ?",
+        (user_id, item_id))
+    fresh = await cur.fetchone() is None
+    if fresh:
+        await conn.execute(
+            "INSERT OR IGNORE INTO user_fire_fish (user_id, item_id) VALUES (?, ?)",
+            (user_id, item_id))
+        await conn.commit()
+    return fresh
+
+
+async def count_fire_fish_kinds(user_id: int) -> int:
+    """Сколько видов праздничной рыбы пилот поймал за время события."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT COUNT(*) AS c FROM user_fire_fish WHERE user_id = ?", (user_id,))
+    row = await cur.fetchone()
+    return int(row['c'] or 0)
 
 
 async def touch_fire_lab_session(session_id: int) -> None:
@@ -9406,6 +9502,75 @@ async def ensure_firelab_enemies() -> bool:
     return created
 
 
+async def ensure_firelab_items() -> dict:
+    """Идемпотентно создаёт предметы Фазы 3 «Дней Пламенного Круговорота».
+
+    Ручные правки админа не перетираются — предмет заводится только при
+    отсутствии по имени. Возвращает {имя: item_id} для быстрых проверок.
+
+    Новое: 3 рыбы (fishing, торгуемые), еда (пирог, леденец), ресурсы
+    (сено, ветка) и предмет-рецепт для крафта тыквенного пирога (рецепт-
+    строка создаётся недоступной — состав согласует владелец на Фазе 4).
+    """
+    out: dict = {}
+    items = (
+        # (name, description, price, sell_price, rarity, category, heal, loot_only)
+        (config.FIRE_LAB_FISH_OSETR_NAME,
+         "Тихий осетр из колодца Огненного Лабиринта: чешуя мерцает дымкой. "
+         "Ценится как обычный улов.", 0, 30, 2, "fishing", 0, 0),
+        (config.FIRE_LAB_FISH_SOUL_NAME,
+         "Костяная душа рыбы: холодеет даже сквозь колодец. Такие в Нордхайме "
+         "не вылавливают — прорываются.", 0, 45, 3, "fishing", 0, 0),
+        (config.FIRE_LAB_FISH_CARP_NAME,
+         "Карп, что не испугался пламени: тёплый, как тлеющие угли. Самая "
+         "редкая праздничная рыба.", 0, 90, 4, "fishing", 0, 0),
+        (config.FIRE_LAB_PIE_NAME,
+         "Ломоть тыквенного пирога с праздничного стола: тёплая корочка, "
+         "внутри — золотистая тыква и искры корицы.", 0, 15, 2, "consumable",
+         int(getattr(config, "FIRE_LAB_PIE_HEAL", 15) or 15), 1),
+        (config.FIRE_LAB_CANDY_NAME,
+         "Леденец из праздника Круговорота: обжигает язык, гасит голод и "
+         "чуть-чуть лечит.", 0, 10, 1, "consumable",
+         int(getattr(config, "FIRE_LAB_CANDY_HEAL", 12) or 12), 1),
+        (config.FIRE_LAB_HAY_NAME,
+         "Сено из развилок Лабиринта: Пугало смотрит на него с уважением. "
+         "Ресурс для будущих поделок.", 0, 5, 1, "resource", 0, 1),
+        (config.FIRE_LAB_BRANCH_NAME,
+         "Чёрная ветка, сплетённая паутиной Хуба: лёгкая, но сломать не просто. "
+         "Ресурс для будущих поделок.", 0, 4, 1, "resource", 0, 1),
+        (config.FIRE_LAB_RECIPE_NAME,
+         "Праздничный рецепт из сундука: свиток с правилами тыквенного "
+         "пирога. Используй, чтобы выучить рецепт навсегда.",
+         0, 0, 3, "recipes", 0, 1),
+    )
+    for name, desc, price, sell, rarity, cat, heal, loot_only in items:
+        item = await get_item_by_name(name)
+        if not item:
+            item_id = await add_item(
+                name=name, description=desc, price=price, sell_price=sell,
+                rarity=rarity, category=cat, stock=-1, added_by=0,
+                ap_cost=0, damage=0, heal=heal, armor=0,
+                drink_effect=None, weapon_effect=None, loot_only=loot_only)
+            item = await get_item(item_id)
+        out[name] = int(item['id'])
+
+    # Рецепт «Тыквенный пирог» (состав согласуется на Фазе 4; пока недоступен).
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT id FROM recipes WHERE name = ?", ("Тыквенный пирог",))
+    if not await cur.fetchone():
+        await conn.execute(
+            "INSERT INTO recipes (name, description, result_item_name, "
+            "result_quantity, required_expansion, required_level, ingredients, "
+            "ap_cost, production_time, rarity, is_available) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("Тыквенный пирог",
+             "Праздничный пирог из тыквы. Ингредиенты уточнит Хранитель.",
+             config.FIRE_LAB_PIE_NAME, 2, "kitchen", 2, "[]", 3, 60, 3, 0))
+    await conn.commit()
+    return out
+
+
 async def ensure_fishing_enemies():
     """Идемпотентно засевает врагов рыбалки (мутировавший моллюск) из MOLLUSK_SEED."""
     await ensure_mollusk_items()
@@ -12676,6 +12841,15 @@ ACHIEVEMENTS_DEF = {
              "bonus": {"poison_res_pct": 30}},
             {"level": 4, "threshold": 200, "name": "Щит Хельды",
              "bonus": {"poison_res_pct": 40}},
+        ],
+    },
+    "fire_fisher": {
+        "title": "Праздничная рыбалка", "emoji": "🪣",
+        "metric": "видов праздничной рыбы поймано (осетр, душа, карп)",
+        "levels": [
+            {"level": 1, "threshold": int(getattr(config, "FIRE_FISHER_THRESHOLD", 3) or 3),
+             "name": "Рыбак древних", "bonus": {},
+             "reward_nm": int(getattr(config, "FIRE_FISHER_REWARD_NM", 150) or 150)},
         ],
     },
 }

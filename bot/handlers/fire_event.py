@@ -30,6 +30,7 @@ from database.db import (
     end_fire_lab_session,
     touch_fire_lab_session,
 )
+from utils.helpers import plural_nordmark
 from keyboards.keyboards import main_menu_kb
 
 router = Router()
@@ -209,41 +210,271 @@ async def fire_event_step_cb(cb: CallbackQuery):
     # Выход автоматом после FIRE_LAB_ROOMS_MAX комнат (25): сессия пройдена.
     rooms_limit = int(getattr(config, "FIRE_LAB_ROOMS_MAX", 25) or 25)
     if rooms_limit > 0 and int(updated['steps']) >= rooms_limit:
+        old_tier = await db.get_fire_lab_tier(cb.from_user.id)
         await end_fire_lab_session(session_id, 'finished')
+        new_tier = await db.inc_fire_lab_tier(cb.from_user.id)
+        tier_note = ""
+        if new_tier > old_tier:
+            tier_note = (f"\n\n🔥 <b>Огненное эхо усилилось:</b> Тир {new_tier} — "
+                         "лабиринт стал сложнее, но награда стала вероятнее! "
+                         "(действует весь праздник)")
+        finish_text = (
+            f"🏁 <b>Ты прошёл все {rooms_limit} комнат Огненного Лабиринта!</b>\n"
+            f"Пламя памяти остаётся тёплым. Сессия завершена.\n"
+            f"Следующий заход — снова за плату (лимит суток тот же)."
+            f"{tier_note}"
+        )
         await cb.answer("🏁 Лабиринт пройден до конца!", show_alert=True)
         try:
             await cb.message.edit_text(
-                f"🏁 <b>Ты прошёл все {rooms_limit} комнат Огненного Лабиринта!</b>\n"
-                f"Пламя памяти остаётся тёплым. Сессия завершена.\n"
-                f"Хочешь дальше — оплати новый заход.",
+                finish_text,
                 reply_markup=await main_menu_kb(cb.from_user.id),
                 parse_mode="HTML")
         except Exception:
             await cb.message.answer(
-                f"🏁 <b>Ты прошёл все {rooms_limit} комнат Огненного Лабиринта!</b>\n"
-                f"Пламя памяти остаётся тёплым. Сессия завершена.\n"
-                f"Хочешь дальше — оплати новый заход.",
+                finish_text,
                 reply_markup=await main_menu_kb(cb.from_user.id),
                 parse_mode="HTML")
         return
     await cb.answer(f"🔀 {PATH_LABELS[path]}. Двигаемся дальше…")
     room = await _roll_room(cb.from_user.id, updated, path, history)
-    # счётчики посещенийς особых комнат проводятся при их отрисовке (Ф3).
     if room == "empty":
         await cb.message.answer(_fork_text(updated),
                                 reply_markup=_fork_kb(session_id),
                                 parse_mode="HTML")
         return
     if room in ("enemy", "boss"):
-        await _start_battle(cb, updated, session_id, room, tier=await db.get_fire_lab_tier(cb.from_user.id))
+        await _start_battle(cb, updated, session_id, room,
+                            tier=await db.get_fire_lab_tier(cb.from_user.id))
         return
-    # особые комнаты: Фаза 3 (Колодец/Древо/Сундук) — сейчас заглушка
-    await cb.message.answer(
-        f"✨ Здесь откроется особая комната (Фаза 3): {room}.\n"
-        f"Комнаты Колодца, Древа Огня и Сундука откроются на следующей фазе — "
-        f"пока возвращаемся на развилку.",
-        reply_markup=_fork_kb(session_id),
-        parse_mode="HTML")
+    if room == "well":
+        await _enter_well(cb, updated, session_id)
+        return
+    if room == "tree":
+        await _enter_tree(cb, updated, session_id)
+        return
+    await _enter_chest(cb, updated, session_id)
+
+
+def _room_chrome(title: str, body: str, extra_row=None,
+                 hint: str = "") -> str:
+    """Каркасс текста особой комнаты: заголовок, тело, хвост с подсказкой."""
+    return (f"{title}\n\n{body}\n{hint}".rstrip() + "\n")
+
+
+def _cont_kb(session_id: int, back: str = None) -> InlineKeyboardMarkup:
+    """Единая кнопка «идти дальше» для особых комнат."""
+    rows = []
+    if back:
+        rows.append(back)
+    rows.append([InlineKeyboardButton(
+        text="🚶 Идти дальше", callback_data=f"fireevent:cont:{session_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("fireevent:cont:"))
+async def fire_event_cont_cb(cb: CallbackQuery):
+    """Уйти из особой комнаты обратно на развилку."""
+    session_id = int(cb.data.split(":")[2])
+    session = await _session_of(cb.from_user.id, session_id)
+    if not session:
+        return
+    await cb.answer()
+    try:
+        await cb.message.edit_text(_fork_text(session),
+                                   reply_markup=_fork_kb(session_id),
+                                   parse_mode="HTML")
+    except Exception:
+        await cb.message.answer(_fork_text(session),
+                                reply_markup=_fork_kb(session_id),
+                                parse_mode="HTML")
+
+
+# ------------------------------ КОЛОДЕЦ ------------------------------
+
+async def _enter_well(cb, session, session_id: int):
+    """Колодец: полное восстановление HP + праздничная рыбалка (до 6 попыток)."""
+    conn = await db.get_db()
+    await conn.execute("UPDATE fire_lab_sessions SET hp = hp_max WHERE id = ?",
+                       (session_id,))
+    await conn.commit()
+    visits = await db.bump_fire_lab_room_visit(session_id, "well")
+    session = await db.get_active_fire_lab_session(cb.from_user.id)
+    tries_left = int(getattr(config, "FIRE_LAB_WELL_FISH_TRIES", 6) or 6)
+    body = (
+        "Звонкий всплеск из глубины: колодец Огненного Круговорота дышит "
+        "паром, вода тёплая, как из ключа. Ты моешь руки, пьёшь — и силы "
+        "возвращаются целиком.\n\n"
+        f"💙 Полное восстановление: {int(session['hp'])}/{int(session['hp_max'])} HP.\n"
+        f"🎣 В тёмной воде ходят праздничные рыбы — можно закинуть удочку "
+        f"({tries_left} попыток)."
+    )
+    text = _room_chrome("🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА" +
+                        (f" (визит {visits}/"
+                         f"{int(getattr(config, 'FIRE_LAB_WELL_MAX', 3) or 3)})"
+                         if visits else ""), body)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text=f"🎣 Ловить ({tries_left})",
+            callback_data=f"fireevent:fishing:{session_id}")],
+        [InlineKeyboardButton(text="🚶 Идти дальше",
+                              callback_data=f"fireevent:cont:{session_id}")],
+    ])
+    try:
+        await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await cb.message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("fireevent:fishing:"))
+async def fire_event_fishing_cb(cb: CallbackQuery):
+    """Праздничная рыбалка в Колодце (1 попытка = 1 нажатие)."""
+    session_id = int(cb.data.split(":")[2])
+    session = await _session_of(cb.from_user.id, session_id)
+    if not session:
+        return
+    cap = int(getattr(config, "FIRE_LAB_WELL_FISH_TRIES", 6) or 6)
+    left_before = cap - int(session['fish_used'] or 0)
+    if left_before <= 0:
+        await cb.answer("🎣 Попытки этого визита исчерпаны — иди дальше.",
+                        show_alert=True)
+        return
+    used = await db.inc_fire_lab_fish_used(session_id)
+    if used == 0:          # гонка/выработка квоты между проверкой и записью
+        await cb.answer("🎣 Попытки уже исчерпаны.", show_alert=True)
+        return
+    session = await db.get_active_fire_lab_session(cb.from_user.id)
+    left_now = cap - int(used)
+
+    bite_p = float(getattr(config, "FIRE_LAB_FISH_BITE_P", 0.75) or 0.75)
+    if random.random() >= bite_p:
+        text = _room_chrome(
+            "🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА",
+            "🎣 Заброс… поплавок мелко дрожит и уходит пустым. Не клюнуло.\n"
+            f"Осталось попыток: {left_now}.")
+        await cb.answer("🎣 Пусто…")
+    else:
+        table = ((getattr(config, "FIRE_LAB_FISH_OSETR_NAME", "Призрачный Осетр"), 60),
+                 (getattr(config, "FIRE_LAB_FISH_SOUL_NAME", "Костяная Душа"), 25),
+                 (getattr(config, "FIRE_LAB_FISH_CARP_NAME", "Пламенный Карп"), 15))
+        weights = [w for _, w in table]
+        fish_name = random.choices([n for n, _ in table], weights=weights, k=1)[0]
+        conn = await db.get_db()
+        cur = await conn.execute("SELECT id FROM items WHERE name = ?", (fish_name,))
+        row = await cur.fetchone()
+        if not row:
+            await cb.answer("⚠️ Предмет рыбы не заведён.", show_alert=True)
+            return
+        item_id = int(row['id'])
+        await db.add_inventory_item(cb.from_user.id, item_id, 1)
+        fresh = await db.mark_fire_fish_caught(cb.from_user.id, item_id)
+        kinds = await db.count_fire_fish_kinds(cb.from_user.id)
+        await db.log_activity(cb.from_user.id, "firelab",
+                              f"Праздничная рыбалка: поймал «{fish_name}»")
+        line = f"🎣 Заброс… поплавок подпрыгивает — <b>{_esc(fish_name)}</b>!"
+        if fresh:
+            line += " (новый вид!)"
+        line += f"\nОсталось попыток: {left_now}."
+        ach_note = ""
+        if kinds >= int(getattr(config, "FIRE_FISHER_THRESHOLD", 3) or 3):
+            lvl, name_, _ = await db.set_achievement_progress(
+                cb.from_user.id, getattr(config, "FIRE_FISHER_ACH_KEY", "fire_fisher"),
+                kinds)
+            if lvl:
+                ach_note = ("\n\n🪣 <b>Мини-ачивка: «Рыбак древних»!</b> "
+                            "Все три праздничные рыбы — твои. Премия — доступна у наград.")
+        text = _room_chrome("🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА",
+                            line + ach_note)
+        await cb.answer("🐟 Улов!")
+    try:
+        await cb.message.edit_text(text, reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(
+                    text=f"🎣 Ловить ({left_now})",
+                    callback_data=f"fireevent:fishing:{session_id}")],
+                [InlineKeyboardButton(text="🚶 Идти дальше",
+                                      callback_data=f"fireevent:cont:{session_id}")],
+            ]), parse_mode="HTML")
+    except Exception:
+        await cb.message.answer(text, reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(
+                    text=f"🎣 Ловить ({left_now})",
+                    callback_data=f"fireevent:fishing:{session_id}")],
+                [InlineKeyboardButton(text="🚶 Идти дальше",
+                                      callback_data=f"fireevent:cont:{session_id}")],
+            ]), parse_mode="HTML")
+
+
+# ------------------------------ ДРЕВО ОГНЯ ------------------------------
+
+async def _enter_tree(cb, session, session_id: int):
+    """Древо Огня: благословение (+15% урона, +1 HP после удара) до конца сессии."""
+    visits = await db.bump_fire_lab_room_visit(session_id, "tree")
+    if not int(session['blessing'] or 0):
+        await db.set_fire_lab_blessing(session_id)
+        session = await db.get_active_fire_lab_session(cb.from_user.id)
+    pct = int(getattr(config, "FIRE_TREE_DMG_BONUS_PCT", 15) or 15)
+    regen = int(getattr(config, "FIRE_TREE_REGEN_HP", 1) or 1)
+    body = (
+        "Тёплый свет сквозь листву: Древо Огня вспыхивает янтарными жилами и "
+        "кланяется тебе кроной. Долгое пламя из его коры встаёт тебе в плечи.\n\n"
+        f"🔥 Благословение Круговорота (до конца сессии):\n"
+        f"   • урон +{pct}%\n"
+        f"   • +{regen} HP после каждого твоего удара\n"
+        f"💙 Сейчас: {int(session['hp'])}/{int(session['hp_max'])} HP."
+    )
+    text = _room_chrome("🌳 ДРЕВО ОГНЯ", body)
+    try:
+        await cb.message.edit_text(text, reply_markup=_cont_kb(session_id),
+                                   parse_mode="HTML")
+    except Exception:
+        await cb.message.answer(text, reply_markup=_cont_kb(session_id),
+                                parse_mode="HTML")
+
+
+# ------------------------------ СУНДУК ------------------------------
+
+def _roll_chest_loot() -> str:
+    """Ключ лута сундука ('nm' или имя предмета) по взвешенной таблице."""
+    table = [(k, w) for k, w in getattr(config, "FIRE_LAB_CHEST_LOOT", ()) or ()]
+    weights = [max(0, int(w)) for _, w in table]
+    return random.choices([k for k, _ in table], weights=weights, k=1)[0]
+
+
+async def _enter_chest(cb, session, session_id: int):
+    """Сундук сокровищ: случайный дроп из взвешенной таблицы."""
+    await db.bump_fire_lab_room_visit(session_id, "chest")
+    from database.db import add_nordmarks, add_inventory_item, get_item_by_name
+    loot_key = _roll_chest_loot()
+    chest_note = ""
+    if loot_key == "nm":
+        lo = int(getattr(config, "FIRE_LAB_CHEST_NM_MIN", 30) or 30)
+        hi = int(getattr(config, "FIRE_LAB_CHEST_NM_MAX", 60) or 60)
+        amount = random.randint(lo, hi)
+        await add_nordmarks(cb.from_user.id, amount, "firelab_chest",
+                            "Сундук Огненного Лабиринта")
+        body = f"🎉 Ты выгреб из сундука {amount} {plural_nordmark(amount)}!"
+        chest_note = f"\n💰 Получено: +{amount} НМ."
+    else:
+        item = await get_item_by_name(loot_key)
+        if not item:
+            body = "🎆 В сундуке — забытое пыльное золото… (предмет не заведён)"
+        else:
+            await add_inventory_item(cb.from_user.id, int(item['id']), 1)
+            await db.log_activity(cb.from_user.id, "firelab",
+                                  f"Сундук Огненного Лабиринта: «{loot_key}»")
+            body = (f"🎉 В сундуке прячется <b>{_esc(item['name'])}</b> — "
+                    "забирай в инвентарь!")
+            chest_note = f"\n🎒 Получено: «{item['name']}»."
+    text = _room_chrome("🎁 СУНДУК СОКРОВИЩ", body,
+                        hint=chest_note)
+    try:
+        await cb.message.edit_text(text, reply_markup=_cont_kb(session_id),
+                                   parse_mode="HTML")
+    except Exception:
+        await cb.message.answer(text, reply_markup=_cont_kb(session_id),
+                                parse_mode="HTML")
 
 
 @router.callback_query(F.data.startswith("fireevent:leave:"))

@@ -13,11 +13,11 @@ load_dotenv()
 # При бампе: пишем в VERSION_NOTES только то, что изменилось в этом деплое, а
 # прошлые сдвигаем в PREV_VERSION / PREV_VERSION_NOTES. Больше двух записей не
 # держим — иначе приветствие превращается в простыню из трёх-четырёх деплоев.
-VERSION = "0.41.0"
-VERSION_NOTES = ("Бюрократия Нордхайма обновилась: учёт и сроки стали строже.")
+VERSION = "0.41.1"
+VERSION_NOTES = ("В городе готовят праздничный стол: загадочно пахнет тыквой.")
 
-PREV_VERSION = "0.40.0"
-PREV_VERSION_NOTES = ("Коридоры упырей потемнели: в лабиринте объявились стражи.")
+PREV_VERSION = "0.41.0"
+PREV_VERSION_NOTES = ("Бюрократия Нордхайма обновилась: учёт и сроки стали строже.")
 
 # ── Буклет туриста ─────────────────────────────────────────────────────────────
 TOURIST_BOOKLET_NAME = "Буклет туриста"
@@ -224,6 +224,39 @@ FIRE_TREE_REGEN_HP = 1                    # +1 HP после каждого уд
 # 'L' налево, 'S' прямо, 'R' направо; срабатывание — окно последних шагов.
 FIRE_LAB_PATTERN_WELL = ("L", "L", "S", "S")              # ЛЛПП → Колодец (до 3)
 FIRE_LAB_PATTERN_TREE = ("L", "L", "S", "S", "R", "R")     # ЛЛППНН → Древо Огня (1)
+
+# --- Огненный Лабиринт: особые комнаты (Фаза 3) ---
+FIRE_LAB_WELL_FISH_TRIES = 6              # попыток рыбалки за один визит в Колодец
+FIRE_LAB_FISH_BITE_P = 0.75               # шанс поклёвки за попытку
+FIRE_LAB_FISH_OSETR_NAME = "Призрачный Осетр"     # рыба 1 (rarity 2)
+FIRE_LAB_FISH_SOUL_NAME = "Костяная Душа"         # рыба 2 (rarity 3)
+FIRE_LAB_FISH_CARP_NAME = "Пламенный Карп"        # рыба 3 (rarity 4, редкая)
+FIRE_LAB_FISH_TABLE = (                   # взвешенный выбор улова
+    (FIRE_LAB_FISH_OSETR_NAME, 60),
+    (FIRE_LAB_FISH_SOUL_NAME, 25),
+    (FIRE_LAB_FISH_CARP_NAME, 15),
+)
+# Ачивка «Рыбак древних» (все 3 рыбы): порог и разовая премия
+FIRE_FISHER_ACH_KEY = "fire_fisher"
+FIRE_FISHER_THRESHOLD = 3
+FIRE_FISHER_REWARD_NM = 150
+
+FIRE_LAB_PIE_NAME = "Кусочек тыквенного пирога"
+FIRE_LAB_PIE_HEAL = 15
+FIRE_LAB_RECIPE_NAME = "Рецепт: Тыквенный пирог"
+FIRE_LAB_CANDY_NAME = "Леденец языков пламени"
+FIRE_LAB_CANDY_HEAL = 12
+FIRE_LAB_HAY_NAME = "Пучок сена"
+FIRE_LAB_BRANCH_NAME = "Ветка дерева"
+FIRE_LAB_CHEST_NM_MIN = 30                # «немного НМ» из сундука
+FIRE_LAB_CHEST_NM_MAX = 60
+FIRE_LAB_CHEST_LOOT = (                   # взвешенная таблица сундука
+    ("nm", 30),      # немного НМ (FIRE_LAB_CHEST_NM_MIN..MAX)
+    (FIRE_LAB_HAY_NAME, 25),
+    (FIRE_LAB_BRANCH_NAME, 20),
+    (FIRE_LAB_CANDY_NAME, 15),
+    (FIRE_LAB_RECIPE_NAME, 10),    # рецепт (редкий)
+)
 
 CLAN_BUILDING_TYPES = {
     "house":  {"name": "Дом Клана",         "slots": 2, "max_level": 2, "days": 2,

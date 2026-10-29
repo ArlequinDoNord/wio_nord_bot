@@ -650,7 +650,7 @@
 - `field:weapon_effect`: `bot/handlers/admin.py:1903`
 - `fin:manual`: `bot/handlers/admin.py:2533`
 - `finh:open`: `bot/handlers/admin.py:2718`
-- `fireevent:enter`: `bot/handlers/fire_event.py:278`
+- `fireevent:enter`: `bot/handlers/fire_event.py:509`
 - `fish:recover`: `bot/handlers/fishing.py:500`
 - `forest:addlist`: `bot/handlers/admin.py:7798`
 - `forest:new`: `bot/handlers/admin.py:7951`
@@ -951,9 +951,11 @@
 - `finh:list:`: `bot/handlers/admin.py:2729`
 - `finh:u:`: `bot/handlers/admin.py:2741`
 - `finuser:`: `bot/handlers/admin.py:2614`
-- `fireevent:attack:`: `bot/handlers/fire_event.py:438`
-- `fireevent:leave:`: `bot/handlers/fire_event.py:249`
-- `fireevent:step:`: `bot/handlers/fire_event.py:187`
+- `fireevent:attack:`: `bot/handlers/fire_event.py:669`
+- `fireevent:cont:`: `bot/handlers/fire_event.py:275`
+- `fireevent:fishing:`: `bot/handlers/fire_event.py:329`
+- `fireevent:leave:`: `bot/handlers/fire_event.py:480`
+- `fireevent:step:`: `bot/handlers/fire_event.py:188`
 - `fish:bait:\d+$`: `bot/handlers/fishing.py:514`
 - `fish:bait:set:\d+:[a-z]+$`: `bot/handlers/fishing.py:556`
 - `fish:cast:\d+$`: `bot/handlers/fishing.py:566`
