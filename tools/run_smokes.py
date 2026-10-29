@@ -55,6 +55,117 @@ def parse_targets(specs: list[str]) -> set[int]:
     return wanted
 
 
+def collect_changed_files(base: str) -> set[str] | None:
+    """Изменённые файлы (относительные пути с '/' из корня репо) или None при сбое.
+
+    base == WORKING → незакоммиченное: diff HEAD (включая staged) + untracked.
+    Иначе → diff от git-базы (commit/branch/тег): 'origin/main', 'HEAD~1', тег.
+    Работает только внутри git-репозитория.
+    """
+    def run_git(*cmd: str) -> str | None:
+        try:
+            proc = subprocess.run(["git", *cmd], cwd=ROOT, capture_output=True,
+                                  text=True, encoding="utf-8", errors="replace",
+                                  timeout=30)
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        return proc.stdout if proc.returncode == 0 else None
+
+    files: set[str] = set()
+    if base == "WORKING":
+        out = run_git("diff", "--name-only", "HEAD")
+        if out is None:
+            return None
+        files |= {line.strip().replace("\\", "/") for line in out.splitlines()
+                  if line.strip()}
+        out = run_git("ls-files", "--others", "--exclude-standard")
+        if out is None:
+            return None
+        files |= {line.strip().replace("\\", "/") for line in out.splitlines()
+                  if line.strip()}
+    else:
+        out = run_git("diff", "--name-only", f"{base}...HEAD")
+        if out is None:
+            out = run_git("diff", "--name-only", base)
+            if out is None:
+                return None
+        files |= {line.strip().replace("\\", "/") for line in out.splitlines()
+                  if line.strip()}
+    return files
+
+
+def _smoke_import_paths(path: str) -> set[str]:
+    """Проектные пути, которые смоук тянет своими импортами (ast, в т.ч. внутри функций).
+
+    Возвращает относительные пути-кандидаты с '/': точные файлы модулей и их
+    pkg-префиксы (bot/handlers/fire_event.py, utils/helpers.py, database/db.py…).
+    'from pkg import name' добавляет и кандидата pkg/name (модуль), и самого pkg.
+    """
+    import ast
+
+    def norm(mod: str) -> str:
+        return mod.replace(".", "/")
+
+    cands: set[str] = set()
+    try:
+        tree = ast.parse(open(path, encoding="utf-8", errors="replace").read())
+    except SyntaxError:
+        return cands
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                cands.add(norm(alias.name))
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            base = norm(node.module)
+            cands.add(base)
+            for alias in node.names:
+                if alias.name != "*":
+                    cands.add(f"{base}/{alias.name}")
+    # Оставляем только то, что реально существует в ROOT (файл или каталог).
+    out: set[str] = set()
+    for c in cands:
+        if os.path.isfile(os.path.join(ROOT, c + ".py")):
+            out.add(c + ".py")
+        elif os.path.isfile(os.path.join(ROOT, c)):
+            out.add(c)
+        elif os.path.isdir(os.path.join(ROOT, c)):
+            out.add(c + "/__init__.py")
+    return out
+
+
+def _walk_files_importing(fpath: str) -> set[str]:
+    """Файлы пакета (__init__.py) держат wildcard-импорты; берём также вложенные модули."""
+    deps: set[str] = set()
+    aux = fpath
+    while "/" in aux:
+        aux = aux.rsplit("/", 1)[0]
+        init = aux + "/__init__.py"
+        if os.path.isfile(os.path.join(ROOT, init)):
+            deps |= _smoke_import_paths(os.path.join(ROOT, init))
+    return deps
+
+
+def related_to_changes(smoke_path: str, changed: set[str]) -> bool:
+    """Импортирует ли смоук хоть один изменённый файл (или сам изменён)."""
+    smoke_rel = os.path.relpath(smoke_path, ROOT).replace("\\", "/")
+    if smoke_rel in changed:
+        return True
+    touched = _smoke_import_paths(smoke_path)
+    for p in list(touched):
+        touched |= _walk_files_importing(p)
+    if not touched:
+        return False
+    # Совпадение точное ИЛИ смоук импортирует пакет, а изменён его файл.
+    for t in touched:
+        t_norm = t
+        if t_norm.endswith("/__init__.py"):
+            t_norm = t_norm[:-len("/__init__.py")]
+        for c in changed:
+            if c == t_norm or c.startswith(t_norm + "/"):
+                return True
+    return False
+
+
 def cleanup_smoke_db(num: int) -> None:
     for prefix in (f"_test_smoke{num:03d}.db", f"_test_smoke{num}.db"):
         base = os.path.join(ROOT, prefix)
@@ -119,6 +230,18 @@ def main() -> int:
         default=180,
         help="Таймаут на один смоук в секундах (по умолчанию 180).",
     )
+    parser.add_argument(
+        "--related",
+        nargs="?",
+        const="WORKING",
+        default=None,
+        help=("Запустить только смоуки, чьи импорты пересекаются с изменёнными "
+              "файлами. Без значения — незакоммиченные изменения (git diff "
+              "HEAD + untracked); со значением — изменения относительно git-базы "
+              "(коммит/ветка/тег, напр. 'origin/main'). Изменения config.py или "
+              "database/db.py тянут ВСЕТ смоуки. Каркас для быстрой проверки — "
+              "перед деплоем всё равно гонять полный прогон."),
+    )
     args = parser.parse_args()
 
     smokes = find_smokes()
@@ -131,6 +254,22 @@ def main() -> int:
         smokes = [(n, p) for n, p in smokes if n in wanted]
     if args.last and args.last > 0:
         smokes = smokes[-args.last :]
+    if args.related:
+        changed = collect_changed_files(args.related)
+        if changed is None:
+            print("Не удалось получить изменённые файлы через git.")
+            return 1
+        if not changed:
+            print("Изменённых файлов нет — нечего прогонять по --related.")
+            return 0
+        if {"config.py", "database/db.py"} & changed:
+            print("Изменены config.py или database/db.py — затронуты ВСЕ смоуки, "
+                  "фильтр не используется.")
+        else:
+            smokes = [(n, p) for n, p in smokes
+                      if related_to_changes(p, changed)]
+        names = ", ".join(f"smoke_{n:03d}" for n, _ in smokes) or "—"
+        print(f"После фильтра --related: {len(smokes)} шт. ({names})\n")
 
     if not smokes:
         print("Не найдено смоуков по заданному фильтру.")
