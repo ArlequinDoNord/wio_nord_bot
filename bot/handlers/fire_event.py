@@ -116,16 +116,14 @@ FX_BURN = "burn"          # поджиг: −N HP/ход
 
 async def _roll_room(user_id: int, session, path: str, history: list) -> str:
     """Бросок комнаты после выбора пути. Возвращает название комнаты:
-    'tree'/'well'/'chest'/'boss'/'enemy'/'empty'."""
+    'tree'/'well'/'boss'/'enemy'/'empty' (Сундук убран из праздника)."""
     tree_visits = int(session['tree_visits'] or 0)
     well_visits = int(session['well_visits'] or 0)
-    chest_visits = int(session['chest_visits'] or 0)
     boss_encounters = int(session['boss_encounters'] or 0)
     steps = int(session['steps'] or 0)
 
     tree_max = int(getattr(config, "FIRE_LAB_TREE_MAX", 1) or 1)
     well_max = int(getattr(config, "FIRE_LAB_WELL_MAX", 3) or 3)
-    chest_max = int(getattr(config, "FIRE_LAB_CHEST_MAX", 2) or 2)
     boss_max = int(getattr(config, "FIRE_LAB_BOSS_MAX", 2) or 2)
 
     tree_pattern = tuple(getattr(config, "FIRE_LAB_PATTERN_TREE", ("L", "L", "S", "S", "R", "R")))
@@ -148,8 +146,6 @@ async def _roll_room(user_id: int, session, path: str, history: list) -> str:
         return "tree"
     if well_visits < well_max and random.random() < float(getattr(config, "FIRE_LAB_P_WELL", 0.07)):
         return "well"
-    if chest_visits < chest_max and random.random() < float(getattr(config, "FIRE_LAB_P_CHEST", 0.10)):
-        return "chest"
 
     # 2) босс: после 13 комнат, шанс 50%, максимум встреч
     boss_after = int(getattr(config, "FIRE_LAB_BOSS_AFTER_ROOMS", 13) or 13)
@@ -348,7 +344,6 @@ async def fire_event_step_cb(cb: CallbackQuery):
     if room == "tree":
         await _enter_tree(cb, updated, session_id)
         return
-    await _enter_chest(cb, updated, session_id)
 
 
 def _room_chrome(title: str, body: str, extra_row=None,
@@ -423,7 +418,6 @@ async def _room_media(room_key: str) -> str | None:
         "entry": getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze"),
         "well": getattr(config, "FIRE_LAB_WELL_KEY", "city/fire_well"),
         "tree": getattr(config, "FIRE_LAB_TREE_KEY", "city/fire_tree"),
-        "chest": getattr(config, "FIRE_LAB_CHEST_KEY", "city/fire_chest"),
     }.get(room_key)
     return resolve_image(base) if base else None
 
@@ -524,45 +518,7 @@ async def _enter_tree(cb, session, session_id: int):
                       media_path=await _room_media('tree'))
 
 
-# ------------------------------ СУНДУК ------------------------------
-
-def _roll_chest_loot() -> str:
-    """Ключ лута сундука ('nm' или имя предмета) по взвешенной таблице."""
-    table = [(k, w) for k, w in getattr(config, "FIRE_LAB_CHEST_LOOT", ()) or ()]
-    weights = [max(0, int(w)) for _, w in table]
-    return random.choices([k for k, _ in table], weights=weights, k=1)[0]
-
-
-async def _enter_chest(cb, session, session_id: int):
-    """Сундук сокровищ: случайный дроп из взвешенной таблицы."""
-    await db.bump_fire_lab_room_visit(session_id, "chest")
-    from database.db import add_nordmarks, add_inventory_item, get_item_by_name
-    loot_key = _roll_chest_loot()
-    chest_note = ""
-    if loot_key == "nm":
-        lo = int(getattr(config, "FIRE_LAB_CHEST_NM_MIN", 30) or 30)
-        hi = int(getattr(config, "FIRE_LAB_CHEST_NM_MAX", 60) or 60)
-        amount = random.randint(lo, hi)
-        await add_nordmarks(cb.from_user.id, amount, "firelab_chest",
-                            "Сундук Огненного Лабиринта")
-        body = f"🎉 Ты выгреб из сундука {amount} {plural_nordmark(amount)}!"
-        chest_note = f"\n💰 Получено: +{amount} НМ."
-    else:
-        item = await get_item_by_name(loot_key)
-        if not item:
-            body = "🎆 В сундуке — забытое пыльное золото… (предмет не заведён)"
-        else:
-            await add_inventory_item(cb.from_user.id, int(item['id']), 1)
-            await db.log_activity(cb.from_user.id, "firelab",
-                                  f"Сундук Огненного Лабиринта: «{loot_key}»")
-            body = (f"🎉 В сундуке прячется <b>{_esc(item['name'])}</b> — "
-                    "забирай в инвентарь!")
-            chest_note = f"\n🎒 Получено: «{item['name']}»."
-    text = _room_chrome("🎁 СУНДУК СОКРОВИЩ", body,
-                        hint=chest_note)
-    await _fire_paint(cb, text=text, kb=_cont_kb(session_id),
-                      photo_id=await get_fire_photo('chest'),
-                      media_path=await _room_media('chest'))
+# ------------------------------ СУНДУК (убран из праздника) ------------------------------
 
 
 @router.callback_query(F.data.startswith("fireevent:leave:"))

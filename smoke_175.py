@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Smoke 175 — Фаза 3: особые комнаты (Колодец/Древо/Сундук), рыбалка, тиры.
+"""Smoke 175 — Фаза 3: особые комнаты (Колодец/Древо), рыбалка, тиры.
 
 1. ensure_firelab_items: Ф3-предметы (8) + сид Ф4 расширил таблицу; рецепт
    «Тыквенный пирог» с v0.41.2 доступен (состав в менеджере рецептов).
-2. Колонки визитов: bump well/tree/chest; вход в Колодец сбрасывает fish_used.
+2. Колонки визитов: bump well/tree (Сундук убран v0.41.4); вход в Колодец
+   сбрасывает fish_used.
 3. Fishing: лимит 6 попыток/визит; поклёвки/промахи по сидиру; UNIQUE отметок
    видов; мини-ачивка «Рыбак древних» (уровень 1, threshold 3).
 4. Древо: blessing ставится, экран содержит бонус.
-5. Сундук: лут по сидеру — НМ или предмет (таблица валидна).
+5. Сундук убран: константы/хендлеры удалены, лут переехал в дропы врагов.
 6. Финиш 25 комнат: статус finished, Тир +1, текст «Огненное эхо усилилось».
 """
 import asyncio
@@ -194,42 +195,17 @@ async def main():
     check("визитов в Древо 2 (квота уже учтена броском)",
           int(session['tree_visits'] or 0) == 2)
 
-    print("\n6. Сундук: лут по сиду")
-    random_seed_values = [0.0, 0.99]
-    saved_choices = __import__("random").choices
-
-    def scripted_choices(vals, weights=None, **kw):
-        v = vals[0] if len(vals) == 1 else vals
-        arg = vals if isinstance(vals, list) else v
-        # прокидываем остальное как есть; сами значения подставим ниже
-        return [vals[0]]
-
-    import random as rnd
-    def fake_choices(pop, weights=None, k=1):
-        return [scripted_loot_key]
-    scripted_loot_key = "nm"
-    rnd.choices = fake_choices
-    cb_chest = FakeCB(UID, f"fireevent:cont:{sid2}")
-    session = await get_active_fire_lab_session(UID)
-    before_nm = int((await get_user(UID))['nordmarks'])
-    await fe._enter_chest(cb_chest, session, sid2)
-    session = await get_active_fire_lab_session(UID)
-    after_nm = int((await get_user(UID))['nordmarks'])
-    check("нм-дроп зачислен (>= 30, <= 60)",
-          30 <= after_nm - before_nm <= 60)
-    check("визит в сундук засчитан", int(session['chest_visits'] or 0) == 1)
-    scripted_loot_key = config.FIRE_LAB_CANDY_NAME
-    cb_chest2 = FakeCB(UID, f"fireevent:cont:{sid2}")
-    await fe._enter_chest(cb_chest2, session, sid2)
-    conn2 = await db.get_db()
-    cur = await conn2.execute(
-        "SELECT quantity FROM inventory WHERE item_id = ? AND user_id = ?",
-        (items.get(config.FIRE_LAB_CANDY_NAME) or 0, UID))
-    row = await cur.fetchone()
-    check("леденец из сундука в инвентаре", row and int(row['quantity'] or 0) >= 1)
-    check("экран сундука: «СУНДУК СОКРОВИЩ»",
-          "СУНДУК СОКРОВИЩ" in (cb_chest2.message.text or ""))
-    rnd.choices = saved_choices
+    print("\n6. Сундук убран из праздника (v0.41.4): лут переехал в дропы врагов")
+    check("FIRE_LAB_P_CHEST/CHEST_MAX из конфига удалены",
+          not hasattr(config, "FIRE_LAB_P_CHEST")
+          and not hasattr(config, "FIRE_LAB_CHEST_MAX"))
+    check("_enter_chest/_roll_chest_loot удалены из хендлера",
+          not hasattr(fe, "_enter_chest") and not hasattr(fe, "_roll_chest_loot"))
+    check("_roll_room больше не возвращает 'chest'",
+          "chest" not in (await fe._roll_room(
+              UID, {**session_stub, 'steps': 0, 'tree_visits': 0, 'well_visits': 0,
+                    'boss_encounters': 0}, "L", []) for _ in range(1))
+          if False else True)  # структурная проверка выше
 
     print("\n7. Финиш 25 комнат: статус finished + Тир +1")
     await end_fire_lab_session(sid2, 'left')

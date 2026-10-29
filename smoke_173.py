@@ -125,7 +125,8 @@ async def main():
         incoming.add(res)
         if len(history) >= 100:
             history[:] = history[-10:]
-    check("только допустимые типа", incoming <= {"tree", "well", "chest", "boss", "enemy", "empty"})
+    check("только допустимые типа",
+          incoming <= {"tree", "well", "boss", "enemy", "empty"})
 
     print("\n5. Боевой сценарий: победа над врагом (FakeCallback)")
     # вручную создаём сессию и стартуем бой

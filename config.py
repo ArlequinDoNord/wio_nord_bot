@@ -239,7 +239,6 @@ FIRE_LAB_SESSION_TTL_SEC = 3600           # неактивность: сесси
 FIRE_LAB_FORK_KEY = "city/fire_maze"      # развилка (вход/смерть/уход/финиш)
 FIRE_LAB_WELL_KEY = "city/fire_well"      # Колодец
 FIRE_LAB_TREE_KEY = "city/fire_tree"      # Древо Огня
-FIRE_LAB_CHEST_KEY = "city/fire_chest"    # Сундук
 
 # --- Огненный Лабиринт: боевые статы (Фаза 2) ---
 # Обычные враги: source 'firelab'; характеристики хранятся в карточках врагов,
@@ -269,8 +268,7 @@ FIRE_LAB_P_WELL = 0.07                    # Колодец (перебивает
 FIRE_LAB_WELL_MAX = 3                     # максимум посещений за заход
 FIRE_LAB_P_TREE = 0.09                    # Древо Огня (перебивается ЛЛППНН)
 FIRE_LAB_TREE_MAX = 1                     # раз за заход
-FIRE_LAB_P_CHEST = 0.10                   # Сундук сокровищ
-FIRE_LAB_CHEST_MAX = 2                    # максимум за заход
+# Сундук убран из праздника (v0.41.4) — лут переехал в дропы врагов
 
 # Благословение Древа Огня (на остаток сессии):
 FIRE_TREE_DMG_BONUS_PCT = 15              # +15% урона
@@ -305,15 +303,7 @@ FIRE_LAB_CANDY_NAME = "Леденец языков пламени"
 FIRE_LAB_CANDY_HEAL = 12
 FIRE_LAB_HAY_NAME = "Пучок сена"
 FIRE_LAB_BRANCH_NAME = "Ветка дерева"
-FIRE_LAB_CHEST_NM_MIN = 30                # «немного НМ» из сундука
-FIRE_LAB_CHEST_NM_MAX = 60
-FIRE_LAB_CHEST_LOOT = (                   # взвешенная таблица сундука
-    ("nm", 30),      # немного НМ (FIRE_LAB_CHEST_NM_MIN..MAX)
-    (FIRE_LAB_HAY_NAME, 25),
-    (FIRE_LAB_BRANCH_NAME, 20),
-    (FIRE_LAB_CANDY_NAME, 15),
-    (FIRE_LAB_RECIPE_NAME, 10),    # рецепт (редкий)
-)
+# Сундук сокровищ убран из праздника (v0.41.4) — его лут ушёл в дропы врагов
 
 # --- Огненный Лабиринт: экипировка/рецепты/достижение (Фаза 4) ---
 FIRE_PUMPKIN_SEED_NAME = "Семечко тыквы"      # посадка в кадку / клан. сад
