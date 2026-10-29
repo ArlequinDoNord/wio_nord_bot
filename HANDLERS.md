@@ -74,7 +74,7 @@
 | `mine.py` | Железная копи: ресурсная локация (v0.31.0). | `router` | 0 | 6 | `mine:` | — |
 | `logging_site.py` | Лесозаготовка: ресурсная локация в лесу (v0.37.0). | `router` | 0 | 9 | `logsite:` | — |
 | `storage.py` | Городские склады: накопление выкупленных казной ресурсов. | `router` | 0 | 1 | `storage:` | — |
-| `housing.py` | Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение. | `router` | 1 | 18 | `housing:` | — |
+| `housing.py` | Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение. | `router` | 1 | 19 | `housing:` | — |
 | `news.py` | Новости ГосСМИ: лента, публикация, управление выпусками, архив. | `router` | 6 | 9 | `news:` | `NewsWrite`, `NewsEdit` |
 | `kvp.py` | Курс Выживания для Пилотов (К.В.П.) — тренировочный данж. | `router` | 0 | 6 | `kvp:` | `KvpFSM` |
 | `wall.py` | Стена изречений — доска объявлений города. | `router` | 2 | 7 | `wall:` | `WallWrite` |
@@ -253,8 +253,8 @@
 ### `housing.py` — Жильё пилота: комнаты-расширения (кухня/верстак/кадка/душевая), крафт и растение.
 
 - Роутеры: `router`
-- Хендлеры: message=1, callback_query=18
-- `F.data.startswith`: `housing:craft:`, `housing:harvest:`, `housing:install:`, `housing:install_item:`, `housing:kitchen:`, `housing:move:`, `housing:mushproc:`, `housing:mushrooms:`, `housing:plant:`, `housing:recipe:`, `housing:room:`, `housing:shower:`, `housing:uninstall:`, `housing:uninstall_confirm:`
+- Хендлеры: message=1, callback_query=19
+- `F.data.startswith`: `housing:craft:`, `housing:harvest:`, `housing:install:`, `housing:install_item:`, `housing:kitchen:`, `housing:lantern_medit:`, `housing:move:`, `housing:mushproc:`, `housing:mushrooms:`, `housing:plant:`, `housing:recipe:`, `housing:room:`, `housing:shower:`, `housing:uninstall:`, `housing:uninstall_confirm:`
 - `F.data ==`: `housing:menu`, `housing:noop`, `housing:pay_debt`, `housing:pay_tax`
 
 ### `news.py` — Новости ГосСМИ: лента, публикация, управление выпусками, архив.

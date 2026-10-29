@@ -283,6 +283,8 @@ FIRE_CANE_BURN_DMG = 2
 FIRE_CANE_BURN_ROUNDS = 3
 FIRE_LANTERN_NAME = "Лампа Круговорота"       # награда за «Чтящего Предков» (Ф4б)
 FIRE_AMBER_NAME = "Пламя Памяти"              # янтарь из Лампы (Ф4б), продам 100 НМ
+FIRE_LANTERN_MEDIT_AP = 20                    # 🪔 медитация раз в сутки
+FIRE_LANTERN_AMBER_DAYS = 7                   # янтарь раз в N суток
 
 CLAN_BUILDING_TYPES = {
     "house":  {"name": "Дом Клана",         "slots": 2, "max_level": 2, "days": 2,

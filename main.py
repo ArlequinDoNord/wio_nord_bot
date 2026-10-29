@@ -20,7 +20,7 @@ from database.db import (
     init_db, close_db, daily_ap_recovery, seed_default_items, seed_dungeon,
     ensure_dungeon_shop_items, ensure_dungeon_enemy_drops, ensure_life_items, ensure_recipes,
     ensure_dungeon_reservoir_items, ensure_market_license_item, pay_salaries, payout_reports,
-    pay_award_monthly, pay_role_salaries,
+    pay_award_monthly, pay_role_salaries, get_lantern_owners, grant_lantern_amber_if_due,
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award, ensure_duel_items,
     cleanup_mojibake_duel_items, expire_stale_duels, repair_mojibake_entities,
     ensure_achievements,
@@ -311,6 +311,21 @@ async def scheduled_jobs(bot: Bot):
                     )
         except Exception as e:
             logger.error(f"Ошибка окладов за должности: {e}", exc_info=True)
+        try:
+            # v0.41.2 Ф4б: Лампа Круговорота — генератор Пламени Памяти
+            # (раз в 5 суток, не привязан к празднику; начисление по графику).
+            granted_count = 0
+            for lantern_uid in await get_lantern_owners():
+                try:
+                    if await grant_lantern_amber_if_due(lantern_uid):
+                        granted_count += 1
+                except Exception:
+                    logger.exception("Лампа: янтарь не выдан (uid=%s)", lantern_uid)
+            if granted_count:
+                logger.info("Лампа Круговорота: Пламя Памяти выдано %s пилотам",
+                            granted_count)
+        except Exception as e:
+            logger.error(f"Ошибка генерации Пламени Памяти: {e}", exc_info=True)
         try:
             payouts = await payout_reports()
             if payouts:

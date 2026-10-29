@@ -1442,6 +1442,9 @@ async def init_db():
     await _ensure_column(conn, "users", "fountain_used_today", "INTEGER DEFAULT 0")
     # Душевая в жилье: 1 восстановление ОД в сутки (душевая +25, ванна с душем +50)
     await _ensure_column(conn, "users", "shower_used_day", "TEXT DEFAULT NULL")
+    # v0.41.2 Ф4б: Лампа Круговорота в личном жилье (генератор, не привязан к празднику)
+    await _ensure_column(conn, "users", "lantern_medit_day", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "users", "lantern_amber_at", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "users", "shower_used_today", "INTEGER DEFAULT 0")
     # Выкуп рыбы казной: суточный лимит НМ на игрока (FISH_TREASURY_DAILY_LIMIT)
     await _ensure_column(conn, "users", "fish_sold_day", "TEXT DEFAULT NULL")
@@ -9733,6 +9736,9 @@ async def _firelab_seed_extras(name: str, item_id: int):
     c = config
     if name == c.FIRE_PUMPKIN_SEED_NAME:
         await update_item(item_id, plant_name=c.FIRE_PUMPKIN_NAME)
+    elif name == c.FIRE_LANTERN_NAME:
+        # Лампа — мебель для личного жилья (expansion 'lantern', генератор Ф4б).
+        await update_item(item_id, category="furniture")
     elif name == c.FIRE_CROWN_NAME:
         await update_item(item_id, equip_slot="head", armor=2,
                           heal_bonus_pct=int(c.FIRE_CROWN_HEAL_BONUS_PCT))
@@ -13988,6 +13994,99 @@ async def mark_shower_used(user_id: int):
     user = await get_user(user_id)
     used = ((user.get('shower_used_today') or 0) + 1) if user and user.get('shower_used_day') == today else 1
     await update_user(user_id, shower_used_day=today, shower_used_today=used)
+
+
+# ============ ЛАМПА КРУГОВОРОТА (Ф4б: генератор в личном жилье) ============
+
+async def has_lantern_installed(user_id: int) -> bool:
+    """Лампа Круговорота стоит в личном жильё (расширение 'lantern')."""
+    slots = await get_housing_slots(user_id)
+    return any((s or {}).get('expansion_type') == 'lantern' for s in slots.values())
+
+
+async def can_meditate_lantern(user_id: int) -> bool:
+    """Медитация у Лампы — раз в сутки (независимо от душа/фонтана)."""
+    user = await get_user(user_id)
+    if not user:
+        return False
+    return user.get('lantern_medit_day') != today_report_day()
+
+
+async def mark_lantern_meditated(user_id: int):
+    await update_user(user_id, lantern_medit_day=today_report_day())
+
+
+async def use_lantern_meditation(user_id: int) -> int:
+    """🪔 Медитация: +AP раз в сутки. Возвращает сколько ОД начислено (0 — уже сегодня)."""
+    if not await has_lantern_installed(user_id):
+        return 0
+    if not await can_meditate_lantern(user_id):
+        return 0
+    ap = int(getattr(config, "FIRE_LANTERN_MEDIT_AP", 20) or 20)
+    await mark_lantern_meditated(user_id)
+    await add_ap(user_id, ap, reason="Лампа Круговорота: медитация")
+    await log_activity(user_id, "firelab", f"Медитация у Лампы: +{ap} ОД")
+    return ap
+
+
+async def set_lantern_amber_next(user_id: int, ts: float | None = None):
+    """Точка следующего Пламени Памяти (unix ts). None — не стоит (новая Лампа)."""
+    if ts is None:
+        from datetime import timedelta
+        ts = (datetime.now(MOSCOW_TZ)
+              + timedelta(days=int(getattr(config, "FIRE_LANTERN_AMBER_DAYS", 7) or 7))
+              ).timestamp()
+    await update_user(user_id, lantern_amber_at=str(int(ts)))
+
+
+async def get_lantern_amber_at(user_id: int) -> float | None:
+    """unix ts следующего янтаря (или None, если таймер не начат)."""
+    user = await get_user(user_id)
+    raw = (user or {}).get('lantern_amber_at')
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+async def grant_lantern_amber_if_due(user_id: int) -> int:
+    """Если Лампа стоит и время пришло — Пламя Памяти в инвентарь (+1 шт.
+
+    Возвращает количество янтарей, начисленных сейчас (0 — не пора).
+    """
+    from utils.helpers import MOSCOW_TZ
+    if not await has_lantern_installed(user_id):
+        return 0
+    granted = 0
+    amber = await get_item_by_name(
+        getattr(config, "FIRE_AMBER_NAME", "Пламя Памяти"))
+    if not amber:
+        return 0
+    ts = await get_lantern_amber_at(user_id)
+    if ts is None:
+        await set_lantern_amber_next(user_id)
+        return 0
+    now = datetime.now(MOSCOW_TZ).timestamp()
+    days = int(getattr(config, "FIRE_LANTERN_AMBER_DAYS", 7) or 7)
+    step_ts = days * 86400
+    while now >= ts:
+        await add_inventory_item(user_id, amber['id'], 1)
+        granted += 1
+        await log_activity(user_id, "firelab", "Пламя Памяти из Лампы (+1 янтарь)")
+        ts += step_ts
+    if granted:
+        await update_user(user_id, lantern_amber_at=str(int(ts)))
+    return granted
+
+
+async def get_lantern_owners() -> list[int]:
+    """Все пилоты с установленной Лампой (для ежедневного цикла)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT DISTINCT user_id FROM housing_slots WHERE expansion_type = 'lantern'")
+    return [int(r['user_id']) for r in await cursor.fetchall()]
 
 
 # ============ ЛОГ АКТИВНОСТИ ИГРОКОВ ============

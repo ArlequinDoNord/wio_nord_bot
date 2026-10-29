@@ -22,6 +22,8 @@ from database.db import (
     can_use_shower,
     get_housing_expansions_installed, increment_housing_expansions,
     get_housing_tax_rate, pay_housing_tax, is_housing_tax_paid, pay_housing_debt,
+    use_lantern_meditation, has_lantern_installed, can_meditate_lantern,
+    set_lantern_amber_next, get_lantern_amber_at, grant_lantern_amber_if_due,
 )
 from utils.crafting import (
     CRAFTING, FOOD_EXPIRY_PREFIXES, FOOD_EXPIRY_SEC, FRIED_PREFIX, FRIED_PREFIXES,
@@ -44,6 +46,7 @@ FURNITURE_BY_EXPANSION = {
     ("plant_pot", 1): "Кадка для растений",
     ("shower", 1): "Душевая",
     ("shower", 2): "Ванная с душем",
+    ("lantern", 1): "Лампа Круговорота",
 }
 FURNITURE_BY_ITEM = {v: k for k, v in FURNITURE_BY_EXPANSION.items()}
 
@@ -52,6 +55,7 @@ EXPANSION_LABELS = {
     "workbench": "🔧 Верстак",
     "plant_pot": "🌱 Кадка для растений",
     "shower": "🚿 Душевая",
+    "lantern": "🪔 Лампа Круговорота",
 }
 
 # Душевая: раз в игровые сутки восстанавливает ОД. Душевая (ур. 1) — +25,
@@ -137,7 +141,8 @@ def _plant_stage_photo(data: dict, ht: str, stage: int):
 
 
 def _slot_icon(et):
-    return {"kitchen": "🍳", "workbench": "🔧", "plant_pot": "🌱", "shower": "🚿"}.get(et, "📦")
+    return {"kitchen": "🍳", "workbench": "🔧", "plant_pot": "🌱",
+            "shower": "🚿", "lantern": "🪔"}.get(et, "📦")
 
 
 def _slot_name(slot):
@@ -153,6 +158,8 @@ def _slot_name(slot):
         return "Кадка для растений"
     if et == "shower":
         return "Ванная с душем" if lvl >= 2 else "Душевая"
+    if et == "lantern":
+        return "Лампа Круговорота"
     return "Пустой слот"
 
 
@@ -364,6 +371,8 @@ async def housing_room(cb: CallbackQuery):
         await _room_plant(cb, uid, idx, slot, ht)
     elif et == "shower":
         await _room_shower(cb, uid, idx, slot, ht, lvl)
+    elif et == "lantern":
+        await _room_lantern(cb, uid, idx, slot, ht)
     else:
         kb = InlineKeyboardMarkup(inline_keyboard=[[_inv_row("🔙 К жилью", "housing:menu")]])
         await _paint(cb, "Неизвестное расширение.", _housing_photo(ht), kb)
@@ -611,6 +620,67 @@ async def housing_shower(cb: CallbackQuery):
     await cb.answer(alert, show_alert=True)
     ht = (await get_player_housing(uid))["housing_type"]
     await _room_shower(cb, uid, idx, slot, ht, lvl)
+
+
+# ───────── Лампа Круговорота (Ф4б) ─────────
+
+async def _room_lantern(cb, uid, idx, slot, ht):
+    """Генератор (не привязан к празднику): медитация +ОД раз в сутки,
+    Пламя Памяти раз в 5 суток."""
+    import config as _cfg
+    from datetime import datetime
+    from utils.helpers import MOSCOW_TZ
+    # пришло время янтаря? — начисляем сразу при открытии комнаты
+    await grant_lantern_amber_if_due(uid)
+    medit_ap = int(_cfg.FIRE_LANTERN_MEDIT_AP)
+    can_medit = await can_meditate_lantern(uid)
+    amber_days = int(_cfg.FIRE_LANTERN_AMBER_DAYS)
+    lines = [f"🪔 *Лампа Круговорота* (слот {idx + 1})\n"]
+    lines.append("Тёплый огонёк из Огненного Круговорота: помнит предков и "
+                 "делится силой с пилотом, который её почтит.")
+    if can_medit:
+        lines.append(f"\n🧘 Раз в сутки: медитация у Лампы — +{medit_ap} ОД.")
+    else:
+        lines.append("\n🧘 Ты уже медитировал сегодня — приходи завтра.")
+    ts = await get_lantern_amber_at(uid)
+    if ts:
+        nxt = datetime.fromtimestamp(ts, MOSCOW_TZ)
+        left = nxt - datetime.now(MOSCOW_TZ)
+        if left.total_seconds() > 0:
+            days_left = int(left.total_seconds() // 86400) + 1
+            lines.append(f"\n🪵 Пламя Памяти: следующий кусок янтаря — через "
+                         f"~{days_left} сут. ({nxt.strftime('%d.%m %H:%M')}), "
+                         f"каждые {amber_days} суток.")
+        else:
+            lines.append("\n🪵 Пламя Памяти готово и отправлено в инвентарь!")
+    rows = []
+    if can_medit:
+        rows.append([_inv_row(f"🧘 Медитировать (+{medit_ap} ОД)",
+                              f"housing:lantern_medit:{idx}")])
+    rows.append([_inv_row("🛠️ Убрать из слота", f"housing:uninstall:{idx}")])
+    rows.append([_inv_row("🔙 К жилью", "housing:menu")])
+    kb = InlineKeyboardMarkup(inline_keyboard=rows)
+    await _paint(cb, "\n".join(lines), _housing_photo(ht), kb)
+
+
+@router.callback_query(F.data.startswith("housing:lantern_medit:"))
+async def housing_lantern_medit(cb: CallbackQuery):
+    await cb.answer()
+    uid = cb.from_user.id
+    idx = int(cb.data.split(":")[2])
+    slots = await get_housing_slots(uid)
+    slot = slots.get(idx)
+    if not slot or slot.get("expansion_type") != "lantern":
+        await cb.answer("❌ Здесь нет Лампы.", show_alert=True)
+        return
+    gained = await use_lantern_meditation(uid)
+    if not gained:
+        await cb.answer("🧘 Ты уже медитировал сегодня — приходи завтра.",
+                        show_alert=True)
+        return
+    await cb.answer(f"🪔 Медитация: +{gained} ОД!", show_alert=True)
+    ht = (await get_player_housing(uid))["housing_type"]
+    await _room_lantern(cb, uid, idx, slot, ht)
 
 
 async def _room_plant(cb, uid, idx, slot, ht):
@@ -918,6 +988,10 @@ async def housing_install_item(cb: CallbackQuery):
     await set_housing_slot(uid, empty, et, lvl, restored_pd)
     await remove_inventory_item(uid, item_id, 1)
     await increment_housing_expansions(uid)
+    if et == "lantern":
+        # Ф4б: таймер Пламени Памяти запускается с установки (или продолжается).
+        if await get_lantern_amber_at(uid) is None:
+            await set_lantern_amber_next(uid)
     if restored_pd and restored_pd.get("seed"):
         rp_name = restored_pd.get("plant_name") or PLANT_NAMES.get(restored_pd["seed"], restored_pd["seed"])
         await cb.answer(f"✅ «{item['name']}» установлена — растение «{rp_name}» восстановлено!",
