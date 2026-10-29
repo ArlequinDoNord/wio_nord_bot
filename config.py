@@ -57,6 +57,9 @@ FIRELAB_CROW_DODGE = 20
 FIRELAB_GHOST_HP = 24
 FIRELAB_GHOST_DMG = (2, 4)
 FIRELAB_GHOST_DODGE = 15
+FIRELAB_HUB_DODGE = FIRELAB_GHOST_DODGE
+FIRELAB_HUB_HP = FIRELAB_GHOST_HP
+FIRELAB_HUB_DMG = FIRELAB_GHOST_DMG
 FIRELAB_PUMPKIN_HP = 60
 FIRELAB_PUMPKIN_DMG = (4, 7)
 FIRELAB_PUMPKIN_DODGE = 5
@@ -123,22 +126,23 @@ FIRELAB_CROW_SEED = {
     "loot": [],
 }
 
-FIRELAB_GHOST_SEED = {
-    "key": "ghost",
+FIRELAB_HUB_SEED = {
+    "key": "hub",
     "spot": "firelab",
-    "name": "Призрак",
-    "hp": FIRELAB_GHOST_HP,
-    "dmg_min": FIRELAB_GHOST_DMG[0],
-    "dmg_max": FIRELAB_GHOST_DMG[1],
-    "dodge": FIRELAB_GHOST_DODGE,
+    "name": "Хуб",
+    "hp": FIRELAB_HUB_HP,
+    "dmg_min": FIRELAB_HUB_DMG[0],
+    "dmg_max": FIRELAB_HUB_DMG[1],
+    "dodge": FIRELAB_HUB_DODGE,
     "loss_ap": 0,
     "chance": 0,
     "pity_target": 0,
     "reward_nm": 0,
-    "photo_key": "city/fire_ghost",
+    "photo_key": "city/fire_hub",
     "description": (
-        "Полуматериальный странник: уклонение 15%. Колдовским холодом "
-        "накладывает обморожение (20%, лечение −50% на 3 хода)."
+        "Паукообразное существо, сплетённое из чёрных веток и сена. "
+        "Быстрое, цепкое: с шансом 25% опутывает паутиной — замедление на 3 хода: "
+        "сильно снижает уклонение пилота (−35%), а самому Хубу добавляет +10% уклонения."
     ),
     "loot": [],
 }
@@ -165,7 +169,7 @@ FIRELAB_PUMPKIN_SEED = {
 }
 
 FIRELAB_ENEMY_SEEDS = (FIRELAB_SCARECROW_SEED, FIRELAB_APPLE_CHILD_SEED,
-                       FIRELAB_CROW_SEED, FIRELAB_GHOST_SEED,
+                       FIRELAB_CROW_SEED, FIRELAB_HUB_SEED,
                        FIRELAB_PUMPKIN_SEED)
 
 # --- Дни Пламенного Круговорота (праздничное событие, ТЗ — FIRE_EVENT.md) ---
@@ -187,8 +191,10 @@ FIRE_LAB_SESSION_TTL_SEC = 3600           # неактивность: сесси
 FIRE_LAB_SCARECROW_BLIND_P = 0.15         # Пугало: «сено в лицо» — ослепление
 FIRE_LAB_APPLE_STUN_P = 0.10              # Дитя Яблони: «яблочко» — оглушение
 FIRE_LAB_CROW_BLIND_P = 0.15              # Ворон: ослепление (как сова)
-FIRE_LAB_GHOST_FROST_P = 0.20             # Призрак: обморожение на 3 хода
-FIRE_LAB_GHOST_FROST_ROUNDS = 3
+FIRE_LAB_HUB_SLOW_P = 0.25
+FIRE_LAB_HUB_SLOW_ROUNDS = 3
+FIRE_LAB_HUB_PLAYER_DODGE_PENALTY = 35
+FIRE_LAB_HUB_ENEMY_DODGE_BONUS = 10
 FIRE_LAB_BOSS_BURN_P = 0.25               # Босс «Мистер Тыква»: поджиг игрока
 FIRE_LAB_BOSS_BURN_DMG = 2                # −HP/ход
 FIRE_LAB_BOSS_BURN_ROUNDS = 3

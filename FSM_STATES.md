@@ -949,7 +949,7 @@
 - `field_req:`: `bot/handlers/admin.py:1867`
 - `fin:`: `bot/handlers/admin.py:2541`
 - `finuser:`: `bot/handlers/admin.py:2571`
-- `fireevent:attack:`: `bot/handlers/fire_event.py:439`
+- `fireevent:attack:`: `bot/handlers/fire_event.py:438`
 - `fireevent:leave:`: `bot/handlers/fire_event.py:249`
 - `fireevent:step:`: `bot/handlers/fire_event.py:187`
 - `fish:bait:\d+$`: `bot/handlers/fishing.py:514`

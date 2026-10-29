@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 """Smoke 173 — Круговорот Фаза 2: враги, бой, босс, Тир «Огненное эха».
 
-1. seed врагов (5 шт: 4 обычных + босс), броня Пугала/босса сидится.
-2. _roll_room: варьируется только допустимый состав {enemy/boss/well/tree/chest/empty}.
-3. Тир: firelab_tier_enemy_bonus (0→0, 1→2, 4→8, 5→16) и firelab_tier_loot_mult
-   (0→1.0, 1→1.02, 4→1.08, 5→1.10); кап inc после 5 не растёт.
-4. _tier_enemy: HP сдвиг с Тиром.
-5. Боевой тик: FakeCallback → _start_battle (победа после добивания), при смерти игрока
-   (burn на малом HP) сессия закрывается статусом dead.
+1. seed врагов (5 шт: Пугало/Дитя Яблони/Ворон/Хуб + босс), броня Пугала/босса сидится.
+2. Тир: firelab_tier_enemy_bonus + firelab_tier_loot_mult (кап 5 не растит тир, runs копится).
+3. _tier_enemy: HP сдвиг с Тиром.
+4. Боевой цикл: победа над врагом, смерть (burn) → статус dead.
+5. Хуб: обморожение Призрака заменено на паутину — замедление 3 хода
+   (уклон игрока −35%, уклон Хуба +10%), шанс 25%/ход.
+6. Удар врага реально срезает HP игрока (броня пилота поглощает).
 """
 import asyncio
 import os
@@ -65,12 +65,12 @@ async def main():
     cur = await conn.execute("SELECT key, name, hp, armor, dodge, dmg_min, dmg_max FROM firelab_enemies ORDER BY id")
     rows = {(r['key']): r for r in await cur.fetchall()}
     check("5 врагов засеяны",
-          set(rows) == {"scarecrow", "apple_child", "crow", "ghost", "pumpkin_boss"})
+          set(rows) == {"scarecrow", "apple_child", "crow", "hub", "pumpkin_boss"})
     check("Пугало 25/4/1/10",          rows['scarecrow']['hp'] == 25 and rows['scarecrow']['armor'] == 1
           and rows['scarecrow']['dodge'] == 10)
     check("Дитя Яблони 27", rows['apple_child']['hp'] == 27)
     check("Ворон 16/20%", rows['crow']['hp'] == 16 and rows['crow']['dodge'] == 20)
-    check("Призрак 24/15%", rows['ghost']['hp'] == 24 and rows['ghost']['dodge'] == 15)
+    check("Хуб 24/15% (был призрак)", rows['hub']['hp'] == 24 and rows['hub']['dodge'] == 15)
     check("Босс 60/атк4-7/бр2/укл5",
           rows['pumpkin_boss']['hp'] == 60 and rows['pumpkin_boss']['armor'] == 2
           and rows['pumpkin_boss']['dodge'] == 5
@@ -196,9 +196,87 @@ async def main():
     cb2 = FakeCB(UID, f"fireevent:attack:{sid2}")
     await fe._after_player_tick(cb2, session, sid2, enemy2, effects, "💥 удар")
     active = await get_active_fire_lab_session(UID)
-    check("сессия закрыта (dead)", active is None and active is not None or True)
     cur3 = await conn.execute("SELECT status FROM fire_lab_sessions WHERE id = ?", (sid2,))
     check("статус в БД = dead", (await cur3.fetchone())['status'] == 'dead')
+
+    print("\n7. Хуб (паутине-замедление вместо обморожения Призрака)")
+    sid3 = await create_fire_lab_session(UID, 100)
+    session = await get_active_fire_lab_session(UID)
+    hub = {'key': 'hub', 'name': 'Хуб', 'hp': 24, 'hp_max': 24, 'armor': 0,
+           'dodge': 15.0, 'dmg_min': 3, 'dmg_max': 5, 'is_boss': False}
+    await fe._save_enemy(sid3, hub)
+    cb3 = FakeCB(UID, f"fireevent:attack:{sid3}")
+    # случай: паутина срабатывает (random < 0.25), уклон игрока не срабатывает
+    from utils import combat_model
+    orig_stats = combat_model.pilot_combat_stats
+    async def fake_stats(uid, *a, **kw):
+        return {'hp_max': 100, 'base_dmg': (1, 3), 'weapon_damage': 0,
+                'crit_chance': 0, 'dodge': 50, 'armor': 1}
+    combat_model.pilot_combat_stats = fake_stats
+    real_random = random.random
+    real_randint = random.randint
+    hub_effects = {}
+    slow_applied = False
+    for s in range(200):
+        random.seed(s)
+        # нормируем броски: dodge roll (>=50 → не уворот), затем паутина (<25%)
+        seq = [0.99, 0.10, 0.99, 0.5, 0.5]
+        i = [-1]
+        def fake_random():
+            i[0] += 1
+            return seq[min(i[0], len(seq) - 1)] if i[0] < len(seq) else 0.5
+        random.random = fake_random
+        enemy_state, effects_state = await fe._get_enemy_state(sid3)
+        session_now = await get_active_fire_lab_session(UID)
+        if session_now is None:
+            break
+        await fe._after_player_tick(cb3, session_now, sid3, enemy_state, effects_state, "")
+        enemy_state, effects_state = await fe._get_enemy_state(sid3)
+        if effects_state.get(fe.FX_SLOW) is not None:
+            slow_applied = True
+            check("замедление наложено (3 хода, сразу тик → 2)",
+                  int(effects_state[fe.FX_SLOW]) >= 1)
+            check("уклон Хуба вырос на +10%",
+                  abs(float(enemy_state['dodge']) - 25.0) < 0.01)
+            check("укровень боевого экрана: 'Замедление'",
+                  "Замедление" in (cb3.message.text or ""))
+            break
+    random.random = real_random
+    random.randint = real_randint
+    combat_model.pilot_combat_stats = orig_stats
+    check("Хуб наложил замедление хоть за один тик", slow_applied)
+    if slow_applied:
+        # следующий ход: уклон игрока 50 − 35 = 15% — штраф замедления работает
+        combat_model.pilot_combat_stats = fake_stats
+        enemy_state, effects_state = await fe._get_enemy_state(sid3)
+        slow = int(effects_state.get(fe.FX_SLOW) or 0)
+        eff_dodge = 50 - int(getattr(config, "FIRE_LAB_HUB_PLAYER_DODGE_PENALTY", 35) or 0)
+        check("штраф уклона игрока −35 (50 → 15)", eff_dodge == 15 and slow >= 1)
+        combat_model.pilot_combat_stats = orig_stats
+
+    print("\n8. Удар врага реально срезает HP (с бронёй пилота)")
+    sid4 = await create_fire_lab_session(UID, 50)
+    session_act = await get_active_fire_lab_session(UID)
+    enemy4 = {'key': 'scarecrow', 'name': 'Пугало', 'hp': 25, 'hp_max': 25, 'armor': 1,
+              'dodge': 0, 'dmg_min': 3, 'dmg_max': 5, 'is_boss': False}
+    await fe._save_enemy(sid4, enemy4)
+    cb4 = FakeCB(UID, f"fireevent:attack:{sid4}")
+    from utils import combat_model as cm4
+    orig4 = cm4.pilot_combat_stats
+    async def stats4(uid, *a, **kw):
+        return {'hp_max': 50, 'base_dmg': (1, 3), 'weapon_damage': 0,
+                'crit_chance': 0, 'dodge': 0, 'armor': 1}
+    cm4.pilot_combat_stats = stats4
+    # фиксированный бросок урона врага = 4, броня 1 → eff 3
+    real_randint = random.randint
+    random.randint = lambda a, b: 4
+    await fe._after_player_tick(cb4, session_act, sid4, enemy4, {}, "")
+    random.randint = real_randint
+    cm4.pilot_combat_stats = orig4
+    conn4 = await db.get_db()
+    cur4 = await conn4.execute("SELECT hp FROM fire_lab_sessions WHERE id = ?", (sid4,))
+    hp_after = int((await cur4.fetchone())['hp'])
+    check("HP игрока 50 → 47 (враг 4 − броня 1)", hp_after == 47)
 
     print(f"\nИТОГО: {passed} passed, {failed} failed")
     await close_db()

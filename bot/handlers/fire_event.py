@@ -42,13 +42,13 @@ FIRE_EVENT_CLOSED_TEXT = "🔥 Дни Пламенного Круговорот�
 PATH_LABELS = {"L": "⬅️ Налево", "S": "⬆️ Прямо", "R": "➡️ Направо"}
 
 # Ключи врагов Огненного Лабиринта (firelab_enemies).
-FIRELAB_ENEMY_KEYS = ("scarecrow", "apple_child", "crow", "ghost")
+FIRELAB_ENEMY_KEYS = ("scarecrow", "apple_child", "crow", "hub")
 FIRELAB_BOSS_KEY = "pumpkin_boss"
 
 # Ключи эффектов на игрока (хранятся в effects_json сессии).
 FX_BLIND = "blind"        # ослепление: часть ударов промахивается
 FX_STUN = "stun"          # оглушение: игрок пропускает ход
-FX_FROST = "frost"        # обморожение: лечение −50%
+FX_SLOW = "slow"          # замедление: сильно снижает уклон игрока, чуть +уклон врага
 FX_BURN = "burn"          # поджиг: −N HP/ход
 
 
@@ -341,7 +341,6 @@ async def _start_battle(cb, session, session_id: int, room: str, tier: int):
                 "WHERE id = ?", (session_id,))
             await conn.commit()
     if not enemy:
-        enemy = None
         obstacles = []
         for key in FIRELAB_ENEMY_KEYS:
             cur = await conn.execute("SELECT * FROM firelab_enemies WHERE key = ?", (key,))
@@ -396,8 +395,8 @@ def _battle_text(session, enemy, effects: dict, log: str = "") -> str:
         fx.append(f"😵 Ослепление: {effects[FX_BLIND]}")
     if effects.get(FX_STUN):
         fx.append(f"💫 Оглушение: {effects[FX_STUN]}")
-    if effects.get(FX_FROST):
-        fx.append(f"❄️ Обморожение: {effects[FX_FROST]} х. (лечение −50%)")
+    if effects.get(FX_SLOW):
+        fx.append(f"🕸 Замедление: {effects[FX_SLOW]} х. (-укл, +укл Хуба)")
     if effects.get(FX_BURN):
         burn = effects[FX_BURN]
         fx.append(f"🔥 Поджиг: −{burn.get('dmg')} HP/ход, {burn.get('rounds')} х.")
@@ -548,19 +547,36 @@ async def _after_player_tick(cb, session, session_id: int, enemy, effects, playe
         burn['rounds'] = int(burn.get('rounds') or 0) - 1
         if burn['rounds'] <= 0:
             effects.pop(FX_BURN, None)
-    # удар врага (в州市 dodge игрока)
+    # удар врага (с учётом замедления Хуба)
     dodge_player = 0.0
+    st = None
     try:
         from utils.combat_model import pilot_combat_stats
         st = await pilot_combat_stats(cb.from_user.id)
         dodge_player = float(st.get('dodge') or 0)
     except Exception:
         dodge_player = 0.0
+    if int(effects.get(FX_SLOW) or 0) > 0:
+        dodge_player = max(0.0, dodge_player - float(getattr(config, "FIRE_LAB_HUB_PLAYER_DODGE_PENALTY", 35) or 0))
+    # тикаем замедление у игрока (отнимаем в конце хода, после удара врага)
     if random.random() * 100 < dodge_player:
         log_lines.append("💨 Ты увернулся от удара врага!")
     else:
         enemy_dmg = random.randint(int(enemy.get('dmg_min') or 0), int(enemy.get('dmg_max') or 0))
-        log_lines.append(f"⚔️ Враг бьёт на {enemy_dmg} урона")
+        armor_player = 0
+        try:
+            armor_player = int((st or {}).get('armor') or 0)
+        except Exception:
+            armor_player = 0
+        blocked = min(enemy_dmg, armor_player)
+        eff = max(0, enemy_dmg - armor_player)
+        hp_now = max(0, hp_now - eff)
+        if blocked > 0:
+            log_lines.append(f"⚔️ Враг бьёт на {enemy_dmg} — 🛡 броня поглотила {blocked}, −{eff} HP")
+        else:
+            log_lines.append(f"⚔️ Враг бьёт на {eff} урона")
+        if eff <= 0:
+            log_lines[-1] = f"⚔️ Враг бьёт на {enemy_dmg} — 🛡 броня поглотила удар полностью!"
     # фирменные эффекты врага (только если игрок жив)
     fx_end = ""
     if hp_now > 0 and log_lines and "Ты увернулся" not in log_lines[-1]:
@@ -574,21 +590,33 @@ async def _after_player_tick(cb, session, session_id: int, enemy, effects, playe
         if key == "apple_child" and random.random() < float(getattr(config, "FIRE_LAB_APPLE_STUN_P", 0.10)):
             effects[FX_STUN] = effects.get(FX_STUN, 0) + 1
             fx_end = "\n🍎 Спелое яблоко — ты оглушён!"
-        if key == "ghost" and random.random() < float(getattr(config, "FIRE_LAB_GHOST_FROST_P", 0.20)):
-            effects[FX_FROST] = int(getattr(config, "FIRE_LAB_GHOST_FROST_ROUNDS", 3) or 3)
-            fx_end = "\n❄️ Призрак охладил: обморожение (лечение −50%)!"
+        if key == "hub" and random.random() < float(getattr(config, "FIRE_LAB_HUB_SLOW_P", 0.25)):
+            effects[FX_SLOW] = int(getattr(config, "FIRE_LAB_HUB_SLOW_ROUNDS", 3) or 3)
+            # Хуб чуть добавляет уклонение сам
+            try:
+                enemy['dodge'] = float(enemy.get('dodge') or 0) + float(getattr(config, "FIRE_LAB_HUB_ENEMY_DODGE_BONUS", 10) or 0)
+            except Exception:
+                pass
+            fx_end = "\n🕸 Хуб опутывает паутиной: замедление (-укл, +укл Хуба)!"
         if key == FIRELAB_BOSS_KEY and hp_now > 0 and random.random() < float(
                 getattr(config, "FIRE_LAB_BOSS_BURN_P", 0.25)):
             effects[FX_BURN] = {'dmg': int(getattr(config, "FIRE_LAB_BOSS_BURN_DMG", 2) or 2),
                                 'rounds': int(getattr(config, "FIRE_LAB_BOSS_BURN_ROUNDS", 3) or 3)}
             fx_end = "\n🔥 Мистер Тыква поджигает: −2 HP/ход на 3 хода!"
+    # тик замедления
+    if int(effects.get(FX_SLOW) or 0) > 0:
+        effects[FX_SLOW] = int(effects[FX_SLOW]) - 1
+        if effects.get(FX_SLOW, 0) <= 0:
+            effects.pop(FX_SLOW, None)
     if hp_now <= 0:
         await conn.execute("UPDATE fire_lab_sessions SET hp = 0 WHERE id = ?", (session_id,))
         await _save_sessions_effects(session_id, effects)
         await conn.commit()
         return await _player_death(cb, session_id)
-    await conn.execute("UPDATE fire_lab_sessions SET hp = ?, effects_json = ? WHERE id = ?",
-                       (hp_now, json.dumps(effects, ensure_ascii=False), session_id))
+    await conn.execute(
+        "UPDATE fire_lab_sessions SET hp = ?, enemy_json = ?, effects_json = ? WHERE id = ?",
+        (hp_now, json.dumps(enemy, ensure_ascii=False),
+         json.dumps(effects, ensure_ascii=False), session_id))
     await conn.commit()
     session = await db.get_active_fire_lab_session(cb.from_user.id)
     await _paint_battle(cb, session, enemy, log=player_log + "\n" + "\n".join(log_lines) + fx_end)
