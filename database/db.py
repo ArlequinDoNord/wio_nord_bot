@@ -1605,6 +1605,10 @@ async def init_db():
     await _ensure_column(conn, "items", "weapon_effect", "TEXT")
     await _ensure_column(conn, "items", "weapon_effect_chance", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "weapon_effect_dmg", "INTEGER DEFAULT 0")
+    # v0.41.2 Огненный Лабиринт (Фаза 4): экип-бонусы лечения/уклонения.
+    # heal_bonus_pct — % к лечению расходников; dodge_bonus — +пп к уклонению.
+    await _ensure_column(conn, "items", "heal_bonus_pct", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "items", "dodge_bonus", "INTEGER DEFAULT 0")
     # v0.15.0: авиакрыло пилота ('1'/'2'/'3' → метка в utils/wings.py; NULL — нет крыла).
     await _ensure_column(conn, "users", "wing", "TEXT")
     # v0.21.0: users.legioner — «легионерный» флаг. НЕ в иерархии статусов:
@@ -2563,6 +2567,20 @@ async def add_inventory_item(user_id: int, item_id: int, quantity: int = 1, expi
             (user_id, item_id, quantity, expires_at)
         )
     await conn.commit()
+    # Хук «Чтящий Предков» (Фаза 4): любой путь получения компонента проверяется.
+    try:
+        cur = await conn.execute("SELECT name FROM items WHERE id = ?", (item_id,))
+        it = await cur.fetchone()
+        nm = it['name'] if it else None
+        if nm and (nm in FIRE_KEEPER_GEAR_NAMES
+                   or nm == getattr(config, "FIRE_PUMPKIN_SEED_NAME", "")
+                   or nm == getattr(config, "FIRE_LAB_RECIPE_NAME", "")):
+            lvl, anm, _prev = await check_fire_keeper(user_id)
+            if lvl:
+                await log_activity(user_id, "firelab",
+                                   f"Достижение «{anm}» — набор собран")
+    except Exception:
+        pass
 
 
 async def remove_inventory_item(user_id: int, item_id: int, quantity: int = 1) -> bool:
@@ -3837,6 +3855,55 @@ async def count_fire_fish_kinds(user_id: int) -> int:
         "SELECT COUNT(*) AS c FROM user_fire_fish WHERE user_id = ?", (user_id,))
     row = await cur.fetchone()
     return int(row['c'] or 0)
+
+
+FIRE_KEEPER_GEAR_NAMES = (  # экип набора «Чтящий Предков»
+    "Огненный венец", "Плащ Памяти", "Перчатки стража посевов", "Вилы",
+)
+
+
+async def fire_keeper_progress(user_id: int) -> dict:
+    """Прогресс набора «Чтящий Предков»: {'gears': {имя: bool}, 'seeds': bool,
+    'recipes': {имя: bool}, 'done': bool}."""
+    conn = await get_db()
+    gears = {}
+    for nm in FIRE_KEEPER_GEAR_NAMES:
+        cur = await conn.execute("SELECT id FROM items WHERE name = ?", (nm,))
+        it = await cur.fetchone()
+        ok = False
+        if it:
+            inv = await get_inventory_item(user_id, it['id'])
+            ok = bool(inv and int(inv['quantity'] or 0) > 0)
+        gears[nm] = ok
+    cur = await conn.execute("SELECT id FROM items WHERE name = ?",
+                             (getattr(config, "FIRE_PUMPKIN_SEED_NAME", "Семечко тыквы"),))
+    seed_ok = False
+    seed_row = await cur.fetchone()
+    if seed_row:
+        inv = await get_inventory_item(user_id, seed_row['id'])
+        seed_ok = bool(inv and int(inv['quantity'] or 0) > 0)
+    recipes = {}
+    for rname in ("Тыквенный пирог", "Обжигающая трость"):
+        cur = await conn.execute(
+            "SELECT id FROM recipes WHERE name = ?", (rname,))
+        rrow = await cur.fetchone()
+        recipes[rname] = bool(rrow and await has_user_recipe(
+            user_id, int(rrow['id'])))
+    done = all(gears.values()) and seed_ok and all(recipes.values())
+    return {"gears": gears, "seeds": seed_ok, "recipes": recipes, "done": done}
+
+
+async def check_fire_keeper(user_id: int) -> tuple[int, str, str]:
+    """Одна точка проверки набора «Чтящий Предков»; вызывается после любого
+    получения/использования компонента.
+
+    Возвращает (level|None, имя_уровня|None, имя_предыдущего|None).
+    """
+    prog = await fire_keeper_progress(user_id)
+    if not prog["done"]:
+        return None, None, None
+    return await set_achievement_progress(
+        user_id, "fire_keeper", 1)
 
 
 async def touch_fire_lab_session(session_id: int) -> None:
@@ -9542,6 +9609,62 @@ async def ensure_firelab_items() -> dict:
          "Праздничный рецепт из сундука: свиток с правилами тыквенного "
          "пирога. Используй, чтобы выучить рецепт навсегда.",
          0, 0, 3, "recipes", 0, 1),
+        # --- Фаза 4: посадка/ингредиенты ---
+        (config.FIRE_PUMPKIN_SEED_NAME,
+         "Семечко тыквы из Огненного Лабиринта. Посади в кадку в жилье — "
+         "вырастет тыква (2 суток до первого плода).",
+         25, 12, 2, "seeds", 0, 0),
+        (config.FIRE_PUMPKIN_NAME,
+         "Спелая тыква с праздничной плантации: золотистая, тугая, слегка "
+         "тёплая. Ингредиент для пирога.",
+         0, 12, 1, "resource", 0, 0),
+        (config.FIRE_CROW_FEATHER_NAME,
+         "Чёрное перо ворона из Лабиринта: пахнет гарью и остаётся холодным "
+         "на ощупь. Ресурс для будущих поделок.",
+         0, 6, 1, "resource", 0, 1),
+        (config.FIRE_WIRE_NAME,
+         "Крепкий моток железной проволоки со склада: для ремёсел и токов "
+         "огня. Ингредиент Обжигающей трости.",
+         40, 20, 1, "resource", 0, 0),
+        (config.FIRE_SUGAR_NAME,
+         "Мешочек белого сахара с рынка. Ингредиент праздничной выпечки.",
+         6, 3, 1, "consumable", 0, 0),
+        (config.FIRE_EGGS_NAME,
+         "Парочка свежих яиц с птичьего двора. В тесто — по рецепту.",
+         12, 6, 1, "consumable", 0, 0),
+        # --- Фаза 4: экипировка (броня 2 + бонус по слоту) ---
+        (config.FIRE_CROWN_NAME,
+         "Тлеющий венец стража Круговорота: тёплые ветки в короне углей. "
+         f"Броня 2, лечение расходников +{getattr(config, 'FIRE_CROWN_HEAL_BONUS_PCT', 25)}%.",
+         0, 150, 3, "equipment", 0, 1),
+        (config.FIRE_CLOAK_NAME,
+         "Плащ, сотканный из дыма и памяти домов. Броня 2, уклонение "
+         f"+{getattr(config, 'FIRE_CLOAK_DODGE', 5)}%.",
+         0, 130, 3, "equipment", 0, 1),
+        (config.FIRE_GLOVES_NAME,
+         "Рукавицы стражей посевов: жар не проведёшь. Броня 2, уклонение "
+         f"+{getattr(config, 'FIRE_GLOVES_DODGE', 3)}%.",
+         0, 110, 3, "equipment", 0, 1),
+        # --- Фаза 4: оружие ---
+        (config.FIRE_KEYS_NAME,
+         "Вилы стража посевов: одиночная зубастая работа. "
+         f"К удару +{getattr(config, 'FIRE_KEYS_DMG', 2)}, шанс кровотечения "
+         f"{getattr(config, 'FIRE_KEYS_BLEED_P', 10)}% (−{getattr(config, 'FIRE_KEYS_BLEED_DMG', 2)} HP/ход).",
+         180, 90, 2, "weapon", 0, 0),
+        (config.FIRE_CANE_NAME,
+         "Сержантская трость, закованная в РПУ: поджигает врага при ударе. "
+         f"К удару +{getattr(config, 'FIRE_CANE_DMG', 3)}, шанс поджога "
+         f"{getattr(config, 'FIRE_CANE_BURN_P', 20)}% "
+         f"(−{getattr(config, 'FIRE_CANE_BURN_DMG', 2)} HP/ход). Только крафт.",
+         0, 220, 4, "weapon", 0, 1),
+        (config.FIRE_LANTERN_NAME,
+         "Лампа Круговорота — награда тем, кто помнит предков. Ставится в "
+         "личное жильё (медитация и Пламя Памяти).",
+         0, 0, 5, "special", 0, 1),
+        (config.FIRE_AMBER_NAME,
+         "Кусок янтаря с тёплым пламенем внутри. Можно продать за 100 НМ "
+         "или сберечь как ресурс будущих крафтов.",
+         0, 100, 3, "resource", 0, 0),
     )
     for name, desc, price, sell, rarity, cat, heal, loot_only in items:
         item = await get_item_by_name(name)
@@ -9552,13 +9675,21 @@ async def ensure_firelab_items() -> dict:
                 ap_cost=0, damage=0, heal=heal, armor=0,
                 drink_effect=None, weapon_effect=None, loot_only=loot_only)
             item = await get_item(item_id)
+            await _firelab_seed_extras(name, int(item['id']))
         out[name] = int(item['id'])
 
-    # Рецепт «Тыквенный пирог» (состав согласуется на Фазе 4; пока недоступен).
+    # Рецепты праздника:
+    #  • «Тыквенный пирог» — Тыква + Мука + Соль + Сахар + Яйца×2 (владелец
+    #    поправит состав в менеджере рецептов);
+    #  • «Обжигающая трость» — Сержантская трость + моток железной проволоки +
+    #    Ручное пламенеющее устройство (состав из ТЗ, верстак).
     conn = await get_db()
     cur = await conn.execute(
-        "SELECT id FROM recipes WHERE name = ?", ("Тыквенный пирог",))
-    if not await cur.fetchone():
+        "SELECT id, ingredients FROM recipes WHERE name = ?", ("Тыквенный пирог",))
+    row = await cur.fetchone()
+    pie_ings = [("Тыква", 1), ("Мука", 1), ("Соль", 1),
+                ("Сахар", 1), (config.FIRE_EGGS_NAME, 2)]
+    if not row:
         await conn.execute(
             "INSERT INTO recipes (name, description, result_item_name, "
             "result_quantity, required_expansion, required_level, ingredients, "
@@ -9566,9 +9697,61 @@ async def ensure_firelab_items() -> dict:
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             ("Тыквенный пирог",
              "Праздничный пирог из тыквы. Ингредиенты уточнит Хранитель.",
-             config.FIRE_LAB_PIE_NAME, 2, "kitchen", 2, "[]", 3, 60, 3, 0))
+             config.FIRE_LAB_PIE_NAME, 2, "kitchen", 2,
+             json.dumps(pie_ings, ensure_ascii=False), 3, 60, 3, 1))
+    elif not row['ingredients'] or row['ingredients'] == "[]":
+        await conn.execute(
+            "UPDATE recipes SET ingredients = ? WHERE name = ?",
+            (json.dumps(pie_ings, ensure_ascii=False), "Тыквенный пирог"))
+    cur = await conn.execute(
+        "SELECT id FROM recipes WHERE name = ?", ("Обжигающая трость",))
+    if not await cur.fetchone():
+        flame_device = getattr(config, "FIRE_FLAME_DEVICE_NAME",
+                               "Ручное пламенеющее устройство")
+        await conn.execute(
+            "INSERT INTO recipes (name, description, result_item_name, "
+            "result_quantity, required_expansion, required_level, ingredients, "
+            "ap_cost, production_time, rarity, is_available) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            ("Обжигающая трость",
+             "Офицерский стержень чести, закованный в огонь: Сержантская "
+             "трость + моток железной проволоки + ручное пламенеющее "
+             "устройство. Слегка поджигает врага при ударе.",
+             config.FIRE_CANE_NAME, 1, "workbench", 1,
+             json.dumps([("Сержантская трость", 1),
+                         (config.FIRE_WIRE_NAME, 1),
+                         (flame_device, 1)],
+                        ensure_ascii=False),
+             8, 120, 4, 1))
     await conn.commit()
     return out
+
+
+async def _firelab_seed_extras(name: str, item_id: int):
+    """После создания предмета Фазы 4 — его спец-колонки (новое создание only),
+    чтобы ручные правки админа не перетирались."""
+    c = config
+    if name == c.FIRE_PUMPKIN_SEED_NAME:
+        await update_item(item_id, plant_name=c.FIRE_PUMPKIN_NAME)
+    elif name == c.FIRE_CROWN_NAME:
+        await update_item(item_id, equip_slot="head", armor=2,
+                          heal_bonus_pct=int(c.FIRE_CROWN_HEAL_BONUS_PCT))
+    elif name == c.FIRE_CLOAK_NAME:
+        await update_item(item_id, equip_slot="body", armor=2,
+                          dodge_bonus=int(c.FIRE_CLOAK_DODGE))
+    elif name == c.FIRE_GLOVES_NAME:
+        await update_item(item_id, equip_slot="hands", armor=2,
+                          dodge_bonus=int(c.FIRE_GLOVES_DODGE))
+    elif name == c.FIRE_KEYS_NAME:
+        await update_item(item_id, damage=int(c.FIRE_KEYS_DMG),
+                          weapon_effect="bleed",
+                          weapon_effect_chance=int(c.FIRE_KEYS_BLEED_P),
+                          weapon_effect_dmg=int(c.FIRE_KEYS_BLEED_DMG))
+    elif name == c.FIRE_CANE_NAME:
+        await update_item(item_id, damage=int(c.FIRE_CANE_DMG),
+                          weapon_effect="burn",
+                          weapon_effect_chance=int(c.FIRE_CANE_BURN_P),
+                          weapon_effect_dmg=int(c.FIRE_CANE_BURN_DMG))
 
 
 async def ensure_fishing_enemies():
@@ -11468,12 +11651,38 @@ async def get_player_crit_mult(user_id: int) -> float:
 
 
 async def get_player_dodge(user_id: int, dodge_mult: float = 1.0) -> int:
-    """Уклонение пилота в %: база 3% + суммарный бонус наград, × модификатор состояний."""
+    """Уклонение пилота в %: база 3% + награды + экип (items.dodge_bonus), × состояния."""
     dodge = PLAYER_BASE_DODGE
     dodge += (await get_award_bonus(user_id))['dodge']
+    eq = await get_equipment(user_id)
+    ids = [i for i in eq.values() if i]
+    if ids:
+        conn = await get_db()
+        ph = ",".join("?" * len(ids))
+        cursor = await conn.execute(
+            f"SELECT COALESCE(SUM(dodge_bonus), 0) AS s FROM items WHERE id IN ({ph})",
+            ids)
+        row = await cursor.fetchone()
+        dodge += int(row['s'] or 0) if row else 0
     if dodge_mult != 1.0:
         dodge = int(round(dodge * dodge_mult))
     return max(0, dodge)
+
+
+async def get_player_heal_bonus_pct(user_id: int) -> int:
+    """% к лечению расходников от надетого экипа (items.heal_bonus_pct), потолок 100%."""
+    eq = await get_equipment(user_id)
+    ids = [i for i in eq.values() if i]
+    if not ids:
+        return 0
+    conn = await get_db()
+    ph = ",".join("?" * len(ids))
+    cursor = await conn.execute(
+        f"SELECT COALESCE(SUM(heal_bonus_pct), 0) AS s FROM items WHERE id IN ({ph})",
+        ids)
+    row = await cursor.fetchone()
+    pct = int(row['s'] or 0) if row else 0
+    return max(0, min(100, pct))
 
 
 async def get_player_armor_with_bonus(user_id: int) -> int:
@@ -12472,6 +12681,11 @@ PLANT_NAMES = {
 PLANT_HARVEST = {
     "Яблочное семечко": APPLE_NAME,
 }
+# v0.41.2 Огненный Лабиринт (Фаза 4): тыква — праздничное растение.
+if getattr(config, "FIRE_PUMPKIN_SEED_NAME", None):
+    _pumpkin_plant = getattr(config, "FIRE_PUMPKIN_NAME", "Тыква")
+    PLANT_NAMES[config.FIRE_PUMPKIN_SEED_NAME] = _pumpkin_plant
+    PLANT_HARVEST[config.FIRE_PUMPKIN_SEED_NAME] = _pumpkin_plant
 
 
 def plant_harvest_name(seed_name: str | None) -> str:
@@ -12850,6 +13064,15 @@ ACHIEVEMENTS_DEF = {
             {"level": 1, "threshold": int(getattr(config, "FIRE_FISHER_THRESHOLD", 3) or 3),
              "name": "Рыбак древних", "bonus": {},
              "reward_nm": int(getattr(config, "FIRE_FISHER_REWARD_NM", 150) or 150)},
+        ],
+    },
+    "fire_keeper": {
+        "title": "Круговорот", "emoji": "🪔",
+        "metric": "собраны все 7 знаков почитания предков (экип, семя, рецепты)",
+        "levels": [
+            {"level": 1, "threshold": 1, "name": "Чтящий Предков", "bonus": {},
+             "reward_nm": 0,
+             "reward_item": getattr(config, "FIRE_LANTERN_NAME", "Лампа Круговорота")},
         ],
     },
 }
@@ -14473,6 +14696,12 @@ async def learn_recipe_from_item(user_id: int, item_id: int):
     await learn_recipe(user_id, recipe['id'])
     await remove_inventory_item(user_id, item_id, 1)
     await log_activity(user_id, "recipe_learn", f"Выучил рецепт «{recipe['name']}»")
+    # Хук «Чтящий Предков» (Фаза 4): рецепты — часть набора.
+    try:
+        if await has_user_recipe(user_id, recipe['id']):
+            await check_fire_keeper(user_id)
+    except Exception:
+        pass
     return True, f"📜 Ты выучил рецепт «{recipe['name']}»! Теперь он доступен в крафте."
 
 

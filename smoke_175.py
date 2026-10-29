@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """Smoke 175 — Фаза 3: особые комнаты (Колодец/Древо/Сундук), рыбалка, тиры.
 
-1. ensure_firelab_items: 8 предметов + рецепт (недоступный), идемпотентно.
+1. ensure_firelab_items: Ф3-предметы (8) + сид Ф4 расширил таблицу; рецепт
+   «Тыквенный пирог» с v0.41.2 доступен (состав в менеджере рецептов).
 2. Колонки визитов: bump well/tree/chest; вход в Колодец сбрасывает fish_used.
 3. Fishing: лимит 6 попыток/визит; поклёвки/промахи по сидиру; UNIQUE отметок
    видов; мини-ачивка «Рыбак древних» (уровень 1, threshold 3).
@@ -58,23 +59,27 @@ async def main():
     await add_user(UID, 't', 'Пилот Ф3', "")
     await update_user(UID, nordmarks=1000)
 
-    print("\n1. ensure_firelab_items: 8 предметов + рецепт")
+    print("\n1. Сид предметов Круговорота (Ф3 8 шт + Ф4 расширил сид)")
     items = await ensure_firelab_items()
-    check("8 предметов с сидов", len(items) == 8)
-    check("все рыбы/реcepт на месте",
+    check("Ф3-предметы на месте (8 шт.)",
           all(k in items for k in (
               config.FIRE_LAB_FISH_OSETR_NAME, config.FIRE_LAB_FISH_SOUL_NAME,
               config.FIRE_LAB_FISH_CARP_NAME, config.FIRE_LAB_PIE_NAME,
               config.FIRE_LAB_CANDY_NAME, config.FIRE_LAB_HAY_NAME,
               config.FIRE_LAB_BRANCH_NAME, config.FIRE_LAB_RECIPE_NAME)))
-    cursor = await conn.execute("SELECT COUNT(*) AS c FROM items")
-    check("дублей предметов нет (8 всего)", (await cursor.fetchone())['c'] == 8)
+    cur = await conn.execute(
+        "SELECT COUNT(*) AS c FROM items WHERE name IN ("
+        + ",".join("?" * len(items)) + ")",
+        tuple(items))
+    check("дублей предметов нет (строк = ключей)",
+          (await cur.fetchone())['c'] == len(items))
     cur = await conn.execute(
         "SELECT is_available FROM recipes WHERE name = ?", ("Тыквенный пирог",))
     row = await cur.fetchone()
-    check("рецепт «Тыквенный пирог» создан недоступным", row and row['is_available'] == 0)
+    check("рецепт «Тыквенный пирог» есть (v0.41.2: доступен, состав — ТФ4)",
+          row and int(row['is_available'] or 0) == 1)
     items2 = await ensure_firelab_items()
-    check("повтор ensure — идемпотентно (8 шт.)", len(items2) == 8)
+    check("повтор ensure — идемпотентно (те же ключи)", set(items2) == set(items))
 
     print("\n2. Попробки рыбалки и отметки видов")
     sid = await create_fire_lab_session(UID, 50)

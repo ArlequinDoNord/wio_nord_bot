@@ -83,7 +83,7 @@
 | `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 3 | 34 | `clanh:` | `ClanHallAdminPhoto` |
 | `admin_shop_clan.py` | Админ-менеджер клановых лавок (Фаза 7). | `router` | 5 | 9 | `clanshopadm:` | `ClanShopAdmin` |
 | `admin_clanphotos.py` | Админ-менеджер картинок клан-холла (Фаза 8). | `router` | 3 | 5 | `clanhph:` | `ClanPhotosAdmin` |
-| `fire_event.py` | Дни Пламенного Круговорота — праздничное событие (ТЗ — FIRE_EVENT.md). | `router` | 0 | 6 | `fireevent:` | — |
+| `fire_event.py` | Дни Пламенного Круговорота — праздничное событие (ТЗ — FIRE_EVENT.md). | `router` | 0 | 7 | `fireevent:` | — |
 | `nii.py` | НИИ Северной Кибернетики и кремниевых систем — здание обратной связи. | `router` | 2 | 7 | `nii:` | `NiiWrite` |
 | `tourist_booklet.py` | Буклет туриста: чек-лист городских локаций и разовая награда. | `router` | 0 | 2 | `booklet:` | — |
 | `duel.py` | Дом Дуэлей — PvP-арена «зона на зону». | `router` | 0 | 12 | `duel:` | — |
@@ -324,8 +324,8 @@
 ### `fire_event.py` — Дни Пламенного Круговорота — праздничное событие (ТЗ — FIRE_EVENT.md).
 
 - Роутеры: `router`
-- Хендлеры: message=0, callback_query=6
-- `F.data.startswith`: `fireevent:attack:`, `fireevent:cont:`, `fireevent:fishing:`, `fireevent:leave:`, `fireevent:step:`
+- Хендлеры: message=0, callback_query=7
+- `F.data.startswith`: `fireevent:attack:`, `fireevent:cont:`, `fireevent:fishing:`, `fireevent:leave:`, `fireevent:potion:`, `fireevent:step:`
 - `F.data ==`: `fireevent:enter`
 
 ### `nii.py` — НИИ Северной Кибернетики и кремниевых систем — здание обратной связи.

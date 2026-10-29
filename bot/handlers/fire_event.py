@@ -644,25 +644,50 @@ def _battle_text(session, enemy, effects: dict, log: str = "") -> str:
     )
 
 
-def _battle_kb(session_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⚔️ Ударить",
-                              callback_data=f"fireevent:attack:{session_id}")],
-        [InlineKeyboardButton(text="🚪 Покинуть лабиринт",
-                              callback_data=f"fireevent:leave:{session_id}")],
-    ])
+async def _potions_labels(user_id: int) -> list:
+    """Лечащие расходники из слотов potion1/potion2: [(slot, name, qty)]."""
+    labels = []
+    eq = await db.get_equipment(user_id)
+    for slot in ("potion1", "potion2"):
+        item_id = eq.get(slot)
+        if not item_id:
+            continue
+        it = await db.get_item(item_id)
+        if not it or int(it['heal'] or 0) <= 0:
+            continue
+        inv = await db.get_inventory_item(user_id, item_id)
+        qty = int(inv['quantity'] or 0) if inv else 0
+        if qty <= 0:
+            continue
+        labels.append((slot, it['name'], qty))
+    return labels
+
+
+async def _battle_kb(user_id: int, session_id: int) -> InlineKeyboardMarkup:
+    """Кнопки боя: удар + зелья из слотов (если есть) + выход."""
+    rows = [[InlineKeyboardButton(text="⚔️ Ударить",
+                                  callback_data=f"fireevent:attack:{session_id}")]]
+    for i in range(0, len(labels := await _potions_labels(user_id)), 2):
+        rows.append([InlineKeyboardButton(
+            text=f"🧪 {nm} (x{qty})",
+            callback_data=f"fireevent:potion:{session_id}:{slot}")
+            for slot, nm, qty in labels[i:i + 2]])
+    rows.append([InlineKeyboardButton(text="🚪 Покинуть лабиринт",
+                                      callback_data=f"fireevent:leave:{session_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def _paint_battle(cb, session, enemy, log: str = ""):
+    kb = await _battle_kb(cb.from_user.id, int(session['id']))
     try:
         await cb.message.edit_text(
             _battle_text(session, enemy, json.loads(session['effects_json'] or '{}'), log),
-            reply_markup=_battle_kb(int(session['id'])),
+            reply_markup=kb,
             parse_mode="HTML")
     except Exception:
         await cb.message.answer(
             _battle_text(session, enemy, json.loads(session['effects_json'] or '{}'), log),
-            reply_markup=_battle_kb(int(session['id'])),
+            reply_markup=kb,
             parse_mode="HTML")
 
 
@@ -705,6 +730,20 @@ async def fire_event_attack_cb(cb: CallbackQuery):
     # урон игрока: base + weapon, в диапазоне lo..hi
     from utils.combat_model import pilot_combat_stats
     st = await pilot_combat_stats(cb.from_user.id)
+    # тик вражеского DoT (кровотечение/поджиг от нашего оружия) — до удара
+    dot = enemy.get('dot')
+    if dot and int(dot.get('rounds') or 0) > 0 and int(enemy.get('hp') or 0) > 0:
+        dmg_dot = int(dot.get('dmg') or 0)
+        if dmg_dot > 0:
+            enemy['hp'] = max(0, int(enemy['hp']) - dmg_dot)
+            dot['rounds'] = int(dot.get('rounds') or 1) - 1
+            if dot['rounds'] <= 0:
+                enemy.pop('dot', None)
+            eff_names = {"bleed": "🩸 Кровотечение", "burn": "🔥 Поджиг",
+                         "poison": "☠️ Отравление", "frostbite": "🧊 Обморожение"}
+            log_lines.append(
+                f"{eff_names.get(dot.get('kind'), 'DoT')} добирает врага: "
+                f"−{dmg_dot} HP ({enemy['hp']}/{enemy['hp_max']})")
     lo, hi = st.get('base_dmg') or (0, 0)
     w = st.get('weapon_damage') or 0
     if isinstance(w, tuple):
@@ -728,6 +767,19 @@ async def fire_event_attack_cb(cb: CallbackQuery):
                                         "\n".join(log_lines))
     enemy['hp'] = max(0, int(enemy['hp']) - eff)
     log_lines.append(f"💥 Ты нанёс {eff} урона (враг {enemy['hp']}/{enemy['hp_max']})")
+    # оружие: шанс DoT на врага (кровотечение Вил, поджиг Тродce), если враг жив
+    if int(enemy['hp']) > 0:
+        wep = await db.get_equipped_weapon(cb.from_user.id)
+        weff = (wep.get('weapon_effect') or "").strip() if wep else ""
+        wch = int((wep or {}).get('weapon_effect_chance') or 0)
+        wdmg = int((wep or {}).get('weapon_effect_dmg') or 0)
+        if weff in ("bleed", "burn", "poison", "frostbite") and wch and wdmg \
+                and random.randint(1, 100) <= wch:
+            enemy['dot'] = {"kind": weff, "dmg": wdmg, "rounds": 3}
+            fx_word = {"bleed": "🩸 Кровотечение:", "burn": "🔥 Поджог:",
+                       "poison": "☠️ Отравление:", "frostbite": "🧊 Обморожение:"}[weff]
+            log_lines.append(
+                f"{fx_word} враг получит −{wdmg} HP до удара (3 хода)")
     # реген благословения
     if int(session.get('blessing') or 0):
         regen = int(getattr(config, "FIRE_TREE_REGEN_HP", 1) or 0)
@@ -735,6 +787,56 @@ async def fire_event_attack_cb(cb: CallbackQuery):
         log_lines.append(f"🌿 Благословение: +{regen} HP")
     await _after_player_tick(cb, session, session_id, enemy, effects,
                              "\n".join(log_lines))
+
+
+@router.callback_query(F.data.startswith("fireevent:potion:"))
+async def fire_event_potion_cb(cb: CallbackQuery):
+    """Зелье в бою Лабиринта (слоты potion1/potion2, как в городе)."""
+    parts = cb.data.split(":")
+    session_id = int(parts[2])
+    slot = parts[3]
+    session = await _session_of(cb.from_user.id, session_id)
+    if not session:
+        return
+    eq = await db.get_equipment(cb.from_user.id)
+    item_id = eq.get(slot)
+    if not item_id:
+        await cb.answer("❌ Слот пуст.", show_alert=True)
+        return
+    it = await db.get_item(item_id)
+    if not it or int(it['heal'] or 0) <= 0:
+        await cb.answer("❌ Это не лечит.", show_alert=True)
+        return
+    inv = await db.get_inventory_item(cb.from_user.id, item_id)
+    if not inv or int(inv['quantity'] or 0) <= 0:
+        await cb.answer("❌ Зелий этого вида не осталось.", show_alert=True)
+        return
+    if not await db.remove_inventory_item(cb.from_user.id, item_id, 1):
+        await cb.answer("❌ Зелья не списалось.", show_alert=True)
+        return
+    heal_base = int(it['heal'] or 0)
+    pct = await db.get_player_heal_bonus_pct(cb.from_user.id)
+    pct += await db.get_achievement_bonus(cb.from_user.id, "cooking", "heal_pct")
+    pct += await db.get_achievement_bonus(cb.from_user.id, "elixir", "heal_pct")
+    heal = max(1, round(heal_base * (100 + pct) / 100))
+    new_hp = min(int(session['hp_max']), int(session['hp']) + heal)
+    conn = await db.get_db()
+    await conn.execute(
+        "UPDATE fire_lab_sessions SET hp = ?, last_active_at = datetime('now') "
+        "WHERE id = ?", (new_hp, session_id))
+    await conn.commit()
+    await db.log_activity(cb.from_user.id, "firelab",
+                          f"Зелье в бою: «{it['name']}» (+{heal} HP)")
+    bonus_note = f" (+{pct}% от экипа и мастерства)" if pct else ""
+    session = await db.get_active_fire_lab_session(cb.from_user.id)
+    enemy, effects = await _get_enemy_state(session_id)
+    if not enemy:
+        await cb.answer()
+        return
+    # зелье — это действие: враг отвечает (обычный ход)
+    log = (f"🧪 «{_esc(it['name'])}» (−{heal} HP убытка зелья)\n"
+           f"💙 Ты восстановил: ×{new_hp}/{int(session['hp_max'])}{bonus_note}")
+    await _after_player_tick(cb, session, session_id, enemy, effects, log)
 
 
 async def _after_player_tick(cb, session, session_id: int, enemy, effects, player_log: str):

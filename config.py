@@ -258,6 +258,32 @@ FIRE_LAB_CHEST_LOOT = (                   # взвешенная таблица 
     (FIRE_LAB_RECIPE_NAME, 10),    # рецепт (редкий)
 )
 
+# --- Огненный Лабиринт: экипировка/рецепты/достижение (Фаза 4) ---
+FIRE_PUMPKIN_SEED_NAME = "Семечко тыквы"      # посадка в кадку / клан. сад
+FIRE_PUMPKIN_NAME = "Тыква"                   # плод; ингредиент пирога
+FIRE_CROW_FEATHER_NAME = "Перо ворона"        # ресурс (дроп стража? — Ф5)
+FIRE_WIRE_NAME = "Моток железной проволоки"   # ингредиент трости
+FIRE_SUGAR_NAME = "Сахар"                     # ингредиент пирога
+FIRE_EGGS_NAME = "Яйца"                       # ингредиент пирога (x2)
+FIRE_KEYS_NAME = "Вилы"                       # оружие: +2 к удару, кровотечение
+FIRE_KEYS_DMG = 2
+FIRE_KEYS_BLEED_P = 10
+FIRE_KEYS_BLEED_DMG = 2
+FIRE_CROWN_NAME = "Огненный венец"            # голова: броня 2, лечение +25%
+FIRE_CROWN_HEAL_BONUS_PCT = 25
+FIRE_CLOAK_NAME = "Плащ Памяти"               # тело: броня 2, уклон +5%
+FIRE_CLOAK_DODGE = 5
+FIRE_GLOVES_NAME = "Перчатки стража посевов"  # руки: броня 2, уклон +3%
+FIRE_GLOVES_DODGE = 3
+FIRE_CANE_NAME = "Обжигающая трость"          # оружие: удар 3, поджог 20%
+FIRE_CANE_DMG = 3
+FIRE_FLAME_DEVICE_NAME = "Ручное пламенеющее устройство"   # ингредиент трости
+FIRE_CANE_BURN_P = 20
+FIRE_CANE_BURN_DMG = 2
+FIRE_CANE_BURN_ROUNDS = 3
+FIRE_LANTERN_NAME = "Лампа Круговорота"       # награда за «Чтящего Предков» (Ф4б)
+FIRE_AMBER_NAME = "Пламя Памяти"              # янтарь из Лампы (Ф4б), продам 100 НМ
+
 CLAN_BUILDING_TYPES = {
     "house":  {"name": "Дом Клана",         "slots": 2, "max_level": 2, "days": 2,
                "price_nm": 3000,
