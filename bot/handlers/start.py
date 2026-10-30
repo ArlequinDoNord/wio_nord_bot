@@ -6,11 +6,13 @@ from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from database.db import (add_user, get_user, ensure_base_status, user_is_tourist,
                          get_all_locations, get_active_run, finalize_run_for,
-                         get_latest_rep_speech)
+                         get_latest_rep_speech, fire_event_visible)
 from keyboards.keyboards import main_menu_keyboard, city_keyboard
 from utils.permissions import is_admin
 from utils.helpers import resolve_image
 from config import VERSION, VERSION_NOTES
+
+import database.db as db
 
 router = Router()
 
@@ -127,7 +129,8 @@ async def show_city(message: Message, state: FSMContext):
     await message.answer_photo(
         photo=FSInputFile(city_view),
         caption=await _city_caption(),
-        reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations)
+        reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations,
+                                   event_visible=db.fire_event_visible())
     )
 
 
@@ -167,15 +170,18 @@ async def city_menu_cb(callback: CallbackQuery, state: FSMContext):
     if left_note:
         await callback.message.answer(left_note)
     caption = await _city_caption()
+    ev = db.fire_event_visible()
     if callback.message.photo:
         from aiogram.types import InputMediaPhoto
         await callback.message.edit_media(
             media=InputMediaPhoto(media=FSInputFile(city_view), caption=caption),
-            reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations)
+            reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations,
+                                       event_visible=ev)
         )
     else:
         await callback.message.answer_photo(
             photo=FSInputFile(city_view),
             caption=caption,
-            reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations)
+            reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations,
+                                       event_visible=ev)
         )

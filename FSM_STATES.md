@@ -624,7 +624,7 @@
 - `city:countryside`: `bot/handlers/locations.py:263`
 - `city:dungeon`: `bot/handlers/dungeon.py:942`
 - `city:library`: `bot/handlers/library.py:82`
-- `city:menu`: `bot/handlers/start.py:158`
+- `city:menu`: `bot/handlers/start.py:161`
 - `city:pilots`: `bot/handlers/pilots.py:102`
 - `city:pilots:list`: `bot/handlers/pilots.py:129`
 - `city:quarter`: `bot/handlers/locations.py:225`
@@ -962,11 +962,11 @@
 - `finh:list:`: `bot/handlers/admin.py:2731`
 - `finh:u:`: `bot/handlers/admin.py:2743`
 - `finuser:`: `bot/handlers/admin.py:2616`
-- `fireevent:attack:`: `bot/handlers/fire_event.py:729`
+- `fireevent:attack:`: `bot/handlers/fire_event.py:761`
 - `fireevent:cont:`: `bot/handlers/fire_event.py:365`
 - `fireevent:fishing:`: `bot/handlers/fire_event.py:425`
 - `fireevent:leave:`: `bot/handlers/fire_event.py:524`
-- `fireevent:potion:`: `bot/handlers/fire_event.py:827`
+- `fireevent:potion:`: `bot/handlers/fire_event.py:859`
 - `fireevent:step:`: `bot/handlers/fire_event.py:286`
 - `fireph:set:`: `bot/handlers/admin_firephotos.py:82`
 - `fish:bait:\d+$`: `bot/handlers/fishing.py:514`

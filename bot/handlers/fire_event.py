@@ -549,11 +549,43 @@ async def _session_of(user_id: int, session_id: int):
 @router.callback_query(F.data == "fireevent:enter")
 async def fire_event_enter_cb(cb: CallbackQuery, state: FSMContext):
     """Вход в лабиринт: окно уже проверено гвардом — платный вход."""
-    from database.db import get_user
+    from database.db import (
+        get_user, user_is_tourist, grant_fire_souvenir, get_item_by_name,
+        add_inventory_item,
+    )
     user = await get_user(cb.from_user.id)
     if not user:
         await cb.answer("❌ Сначала /start.", show_alert=True)
         return
+
+    # ── Туристы: посмотреть вход можно, зайти нельзя — но сувенир положен ──
+    if await user_is_tourist(cb.from_user.id):
+        candy = await get_item_by_name(
+            getattr(config, "FIRE_LAB_CANDY_NAME", "Леденец языков пламени"))
+        fresh = False
+        if candy:
+            fresh = await grant_fire_souvenir(cb.from_user.id)
+            if fresh:
+                await add_inventory_item(cb.from_user.id, candy['id'], 1)
+                await db.log_activity(cb.from_user.id, "firelab",
+                                      "Сувенир праздника: леденец (туристу, бесплатно)")
+        sweet = ("\n\n🎁 <b>Сувенир праздника:</b> «Леденец языков пламени» — "
+                 "держи на память о Круговороте!" if fresh else
+                 "\n\n🎁 Сувенир праздника ты уже получал — он у тебя (или был).")
+        text = (f"🪔 <b>Дни Пламенного Круговорота</b>\n\n"
+                f"Перед тобой вход в Лабиринт из снопов сена — жаркое пламя, "
+                f"смех горожан и запах тыквы.\n\n"
+                f"⛔ В лабиринт вход только для граждан Нордхайма и легионеров. "
+                f"Туристам — только поглядеть со стороны и получить сувенир.{sweet}")
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 В город", callback_data="city:menu")],
+        ])
+        await cb.answer("🎁 Сувенир праздника!" if fresh else "🪔 Праздник для пилотов.")
+        await _fire_paint(cb, text=text, kb=kb,
+                          media_path=resolve_image(
+                              getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze")))
+        return
+
     fee = int(getattr(config, "FIRE_EVENT_LAB_FEE", 42) or 0)
     if int(user['nordmarks'] or 0) < fee:
         await cb.answer(f"❌ Вход стоит {fee} НМ — не хватает.", show_alert=True)

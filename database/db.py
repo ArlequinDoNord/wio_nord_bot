@@ -14168,6 +14168,31 @@ async def set_fire_photo(key: str, file_id: str | None):
     await conn.commit()
 
 
+# ============ Сувенир праздника туристу (разово, бесплатно) ============
+
+async def grant_fire_souvenir(user_id: int) -> bool:
+    """Разовый бесплатный леденец туристу у входа в Лабиринт.
+
+    Возвращает True, если сувенир выдан сейчас (первый раз); False — уже был.
+    Отметка хранится в таблице fire_souvenirs (user_id PK).
+    """
+    conn = await get_db()
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS fire_souvenirs (
+            user_id INTEGER PRIMARY KEY,
+            granted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    cur = await conn.execute(
+        "SELECT 1 FROM fire_souvenirs WHERE user_id = ?", (user_id,))
+    if await cur.fetchone():
+        return False
+    await conn.execute(
+        "INSERT OR IGNORE INTO fire_souvenirs (user_id) VALUES (?)", (user_id,))
+    await conn.commit()
+    return True
+
+
 # ============ ДРЕВО ПЛАМЕННОГО КРУГОВОРОТА (клановое расширение 'tree') ============
 
 async def count_clan_lanterns(clan_id: int) -> int:
