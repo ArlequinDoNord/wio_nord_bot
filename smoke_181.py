@@ -159,7 +159,20 @@ async def main():
     db.fire_event_visible = lambda: False
     check("праздника нет → обычная картинка", db.location_photo_for_tod(loc_stub, "summer", "day") == "NORMAL_FILE_ID")
     db.fire_event_visible = orig_visible
-    check("check: сборка стоимости лабиринта 32 НМ", config.FIRE_EVENT_LAB_FEE == 32)
+    check("вход в лабиринт 32 НМ", config.FIRE_EVENT_LAB_FEE == 32)
+
+    print("\n7. Праздничная картинка общего вида города")
+    from bot.handlers import start as st
+    await db.set_city_fire_photo("CITY_FIRE_FID")
+    check("сохранено", await db.get_city_fire_photo() == "CITY_FIRE_FID")
+    db.fire_event_visible = lambda: True
+    check("праздник идёт → картинка города праздничная", await st._city_photo() == "CITY_FIRE_FID")
+    db.fire_event_visible = lambda: False
+    pic = await st._city_photo()
+    check("праздника нет → обычная картинка Аркхольма", not isinstance(pic, str))
+    db.fire_event_visible = orig_visible
+    await db.set_city_fire_photo(None)
+    check("очищено", await db.get_city_fire_photo() is None)
 
     print(f"\nИТОГО: {passed} passed, {failed} failed")
     await close_db()

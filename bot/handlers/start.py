@@ -118,16 +118,25 @@ async def _city_caption() -> str:
     return (f"{caption}\n\n📢 Речь представителя\n{speech['text']}")
 
 
+async def _city_photo():
+    """Картинка общего вида города: праздничная (только пока праздник идёт) или обычная."""
+    if db.fire_event_visible():
+        fire = await db.get_city_fire_photo()
+        if fire:
+            return fire
+    return FSInputFile(resolve_image("city/arkholm"))
+
+
 @router.message(F.text == "Город")
 async def show_city(message: Message, state: FSMContext):
     left_note = await _abandon_active_run_if_left(message.from_user.id, state)
-    city_view = resolve_image("city/arkholm")
+    city_view = await _city_photo()
     is_here_pilot = not await user_is_tourist(message.from_user.id)
     locations = await get_all_locations()
     if left_note:
         await message.answer(left_note)
     await message.answer_photo(
-        photo=FSInputFile(city_view),
+        photo=city_view,
         caption=await _city_caption(),
         reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations,
                                    event_visible=db.fire_event_visible())
@@ -164,7 +173,7 @@ async def city_menu_cb(callback: CallbackQuery, state: FSMContext):
     from bot.handlers.forest import deactivate_forest
     await deactivate_forest(callback.from_user.id)
     left_note = await _abandon_active_run_if_left(callback.from_user.id, state)
-    city_view = resolve_image("city/arkholm")
+    city_view = await _city_photo()
     is_here_pilot = not await user_is_tourist(callback.from_user.id)
     locations = await get_all_locations()
     if left_note:
@@ -174,13 +183,13 @@ async def city_menu_cb(callback: CallbackQuery, state: FSMContext):
     if callback.message.photo:
         from aiogram.types import InputMediaPhoto
         await callback.message.edit_media(
-            media=InputMediaPhoto(media=FSInputFile(city_view), caption=caption),
+            media=InputMediaPhoto(media=city_view, caption=caption),
             reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations,
                                        event_visible=ev)
         )
     else:
         await callback.message.answer_photo(
-            photo=FSInputFile(city_view),
+            photo=city_view,
             caption=caption,
             reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations,
                                        event_visible=ev)

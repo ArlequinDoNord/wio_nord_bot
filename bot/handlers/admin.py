@@ -278,6 +278,10 @@ class AdminLocation(StatesGroup):
     preview = State()
 
 
+class AdminCityPhoto(StatesGroup):
+    photo = State()         # праздничная картинка общего вида города
+
+
 class AdminDungeon(StatesGroup):
     """Редактирование подземелья: входная картинка по времени суток; правка врагов."""
     target_id = State()
@@ -5409,6 +5413,7 @@ async def admin_locations(callback: CallbackQuery):
         [InlineKeyboardButton(text="➕ Создать локацию", callback_data="loc:create")],
         [InlineKeyboardButton(text="✏️ Редактировать доступ", callback_data="loc:edit_pick")],
         [InlineKeyboardButton(text="🏛 Редактировать здание", callback_data="loc:building_pick")],
+        [InlineKeyboardButton(text="🏙 Картинка города (праздник)", callback_data="loc:city_fire")],
         [InlineKeyboardButton(text="🔙 В меню", callback_data="admin:menu")],
     ])
     await callback.message.edit_text("\n".join(lines), reply_markup=kb)
@@ -8731,6 +8736,53 @@ async def loc_glade_set(callback: CallbackQuery, state: FSMContext):
         f"Отправь фото (или «-» чтобы убрать):",
         reply_markup=kb
     )
+
+
+@router.callback_query(F.data == "loc:city_fire")
+async def loc_city_fire(callback: CallbackQuery, state: FSMContext):
+    """Праздничная картинка общего вида города (показывается вместе с праздником)."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    from database.db import fire_event_visible, get_city_fire_photo
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    await state.set_state(AdminCityPhoto.photo)
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="admin:locations")]
+    ])
+    fid = await get_city_fire_photo()
+    shown = ("сейчас показывается, потому что праздник идёт" if fire_event_visible()
+             else "пока не показывается: включится со стартом праздника")
+    caption = (f"🏙 Праздничная картинка города — {shown}.\n"
+               f"Отправь фото или «-» чтобы убрать (вернётся обычная картинка Аркхольма).")
+    if fid:
+        try:
+            await callback.message.answer_photo(fid, caption=caption, reply_markup=kb)
+            return
+        except Exception:
+            pass
+    await callback.message.answer(caption + "\n\nСейчас своей картинки нет.", reply_markup=kb)
+
+
+@router.message(AdminCityPhoto.photo)
+async def loc_city_fire_save(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_locations"):
+        await state.clear()
+        return
+    from database.db import set_city_fire_photo
+    if message.photo:
+        file_id = message.photo[-1].file_id
+    elif message.text and message.text.strip() in ("-", "—"):
+        file_id = None
+    else:
+        await message.answer("❌ Отправь именно фото (или «-» для очистки).")
+        return
+    await set_city_fire_photo(file_id)
+    await log_action(message.from_user.id, 'edit_location', None,
+                     f"city_fire_photo={'file_id' if file_id else 'cleared'}")
+    await state.clear()
+    await message.answer("✅ Праздничная картинка города сохранена." if file_id
+                         else "✅ Праздничная картинка города убрана.")
 
 
 @router.callback_query(F.data == "loc:fire_set")

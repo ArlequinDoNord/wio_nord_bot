@@ -4397,6 +4397,21 @@ async def _get_setting_int(key: str, default=None):
         return default
 
 
+async def get_city_fire_photo() -> str | None:
+    """Праздничная картинка общего вида города (file_id) или None."""
+    return await get_setting("city_fire_photo")
+
+
+async def set_city_fire_photo(file_id: str | None):
+    """Задать (file_id) или убрать (None) праздничную картинку города."""
+    conn = await get_db()
+    if file_id:
+        await set_setting("city_fire_photo", file_id)
+    else:
+        await conn.execute("DELETE FROM settings WHERE key = ?", ("city_fire_photo",))
+        await conn.commit()
+
+
 async def get_setting(key: str, default: str = None) -> str | None:
     """Строковое значение из таблицы settings (или default, если ключа нет)."""
     conn = await get_db()
