@@ -1856,7 +1856,8 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
                 hp_note += f"\n🌟 Благословение Севера усилило лечение (+{state_heal_pct}%)."
             rpct = int(row_get(item, 'regen') or 0)
             if rpct > 0:
-                amounts = regen_amounts(heal, rpct)
+                rturns = int(row_get(item, 'regen_turns') or 0) or REGEN_TURNS
+                amounts = regen_amounts(heal, rpct, turns=rturns)
                 await state.update_data(regen_amounts=amounts)
                 regen_note = ("\n♻ Регенерация: следующие ходы +"
                               + "/".join(map(str, amounts)) + " HP (затухает).")
@@ -1894,7 +1895,8 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         regen_note = ""
         rpct = int(row_get(item, 'regen') or 0)
         if rpct > 0:
-            amounts = regen_amounts(heal, rpct)
+            rturns = int(row_get(item, 'regen_turns') or 0) or REGEN_TURNS
+            amounts = regen_amounts(heal, rpct, turns=rturns)
             await state.update_data(regen_amounts=amounts)
             regen_note = ("\n♻ Регенерация: следующие ходы +"
                           + "/".join(map(str, amounts)) + " HP (затухает).")
@@ -1919,6 +1921,17 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
                                  reason="съедена испорченная рыба")
             text += ("\n\n🤢 Ты съел испорченную рыбу — наступило несварение на сутки. "
                      "Нельзя применять расходники.")
+
+        # Суточный баф уворота (items.dodge_buff_pct, v0.41.4 «Предания предков»):
+        # активируется первым применением, повторное в течение суток НЕ продлевает.
+        dbuff = int(row_get(item, 'dodge_buff_pct') or 0)
+        if dbuff > 0:
+            from database.db import activate_dodge_buff, dodge_buff_active
+            if await activate_dodge_buff(user_id, dbuff):
+                text += (f"\n🪁 Уворот +{dbuff}% на сутки! "
+                         f"(повторное применение баф не продлевает)")
+            elif await dodge_buff_active(user_id):
+                text += f"\n🪁 Баф уворота +{dbuff}% уже активен — не продлевается."
     else:
         await add_inventory_item(user_id, item['id'], 1)
         await callback.message.answer("❌ Этот предмет нельзя использовать в бою.")

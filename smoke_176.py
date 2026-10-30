@@ -64,7 +64,7 @@ async def main():
     await add_user(UID, 't', 'Пилот Ф4', "")
     await update_user(UID, nordmarks=1000)
 
-    print("\n1. Сид предметов (22 шт., идемпотентно)")
+    print("\n1. Сид предметов (25 шт., идемпотентно)")
     items = await ensure_firelab_items()
     names = [
         config.FIRE_LAB_FISH_OSETR_NAME, config.FIRE_LAB_FISH_SOUL_NAME,
@@ -79,18 +79,19 @@ async def main():
         config.FIRE_LANTERN_NAME, config.FIRE_AMBER_NAME,
         config.FIRE_TREE_CLAN_ESSENCE_NAME,
         config.FIRE_FLAME_DEVICE_NAME, "Рецепт: Обжигающая трость",
+        config.FIRE_PREDKI_NAME,
     ]
-    check("все 24 предмета праздника на месте", set(items) == set(names))
+    check("все 25 предметов праздника на месте", set(items) == set(names))
     cur = await conn.execute(
         "SELECT name, COUNT(*) AS c FROM items GROUP BY name HAVING c > 1")
     dups = await cur.fetchall()
     if dups:
         print("   [dups] " + ", ".join(dict(d)['name'] for d in dups))
-    check("дублей нет (24 во всей БД)", not dups)
+    check("дублей нет (25 во всей БД)", not dups)
     await ensure_firelab_items()
     cur = await conn.execute("SELECT COUNT(*) AS c FROM items")
     dbg_count2 = (await cur.fetchone())['c']
-    check("повтор сид — по-прежнему 24", dbg_count2 == len(names))
+    check("повтор сид — по-прежнему 25", dbg_count2 == len(names))
 
     print("\n2. Спец-колонки новых предметов")
     seed = await get_item_by_name(config.FIRE_PUMPKIN_SEED_NAME)
@@ -145,6 +146,18 @@ async def main():
     check("трость: 3 ингредиента из ТЗ",
           cnames == {"Сержантская трость", config.FIRE_WIRE_NAME,
                      config.FIRE_FLAME_DEVICE_NAME})
+    cur = await conn.execute(
+        "SELECT * FROM recipes WHERE name = ?", (config.FIRE_PREDKI_NAME,))
+    predki_r = await cur.fetchone()
+    check("«Предания предков»: скрыт при FIRE_LAB_ENABLED=False",
+          predki_r and int(predki_r['is_available'] or 0) == 0)
+    pings = json.loads(predki_r['ingredients'])
+    pmap = {(i[0] if isinstance(i, (list, tuple)) else i.get('name')):
+            (i[1] if isinstance(i, (list, tuple)) else i.get('qty', 1)) for i in pings}
+    check("«Предания предков»: 1 душа, 2 арованы, 4 латимерии, соль, мука, 2 яйца",
+          pmap == {config.FIRE_LAB_FISH_CARP_NAME: 1, config.FIRE_LAB_FISH_SOUL_NAME: 2,
+                   config.FIRE_LAB_FISH_OSETR_NAME: 4, "Соль": 1, "Мука": 1,
+                   config.FIRE_EGGS_NAME: 2})
 
     print("\n4. Достижение «Чтящий Предков» + Лампа")
     spec = db.ACHIEVEMENTS_DEF.get('fire_keeper', {}).get('levels', [{}])[0]

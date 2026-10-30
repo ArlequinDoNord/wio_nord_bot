@@ -491,7 +491,8 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
                 kinds)
             if lvl:
                 ach_note = ("\n\n🪣 <b>Мини-ачивка: «Рыбак древних»!</b> "
-                            "Все три праздничные рыбы — твои. Премия — доступна у наград.")
+                            "Все три праздничные рыбы — твои. Премия — доступна у наград, "
+                            "а в награду — рецепт «Предания предков».")
         text = _room_chrome("🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА",
                             line + ach_note)
         await cb.answer("🐟 Улов!")
@@ -928,20 +929,30 @@ async def fire_event_potion_cb(cb: CallbackQuery):
     if not enemy:
         await cb.answer()
         return
-    # затухающая регенерация (items.regen): тики на 3 следующих хода игрока
+    # затухающая регенерация (items.regen): тики на N следующих ходов игрока
     regen_note = ""
     rpct = int(it['regen'] or 0) if 'regen' in it.keys() else 0
     if rpct > 0 and int(session['hp']) < int(session['hp_max']):
-        from bot.handlers.dungeon import regen_amounts
-        ticks = regen_amounts(heal_base, rpct)
+        rturns = int(it['regen_turns'] or 0) if 'regen_turns' in it.keys() else 0
+        from bot.handlers.dungeon import regen_amounts, REGEN_TURNS
+        ticks = regen_amounts(heal_base, rpct, turns=(rturns or REGEN_TURNS))
         if ticks:
             effects[FX_REGEN] = ticks
             regen_note = (f"\n♻ Регенерация: +{'/'.join(str(t) for t in ticks)} "
-                          f"HP на 3 хода")
+                          f"HP на {len(ticks)} ходов")
+    # суточный баф уворота (items.dodge_buff_pct): первый раз активирует,
+    # повторное применение в течение суток НЕ продлевает
+    dbuff = int(it['dodge_buff_pct'] or 0) if 'dodge_buff_pct' in it.keys() else 0
+    dbuff_note = ""
+    if dbuff > 0:
+        if await db.activate_dodge_buff(cb.from_user.id, dbuff):
+            dbuff_note = f"\n🪁 Уворот +{dbuff}% на сутки!"
+        elif await db.dodge_buff_active(cb.from_user.id):
+            dbuff_note = f"\n🪁 Баф уворота +{dbuff}% уже активен — не продлевается."
     # зелье — это действие: враг отвечает (обычный ход)
     log = (f"🧪 «{_esc(it['name'])}» (−{heal} HP убытка зелья)\n"
            f"💙 Ты восстановил: ×{new_hp}/{int(session['hp_max'])}{bonus_note}"
-           + regen_note)
+           + regen_note + dbuff_note)
     await _after_player_tick(cb, session, session_id, enemy, effects, log)
 
 

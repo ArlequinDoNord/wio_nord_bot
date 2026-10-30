@@ -652,7 +652,12 @@ async def _render_item_card(message, user_id: int, item_id: int, note: str = "")
     if item['heal']:
         dots.append(f"💚 Лечение: {item['heal']}")
     if item.get('regen'):
-        dots.append(f"♻ Регенерация: {item['regen']}% от лечения (затухает за 3 хода)")
+        rturns = int(row_get(item, 'regen_turns') or 0) or 3
+        dots.append(f"♻ Регенерация: {item['regen']}% от лечения "
+                    f"(затухает за {rturns} хода)")
+    if int(row_get(item, 'dodge_buff_pct') or 0) > 0:
+        dots.append(f"🪁 Баф: уворот +{row_get(item, 'dodge_buff_pct')}% на сутки "
+                    f"(повторное применение не продлевает)")
     if dots:
         text += " • ".join(dots) + "\n\n"
     if item['heal'] and item['name'] != 'Дымовая шашка':

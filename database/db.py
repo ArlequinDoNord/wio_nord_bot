@@ -1616,6 +1616,12 @@ async def init_db():
     # heal_bonus_pct — % к лечению расходников; dodge_bonus — +пп к уклонению.
     await _ensure_column(conn, "items", "heal_bonus_pct", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "dodge_bonus", "INTEGER DEFAULT 0")
+    # v0.41.4 «Предания предков»: нестандартная длительность регенерации (ходы)
+    # и суточный баф уворота от расходника.
+    await _ensure_column(conn, "items", "regen_turns", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "items", "dodge_buff_pct", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "users", "dodge_buff_until", "TEXT DEFAULT NULL")
+    await _ensure_column(conn, "users", "dodge_buff_pct", "INTEGER DEFAULT 0")
     # v0.41.3: переименование трёх праздничных рыб (скрытые лут-предметы, а не
     # магазинные) — для БД, засеянной ещё со старыми именами v0.41.2.
     await conn.execute(
@@ -9651,6 +9657,13 @@ async def ensure_firelab_items() -> dict:
          "чуть-чуть лечит. +12 HP в бою.",
          0, 10, 1, "consumable",
          int(getattr(config, "FIRE_LAB_CANDY_HEAL", 12) or 12), 1),
+        (config.FIRE_PREDKI_NAME,
+         "Праздничный рыбный пирог «Предания предков»: три вида рыб Колодца "
+         "под золотистой корочкой. +60 HP в бою, затухающая регенерация "
+         "(50% от лечения на 4 хода) и уворот +5% на сутки "
+         "(баф не продлевается повторным применением).",
+         0, 300, 4, "consumable",
+         int(getattr(config, "FIRE_PREDKI_HEAL", 60) or 60), 1),
         (config.FIRE_LAB_HAY_NAME,
          "Сено из развилок Лабиринта: Пугало смотрит на него с уважением. "
          "Ресурс для будущих поделок.", 0, 5, 1, "resource", 0, 1),
@@ -9803,12 +9816,45 @@ async def ensure_firelab_items() -> dict:
                          (flame_device, 1)],
                         ensure_ascii=False),
              8, 120, 4, 1))
+    # «Предания предков» — рыбный пирог из всех трёх видов рыб Колодца
+    # (1 редкая + 2 средней + 4 обычной). Рецепт открыт всем пилотам:
+    # сложность — собрать улов, а не найти свиток.
+    cur = await conn.execute(
+        "SELECT id FROM recipes WHERE name = ?", (config.FIRE_PREDKI_NAME,))
+    if not await cur.fetchone():
+        await conn.execute(
+            "INSERT INTO recipes (name, description, result_item_name, "
+            "result_quantity, required_expansion, required_level, ingredients, "
+            "ap_cost, production_time, rarity, is_available) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (config.FIRE_PREDKI_NAME,
+             "Праздничный рыбный пирог: предания говорят, что такой пекли "
+             "ещё до основания Нордхайма. +60 HP, регенерация на 4 хода, "
+             "уворот +5% на сутки.",
+             config.FIRE_PREDKI_NAME, 1, "kitchen", 2,
+             json.dumps([
+                 (config.FIRE_LAB_FISH_CARP_NAME, 1),
+                 (config.FIRE_LAB_FISH_SOUL_NAME, 2),
+                 (config.FIRE_LAB_FISH_OSETR_NAME, 4),
+                 ("Соль", 1), ("Мука", 1), (config.FIRE_EGGS_NAME, 2),
+             ], ensure_ascii=False),
+             5, 120, 4, 1))
+    # Рецепт виден только при включённом празднике (FIRE_LAB_ENABLED) и выдаётся
+    # наградой ачивки «Рыбак древних» (поймать все три праздничные рыбы).
+    await conn.execute(
+        "UPDATE recipes SET is_available = ? WHERE name = ?",
+        (1 if getattr(config, "FIRE_LAB_ENABLED", False) else 0,
+         config.FIRE_PREDKI_NAME))
     await conn.commit()
     # Праздничные предметы НЕ продаются в магазине (только лут/крафт/улов);
     # рынок/скупка работают как у обычного улова. Безопасно повторять.
     await conn.execute(
         "UPDATE items SET is_available = 0 WHERE name IN ("
         + ",".join("?" * len(out)) + ")", tuple(out.keys()))
+    # «Предания предков» — тоже не магазинный (крафт-результат)
+    await conn.execute(
+        "UPDATE items SET is_available = 0 WHERE name = ?",
+        (config.FIRE_PREDKI_NAME,))
     await conn.commit()
     return out
 
@@ -9819,6 +9865,10 @@ async def _firelab_seed_extras(name: str, item_id: int):
     c = config
     if name == c.FIRE_PUMPKIN_SEED_NAME:
         await update_item(item_id, plant_name=c.FIRE_PUMPKIN_NAME)
+    elif name == c.FIRE_PREDKI_NAME:
+        await update_item(item_id, regen=int(c.FIRE_PREDKI_REGEN),
+                          regen_turns=int(c.FIRE_PREDKI_REGEN_TURNS),
+                          dodge_buff_pct=int(c.FIRE_PREDKI_DODGE_PCT))
     elif name == c.FIRE_LANTERN_NAME:
         # Лампа — мебель для личного жилья (expansion 'lantern', генератор Ф4б).
         await update_item(item_id, category="furniture")
@@ -11740,9 +11790,13 @@ async def get_player_crit_mult(user_id: int) -> float:
 
 
 async def get_player_dodge(user_id: int, dodge_mult: float = 1.0) -> int:
-    """Уклонение пилота в %: база 3% + награды + экип (items.dodge_bonus), × состояния."""
+    """Уклонение пилота в %: база 3% + награды + экип (items.dodge_bonus)
+    + суточный баф от праздничного пирога, × состояния."""
     dodge = PLAYER_BASE_DODGE
     dodge += (await get_award_bonus(user_id))['dodge']
+    if await dodge_buff_active(user_id):
+        user = await get_user(user_id)
+        dodge += int((user or {}).get('dodge_buff_pct') or 0)
     eq = await get_equipment(user_id)
     ids = [i for i in eq.values() if i]
     if ids:
@@ -11772,6 +11826,39 @@ async def get_player_heal_bonus_pct(user_id: int) -> int:
     row = await cursor.fetchone()
     pct = int(row['s'] or 0) if row else 0
     return max(0, min(100, pct))
+
+
+# ============ Суточный баф уворота от расходников («Предания предков») ============
+
+async def dodge_buff_active(user_id: int) -> bool:
+    """Активен ли суточный баф уворота (users.dodge_buff_until > сейчас)."""
+    user = await get_user(user_id)
+    raw = (user or {}).get('dodge_buff_until')
+    if not raw:
+        return False
+    try:
+        return float(raw) > datetime.now(MOSCOW_TZ).timestamp()
+    except (TypeError, ValueError):
+        return False
+
+
+async def activate_dodge_buff(user_id: int, pct: int) -> bool:
+    """Активировать суточный баф уворота (+pct %) на FIRE_PREDKI_DODGE_HOURS.
+
+    Возвращает True, если баф активирован сейчас; False — если он УЖЕ активен
+    (повторное применение пирога баф НЕ продлевает — по ТЗ владельца).
+    """
+    if await dodge_buff_active(user_id):
+        return False
+    from datetime import timedelta
+    until = (datetime.now(MOSCOW_TZ)
+             + timedelta(hours=int(getattr(config, "FIRE_PREDKI_DODGE_HOURS", 24) or 24))
+             ).timestamp()
+    await update_user(user_id, dodge_buff_until=str(int(until)),
+                      dodge_buff_pct=int(pct or 0))
+    await log_activity(user_id, "firelab",
+                       f"Баф уворота +{pct}% на сутки (праздничный пирог)")
+    return True
 
 
 async def get_player_armor_with_bonus(user_id: int) -> int:
@@ -13152,7 +13239,8 @@ ACHIEVEMENTS_DEF = {
         "levels": [
             {"level": 1, "threshold": int(getattr(config, "FIRE_FISHER_THRESHOLD", 3) or 3),
              "name": "Рыбак древних", "bonus": {},
-             "reward_nm": int(getattr(config, "FIRE_FISHER_REWARD_NM", 150) or 150)},
+             "reward_nm": int(getattr(config, "FIRE_FISHER_REWARD_NM", 150) or 150),
+             "reward_recipe": getattr(config, "FIRE_PREDKI_NAME", "Предания предков")},
         ],
     },
     "fire_keeper": {
@@ -13186,6 +13274,8 @@ async def ensure_achievements():
                     + (f" Бонус: {describe_achievement_bonus(lvl.get('bonus', {}))}." if lvl.get("bonus") else ""))
             if lvl.get("reward_item"):
                 desc += f" Награда: предмет «{lvl['reward_item']}»."
+            if lvl.get("reward_recipe"):
+                desc += f" Награда: рецепт «{lvl['reward_recipe']}»."
             await create_award(
                 name=lvl["name"],
                 description=desc,
@@ -13258,6 +13348,16 @@ async def _apply_achievement_threshold(conn, user_id: int, akey: str,
             "SELECT id FROM items WHERE name = ?", (reward_item_name,))).fetchone()
         if item_row:
             await add_inventory_item(user_id, item_row["id"], 1)
+    # Рецепт за уровень ачивки (например, «Предания предков» за все три рыбы).
+    reward_recipe_name = target.get("reward_recipe")
+    if reward_recipe_name:
+        recipe_row = await (await conn.execute(
+            "SELECT id FROM recipes WHERE name = ?", (reward_recipe_name,))).fetchone()
+        if recipe_row:
+            await conn.execute(
+                "INSERT OR IGNORE INTO user_recipes (user_id, recipe_id) VALUES (?, ?)",
+                (user_id, recipe_row["id"]))
+            await conn.commit()
     return target["level"], target["name"], prev_name
 
 
