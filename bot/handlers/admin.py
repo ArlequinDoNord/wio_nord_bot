@@ -899,13 +899,14 @@ def storage_markup(items, page: int = 0, cat_key: str = "all"):
 
     rows = []
     for it in chunk:
+        market = " 🏪" if it.get('market_ok') else ""
         if it.get('loot_only'):
             marker = f"🎯 {it['name']} — только лут"
         elif it.get('is_available'):
             status = "🟢" if it['stock'] != 0 else "🟡"
-            marker = f"{status} {it['name']} (ост. {it['stock']})"
+            marker = f"{status} {it['name']} (ост. {it['stock']}){market}"
         else:
-            marker = f"🔴 {it['name']} — скрыт"
+            marker = f"🔴 {it['name']} — снят с продажи{market}"
         rows.append([InlineKeyboardButton(
             text=marker,
             callback_data=f"storage:item:{it['id']}"
@@ -982,7 +983,9 @@ async def storage_category(callback: CallbackQuery):
     cat_name = ITEM_CATEGORIES.get(cat_key, cat_key) if cat_key != "all" else "Все предметы"
     await callback.message.edit_text(
         f"📦 {cat_name}\nВсего: {len(items)}\n\n"
-        "🟢 — в продаже, 🟡 — почти распродан, 🔴 — скрыт. Нажми на предмет для редактирования.",
+        "🟢 — в продаже, 🟡 — почти распродан, 🔴 — снят с продажи, "
+        "🎯 — только лут; 🏪 — можно выставлять на рынок. "
+        "Нажми на предмет для редактирования.",
         reply_markup=storage_markup(items, page, cat_key=cat_key)
     )
 

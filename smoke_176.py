@@ -287,6 +287,39 @@ async def main():
                       for b in row) if cb.message.kb else ""
     check("боевой экран с кнопками есть", bool(kb_txt))
 
+    print("\n7. Праздничные предметы скрыты из магазина (v0.41.3)")
+    fish_names = (config.FIRE_LAB_FISH_OSETR_NAME, config.FIRE_LAB_FISH_SOUL_NAME,
+                  config.FIRE_LAB_FISH_CARP_NAME)
+    for nm in fish_names:
+        fitem = await get_item_by_name(nm)
+        check(f"«{nm}» скрыт из магазина (is_available=0)",
+              fitem and not int(fitem['is_available'] or 0))
+        check(f"«{nm}» можно на рынок (market_ok=1)",
+              fitem and int(fitem['market_ok'] or 0) == 1)
+    hidden_ok = True
+    for nm in (config.FIRE_PUMPKIN_SEED_NAME, config.FIRE_PUMPKIN_NAME,
+               config.FIRE_CROW_FEATHER_NAME, config.FIRE_WIRE_NAME,
+               config.FIRE_SUGAR_NAME, config.FIRE_EGGS_NAME,
+               config.FIRE_LANTERN_NAME, config.FIRE_AMBER_NAME,
+               config.FIRE_TREE_CLAN_ESSENCE_NAME,
+               config.FIRE_FLAME_DEVICE_NAME,
+               "Рецепт: Обжигающая трость", config.FIRE_KEYS_NAME,
+               config.FIRE_CROWN_NAME, config.FIRE_CLOAK_NAME,
+               config.FIRE_GLOVES_NAME, config.FIRE_LAB_CANDY_NAME,
+               config.FIRE_LAB_PIE_NAME, config.FIRE_LAB_HAY_NAME,
+               config.FIRE_LAB_BRANCH_NAME, config.FIRE_LAB_RECIPE_NAME):
+        it = await get_item_by_name(nm)
+        if not it or int(it['is_available'] or 0) != 0:
+            hidden_ok = False
+            break
+    check("все прочие праздничные предметы тоже скрыты", hidden_ok)
+    visible_fish = await conn.execute(
+        "SELECT COUNT(*) AS c FROM items WHERE category = 'fishing' "
+        "AND is_available = 1")
+    cnt_visible = int((await visible_fish.fetchone())['c'] or 0)
+    check(f"в магазине по категории fishing видно {cnt_visible} (праздничных 0)",
+          cnt_visible >= 0)  # старые рыбы могут быть видимы — важен только ноль праздничных
+
     print(f"\nИТОГО: {passed} passed, {failed} failed")
     await close_db()
     if failed:

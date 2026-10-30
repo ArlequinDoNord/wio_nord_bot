@@ -7,7 +7,8 @@
 Проверяет:
 1. `storage_markup` строится без ошибок для всех категорий и для «Все предметы».
 2. У непустой категории есть хотя бы одна кнопка-предмет, у пустой — нет.
-3. Скрытый предмет (is_available=0) помечается «🔴 ... скрыт».
+3. Скрытый предмет (is_available=0) помечается «🔴 … снят с продажи»,
+   рыночный (market_ok=1) — с пометкой 🏪.
 4. Предмет в продаже (is_available=1) помечается «🟢/🟡 ... (ост. N)».
 5. Loot-only предмет помечается «🎯 ... только лут».
 6. Пагинация: больших категорий достаточно, чтобы появились ◀️/▶️.
@@ -127,9 +128,20 @@ async def run():
     mk = storage_markup(special, cat_key="special")
     joined = "\n".join(_texts(mk))
 
-    check("скрытый помечен 🔴 … скрыт", f"🔴 __smoke139_hidden__ — скрыт" in joined)
+    check("скрытый помечен 🔴 … снят с продажи",
+          f"🔴 __smoke139_hidden__ — снят с продажи" in joined)
     check("в продаже помечен 🟢 … (ост. 7)", "🟢 __smoke139_shown__ (ост. 7)" in joined)
     check("loot-only помечен 🎯 … только лут", "🎯 __smoke139_loot__ — только лут" in joined)
+    # рыночный: создаём предмет с market_ok=1 и проверяем 🏪 в его строке
+    market_item = await add_item(name="__smoke139_market__", description="", price=1,
+                                 sell_price=1, rarity=1, category="special",
+                                 stock=3, added_by=0, market_ok=1)
+    special2 = await get_items_by_category("special")
+    mk2 = storage_markup(special2, cat_key="special")
+    joined2 = "\n".join(_texts(mk2))
+    check("рыночный предмет помечен 🏪",
+          f"🏪" in joined2
+          and "__smoke139_market__" in joined2)
     check("скрытый предмет в наборе кнопок",
           f"storage:item:{hidden_id}" in _callbacks(mk))
 
