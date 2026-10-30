@@ -1624,6 +1624,27 @@ async def init_db():
         "UPDATE items SET name = 'Скелетная Арована' WHERE name = 'Костяная Душа'")
     await conn.execute(
         "UPDATE items SET name = 'Пылающая Душа' WHERE name = 'Пламенный Карп'")
+    # v0.41.3: в дефолтных описаниях леденца/пирога теперь указано лечение в бою
+    # (перезаписываем только дефолтные тексты — ручные правки админа не трогаем).
+    await conn.execute(
+        "UPDATE items SET description = "
+        "'Леденец из праздника Круговорота: обжигает язык, гасит голод и "
+        "чуть-чуть лечит. +12 HP в бою.' "
+        "WHERE name = 'Леденец языков пламени' AND description = "
+        "'Леденец из праздника Круговорота: обжигает язык, гасит голод и "
+        "чуть-чуть лечит.'")
+    await conn.execute(
+        "UPDATE items SET description = "
+        "'Ломоть тыквенного пирога с праздничного стола: тёплая корочка, "
+        "внутри — золотистая тыква и искры корицы. +15 HP в бою.' "
+        "WHERE name = 'Кусочек тыквенного пирога' AND description = "
+        "'Ломоть тыквенного пирога с праздничного стола: тёплая корочка, "
+        "внутри — золотистая тыква и искры корицы.'")
+    # v0.41.4: пирог — затухающая регенерация (механика items.regen, как у
+    # рыбного пирога): +50% от лечения, разлитая на 3 хода боя.
+    await conn.execute(
+        "UPDATE items SET regen = 50 "
+        "WHERE name = 'Кусочек тыквенного пирога' AND regen = 0")
     # v0.41.3: праздничные предметы не видны в магазине (только лут/крафт);
     # лов/рынок/скупка не трогаются — правила «как у обычного улова» остаются.
     await conn.execute(
@@ -8478,7 +8499,8 @@ WATER_FISH_DEFAULTS = {
         ("Светящаяся форель", 5, 5),
     ],
 }
-WATER_LABELS = {"lake": "Озеро в парке", "reservoir": "Подземное водохранилище"}
+WATER_LABELS = {"lake": "Озеро в парке", "reservoir": "Подземное водохранилище",
+                "fire_well": "🪣 Колодец (Круговорот)"}
 
 # Находки со дна без наживки (мусор): имя → базовый шанс выпадения %.
 # Шансы и картинки правятся админом в редакторе рыбалки (таблица water_junk),
@@ -9620,11 +9642,14 @@ async def ensure_firelab_items() -> dict:
          "редкая праздничная рыба.", 0, 90, 4, "fishing", 0, 0),
         (config.FIRE_LAB_PIE_NAME,
          "Ломоть тыквенного пирога с праздничного стола: тёплая корочка, "
-         "внутри — золотистая тыква и искры корицы.", 0, 15, 2, "consumable",
+         "внутри — золотистая тыква и искры корицы. +15 HP в бою и "
+         "затухающая регенерация (50% от лечения на 3 хода).",
+         0, 15, 2, "consumable",
          int(getattr(config, "FIRE_LAB_PIE_HEAL", 15) or 15), 1),
         (config.FIRE_LAB_CANDY_NAME,
          "Леденец из праздника Круговорота: обжигает язык, гасит голод и "
-         "чуть-чуть лечит.", 0, 10, 1, "consumable",
+         "чуть-чуть лечит. +12 HP в бою.",
+         0, 10, 1, "consumable",
          int(getattr(config, "FIRE_LAB_CANDY_HEAL", 12) or 12), 1),
         (config.FIRE_LAB_HAY_NAME,
          "Сено из развилок Лабиринта: Пугало смотрит на него с уважением. "
@@ -9718,6 +9743,20 @@ async def ensure_firelab_items() -> dict:
             item = await get_item(item_id)
             await _firelab_seed_extras(name, int(item['id']))
         out[name] = int(item['id'])
+
+    # Рыбы Колодца — в общий пул водной рыбалки (water='fire_well'), чтобы
+    # админ-редактор рыбалки мог править веса/фото/цену как у обычных рыб.
+    # Веса = базовые шансы улова из FIRE_LAB_FISH_TABLE (60/25/15).
+    conn = await get_db()
+    for fish_name, weight in getattr(config, "FIRE_LAB_FISH_TABLE", ()):
+        fish_item = await get_item_by_name(fish_name)
+        if not fish_item:
+            continue
+        await conn.execute(
+            "INSERT INTO water_fish (water, item_id, day_weight, night_weight) "
+            "VALUES ('fire_well', ?, ?, ?) "
+            "ON CONFLICT(water, item_id) DO NOTHING",
+            (fish_item['id'], weight, weight))
 
     # Рецепты праздника:
     #  • «Тыквенный пирог» — Тыква + Мука + Соль + Сахар + Яйца×2 (владелец

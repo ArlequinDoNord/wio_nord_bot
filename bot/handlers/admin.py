@@ -6917,6 +6917,7 @@ async def admin_fishing_menu(callback: CallbackQuery, state: FSMContext):
     rows = [
         [InlineKeyboardButton(text="🌊 Озеро в парке", callback_data="fishing:water:lake")],
         [InlineKeyboardButton(text="🌊 Подземное водохранилище", callback_data="fishing:water:reservoir")],
+        [InlineKeyboardButton(text="🪣 Колодец (Круговорот)", callback_data="fishing:water:fire_well")],
         [InlineKeyboardButton(text="🔙 В админ-панель", callback_data="admin:menu")],
     ]
     await callback.message.edit_text(
@@ -9126,6 +9127,7 @@ ENEMY_SOURCE_TITLES = {
 FISHING_SPOT_TITLES = {
     "lake": "🏞 Озеро",
     "reservoir": "🌊 Подземное водохранилище",
+    "fire_well": "🪣 Колодец (Круговорот)",
 }
 
 # Поля карточки врага леса/рыбалки: ключ → (подпись, промпт, тип).

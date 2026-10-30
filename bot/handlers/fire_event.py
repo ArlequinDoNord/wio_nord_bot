@@ -110,6 +110,7 @@ FX_BLIND = "blind"        # ослепление: часть ударов про
 FX_STUN = "stun"          # оглушение: игрок пропускает ход
 FX_SLOW = "slow"          # замедление: сильно снижает уклон игрока, чуть +уклон врага
 FX_BURN = "burn"          # поджиг: −N HP/ход
+FX_REGEN = "regen"        # регенерация от расходника: очередь тиков [+a1, +a2, +a3]
 
 
 # ==================== ВСТРЕЧИ И БРОСКИ РАЗВИЛКИ (Фаза 2/3) ====================
@@ -450,11 +451,23 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
             f"Осталось попыток: {left_now}.")
         await cb.answer("🎣 Пусто…")
     else:
-        table = ((getattr(config, "FIRE_LAB_FISH_OSETR_NAME", "Спектральная Латимерия"), 60),
-                 (getattr(config, "FIRE_LAB_FISH_SOUL_NAME", "Скелетная Арована"), 25),
-                 (getattr(config, "FIRE_LAB_FISH_CARP_NAME", "Пылающая Душа"), 15))
-        weights = [w for _, w in table]
-        fish_name = random.choices([n for n, _ in table], weights=weights, k=1)[0]
+        # пул рыб — из water_fish (water='fire_well'), правится в админ-меню
+        # рыбалки; фолбэк — конфиг-таблица FIRE_LAB_FISH_TABLE.
+        pool = await db.get_water_fish_pool("fire_well")
+        if pool:
+            names = [r['name'] for r in pool]
+            weights = [max(1, int(r['day_weight'] or 0) + int(r['night_weight'] or 0))
+                       for r in pool]
+            fish_name = random.choices(names, weights=weights, k=1)[0]
+        else:
+            table = ((getattr(config, "FIRE_LAB_FISH_OSETR_NAME",
+                              "Спектральная Латимерия"), 60),
+                     (getattr(config, "FIRE_LAB_FISH_SOUL_NAME",
+                              "Скелетная Арована"), 25),
+                     (getattr(config, "FIRE_LAB_FISH_CARP_NAME",
+                              "Пылающая Душа"), 15))
+            weights = [w for _, w in table]
+            fish_name = random.choices([n for n, _ in table], weights=weights, k=1)[0]
         conn = await db.get_db()
         cur = await conn.execute("SELECT id FROM items WHERE name = ?", (fish_name,))
         row = await cur.fetchone()
@@ -700,6 +713,9 @@ def _battle_text(session, enemy, effects: dict, log: str = "") -> str:
     if effects.get(FX_BURN):
         burn = effects[FX_BURN]
         fx.append(f"🔥 Поджиг: −{burn.get('dmg')} HP/ход, {burn.get('rounds')} х.")
+    if effects.get(FX_REGEN):
+        rq = effects[FX_REGEN]
+        fx.append(f"♻ Регенерация: +{'/'.join(str(t) for t in rq)} HP (тики)")
     fx_line = "\n".join("   • " + x for x in fx) or "   — нет"
     return (
         f"⚔️ <b>Бой: {_esc(enemy['name'])}</b>"
@@ -770,6 +786,18 @@ async def fire_event_attack_cb(cb: CallbackQuery):
         await cb.answer("❌ Бой не найден — вернись на развилку.", show_alert=True)
         return
     log_lines = []
+    # тик регенерации от расходников (FX_REGEN — очередь затухающих тиков)
+    regen_q = effects.get(FX_REGEN)
+    if regen_q:
+        tick = int(regen_q[0] or 0)
+        if tick > 0:
+            healed = min(tick, int(session['hp_max']) - int(session['hp']))
+            if healed > 0:
+                session['hp'] = int(session['hp']) + healed
+                log_lines.append(f"♻ Регенерация: +{healed} HP")
+        effects[FX_REGEN] = regen_q[1:]
+        if not effects[FX_REGEN]:
+            effects.pop(FX_REGEN, None)
     # оглушение: пропуск хода
     if int(effects.get(FX_STUN) or 0) > 0:
         effects[FX_STUN] = int(effects.get(FX_STUN)) - 1
@@ -900,9 +928,20 @@ async def fire_event_potion_cb(cb: CallbackQuery):
     if not enemy:
         await cb.answer()
         return
+    # затухающая регенерация (items.regen): тики на 3 следующих хода игрока
+    regen_note = ""
+    rpct = int(it['regen'] or 0) if 'regen' in it.keys() else 0
+    if rpct > 0 and int(session['hp']) < int(session['hp_max']):
+        from bot.handlers.dungeon import regen_amounts
+        ticks = regen_amounts(heal_base, rpct)
+        if ticks:
+            effects[FX_REGEN] = ticks
+            regen_note = (f"\n♻ Регенерация: +{'/'.join(str(t) for t in ticks)} "
+                          f"HP на 3 хода")
     # зелье — это действие: враг отвечает (обычный ход)
     log = (f"🧪 «{_esc(it['name'])}» (−{heal} HP убытка зелья)\n"
-           f"💙 Ты восстановил: ×{new_hp}/{int(session['hp_max'])}{bonus_note}")
+           f"💙 Ты восстановил: ×{new_hp}/{int(session['hp_max'])}{bonus_note}"
+           + regen_note)
     await _after_player_tick(cb, session, session_id, enemy, effects, log)
 
 
