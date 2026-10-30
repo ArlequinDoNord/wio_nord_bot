@@ -51,8 +51,8 @@ async def main():
 
     print("\n1. Константы config")
     check("FIRE_EVENT_ENABLED = True", config.FIRE_EVENT_ENABLED is True)
-    check("FIRE_LAB_ENABLED = False (каркас закрыт)",
-          config.FIRE_LAB_ENABLED is False)
+    check("FIRE_LAB_ENABLED — булев флаг",
+          config.FIRE_LAB_ENABLED in (True, False))
     check("старт = 30.10 (пятница), МСК",
           config.FIRE_EVENT_START[:3] == (2026, 10, 30))
     check("длительность 5 суток", config.FIRE_EVENT_DURATION_DAYS == 5)
@@ -78,11 +78,13 @@ async def main():
     config.FIRE_EVENT_ENABLED = real_enabled
 
     print("\n3. fire_event_visible")
+    real_lab = config.FIRE_LAB_ENABLED
+    config.FIRE_LAB_ENABLED = False
     check("при FIRE_LAB_ENABLED=False → False", fire_event_visible() is False)
     config.FIRE_LAB_ENABLED = True
     config.FIRE_EVENT_START = (now_msk.year, now_msk.month, now_msk.day, 0, 0)
     check("при флагах и внутри окна → True", fire_event_visible() is True)
-    config.FIRE_LAB_ENABLED = False
+    config.FIRE_LAB_ENABLED = real_lab
     config.FIRE_EVENT_START = real_start
 
     print("\n4. Кнопка города")

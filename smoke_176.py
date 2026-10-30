@@ -149,8 +149,9 @@ async def main():
     cur = await conn.execute(
         "SELECT * FROM recipes WHERE name = ?", (config.FIRE_PREDKI_NAME,))
     predki_r = await cur.fetchone()
-    check("«Предания предков»: скрыт при FIRE_LAB_ENABLED=False",
-          predki_r and int(predki_r['is_available'] or 0) == 0)
+    expected_av = 1 if config.FIRE_LAB_ENABLED else 0
+    check("«Предания предков»: доступность = FIRE_LAB_ENABLED",
+          predki_r and int(predki_r['is_available'] or 0) == expected_av)
     pings = json.loads(predki_r['ingredients'])
     pmap = {(i[0] if isinstance(i, (list, tuple)) else i.get('name')):
             (i[1] if isinstance(i, (list, tuple)) else i.get('qty', 1)) for i in pings}
