@@ -2538,6 +2538,9 @@ async def admin_special_code_set(message: Message, state: FSMContext):
 @router.callback_query(F.data == "fin:manual")
 async def finance_manual(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_add_currency"):
+        await callback.message.answer("❌ Нет прав.")
+        return
     await state.set_state(AdminFinance.target)
     await callback.message.answer(
         "Введи получателя: @username или numeric ID игрока:",
@@ -2548,6 +2551,10 @@ async def finance_manual(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("fin:"))
 async def finance_pick(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    if not (await has_permission(callback.from_user.id, "can_add_currency")
+            or await has_permission(callback.from_user.id, "can_remove_currency")):
+        await callback.message.answer("❌ Нет прав.")
+        return
     parts = callback.data.split(":")
     if len(parts) < 3:
         await callback.message.answer("❌ Некорректный вызов.")
@@ -2810,6 +2817,11 @@ async def finance_target(message: Message, state: FSMContext):
 
 @router.message(AdminFinance.amount)
 async def finance_amount(message: Message, state: FSMContext):
+    if not (await has_permission(message.from_user.id, "can_add_currency")
+            or await has_permission(message.from_user.id, "can_remove_currency")):
+        await state.clear()
+        await message.answer("❌ Нет прав.")
+        return
     try:
         amount = int(message.text.strip())
     except ValueError:
@@ -3255,6 +3267,9 @@ async def status_delete_menu(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("st_del:"))
 async def status_delete_cb(callback: CallbackQuery):
     await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_statuses"):
+        await callback.message.answer("❌ Нет прав.")
+        return
     status_id = int(callback.data.split(":")[1])
     s = await get_status(status_id)
     await delete_status(status_id)
@@ -3839,6 +3854,9 @@ async def award_delete_menu(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("aw_del:"))
 async def award_delete_cb(callback: CallbackQuery):
     await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_awards"):
+        await callback.message.answer("❌ Нет прав.")
+        return
     award_id = int(callback.data.split(":")[1])
     a = await get_award(award_id)
     await delete_award(award_id)
@@ -4246,6 +4264,10 @@ async def award_revoke_pick_user(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data.startswith("awr_grant:"))
 async def award_revoke_apply(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    if not (await has_permission(callback.from_user.id, "can_manage_awards")
+            or await has_permission(callback.from_user.id, "can_grant_awards")):
+        await callback.message.answer("❌ Нет прав.")
+        return
     grant_id = int(callback.data.split(":")[1])
     await revoke_award(grant_id)
     await log_action(callback.from_user.id, 'revoke_award', None, f"grant_id={grant_id}")
@@ -5166,6 +5188,9 @@ async def admin_states_target_text(message: Message, state: FSMContext):
 @router.callback_query(F.data.startswith("st_op:"))
 async def admin_states_op(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_states"):
+        await callback.message.answer("❌ Нет прав.")
+        return
     op = callback.data.split(":")[1]
     if op == "clear":
         data = await state.get_data()
@@ -8495,6 +8520,10 @@ async def _loc_photos_pick_send(source, loc_id: int):
             text=f"{count}/4 {LOCATION_SEASON_LABEL[season]}" if count else f"— {LOCATION_SEASON_LABEL[season]}",
             callback_data=f"loc:season:{season}"
         )])
+    fire_has = bool(loc.get("fire_photo")) if "fire_photo" in keys else False
+    rows.append([InlineKeyboardButton(
+        text=f"{'✅' if fire_has else '—'} 🎃 Картинка Круговорота (праздник)",
+        callback_data="loc:fire_set")])
     rows.append([InlineKeyboardButton(text="🚫 Убрать все (без сезона)", callback_data="loc:photos:clear")])
     rows.append([InlineKeyboardButton(text="🍂 Убрать все сезонные", callback_data="loc:photos:clear_seasons")])
     # Опушка леса — самостоятельная картинка (место сбора грибов), намеренно
@@ -8702,6 +8731,43 @@ async def loc_glade_set(callback: CallbackQuery, state: FSMContext):
         f"Отправь фото (или «-» чтобы убрать):",
         reply_markup=kb
     )
+
+
+@router.callback_query(F.data == "loc:fire_set")
+async def loc_fire_set(callback: CallbackQuery, state: FSMContext):
+    """Праздничная картинка локации: одна на все времена суток, показывается
+    только пока идёт праздник (включается вместе со стартом, см. FIRE_LAB_ENABLED)."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    data = await state.get_data()
+    loc_id = data.get('target_id')
+    if not loc_id:
+        return
+    loc = await get_location(loc_id)
+    if not loc:
+        return
+    from database.db import fire_event_visible
+    await state.set_state(AdminLocation.preview)
+    await state.update_data(photo_kind="fire", photo_tod=None, photo_season=None)
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="loc:photos")]
+    ])
+    has_photo = bool(loc.get("fire_photo")) if "fire_photo" in loc.keys() else False
+    shown = ("сейчас показывается, потому что праздник идёт" if fire_event_visible()
+             else "пока не показывается: включится со стартом праздника")
+    caption = (f"🎃 Праздничная картинка «{loc['name']}» — {shown}.\n"
+               f"Отправь фото (одно на все времена суток) или «-» чтобы убрать "
+               f"и вернуть обычные картинки.")
+    if has_photo:
+        try:
+            await callback.message.answer_photo(loc["fire_photo"], caption=caption,
+                                                reply_markup=kb)
+            return
+        except Exception:
+            pass
+    await callback.message.edit_text(caption, reply_markup=kb)
 
 
 @router.callback_query(F.data == "loc:glade_clear")
@@ -9034,6 +9100,15 @@ async def loc_step_photo(message: Message, state: FSMContext):
         return
     photo_season = data.get('photo_season')
     photo_tod = data.get('photo_tod')
+    # Праздничная картинка: одна на все времена суток.
+    if data.get('photo_kind') == 'fire':
+        from database.db import update_location_fire_photo
+        await update_location_fire_photo(loc_id, file_id)
+        await log_action(message.from_user.id, 'edit_location', loc_id,
+                         f"fire_photo={'file_id' if file_id else 'cleared'}")
+        await state.clear()
+        await _loc_photos_pick_send(message, loc_id)
+        return
     # v0.18.18: слот «Опушка» — своя картинка, сезон/время тут не участвуют.
     if data.get('photo_kind') == 'glade':
         await update_location_glade_photo(loc_id, file_id)

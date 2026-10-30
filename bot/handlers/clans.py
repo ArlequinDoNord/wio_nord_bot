@@ -28,6 +28,7 @@ from database.db import (
 )
 from utils.permissions import has_permission, log_action
 from utils.notify import player_display, notify_user
+from html import escape as _esc
 
 router = Router()
 
@@ -175,7 +176,7 @@ async def clan_view_cb(callback: CallbackQuery):
     uid = callback.from_user.id
     members = await get_clan_member_ids(clan['id'])
     lines = [
-        f"{KIND_EMOJI.get(clan['kind'], '📌')} {_type_label(clan).title()} «{clan['name']}»\n",
+        f"{KIND_EMOJI.get(clan['kind'], '📌')} {_type_label(clan).title()} «{_esc(clan['name'])}»\n",
         f"👥 Членов: {len(members)}",
     ]
     if clan['leader_id']:
@@ -183,7 +184,7 @@ async def clan_view_cb(callback: CallbackQuery):
         lines.append(f"👑 Глава: {await player_display(lu) if lu else '#' + str(clan['leader_id'])}")
     desc = (clan.get('description') or '').strip()
     if desc:
-        lines.append(f"📖 {desc}")
+        lines.append(f"📖 {_esc(desc)}")
 
     can_admin = await has_permission(uid, "can_manage_clans")
     is_leader = clan['leader_id'] == uid
@@ -256,7 +257,7 @@ async def _hierarchy_screen(callback: CallbackQuery, clan_id: int):
         r = roles_map.get(mu['user_id'], 'member')
         role_rows.setdefault(r, []).append(mu)
 
-    lines = [f"⚜ ИЕРАРХИЯ КЛАНА «{clan['name']}»\n"]
+    lines = [f"⚜ ИЕРАРХИЯ КЛАНА «{_esc(clan['name'])}»\n"]
     for r in order:
         seq = role_rows.get(r) or []
         names = ", ".join(await player_display(u) for u in seq) or "— вакансия —"
@@ -487,7 +488,7 @@ async def _show_manage(callback: CallbackQuery, clan):
     members = await get_clan_members(clan['id'])
     requests = await get_clan_pending_requests(clan['id'])
 
-    lines = [f"⚙️ УПРАВЛЕНИЕ — {_type_label(clan).title()} «{clan['name']}»\n"]
+    lines = [f"⚙️ УПРАВЛЕНИЕ — {_type_label(clan).title()} «{_esc(clan['name'])}»\n"]
     lines.append(f"👥 Члены ({len(members)}):")
     for mu in members:
         tag = " 👑" if mu['user_id'] == clan['leader_id'] else ""
@@ -823,7 +824,7 @@ async def clan_edit_menu_cb(callback: CallbackQuery):
                                           callback_data=f"clanh:admconstphoto:{clan['id']}")])
     rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"clans:manage:{clan['id']}")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
-    await _redraw(callback, f"✏️ ЧТО ПРАВИМ В «{clan['name']}»?", kb, photo=clan.get('photo_file_id'))
+    await _redraw(callback, f"✏️ ЧТО ПРАВИМ В «{_esc(clan['name'])}»?", kb, photo=clan.get('photo_file_id'))
 
 
 @router.callback_query(F.data.startswith("clans:editf:"))
@@ -838,7 +839,7 @@ async def clan_edit_field_cb(callback: CallbackQuery, state: FSMContext):
         await update_clan(clan_id, photo_file_id=None)
         await callback.message.answer("✅ Картинка убрана.")
         clan = await get_clan(clan_id)
-        await _redraw(callback, f"✏️ ЧТО ПРАВИМ В «{clan['name']}»?", InlineKeyboardMarkup(inline_keyboard=[
+        await _redraw(callback, f"✏️ ЧТО ПРАВИМ В «{_esc(clan['name'])}»?", InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="✏️ Название", callback_data=f"clans:editf:{clan_id}:name")],
             [InlineKeyboardButton(text="📖 Описание", callback_data=f"clans:editf:{clan_id}:desc")],
             [InlineKeyboardButton(text="🖼 Картинка", callback_data=f"clans:editf:{clan_id}:photo")],

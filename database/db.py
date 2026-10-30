@@ -1473,6 +1473,7 @@ async def init_db():
     await _ensure_column(conn, "locations", "season_photos", "TEXT DEFAULT NULL")
     # v0.18.18: отдельная картинка опушки леса (грибы). Намеренно не картинка
     # входа в лес: опушка — самостоятельная картинка, задаётся админом отдельно.
+    await _ensure_column(conn, "locations", "fire_photo", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "locations", "glade_photo", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "locations", "clearing_photo", "TEXT DEFAULT NULL")
     # v0.32.0: отдельная картинка 1-го уровня шахт (Железная копь) — по аналогии
@@ -7769,9 +7770,12 @@ async def clear_location_season(location_id: int, season: str) -> bool:
 def location_photo_for_tod(loc, season: str, tod: str):
     """file_id фото локации на момент показа.
 
-    Приоритет: слот «сезон × время суток» (с фолбэком по суткам внутри сезона) →
-    обычные слоты photo_<tod> (ввод, без сезона) → None.
+    Приоритет: праздничная картинка (только пока идёт праздник и лабиринт открыт,
+    см. fire_event_visible) → слот «сезон × время суток» (с фолбэком по суткам
+    внутри сезона) → обычные слоты photo_<tod> (ввод, без сезона) → None.
     """
+    if loc.get("fire_photo") and fire_event_visible():
+        return loc["fire_photo"]
     slots = location_season_photos_raw(loc).get(season) or {}
     for key in (tod, "dawn", "day", "sunset", "night"):
         if slots.get(key):
@@ -7791,6 +7795,17 @@ def location_glade_photo(loc):
     if not loc:
         return None
     return loc.get("glade_photo") or None
+
+
+async def update_location_fire_photo(location_id: int, file_id):
+    """Праздничная картинка локации (file_id) или None — вернуть обычные картинки."""
+    conn = await get_db()
+    if not await get_location(location_id):
+        return False
+    await conn.execute("UPDATE locations SET fire_photo = ? WHERE id = ?",
+                       (file_id, location_id))
+    await conn.commit()
+    return True
 
 
 async def update_location_glade_photo(location_id: int, file_id):

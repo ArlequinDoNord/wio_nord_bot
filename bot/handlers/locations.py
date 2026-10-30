@@ -78,6 +78,10 @@ async def location_preview(callback: CallbackQuery):
         kvp_photo = await kvp_dungeon_photo()
         if kvp_photo:
             photo = kvp_photo
+    # Праздничная картинка локации — только пока идёт праздник (перекрывает всё выше).
+    from database.db import fire_event_visible
+    if 'fire_photo' in keys and loc['fire_photo'] and fire_event_visible():
+        photo = loc['fire_photo']
     if not photo:
         photo = location_photo_for_tod(loc, season, tod)
     if not photo and 'preview_photo' in keys and loc['preview_photo']:

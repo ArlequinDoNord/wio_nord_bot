@@ -658,13 +658,28 @@ async def _buy_item_impl(callback: CallbackQuery, item_id: int, qty: int, specia
 
     await callback.answer()
 
-    await remove_nordmarks(user_id, total, "shop_purchase", f"Покупка: {item['name']} x{qty}")
+    # Остаток резервируем атомарно (условие в SQL): два покупателя на последнюю
+    # единицу не пройдут оба. Если деньги не спишутся — резерв возвращаем.
+    if item['stock'] != -1:
+        db = await get_db()
+        cur = await db.execute(
+            "UPDATE items SET stock = stock - ? WHERE id = ? AND stock >= ?",
+            (qty, item_id, qty))
+        await db.commit()
+        if cur.rowcount == 0:
+            await callback.message.answer("❌ Товар только что раскупили — осталось меньше, чем ты хочешь.")
+            return
+    try:
+        await remove_nordmarks(user_id, total, "shop_purchase", f"Покупка: {item['name']} x{qty}")
+    except Exception:
+        if item['stock'] != -1:
+            db = await get_db()
+            await db.execute("UPDATE items SET stock = stock + ? WHERE id = ?", (qty, item_id))
+            await db.commit()
+        raise
     await add_inventory_item(user_id, item_id, qty)
 
     if item['stock'] != -1:
-        db = await get_db()
-        await db.execute("UPDATE items SET stock = stock - ? WHERE id = ?", (qty, item_id))
-        await db.commit()
         refreshed = await get_item(item_id)
         if refreshed['stock'] <= 0:
             await update_item(item_id, is_available=0)
@@ -1041,7 +1056,8 @@ async def decrement_stock(item_id: int):
     item = await get_item(item_id)
     if item and item['stock'] != -1 and item['stock'] > 0:
         db = await get_db()
-        await db.execute("UPDATE items SET stock = stock - 1 WHERE id = ?", (item_id,))
+        await db.execute(
+            "UPDATE items SET stock = stock - 1 WHERE id = ? AND stock >= 1", (item_id,))
         await db.commit()
 
 
@@ -1162,7 +1178,8 @@ async def buy_housing_confirm(callback: CallbackQuery):
     # Остаток на складе
     if item['stock'] != -1:
         db = await get_db()
-        await db.execute("UPDATE items SET stock = stock - 1 WHERE id = ?", (item_id,))
+        await db.execute(
+            "UPDATE items SET stock = stock - 1 WHERE id = ? AND stock >= 1", (item_id,))
         await db.commit()
         refreshed = await get_item(item_id)
         if refreshed['stock'] <= 0:

@@ -409,6 +409,9 @@ async def book_list(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("libadmin_del:"))
 async def book_delete(callback: CallbackQuery):
     await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_library"):
+        await callback.message.answer("❌ Нет прав.")
+        return
     book_id = int(callback.data.split(":")[1])
     book = await get_library_book(book_id)
     if not book:

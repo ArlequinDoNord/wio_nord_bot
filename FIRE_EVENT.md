@@ -26,7 +26,7 @@
 FIRE_EVENT_ENABLED = True          # общий рубильник события
 FIRE_EVENT_START = (2026, 10, 30, 0, 0)   # ночь на ПЯТНИЦУ 30.10, МСК
 FIRE_EVENT_DURATION_DAYS = 5       # до ~00:00 МСК 4.11
-FIRE_EVENT_LAB_FEE = 42            # вход в лабиринт, НМ
+FIRE_EVENT_LAB_FEE = 32            # вход в лабиринт, НМ
 FIRE_EVENT_MAX_ENTRIES_DAY = 4     # максимум заходов за сутки
 ```
 
@@ -50,7 +50,7 @@ FIRE_EVENT_MAX_ENTRIES_DAY = 4     # максимум заходов за сут
 
 ### 3.1 Вход
 
-- Кнопка в городе «🔥 Огненный Лабиринт» → вход **42 НМ**.
+- Кнопка в городе «🔥 Огненный Лабиринт» → вход **32 НМ**.
 - До **4 заходов в сутки** (счётчик `(user_id, day)`), каждая — отдельная
   сессия (один заход = одна сессия; здоровье как в подвале Крысы — на всю
   сессию; при смерти → выброс, робота-босс встречается только в сами сессии).
@@ -300,7 +300,7 @@ FIRE_EVENT_ENABLED = True
 FIRE_EVENT_START = (2026, 10, 30, 0, 0)   # МСК, ночь на ПЯТНИЦУ 30.10
 FIRE_EVENT_DURATION_DAYS = 5
 FIRE_LAB_SESSION_TTL_SEC = 3600
-FIRE_EVENT_LAB_FEE = 42
+FIRE_EVENT_LAB_FEE = 32
 FIRE_EVENT_MAX_ENTRIES_DAY = 4
 FIRE_LAB_SESSION_TTL_SEC = 3600        # неактивность: сессия auto-закрыта (1 ч)
 

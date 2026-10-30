@@ -1,7 +1,7 @@
 """Дни Пламенного Круговорота — праздничное событие (ТЗ — FIRE_EVENT.md).
 
 Фаза 1 (каркас): городская кнопка «🪔 Дни Пламенного Кругворота», вход в
-Огненный Лабиринт (42 НМ, до 4 заходов/сутки), сессии в `fire_lab_sessions`,
+Огненный Лабиринт (32 НМ, до 4 заходов/сутки), сессии в `fire_lab_sessions`,
 комната-развилка с тремя путями (запись шагов, скрытые паттерны появятся на
 Фазе 3). Пока FIRE_LAB_ENABLED = False — все `fireevent:`-колбэки отвечают
 заглушкой, кнопка города скрыта (аналог гварда клан-холла).
@@ -600,7 +600,13 @@ async def fire_event_enter_cb(cb: CallbackQuery, state: FSMContext):
                               getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze")))
         return
 
-    fee = int(getattr(config, "FIRE_EVENT_LAB_FEE", 42) or 0)
+    from utils.states import is_place_blocked
+    if await is_place_blocked(cb.from_user.id, "firelab"):
+        await cb.answer("🍺 В таком состоянии в Лабиринт не пускают. "
+                        "Загляни, когда пройдёт опьянение.", show_alert=True)
+        return
+
+    fee = int(getattr(config, "FIRE_EVENT_LAB_FEE", 32) or 0)
     if int(user['nordmarks'] or 0) < fee:
         await cb.answer(f"❌ Вход стоит {fee} НМ — не хватает.", show_alert=True)
         return
@@ -886,13 +892,22 @@ async def fire_event_attack_cb(cb: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("fireevent:potion:"))
-async def fire_event_potion_cb(cb: CallbackQuery):
+async def fire_event_potion_cb(cb: CallbackQuery, confirmed: bool = False):
     """Зелье в бою Лабиринта (слоты potion1/potion2, как в городе)."""
     parts = cb.data.split(":")
     session_id = int(parts[2])
     slot = parts[3]
     session = await _session_of(cb.from_user.id, session_id)
     if not session:
+        return
+    from bot.handlers.dungeon import battle_state_block_message
+    blk = await battle_state_block_message(cb.from_user.id)
+    if not blk:
+        _enemy_now, fx_now = await _get_enemy_state(session_id)
+        if int(fx_now.get(FX_STUN) or 0) > 0:
+            blk = "💫 Ты оглушён: тело не слушается. Зелья будут доступны, когда оглушение пройдёт."
+    if blk:
+        await cb.answer(blk, show_alert=True)
         return
     eq = await db.get_equipment(cb.from_user.id)
     item_id = eq.get(slot)
@@ -906,6 +921,19 @@ async def fire_event_potion_cb(cb: CallbackQuery):
     inv = await db.get_inventory_item(cb.from_user.id, item_id)
     if not inv or int(inv['quantity'] or 0) <= 0:
         await cb.answer("❌ Зелий этого вида не осталось.", show_alert=True)
+        return
+    if not confirmed and int(session['hp']) >= int(session['hp_max']):
+        await cb.answer()
+        await cb.message.answer(
+            f"🧪 HP уже полное ({int(session['hp'])}/{int(session['hp_max'])}). "
+            f"Точно применить «{_esc(it['name'])}»? Расходник будет потрачен.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="✅ Да, применить",
+                                      callback_data=f"fireevent:potionok:{session_id}:{slot}"),
+                 InlineKeyboardButton(text="❌ Нет",
+                                      callback_data="fireevent:potioncancel")],
+            ]))
         return
     if not await db.remove_inventory_item(cb.from_user.id, item_id, 1):
         await cb.answer("❌ Зелья не списалось.", show_alert=True)
@@ -935,7 +963,7 @@ async def fire_event_potion_cb(cb: CallbackQuery):
     if rpct > 0 and int(session['hp']) < int(session['hp_max']):
         rturns = int(it['regen_turns'] or 0) if 'regen_turns' in it.keys() else 0
         from bot.handlers.dungeon import regen_amounts, REGEN_TURNS
-        ticks = regen_amounts(heal_base, rpct, turns=(rturns or REGEN_TURNS))
+        ticks = regen_amounts(heal, rpct, turns=(rturns or REGEN_TURNS))
         if ticks:
             effects[FX_REGEN] = ticks
             regen_note = (f"\n♻ Регенерация: +{'/'.join(str(t) for t in ticks)} "
@@ -954,6 +982,21 @@ async def fire_event_potion_cb(cb: CallbackQuery):
            f"💙 Ты восстановил: ×{new_hp}/{int(session['hp_max'])}{bonus_note}"
            + regen_note + dbuff_note)
     await _after_player_tick(cb, session, session_id, enemy, effects, log)
+
+
+@router.callback_query(F.data.startswith("fireevent:potionok:"))
+async def fire_event_potion_ok_cb(cb: CallbackQuery):
+    """Подтверждённое зелье при полном HP (кнопка «Да, применить»)."""
+    await fire_event_potion_cb(cb, confirmed=True)
+
+
+@router.callback_query(F.data == "fireevent:potioncancel")
+async def fire_event_potion_cancel_cb(cb: CallbackQuery):
+    await cb.answer("Отменено.")
+    try:
+        await cb.message.delete()
+    except Exception:
+        pass
 
 
 async def _after_player_tick(cb, session, session_id: int, enemy, effects, player_log: str):

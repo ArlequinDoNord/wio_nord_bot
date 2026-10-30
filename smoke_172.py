@@ -7,7 +7,7 @@
 3. fire_event_visible(): только при FIRE_LAB_ENABLED=True и внутри окна.
 4. Кнопка города скрыта (FIRE_LAB_ENABLED=False) и появляется с флагом.
 5. db-таблицы: fire_lab_sessions / fire_lab_entries.
-6. Вход: списание 42 НМ, счётчик 4/сутки, блокировка 5-го, сессия создаётся
+6. Вход: списание 32 НМ, счётчик 4/сутки, блокировка 5-го, сессия создаётся
    и возвращается активной; leave закрывает (status='left').
 7. Чужая сессия не открывается (_session_of).
 """
@@ -56,7 +56,7 @@ async def main():
     check("старт = 30.10 (пятница), МСК",
           config.FIRE_EVENT_START[:3] == (2026, 10, 30))
     check("длительность 5 суток", config.FIRE_EVENT_DURATION_DAYS == 5)
-    check("вход 42 НМ", config.FIRE_EVENT_LAB_FEE == 42)
+    check("вход 32 НМ", config.FIRE_EVENT_LAB_FEE == 32)
     check("максимум 4 захода/сутки", config.FIRE_EVENT_MAX_ENTRIES_DAY == 4)
 
     print("\n2. fire_event_active (окно дат)")

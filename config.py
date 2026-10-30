@@ -13,11 +13,11 @@ load_dotenv()
 # При бампе: пишем в VERSION_NOTES только то, что изменилось в этом деплое, а
 # прошлые сдвигаем в PREV_VERSION / PREV_VERSION_NOTES. Больше двух записей не
 # держим — иначе приветствие превращается в простыню из трёх-четырёх деплоев.
-VERSION = "0.41.5"
-VERSION_NOTES = ("Праздничные хлопоты: в артели пишут новые рецепты для праздничного стола.")
+VERSION = "0.41.6"
+VERSION_NOTES = ("Праздничные хлопоты: в городе готовят праздничные наряды.")
 
-PREV_VERSION = "0.41.4"
-PREV_VERSION_NOTES = ("Праздничные хлопоты: на артели появились новые заказы.")
+PREV_VERSION = "0.41.5"
+PREV_VERSION_NOTES = ("Праздничные хлопоты: в артели пишут новые рецепты для праздничного стола.")
 
 # ── Буклет туриста ─────────────────────────────────────────────────────────────
 TOURIST_BOOKLET_NAME = "Буклет туриста"
@@ -72,15 +72,15 @@ FIRE_LAB_CANDY_NAME = "Леденец языков пламени"
 FIRE_LAB_HAY_NAME = "Пучок сена"
 FIRE_LAB_BRANCH_NAME = "Ветка дерева"
 FIRE_LAB_RECIPE_NAME = "Рецепт: Тыквенный пирог"
-FIRE_PUMPKIN_SEED_NAME = "Семечко тыквы"
-FIRE_CROW_FEATHER_NAME = "Перо ворона"
-FIRE_WIRE_NAME = "Моток железной проволоки"
-FIRE_EGGS_NAME = "Яйца"
-FIRE_CROWN_NAME = "Огненный венец"
-FIRE_CLOAK_NAME = "Плащ Памяти"
-FIRE_GLOVES_NAME = "Перчатки стража посевов"
-FIRE_KEYS_NAME = "Вилы"
-FIRE_FLAME_DEVICE_NAME = "Ручное пламенеющее устройство"
+FIRE_PUMPKIN_SEED_NAME = "Семечко тыквы"      # посадка в кадку / клан. сад
+FIRE_CROW_FEATHER_NAME = "Перо ворона"        # ресурс (дроп стража? — Ф5)
+FIRE_WIRE_NAME = "Моток железной проволоки"   # ингредиент трости
+FIRE_EGGS_NAME = "Яйца"                       # ингредиент пирога (x2)
+FIRE_CROWN_NAME = "Огненный венец"            # голова: броня 2, лечение +25%
+FIRE_CLOAK_NAME = "Плащ Памяти"               # тело: броня 2, уклон +5%
+FIRE_GLOVES_NAME = "Перчатки стража посевов"  # руки: броня 2, уклон +3%
+FIRE_KEYS_NAME = "Вилы"                       # оружие: +2 к удару, кровотечение
+FIRE_FLAME_DEVICE_NAME = "Ручное пламенеющее устройство"   # ингредиент трости
 
 FIRELAB_SCARECROW_SEED = {
     "key": "scarecrow",
@@ -231,7 +231,7 @@ FIRE_EVENT_START = (2026, 10, 30, 0, 0)   # МСК, ночь на пятницу
 FIRE_EVENT_DURATION_DAYS = 5              # до ~00:00 МСК 4.11
 # Лабиринт (каркас): включает и кнопку города, и FSM лабиринта.
 FIRE_LAB_ENABLED = False
-FIRE_EVENT_LAB_FEE = 42                   # вход в лабиринт, НМ
+FIRE_EVENT_LAB_FEE = 32                   # вход в лабиринт, НМ
 FIRE_EVENT_MAX_ENTRIES_DAY = 4            # максимум заходов за сутки
 FIRE_LAB_SESSION_TTL_SEC = 3600           # неактивность: сессия закрывается автоматически (1 ч)
 
@@ -296,35 +296,21 @@ FIRE_FISHER_ACH_KEY = "fire_fisher"
 FIRE_FISHER_THRESHOLD = 3
 FIRE_FISHER_REWARD_NM = 150
 
-FIRE_LAB_PIE_NAME = "Кусочек тыквенного пирога"
 FIRE_LAB_PIE_HEAL = 15
-FIRE_LAB_RECIPE_NAME = "Рецепт: Тыквенный пирог"
-FIRE_LAB_CANDY_NAME = "Леденец языков пламени"
 FIRE_LAB_CANDY_HEAL = 12
-FIRE_LAB_HAY_NAME = "Пучок сена"
-FIRE_LAB_BRANCH_NAME = "Ветка дерева"
 # Сундук сокровищ убран из праздника (v0.41.4) — его лут ушёл в дропы врагов
 
 # --- Огненный Лабиринт: экипировка/рецепты/достижение (Фаза 4) ---
-FIRE_PUMPKIN_SEED_NAME = "Семечко тыквы"      # посадка в кадку / клан. сад
 FIRE_PUMPKIN_NAME = "Тыква"                   # плод; ингредиент пирога
-FIRE_CROW_FEATHER_NAME = "Перо ворона"        # ресурс (дроп стража? — Ф5)
-FIRE_WIRE_NAME = "Моток железной проволоки"   # ингредиент трости
 FIRE_SUGAR_NAME = "Сахар"                     # ингредиент пирога
-FIRE_EGGS_NAME = "Яйца"                       # ингредиент пирога (x2)
-FIRE_KEYS_NAME = "Вилы"                       # оружие: +2 к удару, кровотечение
 FIRE_KEYS_DMG = 2
 FIRE_KEYS_BLEED_P = 10
 FIRE_KEYS_BLEED_DMG = 2
-FIRE_CROWN_NAME = "Огненный венец"            # голова: броня 2, лечение +25%
 FIRE_CROWN_HEAL_BONUS_PCT = 25
-FIRE_CLOAK_NAME = "Плащ Памяти"               # тело: броня 2, уклон +5%
 FIRE_CLOAK_DODGE = 5
-FIRE_GLOVES_NAME = "Перчатки стража посевов"  # руки: броня 2, уклон +3%
 FIRE_GLOVES_DODGE = 3
 FIRE_CANE_NAME = "Обжигающая трость"          # оружие: удар 3, поджог 20%
 FIRE_CANE_DMG = 3
-FIRE_FLAME_DEVICE_NAME = "Ручное пламенеющее устройство"   # ингредиент трости
 FIRE_CANE_BURN_P = 20
 FIRE_CANE_BURN_DMG = 2
 FIRE_CANE_BURN_ROUNDS = 3

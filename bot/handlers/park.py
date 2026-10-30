@@ -390,6 +390,8 @@ async def statue_admin_list(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("park:admin:del:"))
 async def statue_admin_del_confirm(callback: CallbackQuery):
     await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
     try:
         statue_id = int(callback.data.split(":", 3)[3])
     except ValueError:
@@ -408,6 +410,8 @@ async def statue_admin_del_confirm(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("park:admin:delyes:"))
 async def statue_admin_delete(callback: CallbackQuery):
     await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
     try:
         statue_id = int(callback.data.split(":", 3)[3])
     except ValueError:
