@@ -101,16 +101,17 @@ async def main():
     check("без удочки alert о нужной удочке",
           any("удочка" in a.lower() for a in FakeCB.alerts))
 
-    print("\n2. Без наживки — заброс не делается")
+    print("\n2. Без наживки — заброс разрешён (ОД тратятся, наживка не нужна)")
     await add_inventory_item(UID, rod['id'], 1)
     await update_user(UID, fishing_bait="none")
     FakeCB.alerts.clear()
     await fe.fire_event_fishing_cb(FakeCB(UID, f"fireevent:fishing:{sid}"))
-    check("без наживки ОД не списаны", int((await db.get_user(UID))['ap']) == ap0)
-    check("без наживки alert", any("наживк" in a.lower() for a in FakeCB.alerts))
+    check("без наживки ОД списаны", int((await db.get_user(UID))['ap']) == ap0 - int(config.FISH_AP_COST))
+    check("без наживки alert не показан", not FakeCB.alerts)
 
     print("\n3. С удочкой и наживкой — заброс списывает ОД и наживку")
     await update_user(UID, fishing_bait="worms")
+    ap0 = int((await db.get_user(UID))['ap'])
     qty0 = int((await get_inventory_item(UID, worms['id']))['quantity'])
     await fe.fire_event_fishing_cb(FakeCB(UID, f"fireevent:fishing:{sid}"))
     ap1 = int((await db.get_user(UID))['ap'])
@@ -118,7 +119,16 @@ async def main():
     qty1 = int((await get_inventory_item(UID, worms['id']))['quantity'])
     check("наживка списана на 1", qty0 - qty1 == 1)
     session = await db.get_active_fire_lab_session(UID)
-    check("попытка учтена в визите", int(session['fish_used'] or 0) == 1)
+    check("обе попытки учтены в визите", int(session['fish_used'] or 0) == 2)
+
+    print("\n4. Выбор наживки в колодце")
+    await fe.fire_event_baitset_cb(FakeCB(UID, f"fireevent:baitset:{sid}:spider"))
+    check("наживка сохранена из колодца", (await db.get_user(UID)).get('fishing_bait') == "spider")
+    await fe.fire_event_baitset_cb(FakeCB(UID, f"fireevent:baitset:{sid}:auto"))
+    check("«Авто» сохраняется пустой строкой", (await db.get_user(UID)).get('fishing_bait') == "")
+    FakeCB.alerts.clear()
+    await fe.fire_event_baitset_cb(FakeCB(UID, f"fireevent:baitset:{sid}:boom"))
+    check("неизвестная наживка отклоняется", (await db.get_user(UID)).get('fishing_bait') == "")
 
     print(f"\nИТОГО: {passed} passed, {failed} failed")
     await close_db()
