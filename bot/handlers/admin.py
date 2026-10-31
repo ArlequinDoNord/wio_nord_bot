@@ -5915,7 +5915,7 @@ async def dungeon_enemy_value(message: Message, state: FSMContext):
 def _onhit_options() -> list:
     """[(item, label)]: item — 'bleed'/'poison'/'frostbite'/'lifesteal' либо 'state:<key>'."""
     opts = []
-    for kind in ("bleed", "poison", "frostbite", "lifesteal"):
+    for kind in ("bleed", "poison", "frostbite", "lifesteal", "armor_pierce"):
         conf = ON_HIT_EFFECTS.get(kind)
         if conf:
             opts.append((kind, f"{conf['emoji']} {conf['title']}"))
@@ -5946,6 +5946,10 @@ def _onhit_effect_line(eff: dict) -> str:
         pct = int(eff.get('pct') or 0)
         return (f"{conf.get('emoji', '')} {conf.get('title', kind)}: "
                 f"{chance}% — восполняет {pct}% нанесённого урона")
+    if kind == "armor_pierce":
+        pct = int(eff.get('pct') or 0)
+        return (f"{conf.get('emoji', '')} {conf.get('title', kind)}: "
+                f"{chance}% — {pct}% урона мимо брони")
     return f"{kind}: {chance}%"
 
 
@@ -5981,6 +5985,9 @@ def _onhit_prompt(label: str, item: str) -> str:
         params = "шанс % и число ходов, например «25 4»."
     elif item == "lifesteal":
         params = "шанс % и процент от нанесённого урона, например «25 20»."
+    elif item == "armor_pierce":
+        params = ("шанс % и часть урона, которая проходит мимо брони пилота, %: "
+                  "50 (половина) или 100 (весь урон), например «30 50».")
     else:
         key = item.split(":", 1)[1]
         rounds = ON_HIT_STATE_ROUNDS.get(key) or 3
@@ -6003,6 +6010,10 @@ def _onhit_parse_params(text: str, item: str):
         if val > 100:
             return None
         return {"kind": "lifesteal", "chance": chance, "pct": val}
+    if item == "armor_pierce":
+        if val > 100:
+            return None
+        return {"kind": "armor_pierce", "chance": chance, "pct": val}
     key = item.split(":", 1)[1]
     if key not in STATE_CONF:
         return None

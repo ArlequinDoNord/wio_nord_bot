@@ -69,6 +69,16 @@ def main():
           [p[0] for p in spec.get("params", ())] == ["chance", "pct"])
     check("armor_pierce в порядке видов", "armor_pierce" in config.ON_HIT_KIND_ORDER)
 
+    print("\n5. Редактор on-hit в админке (врагов лабиринта тоже)")
+    from bot.handlers import admin as adm
+    opts = [item for item, _ in adm._onhit_options()]
+    check("«Пробитие брони» есть в списке для выбора", "armor_pierce" in opts)
+    check("ввод «30 50» разбирается",
+          adm._onhit_parse_params("30 50", "armor_pierce") == {"kind": "armor_pierce", "chance": 30, "pct": 50})
+    check("ввод «30 150» отклоняется", adm._onhit_parse_params("30 150", "armor_pierce") is None)
+    check("строка эффекта выводится",
+          "мимо брони" in adm._onhit_effect_line({"kind": "armor_pierce", "chance": 30, "pct": 50}))
+
     print(f"\nИТОГО: {passed} passed, {failed} failed")
     return failed
 
