@@ -46,13 +46,14 @@ async def main():
     drops = json.loads((await cur.fetchone())['drops'] or '[]')
     check("у пугала появились дропы", len(drops) > 0)
 
-    print("\n2. Настроенный админом враг не перезаписывается")
-    await conn.execute("UPDATE firelab_enemies SET drops = '[]', admin_tuned = 1 WHERE key = 'crow'")
+    print("\n2. Список, заданный админом, не перезаписывается")
+    custom = json.dumps([{"item_id": 1, "chance": 0.5, "qty": 1}])
+    await conn.execute("UPDATE firelab_enemies SET drops = ?, admin_tuned = 1 WHERE key = 'crow'", (custom,))
     await conn.commit()
     await ensure_firelab_enemies()
     cur = await conn.execute("SELECT drops FROM firelab_enemies WHERE key = 'crow'")
-    check("дропы ворона остаются пустыми (правка админа)",
-          json.loads((await cur.fetchone())['drops'] or '[]') == [])
+    check("дропы ворона остаются как задал админ",
+          json.loads((await cur.fetchone())['drops'] or '[]') == json.loads(custom))
 
     print(f"\nИТОГО: {passed} passed, {failed} failed")
     await close_db()

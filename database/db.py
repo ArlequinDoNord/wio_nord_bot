@@ -9658,17 +9658,19 @@ async def ensure_firelab_enemies() -> bool:
 
 
 async def _fill_empty_source_drops(source: str, seed: dict):
-    """Досеивает дропы из сида, если у строки врага список пуст и её не трогал админ.
+    """Досеивает дропы из сида, если у строки врага список пуст.
 
     Нужно для врагов, созданных раньше своих предметов: тогда в сиде предмет
-    не находился по имени и дроп не записался.
+    не находился по имени и дроп не записался. Пустой список у этих врагов
+    не задуман, поэтому метка admin_tuned здесь не защищает; непустой список
+    (правка админа) не трогается.
     """
     conn = await get_db()
     table = _enemy_source_table(source)
     cur = await conn.execute(
         f"SELECT id, drops, admin_tuned FROM {table} WHERE key = ?", (seed.get("key"),))
     row = await cur.fetchone()
-    if not row or int(row['admin_tuned'] or 0):
+    if not row:
         return
     if (row['drops'] or '[]').strip() not in ('', '[]'):
         return
