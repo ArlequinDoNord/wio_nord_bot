@@ -278,10 +278,7 @@ def _fork_kb(session_id: int) -> InlineKeyboardMarkup:
 async def _paint_fork(cb, session, session_id: int, prefix: str = ""):
     """Развилка: единое сообщение с картинкой лабиринта (prefix — текст перед ней)."""
     await _fire_paint(cb, text=(prefix or "") + _fork_text(session),
-                      kb=_fork_kb(session_id),
-                      media_path=resolve_image(
-                          getattr(config, "FIRE_LAB_FORK_KEY",
-                                  "city/fire_maze")))
+                      kb=_fork_kb(session_id), **(await _room_kw("fork")))
 
 
 @router.callback_query(F.data.startswith("fireevent:step:"))
@@ -326,9 +323,7 @@ async def fire_event_step_cb(cb: CallbackQuery):
         await cb.answer("🏁 Лабиринт пройден до конца!", show_alert=True)
         await _fire_paint(
             cb, text=finish_text,
-            kb=await main_menu_kb(cb.from_user.id),
-            media_path=resolve_image(
-                getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze")))
+            kb=await main_menu_kb(cb.from_user.id), **(await _room_kw("fork")))
         return
     await cb.answer(f"🔀 {PATH_LABELS[path]}. Двигаемся дальше…")
     room = await _roll_room(cb.from_user.id, updated, path, history)
@@ -377,19 +372,21 @@ async def fire_event_cont_cb(cb: CallbackQuery):
 # ------------------------------ КОЛОДЕЦ ------------------------------
 
 async def _enter_well(cb, session, session_id: int):
-    """Колодец: полное восстановление HP + праздничная рыбалка (до 6 попыток)."""
+    """Колодец: фиксированное лечение (FIRE_LAB_WELL_HEAL) + праздничная рыбалка."""
+    heal = int(getattr(config, "FIRE_LAB_WELL_HEAL", 50) or 50)
     conn = await db.get_db()
-    await conn.execute("UPDATE fire_lab_sessions SET hp = hp_max WHERE id = ?",
-                       (session_id,))
+    await conn.execute(
+        "UPDATE fire_lab_sessions SET hp = MIN(hp_max, hp + ?) WHERE id = ?",
+        (heal, session_id))
     await conn.commit()
     visits = await db.bump_fire_lab_room_visit(session_id, "well")
     session = await db.get_active_fire_lab_session(cb.from_user.id)
     tries_left = int(getattr(config, "FIRE_LAB_WELL_FISH_TRIES", 6) or 6)
     body = (
         "Звонкий всплеск из глубины: колодец Огненного Круговорота дышит "
-        "паром, вода тёплая, как из ключа. Ты моешь руки, пьёшь — и силы "
-        "возвращаются целиком.\n\n"
-        f"💙 Полное восстановление: {int(session['hp'])}/{int(session['hp_max'])} HP.\n"
+        "паром, вода тёплая, как из ключа. Ты моешь руки, пьёшь — и тело "
+        f"наполняется силой: +{heal} HP.\n\n"
+        f"💙 Сейчас: {int(session['hp'])}/{int(session['hp_max'])} HP.\n"
         f"🎣 В тёмной воде ходят праздничные рыбы — можно закинуть удочку "
         f"({tries_left} попыток)."
     )
@@ -404,23 +401,34 @@ async def _enter_well(cb, session, session_id: int):
         [InlineKeyboardButton(text="🚶 Идти дальше",
                               callback_data=f"fireevent:cont:{session_id}")],
     ])
-    await _fire_paint(cb, text=text, kb=kb,
-                      media_path=await _room_media('well'))
+    await _fire_paint(cb, text=text, kb=kb, **(await _room_kw('well')))
 
 
-async def _room_media(room_key: str) -> str | None:
-    """Картинка комнаты праздника: file_id из админ-менеджера — потом
-    локальный файл assets/img; None — рисовать без фото."""
+async def _room_kw(room_key: str) -> dict:
+    """Картинка комнаты праздника для _fire_paint: file_id из админ-менеджера
+    («Картинки Круговорота»), иначе локальный файл assets/img, иначе без фото."""
     photo_id = await get_fire_photo(room_key)
     if photo_id:
-        return None  # фото рисуется по photo_id в _fire_paint
+        return {"photo_id": photo_id}
     base = {
         "fork": getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze"),
         "entry": getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze"),
         "well": getattr(config, "FIRE_LAB_WELL_KEY", "city/fire_well"),
         "tree": getattr(config, "FIRE_LAB_TREE_KEY", "city/fire_tree"),
     }.get(room_key)
-    return resolve_image(base) if base else None
+    return {"media_path": resolve_image(base) if base else None}
+
+
+async def _fish_kw(fish_name: str) -> dict | None:
+    """Картинка пойманной рыбы: фото из редактора рыбалки (колодец), иначе локальный файл."""
+    from utils.helpers import item_local_photo
+    pid = await db.get_water_fish_photo_by_name("fire_well", fish_name)
+    if pid:
+        return {"photo_id": pid}
+    path = item_local_photo(fish_name)
+    if path:
+        return {"media_path": path}
+    return None
 
 
 @router.callback_query(F.data.startswith("fireevent:fishing:"))
@@ -444,6 +452,7 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
     left_now = cap - int(used)
 
     bite_p = float(getattr(config, "FIRE_LAB_FISH_BITE_P", 0.75) or 0.75)
+    fish_kw = None
     if random.random() >= bite_p:
         text = _room_chrome(
             "🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА",
@@ -480,6 +489,7 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
         kinds = await db.count_fire_fish_kinds(cb.from_user.id)
         await db.log_activity(cb.from_user.id, "firelab",
                               f"Праздничная рыбалка: поймал «{fish_name}»")
+        fish_kw = await _fish_kw(fish_name)
         line = f"🎣 Заброс… поплавок подпрыгивает — <b>{_esc(fish_name)}</b>!"
         if fresh:
             line += " (новый вид!)"
@@ -504,8 +514,7 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
                               callback_data=f"fireevent:cont:{session_id}")],
     ])
     await _fire_paint(cb, text=text, kb=fish_kb,
-                      photo_id=await get_fire_photo('well'),
-                      media_path=await _room_media('well'))
+                      **(fish_kw or await _room_kw('well')))
 
 
 # ------------------------------ ДРЕВО ОГНЯ ------------------------------
@@ -527,9 +536,7 @@ async def _enter_tree(cb, session, session_id: int):
         f"💙 Сейчас: {int(session['hp'])}/{int(session['hp_max'])} HP."
     )
     text = _room_chrome("🌳 ДРЕВО ОГНЯ", body)
-    await _fire_paint(cb, text=text, kb=_cont_kb(session_id),
-                      photo_id=await get_fire_photo('tree'),
-                      media_path=await _room_media('tree'))
+    await _fire_paint(cb, text=text, kb=_cont_kb(session_id), **(await _room_kw('tree')))
 
 
 # ------------------------------ СУНДУК (убран из праздника) ------------------------------
@@ -547,9 +554,7 @@ async def fire_event_leave_cb(cb: CallbackQuery):
     await _fire_paint(
         cb, text=("🚪 Ты покинул Огненный Лабиринт. Пламя остаётся тёплым.\n"
                   "До встречи в следующий заход!"),
-        kb=await main_menu_kb(cb.from_user.id),
-        media_path=resolve_image(
-            getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze")))
+        kb=await main_menu_kb(cb.from_user.id), **(await _room_kw("fork")))
 
 
 async def _session_of(user_id: int, session_id: int):
@@ -560,44 +565,86 @@ async def _session_of(user_id: int, session_id: int):
     return s
 
 
+def _entry_text(fee: int, used: int, max_entries: int, tourist: bool) -> str:
+    head = ("🪔 <b>Дни Пламенного Круговорота</b>\n\n"
+            "Перед тобой вход в Лабиринт из снопов сена — жаркое пламя, "
+            "смех горожан и запах тыквы.\n\n")
+    if tourist:
+        return head + ("⛔ В лабиринт вход только для граждан Нордхайма и легионеров. "
+                       "Туристам — только поглядеть со стороны и получить сувенир.")
+    return head + (f"🔑 Вход: <b>{fee} НМ</b>, до {max_entries} заходов в сутки "
+                   f"(сегодня: {used}/{max_entries}).\n"
+                   f"Лабиринт из двадцати пяти развилок: бои, колодец и древо.")
+
+
 @router.callback_query(F.data == "fireevent:enter")
 async def fire_event_enter_cb(cb: CallbackQuery, state: FSMContext):
-    """Вход в лабиринт: окно уже проверено гвардом — платный вход."""
-    from database.db import (
-        get_user, user_is_tourist, grant_fire_souvenir, get_item_by_name,
-        add_inventory_item,
-    )
+    """Экран входа в Лабиринт: картинка входа, цена и кнопки (вход — отдельным шагом)."""
+    from database.db import get_user, user_is_tourist
     user = await get_user(cb.from_user.id)
     if not user:
         await cb.answer("❌ Сначала /start.", show_alert=True)
         return
-
-    # ── Туристы: посмотреть вход можно, зайти нельзя — но сувенир положен ──
+    fee = int(getattr(config, "FIRE_EVENT_LAB_FEE", 32) or 0)
+    max_entries = int(getattr(config, "FIRE_EVENT_MAX_ENTRIES_DAY", 4) or 0)
     if await user_is_tourist(cb.from_user.id):
-        candy = await get_item_by_name(
-            getattr(config, "FIRE_LAB_CANDY_NAME", "Леденец языков пламени"))
-        fresh = False
-        if candy:
-            fresh = await grant_fire_souvenir(cb.from_user.id)
-            if fresh:
-                await add_inventory_item(cb.from_user.id, candy['id'], 1)
-                await db.log_activity(cb.from_user.id, "firelab",
-                                      "Сувенир праздника: леденец (туристу, бесплатно)")
-        sweet = ("\n\n🎁 <b>Сувенир праздника:</b> «Леденец языков пламени» — "
-                 "держи на память о Круговороте!" if fresh else
-                 "\n\n🎁 Сувенир праздника ты уже получал — он у тебя (или был).")
-        text = (f"🪔 <b>Дни Пламенного Круговорота</b>\n\n"
-                f"Перед тобой вход в Лабиринт из снопов сена — жаркое пламя, "
-                f"смех горожан и запах тыквы.\n\n"
-                f"⛔ В лабиринт вход только для граждан Нордхайма и легионеров. "
-                f"Туристам — только поглядеть со стороны и получить сувенир.{sweet}")
+        text = _entry_text(fee, 0, max_entries, tourist=True)
         kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🎁 Получить сувенир",
+                                  callback_data="fireevent:souvenir")],
             [InlineKeyboardButton(text="🏠 В город", callback_data="city:menu")],
         ])
-        await cb.answer("🎁 Сувенир праздника!" if fresh else "🪔 Праздник для пилотов.")
-        await _fire_paint(cb, text=text, kb=kb,
-                          media_path=resolve_image(
-                              getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze")))
+    else:
+        used = await get_fire_lab_entries_today(cb.from_user.id, db.today_report_day())
+        text = _entry_text(fee, used, max_entries, tourist=False)
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=f"🔑 Войти — {fee} НМ",
+                                  callback_data="fireevent:go")],
+            [InlineKeyboardButton(text="🏠 В город", callback_data="city:menu")],
+        ])
+    await cb.answer()
+    await _fire_paint(cb, text=text, kb=kb, **(await _room_kw("entry")))
+
+
+@router.callback_query(F.data == "fireevent:souvenir")
+async def fire_event_souvenir_cb(cb: CallbackQuery):
+    """Туристу — разовый сувенир (леденец) прямо на экране входа."""
+    from database.db import user_is_tourist, grant_fire_souvenir, get_item_by_name, add_inventory_item
+    if not await user_is_tourist(cb.from_user.id):
+        await cb.answer("🔑 Сувенир — для гостей праздника.", show_alert=True)
+        return
+    candy = await get_item_by_name(
+        getattr(config, "FIRE_LAB_CANDY_NAME", "Леденец языков пламени"))
+    fresh = False
+    if candy:
+        fresh = await grant_fire_souvenir(cb.from_user.id)
+        if fresh:
+            await add_inventory_item(cb.from_user.id, candy['id'], 1)
+            await db.log_activity(cb.from_user.id, "firelab",
+                                  "Сувенир праздника: леденец (туристу, бесплатно)")
+    fee = int(getattr(config, "FIRE_EVENT_LAB_FEE", 32) or 0)
+    max_entries = int(getattr(config, "FIRE_EVENT_MAX_ENTRIES_DAY", 4) or 0)
+    sweet = ("\n\n🎁 <b>Сувенир праздника:</b> «Леденец языков пламени» — "
+             "держи на память о Круговороте!" if fresh else
+             "\n\n🎁 Сувенир праздника ты уже получал — он у тебя (или был).")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🏠 В город", callback_data="city:menu")],
+    ])
+    await cb.answer("🎁 Сувенир праздника!" if fresh else "🪔 Праздник для гостей.")
+    await _fire_paint(cb, text=_entry_text(fee, 0, max_entries, tourist=True) + sweet,
+                      kb=kb, **(await _room_kw("entry")))
+
+
+@router.callback_query(F.data == "fireevent:go")
+async def fire_event_go_cb(cb: CallbackQuery, state: FSMContext):
+    """Вход пилота: проверки, оплата и первая развилка."""
+    from database.db import get_user, user_is_tourist
+    user = await get_user(cb.from_user.id)
+    if not user:
+        await cb.answer("❌ Сначала /start.", show_alert=True)
+        return
+    if await user_is_tourist(cb.from_user.id):
+        await cb.answer("⛔ Вход только для граждан Нордхайма и легионеров.", show_alert=True)
         return
 
     from utils.states import is_place_blocked
@@ -642,9 +689,7 @@ async def fire_event_enter_cb(cb: CallbackQuery, state: FSMContext):
     text = (f"🔥 <b>Дни Пламенного Круговорота</b>\n"
             f"Вход оплачен: −{fee} НМ (заход {n}/{max_entries} за сутки).\n\n"
             + _fork_text(updated))
-    await _fire_paint(cb, text=text, kb=_fork_kb(session_id),
-                      media_path=resolve_image(
-                          getattr(config, "FIRE_LAB_FORK_KEY", "city/fire_maze")))
+    await _fire_paint(cb, text=text, kb=_fork_kb(session_id), **(await _room_kw("fork")))
 
 
 # ============================== БОЕВОЙ ЦИКЛ (Фаза 2) ==============================
