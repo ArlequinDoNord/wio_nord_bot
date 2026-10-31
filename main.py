@@ -511,13 +511,14 @@ async def main():
     if logging_enemy_seeded:
         logger.info("Враги лесозаготовки (змея, неясыть) добавлены в logging_enemies")
 
-    firelab_seeded = await ensure_firelab_enemies()
-    if firelab_seeded:
-        logger.info("Враги Огненного Лабиринта (4 + босс) добавлены в firelab_enemies")
-
+    # Сначала предметы, потом враги: дропы врагов ссылаются на предметы по имени.
     firelab_items = await ensure_firelab_items()
     logger.info("Огненный Лабиринт: предметы Фазы 3 проверены (%s шт.)",
                 len(firelab_items))
+
+    firelab_seeded = await ensure_firelab_enemies()
+    if firelab_seeded:
+        logger.info("Враги Огненного Лабиринта (4 + босс) добавлены в firelab_enemies")
 
     license_seeded = await ensure_market_license_item()
     if license_seeded:

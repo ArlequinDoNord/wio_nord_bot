@@ -376,18 +376,21 @@ async def fire_event_cont_cb(cb: CallbackQuery):
 async def _enter_well(cb, session, session_id: int):
     """Колодец: фиксированное лечение (FIRE_LAB_WELL_HEAL) + праздничная рыбалка."""
     heal = int(getattr(config, "FIRE_LAB_WELL_HEAL", 50) or 50)
+    ap_gain = int(getattr(config, "FIRE_LAB_WELL_AP", 10) or 0)
     conn = await db.get_db()
     await conn.execute(
         "UPDATE fire_lab_sessions SET hp = MIN(hp_max, hp + ?) WHERE id = ?",
         (heal, session_id))
     await conn.commit()
+    if ap_gain > 0:
+        await db.add_ap(cb.from_user.id, ap_gain, reason="Колодец Круговорота")
     visits = await db.bump_fire_lab_room_visit(session_id, "well")
     session = await db.get_active_fire_lab_session(cb.from_user.id)
     tries_left = int(getattr(config, "FIRE_LAB_WELL_FISH_TRIES", 6) or 6)
     body = (
         "Звонкий всплеск из глубины: колодец Огненного Круговорота дышит "
         "паром, вода тёплая, как из ключа. Ты моешь руки, пьёшь — и тело "
-        f"наполняется силой: +{heal} HP.\n\n"
+        f"наполняется силой: +{heal} HP и +{ap_gain} ОД.\n\n"
         f"💙 Сейчас: {int(session['hp'])}/{int(session['hp_max'])} HP.\n"
         f"🎣 В тёмной воде ходят праздничные рыбы — можно закинуть удочку "
         f"({tries_left} попыток)."
@@ -1039,6 +1042,11 @@ async def fire_event_attack_cb(cb: CallbackQuery):
         regen = int(getattr(config, "FIRE_TREE_REGEN_HP", 1) or 0)
         session['hp'] = min(int(session['hp_max']), int(session['hp']) + regen)
         log_lines.append(f"🌿 Благословение: +{regen} HP")
+    # праздничный сет (3 одежды + оружие): постоянная регенерация за ход
+    fire_set = await db.get_fire_set_status(cb.from_user.id)
+    if fire_set['regen'] and int(session['hp']) < int(session['hp_max']):
+        session['hp'] = min(int(session['hp_max']), int(session['hp']) + fire_set['regen'])
+        log_lines.append(f"🧥 Праздничный сет: +{fire_set['regen']} HP")
     eff = max(0, int(dmg) - int(enemy.get('armor') or 0))
     if eff <= 0:
         log_lines.append("🛡 Броня врага поглотила удар!")

@@ -177,7 +177,7 @@ async def clan_view_cb(callback: CallbackQuery):
     members = await get_clan_member_ids(clan['id'])
     lines = [
         f"{KIND_EMOJI.get(clan['kind'], '📌')} {_type_label(clan).title()} «{_esc(clan['name'])}»\n",
-        f"👥 Членов: {len(members)}",
+        f"👥 Члены клана: {len(members)}",
     ]
     if clan['leader_id']:
         lu = await get_user(clan['leader_id'])
@@ -220,6 +220,9 @@ async def clan_view_cb(callback: CallbackQuery):
                                             callback_data=f"clanhier:{clan['id']}")])
         if not is_leader:
             kb.append([InlineKeyboardButton(text="🚪 Выйти", callback_data=f"clans:leave:{clan['id']}")])
+        elif len(m_users) <= 1:
+            kb.append([InlineKeyboardButton(text="💥 Распустить клан (ты один)",
+                                            callback_data=f"clans:leave:{clan['id']}")])
     else:
         if await has_clan_request(clan['id'], uid):
             kb.append([InlineKeyboardButton(text="⏳ Заявка отправлена — отозвать", callback_data=f"clans:cancel:{clan['id']}")])
@@ -287,20 +290,26 @@ async def _hierarchy_screen(callback: CallbackQuery, clan_id: int):
 @router.callback_query(F.data.startswith("clanhier:"))
 async def clan_hierarchy_cb(callback: CallbackQuery):
     parts = callback.data.split(":")
-    await callback.answer()
     if len(parts) < 2:
+        await callback.answer()
         return
+    is_pick = len(parts) >= 5 and parts[2] == "pick"
+    if not is_pick:
+        await callback.answer()
     clan_id = int(parts[1])
     clan = await get_clan(clan_id)
     if not clan:
-        await callback.message.answer("❌ Клан не найден.")
+        if is_pick:
+            await callback.answer("❌ Клан не найден.", show_alert=True)
+        else:
+            await callback.message.answer("❌ Клан не найден.")
         return
     uid = callback.from_user.id
     is_leader = clan['leader_id'] == uid
     can_admin = await has_permission(uid, "can_manage_clans")
 
-    # Назначение роли
-    if len(parts) >= 5 and parts[2] == "pick":
+    # Назначение роли (один ответ на колбэк — с текстом результата)
+    if is_pick:
         if not (is_leader or can_admin):
             await callback.answer("⚠️ Только глава клана.", show_alert=True)
             return
@@ -314,6 +323,8 @@ async def clan_hierarchy_cb(callback: CallbackQuery):
                              f"clan={clan_id} user={target_uid} role={role}")
             _t = getattr(config, "CLAN_ROLES", {}).get(role, role)
             await callback.answer(f"✅ {_t} — назначено.", show_alert=False)
+        else:
+            await callback.answer("❌ Не удалось назначить.", show_alert=True)
         # перерисовка экрана выбора остаётся; обновим её
         await _hierarchy_set_screen(callback, clan_id, target_uid)
         return
@@ -413,9 +424,20 @@ async def clan_leave_cb(callback: CallbackQuery):
         return
     uid = callback.from_user.id
     if clan['leader_id'] == uid:
+        members = await get_clan_members(clan['id'])
+        if len(members) <= 1:
+            # глава один в клане: распуск снимает должность и освобождает пилота
+            from database.db import delete_clan
+            await delete_clan(clan['id'])
+            await log_action(uid, 'clan_disband', clan['id'], f"name={clan['name']}")
+            await callback.message.answer(
+                f"💥 {_type_label(clan).capitalize()} «{clan['name']}» распущен. "
+                f"Ты свободен и можешь вступить в другое объединение.")
+            await _show_clans_list(callback)
+            return
         await callback.message.answer(
-            "❌ Ты глава. Выйти из объединения нельзя — пусть суперадмин передаст руководство "
-            "другому пилоту («Назначить главу»), и тогда ты сможешь выйти.")
+            "❌ В объединении ещё есть другие пилоты. Сначала передай главенство "
+            "(«⚙️ Управление» → назначить главу) или распусти клан, когда останешься один.")
         return
     await remove_clan_member(clan['id'], uid)
     await callback.message.answer(f"🚪 Ты вышел из {_type_label(clan)} «{clan['name']}».")

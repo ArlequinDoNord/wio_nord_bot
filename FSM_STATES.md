@@ -345,22 +345,22 @@
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
 | `kind` | — | — |
-| `wait_name` | `bot/handlers/clans.py:704` `clan_create_start` | `bot/handlers/clans.py:712` `clan_create_name` |
-| `wait_desc` | `bot/handlers/clans.py:719` `clan_create_name` | `bot/handlers/clans.py:727` `clan_create_desc` |
-| `wait_photo` | `bot/handlers/clans.py:737` `clan_create_desc` | `bot/handlers/clans.py:781` `clan_create_photo`<br>`bot/handlers/clans.py:788` `clan_create_photo_hint` |
+| `wait_name` | `bot/handlers/clans.py:726` `clan_create_start` | `bot/handlers/clans.py:734` `clan_create_name` |
+| `wait_desc` | `bot/handlers/clans.py:741` `clan_create_name` | `bot/handlers/clans.py:749` `clan_create_desc` |
+| `wait_photo` | `bot/handlers/clans.py:759` `clan_create_desc` | `bot/handlers/clans.py:803` `clan_create_photo`<br>`bot/handlers/clans.py:810` `clan_create_photo_hint` |
 
 ### `ClansEdit` — `bot/handlers/clans.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
 | `field` | — | — |
-| `wait_value` | `bot/handlers/clans.py:852` `clan_edit_field_cb` | `bot/handlers/clans.py:858` `clan_edit_finish_photo`<br>`bot/handlers/clans.py:872` `clan_edit_finish_text` |
+| `wait_value` | `bot/handlers/clans.py:874` `clan_edit_field_cb` | `bot/handlers/clans.py:880` `clan_edit_finish_photo`<br>`bot/handlers/clans.py:894` `clan_edit_finish_text` |
 
 ### `ClansMessage` — `bot/handlers/clans.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `wait_text` | `bot/handlers/clans.py:909` `clan_msg_start` | `bot/handlers/clans.py:917` `clan_msg_send` |
+| `wait_text` | `bot/handlers/clans.py:931` `clan_msg_start` | `bot/handlers/clans.py:939` `clan_msg_send` |
 
 ### `DungeonFSM` — `bot/handlers/dungeon.py`
 
@@ -639,8 +639,8 @@
 - `clanh:noop`: `bot/handlers/clan_hall.py:2406`
 - `clanhph:construction`: `bot/handlers/admin_clanphotos.py:172`
 - `clanhph:menu`: `bot/handlers/admin_clanphotos.py:114`
-- `clans:create_skip`: `bot/handlers/clans.py:792`
-- `clans:noop`: `bot/handlers/clans.py:577`
+- `clans:create_skip`: `bot/handlers/clans.py:814`
+- `clans:noop`: `bot/handlers/clans.py:599`
 - `clanshopadm:menu`: `bot/handlers/admin_shop_clan.py:103`
 - `contracts:list`: `bot/handlers/dungeon.py:754`
 - `del_item:back`: `bot/handlers/admin.py:1700`
@@ -663,10 +663,10 @@
 - `field:weapon_effect`: `bot/handlers/admin.py:1912`
 - `fin:manual`: `bot/handlers/admin.py:2542`
 - `finh:open`: `bot/handlers/admin.py:2734`
-- `fireevent:enter`: `bot/handlers/fire_event.py:707`
-- `fireevent:go`: `bot/handlers/fire_event.py:765`
-- `fireevent:potioncancel`: `bot/handlers/fire_event.py:1165`
-- `fireevent:souvenir`: `bot/handlers/fire_event.py:736`
+- `fireevent:enter`: `bot/handlers/fire_event.py:710`
+- `fireevent:go`: `bot/handlers/fire_event.py:768`
+- `fireevent:potioncancel`: `bot/handlers/fire_event.py:1173`
+- `fireevent:souvenir`: `bot/handlers/fire_event.py:739`
 - `fireph:menu`: `bot/handlers/admin_firephotos.py:73`
 - `fish:recover`: `bot/handlers/fishing.py:500`
 - `forest:addlist`: `bot/handlers/admin.py:7845`
@@ -871,29 +871,29 @@
 - `clanh:tree_medit:`: `bot/handlers/clan_hall.py:1087`
 - `clanh:upgrade:`: `bot/handlers/clan_hall.py:1978`
 - `clanh:use:`: `bot/handlers/clan_hall.py:1498`
-- `clanhier:`: `bot/handlers/clans.py:287`
+- `clanhier:`: `bot/handlers/clans.py:290`
 - `clanhph:bclan:`: `bot/handlers/admin_clanphotos.py:247`
 - `clanhph:buildings`: `bot/handlers/admin_clanphotos.py:208`
 - `clanhph:exp:`: `bot/handlers/admin_clanphotos.py:123`
-- `clans:add:`: `bot/handlers/clans.py:582`
-- `clans:addset:`: `bot/handlers/clans.py:599`
-- `clans:cancel:`: `bot/handlers/clans.py:398`
-- `clans:create:`: `bot/handlers/clans.py:694`
-- `clans:del:`: `bot/handlers/clans.py:946`
-- `clans:delyes:`: `bot/handlers/clans.py:963`
-- `clans:edit:`: `bot/handlers/clans.py:807`
-- `clans:editf:`: `bot/handlers/clans.py:831`
-- `clans:join:`: `bot/handlers/clans.py:361`
-- `clans:kick:`: `bot/handlers/clans.py:532`
-- `clans:leader:`: `bot/handlers/clans.py:623`
-- `clans:leaderset:`: `bot/handlers/clans.py:640`
-- `clans:leaderunset:`: `bot/handlers/clans.py:670`
-- `clans:leave:`: `bot/handlers/clans.py:408`
+- `clans:add:`: `bot/handlers/clans.py:604`
+- `clans:addset:`: `bot/handlers/clans.py:621`
+- `clans:cancel:`: `bot/handlers/clans.py:409`
+- `clans:create:`: `bot/handlers/clans.py:716`
+- `clans:del:`: `bot/handlers/clans.py:968`
+- `clans:delyes:`: `bot/handlers/clans.py:985`
+- `clans:edit:`: `bot/handlers/clans.py:829`
+- `clans:editf:`: `bot/handlers/clans.py:853`
+- `clans:join:`: `bot/handlers/clans.py:372`
+- `clans:kick:`: `bot/handlers/clans.py:554`
+- `clans:leader:`: `bot/handlers/clans.py:645`
+- `clans:leaderset:`: `bot/handlers/clans.py:662`
+- `clans:leaderunset:`: `bot/handlers/clans.py:692`
+- `clans:leave:`: `bot/handlers/clans.py:419`
 - `clans:list:`: `bot/handlers/clans.py:132`
-- `clans:manage:`: `bot/handlers/clans.py:476`
-- `clans:msg:`: `bot/handlers/clans.py:901`
-- `clans:reqno:`: `bot/handlers/clans.py:459`
-- `clans:reqok:`: `bot/handlers/clans.py:435`
+- `clans:manage:`: `bot/handlers/clans.py:498`
+- `clans:msg:`: `bot/handlers/clans.py:923`
+- `clans:reqno:`: `bot/handlers/clans.py:481`
+- `clans:reqok:`: `bot/handlers/clans.py:457`
 - `clans:view:`: `bot/handlers/clans.py:169`
 - `clanshopadm:add:`: `bot/handlers/admin_shop_clan.py:134`
 - `clanshopadm:clan:`: `bot/handlers/admin_shop_clan.py:121`
@@ -974,16 +974,16 @@
 - `finh:list:`: `bot/handlers/admin.py:2745`
 - `finh:u:`: `bot/handlers/admin.py:2757`
 - `finuser:`: `bot/handlers/admin.py:2630`
-- `fireevent:attack:`: `bot/handlers/fire_event.py:956`
-- `fireevent:bait:`: `bot/handlers/fire_event.py:454`
-- `fireevent:baitset:`: `bot/handlers/fire_event.py:476`
+- `fireevent:attack:`: `bot/handlers/fire_event.py:959`
+- `fireevent:bait:`: `bot/handlers/fire_event.py:457`
+- `fireevent:baitset:`: `bot/handlers/fire_event.py:479`
 - `fireevent:cont:`: `bot/handlers/fire_event.py:363`
-- `fireevent:fishing:`: `bot/handlers/fire_event.py:540`
-- `fireevent:leave:`: `bot/handlers/fire_event.py:672`
-- `fireevent:potion:`: `bot/handlers/fire_event.py:1066`
-- `fireevent:potionok:`: `bot/handlers/fire_event.py:1159`
+- `fireevent:fishing:`: `bot/handlers/fire_event.py:543`
+- `fireevent:leave:`: `bot/handlers/fire_event.py:675`
+- `fireevent:potion:`: `bot/handlers/fire_event.py:1074`
+- `fireevent:potionok:`: `bot/handlers/fire_event.py:1167`
 - `fireevent:step:`: `bot/handlers/fire_event.py:286`
-- `fireevent:wellback:`: `bot/handlers/fire_event.py:494`
+- `fireevent:wellback:`: `bot/handlers/fire_event.py:497`
 - `fireph:set:`: `bot/handlers/admin_firephotos.py:82`
 - `fish:bait:\d+$`: `bot/handlers/fishing.py:514`
 - `fish:bait:set:\d+:[a-z]+$`: `bot/handlers/fishing.py:556`

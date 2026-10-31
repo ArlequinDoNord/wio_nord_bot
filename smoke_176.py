@@ -219,9 +219,9 @@ async def main():
 
     check("лечебный бонус венца: 25%",
           await get_player_heal_bonus_pct(UID) == 25)
-    # уклон: база 3 + плащ 5 + перчатки 3
-    check("уклон: 3 + 5 + 3 = 11",
-          await get_player_dodge(UID) == 11)
+    # уклон: база 3 + плащ 5 + перчатки 3 + сет (венец, плащ, перчатки → 3 предмета → +2%)
+    check("уклон: 3 + 5 + 3 + сет 2 = 13",
+          await get_player_dodge(UID) == 13)
     keys_c = await get_item_by_name(config.FIRE_KEYS_NAME)
     await set_equipment_slot(UID, 'weapon', keys_c['id'])
     check("вилы: урон оружия +2",

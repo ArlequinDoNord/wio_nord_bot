@@ -9652,8 +9652,35 @@ async def ensure_firelab_enemies() -> bool:
         await conn.execute(
             "UPDATE firelab_enemies SET armor = ? WHERE key = ? AND admin_tuned = 0",
             (armor, seed.get("key")))
+        await _fill_empty_source_drops("firelab", seed)
     await conn.commit()
     return created
+
+
+async def _fill_empty_source_drops(source: str, seed: dict):
+    """Досеивает дропы из сида, если у строки врага список пуст и её не трогал админ.
+
+    Нужно для врагов, созданных раньше своих предметов: тогда в сиде предмет
+    не находился по имени и дроп не записался.
+    """
+    conn = await get_db()
+    table = _enemy_source_table(source)
+    cur = await conn.execute(
+        f"SELECT id, drops, admin_tuned FROM {table} WHERE key = ?", (seed.get("key"),))
+    row = await cur.fetchone()
+    if not row or int(row['admin_tuned'] or 0):
+        return
+    if (row['drops'] or '[]').strip() not in ('', '[]'):
+        return
+    drops = []
+    for item_name, chance in seed.get("loot") or ():
+        item = await get_item_by_name(item_name)
+        if item:
+            drops.append({"item_id": item['id'], "chance": round(float(chance) / 100, 4), "qty": 1})
+    if drops:
+        await conn.execute(f"UPDATE {table} SET drops = ? WHERE id = ?",
+                           (json.dumps(drops, ensure_ascii=False), row['id']))
+        await conn.commit()
 
 
 async def ensure_firelab_items() -> dict:
@@ -11839,9 +11866,37 @@ async def get_player_dodge(user_id: int, dodge_mult: float = 1.0) -> int:
             ids)
         row = await cursor.fetchone()
         dodge += int(row['s'] or 0) if row else 0
+    dodge += (await get_fire_set_status(user_id))['dodge']
     if dodge_mult != 1.0:
         dodge = int(round(dodge * dodge_mult))
     return max(0, dodge)
+
+
+async def get_fire_set_status(user_id: int) -> dict:
+    """Праздничный сет (одежда + оружие): сколько надето и какие бонусы активны.
+
+    Одежда: Плащ Памяти, Перчатки стража посевов, Огненный венец.
+    Оружие: Вилы, Обжигающая трость.
+    Уворот: 2 предмета сета → +2%, 4 и больше → +4%.
+    Регенерация в бою Лабиринта: 3 предмета одежды и 1 оружие → +1 HP за ход.
+    """
+    clothing_names = (config.FIRE_CLOAK_NAME, config.FIRE_GLOVES_NAME, config.FIRE_CROWN_NAME)
+    weapon_names = (config.FIRE_KEYS_NAME, config.FIRE_CANE_NAME)
+    eq = await get_equipment(user_id)
+    ids = [i for i in eq.values() if i]
+    names = []
+    if ids:
+        conn = await get_db()
+        ph = ",".join("?" * len(ids))
+        cursor = await conn.execute(f"SELECT name FROM items WHERE id IN ({ph})", ids)
+        names = [r['name'] for r in await cursor.fetchall()]
+    clothing = sum(1 for n in names if n in clothing_names)
+    weapons = sum(1 for n in names if n in weapon_names)
+    total = clothing + weapons
+    dodge = 4 if total >= 4 else (2 if total >= 2 else 0)
+    regen = int(getattr(config, "FIRE_SET_REGEN_HP", 1) or 0) if clothing >= 3 and weapons >= 1 else 0
+    return {'clothing': clothing, 'weapons': weapons, 'total': total,
+            'dodge': dodge, 'regen': regen}
 
 
 async def get_player_heal_bonus_pct(user_id: int) -> int:
