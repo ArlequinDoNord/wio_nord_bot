@@ -727,11 +727,13 @@ async def fire_event_enter_cb(cb: CallbackQuery, state: FSMContext):
     else:
         used = await get_fire_lab_entries_today(cb.from_user.id, db.today_report_day())
         text = _entry_text(fee, used, max_entries, tourist=False)
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text=f"🔑 Войти — {fee} НМ",
-                                  callback_data="fireevent:go")],
-            [InlineKeyboardButton(text="🏠 В город", callback_data="city:menu")],
-        ])
+        rows = [[InlineKeyboardButton(text=f"🔑 Войти — {fee} НМ",
+                                      callback_data="fireevent:go")]]
+        if getattr(config, "FIRE_EXCHANGE_ENABLED", False):
+            rows.append([InlineKeyboardButton(text="🛍 Лавка Круговорота",
+                                              callback_data="fireevent:shop")])
+        rows.append([InlineKeyboardButton(text="🏠 В город", callback_data="city:menu")])
+        kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await cb.answer()
     await _fire_paint(cb, text=text, kb=kb, **(await _room_kw("entry")))
 
@@ -763,6 +765,78 @@ async def fire_event_souvenir_cb(cb: CallbackQuery):
     await cb.answer("🎁 Сувенир праздника!" if fresh else "🪔 Праздник для гостей.")
     await _fire_paint(cb, text=_entry_text(fee, 0, max_entries, tourist=True) + sweet,
                       kb=kb, **(await _room_kw("entry")))
+
+
+async def _item_qty(uid: int, name: str) -> int:
+    item = await db.get_item_by_name(name)
+    if not item:
+        return 0
+    inv = await db.get_inventory_item(uid, item['id'])
+    return int(inv['quantity'] or 0) if inv else 0
+
+
+async def _exchange_screen(cb, uid: int, note: str = "") -> None:
+    rows = []
+    lines = ["🛍 <b>Лавка Круговорота</b>", "Праздничный сбор на сладости.", ""]
+    for idx, (give, give_qty, get, get_qty) in enumerate(config.FIRE_EXCHANGE_OFFERS):
+        have = await _item_qty(uid, give)
+        lines.append(f"• {give_qty} × {_esc(give)} → {get_qty} × {_esc(get)} (у тебя: {have})")
+        rows.append([InlineKeyboardButton(
+            text=f"{give_qty} {give} → {get_qty} {get}",
+            callback_data=f"fireevent:xchg:{idx}")])
+    rows.append([InlineKeyboardButton(text="🔙 Назад ко входу", callback_data="fireevent:enter")])
+    if note:
+        lines += ["", note]
+    # картинка лавки из менеджера «Картинки Круговорота»; нет — картинка входа
+    kw = await _room_kw('shop')
+    if not kw.get('photo_id') and not kw.get('media_path'):
+        kw = await _room_kw('entry')
+    await _fire_paint(cb, text="\n".join(lines), kb=InlineKeyboardMarkup(inline_keyboard=rows),
+                      **kw)
+
+
+@router.callback_query(F.data == "fireevent:shop")
+async def fire_event_shop_cb(cb: CallbackQuery):
+    if not getattr(config, "FIRE_EXCHANGE_ENABLED", False):
+        await cb.answer("🛍 Лавка ещё не открыта.", show_alert=True)
+        return
+    if await db.user_is_tourist(cb.from_user.id):
+        await cb.answer("⛔ Лавка — для пилотов.", show_alert=True)
+        return
+    await cb.answer()
+    await _exchange_screen(cb, cb.from_user.id)
+
+
+@router.callback_query(F.data.startswith("fireevent:xchg:"))
+async def fire_event_xchg_cb(cb: CallbackQuery):
+    if not getattr(config, "FIRE_EXCHANGE_ENABLED", False):
+        await cb.answer("🛍 Лавка ещё не открыта.", show_alert=True)
+        return
+    if await db.user_is_tourist(cb.from_user.id):
+        await cb.answer("⛔ Лавка — для пилотов.", show_alert=True)
+        return
+    uid = cb.from_user.id
+    try:
+        idx = int(cb.data.split(":")[2])
+        give, give_qty, get, get_qty = config.FIRE_EXCHANGE_OFFERS[idx]
+    except (ValueError, IndexError):
+        await cb.answer("❌ Нет такого обмена.", show_alert=True)
+        return
+    give_item = await db.get_item_by_name(give)
+    get_item = await db.get_item_by_name(get)
+    if not give_item or not get_item:
+        await cb.answer("⚠️ Товар лавки не заведён. Сообщи хранителю.", show_alert=True)
+        return
+    if await _item_qty(uid, give) < give_qty:
+        await cb.answer(f"❌ Нужно {give_qty} × {give}.", show_alert=True)
+        return
+    if not await db.remove_inventory_item(uid, give_item['id'], give_qty):
+        await cb.answer("❌ Не удалось списать предметы.", show_alert=True)
+        return
+    await db.add_inventory_item(uid, get_item['id'], get_qty)
+    await db.log_activity(uid, "firelab", f"Лавка: {give_qty} × {give} → {get_qty} × {get}")
+    await cb.answer("🛍 Обмен готов!")
+    await _exchange_screen(cb, uid, note=f"✅ Получено: {get_qty} × {_esc(get)}.")
 
 
 @router.callback_query(F.data == "fireevent:go")

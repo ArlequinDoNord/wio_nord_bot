@@ -14363,13 +14363,14 @@ async def get_lantern_owners() -> list[int]:
 
 # ============ Картинки праздника (админ-менеджер, file_id) ============
 
-FIRE_PHOTO_KEYS = ("entry", "fork", "well", "tree")
+FIRE_PHOTO_KEYS = ("entry", "fork", "well", "tree", "shop")
 
 FIRE_PHOTO_LABELS = {
     "entry": "🚪 Вход в Лабиринт",
     "fork": "🔀 Развилка (выбор пути)",
     "well": "🪣 Колодец",
     "tree": "🌳 Древо Огня (комната)",
+    "shop": "🛍 Лавка Круговорота (обмен на входе)",
 }
 
 

@@ -6,7 +6,7 @@
 > Назначение: единый обзор всех `StatesGroup`, где они ставятся и где ловятся,
 > а также реестр `callback_data` — чтобы не допускать конфликтов меню/хендлеров.
 
-Всего классов состояний: **53**; полей-состояний: **228**; уникальных `callback_data`: **270**.
+Всего классов состояний: **53**; полей-состояний: **228**; уникальных `callback_data`: **272**.
 
 ## 1. Классы состояний по модулям
 
@@ -536,7 +536,7 @@
 | `field_req:` | 1 | `field_req:none` |
 | `fin:` | 3 | `fin:manual`, `fin:nord:add`, `fin:nord:sub` |
 | `finh:` | 1 | `finh:open` |
-| `fireevent:` | 3 | `fireevent:go`, `fireevent:potioncancel`, `fireevent:souvenir` |
+| `fireevent:` | 5 | `fireevent:enter`, `fireevent:go`, `fireevent:potioncancel`, `fireevent:shop`, `fireevent:souvenir` |
 | `fish:` | 1 | `fish:recover` |
 | `fishing:` | 5 | `fishing:new_super:0`, `fishing:new_super:1`, `fishing:water:fire_well`, `fishing:water:lake`, `fishing:water:reservoir` |
 | `fishing_field:` | 4 | `fishing_field:day_weight`, `fishing_field:night_weight`, `fishing_field:photo`, `fishing_field:sell_price` |
@@ -664,9 +664,10 @@
 - `fin:manual`: `bot/handlers/admin.py:2542`
 - `finh:open`: `bot/handlers/admin.py:2734`
 - `fireevent:enter`: `bot/handlers/fire_event.py:710`
-- `fireevent:go`: `bot/handlers/fire_event.py:768`
-- `fireevent:potioncancel`: `bot/handlers/fire_event.py:1173`
-- `fireevent:souvenir`: `bot/handlers/fire_event.py:739`
+- `fireevent:go`: `bot/handlers/fire_event.py:842`
+- `fireevent:potioncancel`: `bot/handlers/fire_event.py:1247`
+- `fireevent:shop`: `bot/handlers/fire_event.py:798`
+- `fireevent:souvenir`: `bot/handlers/fire_event.py:741`
 - `fireph:menu`: `bot/handlers/admin_firephotos.py:73`
 - `fish:recover`: `bot/handlers/fishing.py:500`
 - `forest:addlist`: `bot/handlers/admin.py:7845`
@@ -974,16 +975,17 @@
 - `finh:list:`: `bot/handlers/admin.py:2745`
 - `finh:u:`: `bot/handlers/admin.py:2757`
 - `finuser:`: `bot/handlers/admin.py:2630`
-- `fireevent:attack:`: `bot/handlers/fire_event.py:959`
+- `fireevent:attack:`: `bot/handlers/fire_event.py:1033`
 - `fireevent:bait:`: `bot/handlers/fire_event.py:457`
 - `fireevent:baitset:`: `bot/handlers/fire_event.py:479`
 - `fireevent:cont:`: `bot/handlers/fire_event.py:363`
 - `fireevent:fishing:`: `bot/handlers/fire_event.py:543`
 - `fireevent:leave:`: `bot/handlers/fire_event.py:675`
-- `fireevent:potion:`: `bot/handlers/fire_event.py:1074`
-- `fireevent:potionok:`: `bot/handlers/fire_event.py:1167`
+- `fireevent:potion:`: `bot/handlers/fire_event.py:1148`
+- `fireevent:potionok:`: `bot/handlers/fire_event.py:1241`
 - `fireevent:step:`: `bot/handlers/fire_event.py:286`
 - `fireevent:wellback:`: `bot/handlers/fire_event.py:497`
+- `fireevent:xchg:`: `bot/handlers/fire_event.py:810`
 - `fireph:set:`: `bot/handlers/admin_firephotos.py:82`
 - `fish:bait:\d+$`: `bot/handlers/fishing.py:514`
 - `fish:bait:set:\d+:[a-z]+$`: `bot/handlers/fishing.py:556`

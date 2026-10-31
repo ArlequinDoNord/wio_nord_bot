@@ -177,7 +177,7 @@ async def clan_view_cb(callback: CallbackQuery):
     members = await get_clan_member_ids(clan['id'])
     lines = [
         f"{KIND_EMOJI.get(clan['kind'], '📌')} {_type_label(clan).title()} «{_esc(clan['name'])}»\n",
-        f"👥 Члены клана: {len(members)}",
+        f"👥 Пилоты клана: {len(members)}",
     ]
     if clan['leader_id']:
         lu = await get_user(clan['leader_id'])
