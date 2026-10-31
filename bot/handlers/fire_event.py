@@ -10,6 +10,7 @@
 геометрия (Ф3), предметы/рецепты/Лампа/достижение (Ф4), дроп и финал (Ф5).
 """
 
+import asyncio
 import html
 import json
 import os
@@ -433,88 +434,114 @@ async def _fish_kw(fish_name: str) -> dict | None:
 
 @router.callback_query(F.data.startswith("fireevent:fishing:"))
 async def fire_event_fishing_cb(cb: CallbackQuery):
-    """Праздничная рыбалка в Колодце (1 попытка = 1 нажатие)."""
+    """Праздничная рыбалка в Колодце — как на озере: удочка, наживка, ОД и ожидание поклёвки."""
+    from bot.handlers import fishing as fs
+    uid = cb.from_user.id
     session_id = int(cb.data.split(":")[2])
-    session = await _session_of(cb.from_user.id, session_id)
+    session = await _session_of(uid, session_id)
     if not session:
         return
     cap = int(getattr(config, "FIRE_LAB_WELL_FISH_TRIES", 6) or 6)
-    left_before = cap - int(session['fish_used'] or 0)
-    if left_before <= 0:
-        await cb.answer("🎣 Попытки этого визита исчерпаны — иди дальше.",
+    if cap - int(session['fish_used'] or 0) <= 0:
+        await cb.answer("🎣 Попытки этого визита исчерпаны — иди дальше.", show_alert=True)
+        return
+    if uid in fs.FISHING_CASTING:
+        await cb.answer("Ты уже закинул удочку — дождись результата!", show_alert=True)
+        return
+    rod = await fs._rod_for(uid)
+    if not rod:
+        await cb.answer("❌ Нужна удочка: «Удочка из орешника» из магазина (категория «Рыбалка»).",
                         show_alert=True)
         return
-    used = await db.inc_fire_lab_fish_used(session_id)
-    if used == 0:          # гонка/выработка квоты между проверкой и записью
-        await cb.answer("🎣 Попытки уже исчерпаны.", show_alert=True)
+    user = await db.get_user(uid)
+    chosen = (user.get('fishing_bait') or "").strip()
+    bait_name, bait_id = await fs._resolve_bait(uid, chosen)
+    if not bait_name:
+        await cb.answer("🪱 Без наживки рыба не клюёт. Выбери наживку в меню озера.",
+                        show_alert=True)
         return
-    session = await db.get_active_fire_lab_session(cb.from_user.id)
-    left_now = cap - int(used)
+    ap_cost = int(getattr(config, "FISH_AP_COST", 3) or 3)
+    if not await db.remove_ap(uid, ap_cost, reason="заброс удочки (Колодец)"):
+        await cb.answer(f"❌ Не хватает ОД: нужно {ap_cost}.", show_alert=True)
+        return
 
-    bite_p = float(getattr(config, "FIRE_LAB_FISH_BITE_P", 0.75) or 0.75)
-    fish_kw = None
-    if random.random() >= bite_p:
-        text = _room_chrome(
+    fs.FISHING_CASTING.add(uid)
+    try:
+        fs._mark_fishing_active(uid)
+        await db.remove_inventory_item(uid, bait_id, 1)
+        used = await db.inc_fire_lab_fish_used(session_id)
+        left_now = cap - int(used)
+        delay = random.randint(*getattr(config, "FIRE_LAB_FISH_DELAY", (7, 15)))
+        chance = fs._catch_chance(rod, bait_name, (await db.get_award_bonus(uid))['fishing'])
+        await db.log_activity(uid, "firelab",
+                              f"Колодец: заброс с наживкой «{bait_name}», шанс {chance}%")
+        cast_text = _room_chrome(
             "🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА",
-            "🎣 Заброс… поплавок мелко дрожит и уходит пустым. Не клюнуло.\n"
-            f"Осталось попыток: {left_now}.")
-        await cb.answer("🎣 Пусто…")
-    else:
-        # пул рыб — из water_fish (water='fire_well'), правится в админ-меню
-        # рыбалки; фолбэк — конфиг-таблица FIRE_LAB_FISH_TABLE.
-        pool = await db.get_water_fish_pool("fire_well")
-        if pool:
-            names = [r['name'] for r in pool]
-            weights = [max(1, int(r['day_weight'] or 0) + int(r['night_weight'] or 0))
-                       for r in pool]
-            fish_name = random.choices(names, weights=weights, k=1)[0]
+            f"🎣 Ты забросил удочку с наживкой «{_esc(bait_name)}»...\n"
+            f"Результат через {delay} секунд. Наберись терпения!")
+        await _fire_paint(cb, text=cast_text, kb=None, **(await _room_kw('well')))
+        await cb.answer()
+        await asyncio.sleep(delay)
+
+        fish_kw = None
+        if random.random() * 100 >= chance:
+            text = _room_chrome(
+                "🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА",
+                "🎣 Поплавок дёрнулся, ты подсекаешь... и вдруг пусто. Сорвалось.\n"
+                f"Осталось попыток: {left_now}.")
         else:
-            table = ((getattr(config, "FIRE_LAB_FISH_OSETR_NAME",
-                              "Спектральная Латимерия"), 60),
-                     (getattr(config, "FIRE_LAB_FISH_SOUL_NAME",
-                              "Скелетная Арована"), 25),
-                     (getattr(config, "FIRE_LAB_FISH_CARP_NAME",
-                              "Пылающая Душа"), 15))
-            weights = [w for _, w in table]
-            fish_name = random.choices([n for n, _ in table], weights=weights, k=1)[0]
-        conn = await db.get_db()
-        cur = await conn.execute("SELECT id FROM items WHERE name = ?", (fish_name,))
-        row = await cur.fetchone()
-        if not row:
-            await cb.answer("⚠️ Предмет рыбы не заведён.", show_alert=True)
-            return
-        item_id = int(row['id'])
-        await db.add_inventory_item(cb.from_user.id, item_id, 1)
-        fresh = await db.mark_fire_fish_caught(cb.from_user.id, item_id)
-        kinds = await db.count_fire_fish_kinds(cb.from_user.id)
-        await db.log_activity(cb.from_user.id, "firelab",
-                              f"Праздничная рыбалка: поймал «{fish_name}»")
-        fish_kw = await _fish_kw(fish_name)
-        line = f"🎣 Заброс… поплавок подпрыгивает — <b>{_esc(fish_name)}</b>!"
-        if fresh:
-            line += " (новый вид!)"
-        line += f"\nОсталось попыток: {left_now}."
-        ach_note = ""
-        if kinds >= int(getattr(config, "FIRE_FISHER_THRESHOLD", 3) or 3):
-            lvl, name_, _ = await db.set_achievement_progress(
-                cb.from_user.id, getattr(config, "FIRE_FISHER_ACH_KEY", "fire_fisher"),
-                kinds)
-            if lvl:
-                ach_note = ("\n\n🪣 <b>Мини-ачивка: «Рыбак древних»!</b> "
-                            "Все три праздничные рыбы — твои. Премия — доступна у наград, "
-                            "а в награду — рецепт «Предания предков».")
-        text = _room_chrome("🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА",
-                            line + ach_note)
-        await cb.answer("🐟 Улов!")
-    fish_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text=f"🎣 Ловить ({left_now})",
-            callback_data=f"fireevent:fishing:{session_id}")],
-        [InlineKeyboardButton(text="🚶 Идти дальше",
-                              callback_data=f"fireevent:cont:{session_id}")],
-    ])
-    await _fire_paint(cb, text=text, kb=fish_kb,
-                      **(fish_kw or await _room_kw('well')))
+            pool = await db.get_water_fish_pool("fire_well")
+            if pool:
+                names = [r['name'] for r in pool]
+                weights = [max(1, int(r['day_weight'] or 0) + int(r['night_weight'] or 0))
+                           for r in pool]
+                fish_name = random.choices(names, weights=weights, k=1)[0]
+            else:
+                table = ((getattr(config, "FIRE_LAB_FISH_OSETR_NAME",
+                                  "Спектральная Латимерия"), 60),
+                         (getattr(config, "FIRE_LAB_FISH_SOUL_NAME",
+                                  "Скелетная Арована"), 25),
+                         (getattr(config, "FIRE_LAB_FISH_CARP_NAME",
+                                  "Пылающая Душа"), 15))
+                weights = [w for _, w in table]
+                fish_name = random.choices([n for n, _ in table], weights=weights, k=1)[0]
+            conn = await db.get_db()
+            cur = await conn.execute("SELECT id FROM items WHERE name = ?", (fish_name,))
+            row = await cur.fetchone()
+            if not row:
+                text = _room_chrome("🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА",
+                                    "🐟 Что-то поймал, но предмет потерялся. Сообщи хранителю.")
+            else:
+                item_id = int(row['id'])
+                await db.add_inventory_item(uid, item_id, 1)
+                fresh = await db.mark_fire_fish_caught(uid, item_id)
+                kinds = await db.count_fire_fish_kinds(uid)
+                await db.log_activity(uid, "firelab",
+                                      f"Праздничная рыбалка: поймал «{fish_name}»")
+                line = f"🎣 Поплавок подпрыгивает — <b>{_esc(fish_name)}</b>!"
+                if fresh:
+                    line += " (новый вид!)"
+                line += f"\nОсталось попыток: {left_now}."
+                ach_note = ""
+                if kinds >= int(getattr(config, "FIRE_FISHER_THRESHOLD", 3) or 3):
+                    lvl, _n, _ = await db.set_achievement_progress(
+                        uid, getattr(config, "FIRE_FISHER_ACH_KEY", "fire_fisher"), kinds)
+                    if lvl:
+                        ach_note = ("\n\n🪣 <b>Мини-ачивка: «Рыбак древних»!</b> "
+                                    "Все три праздничные рыбы — твои. Премия — доступна у наград, "
+                                    "а в награду — рецепт «Предания предков».")
+                text = _room_chrome("🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА", line + ach_note)
+                fish_kw = await _fish_kw(fish_name)
+        fish_kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"🎣 Ловить ({left_now})" if left_now > 0 else "🎣 Попытки кончились",
+                callback_data=f"fireevent:fishing:{session_id}")],
+            [InlineKeyboardButton(text="🚶 Идти дальше",
+                                  callback_data=f"fireevent:cont:{session_id}")],
+        ])
+        await _fire_paint(cb, text=text, kb=fish_kb, **(fish_kw or await _room_kw('well')))
+    finally:
+        fs.FISHING_CASTING.discard(uid)
 
 
 # ------------------------------ ДРЕВО ОГНЯ ------------------------------
@@ -907,6 +934,11 @@ async def fire_event_attack_cb(cb: CallbackQuery):
         pct = float(getattr(config, "FIRE_TREE_DMG_BONUS_PCT", 15) or 0)
         dmg = int(dmg * (1 + pct / 100.0))
         log_lines.append("🔥 Благословение усилило удар.")
+    # реген благословения — на каждом ударе игрока, в том числе если броня поглотила урон
+    if int(session.get('blessing') or 0):
+        regen = int(getattr(config, "FIRE_TREE_REGEN_HP", 1) or 0)
+        session['hp'] = min(int(session['hp_max']), int(session['hp']) + regen)
+        log_lines.append(f"🌿 Благословение: +{regen} HP")
     eff = max(0, int(dmg) - int(enemy.get('armor') or 0))
     if eff <= 0:
         log_lines.append("🛡 Броня врага поглотила удар!")
@@ -927,11 +959,6 @@ async def fire_event_attack_cb(cb: CallbackQuery):
                        "poison": "☠️ Отравление:", "frostbite": "🧊 Обморожение:"}[weff]
             log_lines.append(
                 f"{fx_word} враг получит −{wdmg} HP до удара (3 хода)")
-    # реген благословения
-    if int(session.get('blessing') or 0):
-        regen = int(getattr(config, "FIRE_TREE_REGEN_HP", 1) or 0)
-        session['hp'] = min(int(session['hp_max']), int(session['hp']) + regen)
-        log_lines.append(f"🌿 Благословение: +{regen} HP")
     await _after_player_tick(cb, session, session_id, enemy, effects,
                              "\n".join(log_lines))
 
@@ -1049,8 +1076,9 @@ async def _after_player_tick(cb, session, session_id: int, enemy, effects, playe
     conn = await db.get_db()
     # победа над врагом
     if int(enemy['hp']) <= 0:
-        await conn.execute("UPDATE fire_lab_sessions SET enemy_json = NULL, "
-                           "effects_json = '{}' WHERE id = ?", (session_id,))
+        await conn.execute("UPDATE fire_lab_sessions SET hp = ?, enemy_json = NULL, "
+                           "effects_json = '{}' WHERE id = ?",
+                           (int(session['hp']), session_id))
         if enemy.get('is_boss'):
             await conn.execute(
                 "UPDATE fire_lab_sessions SET boss_defeated = boss_defeated + 1 "
