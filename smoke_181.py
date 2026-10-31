@@ -174,6 +174,21 @@ async def main():
     await db.set_city_fire_photo(None)
     check("очищено", await db.get_city_fire_photo() is None)
 
+    print("\n8. Миграция колонки fire_lab_sessions.last_active_at на старой таблице")
+    try:
+        await conn.execute("ALTER TABLE fire_lab_sessions DROP COLUMN last_active_at")
+        await conn.commit()
+        dropped = True
+    except Exception:
+        dropped = False
+    if dropped:
+        await init_db()
+        cur8 = await (await get_db()).execute("PRAGMA table_info(fire_lab_sessions)")
+        cols = [r['name'] for r in await cur8.fetchall()]
+        check("колонка возвращается миграцией", "last_active_at" in cols)
+    else:
+        check("SQLite без DROP COLUMN — пропуск", True)
+
     print(f"\nИТОГО: {passed} passed, {failed} failed")
     await close_db()
     return failed

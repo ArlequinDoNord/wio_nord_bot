@@ -1781,6 +1781,8 @@ async def init_db():
     await _ensure_column(conn, "fire_lab_sessions", "effects_json", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "fire_lab_sessions", "boss_encounters", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "fire_lab_sessions", "fish_used", "INTEGER DEFAULT 0")
+    # таблица создана ранней версией без этой колонки; CREATE IF NOT EXISTS её не добавит
+    await _ensure_column(conn, "fire_lab_sessions", "last_active_at", "TIMESTAMP")
     # Праздничная рыбалка (Колодец): отмеченные виды рыбы пилота (UNIQUE).
     await conn.execute("""
         CREATE TABLE IF NOT EXISTS user_fire_fish (

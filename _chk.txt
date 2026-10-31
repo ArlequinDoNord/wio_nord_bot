@@ -1,0 +1,96 @@
+2026-10-31 02:37:56,795 - aiogram.event - INFO - Update id=11946612 is handled. Duration 220 ms by bot id=8398652430
+2026-10-31 03:29:35,206 - aiogram.event - INFO - Update id=11946613 is handled. Duration 571 ms by bot id=8398652430
+2026-10-31 03:29:36,721 - aiogram.event - INFO - Update id=11946614 is handled. Duration 132 ms by bot id=8398652430
+2026-10-31 03:29:42,864 - aiogram.event - INFO - Update id=11946615 is handled. Duration 192 ms by bot id=8398652430
+2026-10-31 03:29:57,479 - aiogram.event - INFO - Update id=11946616 is handled. Duration 216 ms by bot id=8398652430
+2026-10-31 03:30:06,218 - aiogram.event - INFO - Update id=11946617 is handled. Duration 289 ms by bot id=8398652430
+2026-10-31 03:30:11,691 - aiogram.event - INFO - Update id=11946618 is handled. Duration 203 ms by bot id=8398652430
+2026-10-31 04:09:31,081 - aiogram.event - INFO - Update id=11946619 is handled. Duration 690 ms by bot id=8398652430
+2026-10-31 04:09:33,287 - aiogram.event - INFO - Update id=11946620 is handled. Duration 321 ms by bot id=8398652430
+2026-10-31 04:09:47,281 - aiogram.event - INFO - Update id=11946621 is handled. Duration 578 ms by bot id=8398652430
+2026-10-31 04:09:49,780 - aiogram.event - INFO - Update id=11946622 is handled. Duration 272 ms by bot id=8398652430
+2026-10-31 04:10:16,695 - aiogram.event - INFO - Update id=11946623 is handled. Duration 944 ms by bot id=8398652430
+2026-10-31 04:10:21,203 - aiogram.event - INFO - Update id=11946624 is handled. Duration 685 ms by bot id=8398652430
+2026-10-31 04:10:27,861 - aiogram.event - INFO - Update id=11946625 is handled. Duration 864 ms by bot id=8398652430
+2026-10-31 04:10:31,404 - __main__ - ERROR - Ошибка хендлера (user 6745572077): TypeError: can only join an iterable
+-----
+  File "/app/main.py", line 215, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/main.py", line 156, in __call__
+    return await handler(event, data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/aiogram/dispatcher/event/handler.py", line 71, in call
+    return await wrapped()
+           ^^^^^^^^^^^^^^^
+  File "/app/bot/handlers/clans.py", line 328, in clan_hierarchy_cb
+    await _hierarchy_screen(callback, clan_id)
+  File "/app/bot/handlers/clans.py", line 263, in _hierarchy_screen
+    names = ", ".join(await player_display(u) for u in seq) or "— вакансия —"
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: can only join an iterable
+-----
+2026-10-31 04:13:42,471 - aiogram.event - INFO - Update id=11946642 is handled. Duration 130 ms by bot id=8398652430
+2026-10-31 04:13:44,007 - aiogram.event - INFO - Update id=11946643 is handled. Duration 121 ms by bot id=8398652430
+2026-10-31 04:13:46,613 - aiogram.event - INFO - Update id=11946644 is handled. Duration 277 ms by bot id=8398652430
+2026-10-31 04:13:49,976 - aiogram.event - INFO - Update id=11946645 is handled. Duration 407 ms by bot id=8398652430
+2026-10-31 04:13:53,975 - aiogram.event - INFO - Update id=11946646 is handled. Duration 127 ms by bot id=8398652430
+2026-10-31 04:13:55,172 - aiogram.event - INFO - Update id=11946647 is handled. Duration 148 ms by bot id=8398652430
+2026-10-31 04:13:56,599 - aiogram.event - INFO - Update id=11946648 is handled. Duration 321 ms by bot id=8398652430
+2026-10-31 04:14:02,186 - aiogram.event - INFO - Update id=11946649 is handled. Duration 73 ms by bot id=8398652430
+2026-10-31 04:14:15,862 - aiogram.event - INFO - Update id=11946650 is handled. Duration 301 ms by bot id=8398652430
+2026-10-31 04:14:19,338 - aiogram.event - INFO - Update id=11946651 is handled. Duration 235 ms by bot id=8398652430
+2026-10-31 04:14:22,425 - aiogram.event - INFO - Update id=11946652 is handled. Duration 718 ms by bot id=8398652430
+2026-10-31 04:14:24,384 - aiogram.event - INFO - Update id=11946653 is handled. Duration 141 ms by bot id=8398652430
+2026-10-31 04:14:26,149 - aiogram.event - INFO - Update id=11946654 is handled. Duration 369 ms by bot id=8398652430
+2026-10-31 04:14:27,438 - aiogram.event - INFO - Update id=11946655 is handled. Duration 196 ms by bot id=8398652430
+2026-10-31 04:14:28,723 - __main__ - ERROR - Ошибка хендлера (user 6745572077): OperationalError: table fire_lab_sessions has no column named last_active_at
+-----
+    session_id = await create_fire_lab_session(cb.from_user.id, hp)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/database/db.py", line 3822, in create_fire_lab_session
+    cur = await conn.execute(
+          ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/aiosqlite/core.py", line 223, in execute
+    cursor = await self._execute(self._conn.execute, sql, parameters)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/aiosqlite/core.py", line 160, in _execute
+    return await future
+           ^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/aiosqlite/core.py", line 63, in _connection_worker_thread
+    result = function()
+             ^^^^^^^^^^
+sqlite3.OperationalError: table fire_lab_sessions has no column named last_active_at
+-----
+2026-10-31 04:15:14,420 - aiogram.event - INFO - Update id=11946663 is handled. Duration 154 ms by bot id=8398652430
+2026-10-31 04:15:16,382 - aiogram.event - INFO - Update id=11946664 is handled. Duration 69 ms by bot id=8398652430
+2026-10-31 04:15:19,478 - aiogram.event - INFO - Update id=11946665 is handled. Duration 187 ms by bot id=8398652430
+2026-10-31 04:15:20,837 - aiogram.event - INFO - Update id=11946666 is handled. Duration 214 ms by bot id=8398652430
+2026-10-31 04:15:21,686 - aiogram.event - INFO - Update id=11946667 is handled. Duration 150 ms by bot id=8398652430
+2026-10-31 04:15:25,381 - aiogram.event - INFO - Update id=11946668 is handled. Duration 242 ms by bot id=8398652430
+2026-10-31 04:38:58,988 - aiogram.event - INFO - Update id=11946669 is handled. Duration 585 ms by bot id=8398652430
+2026-10-31 04:39:01,088 - aiogram.event - INFO - Update id=11946670 is handled. Duration 245 ms by bot id=8398652430
+2026-10-31 04:39:08,206 - aiogram.event - INFO - Update id=11946671 is handled. Duration 82 ms by bot id=8398652430
+2026-10-31 04:39:13,316 - aiogram.event - INFO - Update id=11946672 is handled. Duration 154 ms by bot id=8398652430
+2026-10-31 04:39:17,606 - aiogram.event - INFO - Update id=11946673 is handled. Duration 160 ms by bot id=8398652430
+2026-10-31 04:39:23,438 - aiogram.event - INFO - Update id=11946674 is handled. Duration 494 ms by bot id=8398652430
+2026-10-31 05:03:49,560 - aiogram.event - INFO - Update id=11946675 is handled. Duration 397 ms by bot id=8398652430
+2026-10-31 05:03:52,762 - aiogram.event - INFO - Update id=11946676 is handled. Duration 103 ms by bot id=8398652430
+2026-10-31 05:03:54,017 - __main__ - ERROR - Ошибка хендлера (user 561309060): OperationalError: table fire_lab_sessions has no column named last_active_at
+-----
+    session_id = await create_fire_lab_session(cb.from_user.id, hp)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/database/db.py", line 3822, in create_fire_lab_session
+    cur = await conn.execute(
+          ^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/aiosqlite/core.py", line 223, in execute
+    cursor = await self._execute(self._conn.execute, sql, parameters)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/aiosqlite/core.py", line 160, in _execute
+    return await future
+           ^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/site-packages/aiosqlite/core.py", line 63, in _connection_worker_thread
+    result = function()
+             ^^^^^^^^^^
+sqlite3.OperationalError: table fire_lab_sessions has no column named last_active_at
+-----

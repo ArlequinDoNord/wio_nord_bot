@@ -260,7 +260,8 @@ async def _hierarchy_screen(callback: CallbackQuery, clan_id: int):
     lines = [f"⚜ ИЕРАРХИЯ КЛАНА «{_esc(clan['name'])}»\n"]
     for r in order:
         seq = role_rows.get(r) or []
-        names = ", ".join(await player_display(u) for u in seq) or "— вакансия —"
+        shown = [await player_display(u) for u in seq]
+        names = ", ".join(shown) or "— вакансия —"
         lines.append(f"{titles.get(r, r)}: {names}")
     lines.append("\nДолжности Сенешаль, Знаменосец и Старшина — по одному носителю.")
     if not is_leader and not can_admin:
