@@ -208,6 +208,7 @@ def _tier_enemy(e, tier: int):
         'dmg_max': int(e.get('dmg_max') or 0),
         'is_boss': e['key'] == FIRELAB_BOSS_KEY,
         'drops': drops,
+        'on_hit_effects': e.get('on_hit_effects'),
         # картинки: file_id из админ-редактора перебивает локальные файлы
         'image': e.get('image'),
         'photo_key': e.get('photo_key') or f"city/fire_{(e.get('key') or '')}",
@@ -1238,16 +1239,20 @@ async def _after_player_tick(cb, session, session_id: int, enemy, effects, playe
     if random.random() * 100 < dodge_player:
         log_lines.append("💨 Ты увернулся от удара врага!")
     else:
+        from utils.combat_model import armor_hit, _enemy_pierce_roll
         enemy_dmg = random.randint(int(enemy.get('dmg_min') or 0), int(enemy.get('dmg_max') or 0))
         armor_player = 0
         try:
             armor_player = int((st or {}).get('armor') or 0)
         except Exception:
             armor_player = 0
-        blocked = min(enemy_dmg, armor_player)
-        eff = max(0, enemy_dmg - armor_player)
+        hit = armor_hit(enemy_dmg, armor_player, _enemy_pierce_roll(enemy), minimum=0)
+        eff = hit['damage']
+        blocked = hit['armor_blocked']
         hp_now = max(0, hp_now - eff)
-        if blocked > 0:
+        if hit['pierced']:
+            log_lines.append(f"🗡 Враг пробивает броню! Удар на {eff} урона")
+        elif blocked > 0:
             log_lines.append(f"⚔️ Враг бьёт на {enemy_dmg} — 🛡 броня поглотила {blocked}, −{eff} HP")
         else:
             log_lines.append(f"⚔️ Враг бьёт на {eff} урона")

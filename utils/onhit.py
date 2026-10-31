@@ -95,6 +95,8 @@ def roll_procs(effects: list) -> list:
         conf = ON_HIT_EFFECTS.get(kind)
         if not conf:
             continue
+        if kind == "armor_pierce":
+            continue  # модификатор урона, бросается отдельно (roll_armor_pierce)
         if kind == "lifesteal":
             chance = int(eff.get('chance') or 0)
             if chance <= 0:
@@ -126,6 +128,19 @@ def roll_procs(effects: list) -> list:
                                         or ON_HIT_STATE_ROUNDS.get(key) or 3))
         procs.append(proc)
     return procs
+
+
+def roll_armor_pierce(effects: list) -> int | None:
+    """Бросок пробития брони: процент урона, проходящего мимо брони, или None."""
+    for eff in effects or ():
+        if not isinstance(eff, dict) or eff.get('kind') != "armor_pierce":
+            continue
+        chance = int(eff.get('chance') or 0)
+        if chance <= 0 or random.randint(1, 100) > chance:
+            continue
+        pct = max(1, min(100, int(eff.get('pct') or 100)))
+        return pct
+    return None
 
 
 def roll_lifesteal(effects: list) -> dict | None:

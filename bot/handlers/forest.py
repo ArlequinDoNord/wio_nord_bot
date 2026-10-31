@@ -999,6 +999,7 @@ async def forest_battle_hit(callback: CallbackQuery):
         'dmg_max': battle.get('dmg_max') or FOREST_BOAR_DMG[1],
         'crit_chance': battle.get('crit_chance') or 0,
         'crit_mult': battle.get('crit_mult') or 1.5,
+        'on_hit_effects': battle.get('on_hit_effects') or [],
     })
     boar_hit = eres['damage']
     if eres['dodged']:

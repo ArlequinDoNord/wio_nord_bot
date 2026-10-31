@@ -13,10 +13,10 @@
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `VERSION` | `'0.41.12'` |  | :16 |
-| `VERSION_NOTES` | `'Праздничные хлопоты: в Круговороте можно ловить и без наживки.'` |  | :17 |
-| `PREV_VERSION` | `'0.41.11'` |  | :19 |
-| `PREV_VERSION_NOTES` | `'Праздничные хлопоты: в колодце Круговорота теперь ловят по-настоящему.'` |  | :20 |
+| `VERSION` | `'0.41.13'` |  | :16 |
+| `VERSION_NOTES` | `'Праздничные хлопоты: некоторые враги умеют бить мимо брони.'` |  | :17 |
+| `PREV_VERSION` | `'0.41.12'` |  | :19 |
+| `PREV_VERSION_NOTES` | `'Праздничные хлопоты: в Круговороте можно ловить и без наживки.'` |  | :20 |
 | `TOURIST_BOOKLET_DESCRIPTION` | `'Печатная карта Нордхайма для гостей города. Просматривай превью городских локаций — и отмечай их в буклете. Собери все 9 и получи награду от командования.'` |  | :24 |
 | `TOURIST_BOOKLET_PRICE` | `1` |  | :27 |
 | `TOURIST_BOOKLET_SELL_PRICE` | `0` | буклет не продаётся (иначе чек-лист теряется) | :28 |
@@ -278,64 +278,64 @@
 | `MINE_SHOP_ITEMS` | `(MINE_PICKAXE_NAME,)` |  | :946 |
 | `MINE_ENEMY_DROPS` | `('Изумруд', 'Рубин', 'Сапфир')` |  | :949 |
 | `ON_HIT_EFFECTS` | `{'bleed': {'emoji': '🩸', 'title': 'Кровотечение', 'until_battle_end': True, 'params': (('chance', 'Шанс наложить, %', 'percent'), ('dmg', 'Урон, HP за ход', 'int')), 'hint': 'Раны сочатся кровью ка…` |  | :958 |
-| `ON_HIT_KIND_ORDER` | `('bleed', 'poison', 'frostbite', 'state', 'lifesteal')` |  | :1012 |
-| `ON_HIT_STATE_ROUNDS` | `{'оглушён': 3, 'ослеплён': 4}` |  | :1014 |
-| `CLAN_ROLES` | `{'leader': '👑 Глава клана', 'seneschal': '🛡 Сенешаль клана', 'banner': '🚩 Знаменосец клана', 'elder': '⭐ Старшина', 'member': '▪️ Член клана'}` |  | :1020 |
-| `CLAN_ROLE_ORDER` | `('leader', 'seneschal', 'banner', 'elder', 'member')` |  | :1027 |
-| `LOGGING_AP_COST` | `12` | стоимость одной попытки рубки | :1033 |
-| `LOGGING_BASE_CHANCE` | `35` | базовый шанс успеха без бонуса топора | :1034 |
-| `LOGGING_AXE_BONUS_PER_RANK` | `15` | надбавка к шансу за ступень топора | :1035 |
-| `LOGGING_CHANCE_CAP` | `90` | потолок шанса успеха | :1036 |
-| `LOGGING_AXE_SLIP_CHANCE` | `2.5` | шанс, что топор отскочит пилоту в плечо, % | :1037 |
-| `LOGGING_RESULT_DELAY` | `(7, 15)` | результат рубки через 7–15 секунд | :1038 |
-| `LOGGING_AXE_NAME` | `'Топор'` |  | :1039 |
-| `LOGGING_WOOD_NAME` | `'Бревна'` |  | :1040 |
-| `LOGGING_PLANK_NAME` | `'Доска'` |  | :1046 |
-| `LOGGING_FIREWOOD_NAME` | `'Пак дров'` |  | :1047 |
-| `LOGGING_PLANK_YIELD` | `3` | досок из одного бревна | :1048 |
-| `LOGGING_PLANK_FEE` | `15` | НМ за распил одного бревна (в казну) | :1049 |
-| `LOGGING_FIREWOOD_YIELD` | `3` | паков дров из одного бревна | :1050 |
-| `LOGGING_FIREWOOD_AP_COST` | `4` | ОД за рубку дров из одного бревна | :1051 |
-| `LOGGING_SNAKE_KEY` | `'snake'` |  | :1055 |
-| `LOGGING_OWL_KEY` | `'owl'` |  | :1056 |
-| `LOGGING_SPOT` | `'logging'` |  | :1057 |
-| `LOGGING_SNAKE_CHANCE` | `8.0` |  | :1058 |
-| `LOGGING_SNAKE_PITY_TARGET` | `10` |  | :1059 |
-| `LOGGING_OWL_CHANCE` | `3.0` |  | :1060 |
-| `LOGGING_OWL_PITY_TARGET` | `24` |  | :1061 |
-| `LOGGING_SNAKE_POISON_CHANCE` | `30` |  | :1063 |
-| `LOGGING_SNAKE_POISON_DMG` | `2` |  | :1064 |
-| `LOGGING_OWL_FLEE_HP` | `20` |  | :1068 |
-| `LOGGING_OWL_BLIND_CHANCE` | `30` |  | :1069 |
-| `LOGGING_OWL_BLIND_ROUNDS` | `4` |  | :1070 |
-| `LOGGING_SNAKE_SEED` | `{'key': LOGGING_SNAKE_KEY, 'spot': LOGGING_SPOT, 'name': 'Лесная змея', 'hp': 30, 'dmg_min': 4, 'dmg_max': 8, 'dodge': 25, 'loss_ap': 10, 'chance': LOGGING_SNAKE_CHANCE, 'pity_target': LOGGING_SNAK…` |  | :1074 |
-| `LOGGING_OWL_SEED` | `{'key': LOGGING_OWL_KEY, 'spot': LOGGING_SPOT, 'name': 'Неясыть', 'hp': 90, 'dmg_min': 7, 'dmg_max': 12, 'dodge': 30, 'loss_ap': 15, 'chance': LOGGING_OWL_CHANCE, 'pity_target': LOGGING_OWL_PITY_TA…` |  | :1104 |
-| `LOGGING_ITEM_SEEDS` | `[(LOGGING_AXE_NAME, 'Крепкий лесорубский топор: без него к срубам не подпустят. Повышает шанс успешной рубки деревьев.', 300, 150, 1, 'mining', 0), (LOGGING_WOOD_NAME, 'Свежие срубленные брёвна из …` |  | :1136 |
-| `LOGGING_SHOP_ITEMS` | `(LOGGING_AXE_NAME,)` |  | :1170 |
-| `LOGGING_ENEMY_DROPS` | `('Змеиная кожа', 'Змеиный яд', 'Совиное перо')` |  | :1173 |
-| `LOGGING_MARKET_RESOURCES` | `(LOGGING_PLANK_NAME, LOGGING_FIREWOOD_NAME)` |  | :1176 |
-| `REPORT_DAILY_LIMIT` | `3` |  | :1178 |
-| `REPORT_AUTO_APPROVE_TROOPS` | `100` |  | :1179 |
-| `NEWS_PUBLISH_BONUS` | `10` |  | :1183 |
-| `NEWS_PUBLISH_CAP` | `28` |  | :1184 |
-| `ROLE_SALARY_PAY_DAY` | `28` |  | :1187 |
-| `REPORT_DAILY_PAY_CAP` | `4000` |  | :1192 |
-| `REPORT_MAX_TROOPS` | `1000000` |  | :1193 |
-| `REPORT_MAX_REGION` | `38` | 0 = Столица, 1..38 регионы | :1194 |
-| `WALL_TEXT_MAX_LEN` | `40` | лимит символов на одно изречение | :1197 |
-| `WALL_FREE_PER_DAY` | `2` | бесплатных сообщений в сутки | :1198 |
-| `WALL_PAID_STEPS` | `[(3, 30), (3, 90), (3, 200)]` | далее платные ступени: (кол-во, цена НМ) | :1199 |
-| `WALL_REVIEW_TOTAL` | `11` | максимум сообщений в сутки (2 + 3+3+3) | :1204 |
-| `WALL_PAGE_SIZE` | `5` | постов на страницу стены | :1205 |
-| `WALL_ARCHIVE_PAGE_SIZE` | `8` | записей архива стены на страницу списка | :1206 |
-| `REPORT_ARCHIVE_PAGE` | `8` | отчётов на страницу архива МВД и в «Моих отчётах» | :1209 |
-| `POLL_MAX_DAYS` | `10` | максимум дней, сколько живёт опрос. Не закрыл | :1212 |
-| `POLL_VISIBLE` | `4` | сколько новейших опросов висит в меню голосования. | :1215 |
-| `POLL_ARCHIVE_DAYS_PER_PAGE` | `5` | дней (дат) архива опросов на страницу списка | :1218 |
-| `POLL_ARCHIVE_PER_DAY` | `6` | опросов под одним заголовком-днём | :1219 |
-| `REP_SPEECH_MAX_LEN` | `100` | лимит символов одного обращения | :1222 |
-| `REP_SPEECH_PER_DAY` | `2` | обращений в сутки от представителя | :1223 |
-| `AUTO_PROMOTE_MAX_TROOPS` | `4040` |  | :1228 |
+| `ON_HIT_KIND_ORDER` | `('bleed', 'poison', 'frostbite', 'state', 'lifesteal', 'armor_pierce')` |  | :1022 |
+| `ON_HIT_STATE_ROUNDS` | `{'оглушён': 3, 'ослеплён': 4}` |  | :1024 |
+| `CLAN_ROLES` | `{'leader': '👑 Глава клана', 'seneschal': '🛡 Сенешаль клана', 'banner': '🚩 Знаменосец клана', 'elder': '⭐ Старшина', 'member': '▪️ Член клана'}` |  | :1030 |
+| `CLAN_ROLE_ORDER` | `('leader', 'seneschal', 'banner', 'elder', 'member')` |  | :1037 |
+| `LOGGING_AP_COST` | `12` | стоимость одной попытки рубки | :1043 |
+| `LOGGING_BASE_CHANCE` | `35` | базовый шанс успеха без бонуса топора | :1044 |
+| `LOGGING_AXE_BONUS_PER_RANK` | `15` | надбавка к шансу за ступень топора | :1045 |
+| `LOGGING_CHANCE_CAP` | `90` | потолок шанса успеха | :1046 |
+| `LOGGING_AXE_SLIP_CHANCE` | `2.5` | шанс, что топор отскочит пилоту в плечо, % | :1047 |
+| `LOGGING_RESULT_DELAY` | `(7, 15)` | результат рубки через 7–15 секунд | :1048 |
+| `LOGGING_AXE_NAME` | `'Топор'` |  | :1049 |
+| `LOGGING_WOOD_NAME` | `'Бревна'` |  | :1050 |
+| `LOGGING_PLANK_NAME` | `'Доска'` |  | :1056 |
+| `LOGGING_FIREWOOD_NAME` | `'Пак дров'` |  | :1057 |
+| `LOGGING_PLANK_YIELD` | `3` | досок из одного бревна | :1058 |
+| `LOGGING_PLANK_FEE` | `15` | НМ за распил одного бревна (в казну) | :1059 |
+| `LOGGING_FIREWOOD_YIELD` | `3` | паков дров из одного бревна | :1060 |
+| `LOGGING_FIREWOOD_AP_COST` | `4` | ОД за рубку дров из одного бревна | :1061 |
+| `LOGGING_SNAKE_KEY` | `'snake'` |  | :1065 |
+| `LOGGING_OWL_KEY` | `'owl'` |  | :1066 |
+| `LOGGING_SPOT` | `'logging'` |  | :1067 |
+| `LOGGING_SNAKE_CHANCE` | `8.0` |  | :1068 |
+| `LOGGING_SNAKE_PITY_TARGET` | `10` |  | :1069 |
+| `LOGGING_OWL_CHANCE` | `3.0` |  | :1070 |
+| `LOGGING_OWL_PITY_TARGET` | `24` |  | :1071 |
+| `LOGGING_SNAKE_POISON_CHANCE` | `30` |  | :1073 |
+| `LOGGING_SNAKE_POISON_DMG` | `2` |  | :1074 |
+| `LOGGING_OWL_FLEE_HP` | `20` |  | :1078 |
+| `LOGGING_OWL_BLIND_CHANCE` | `30` |  | :1079 |
+| `LOGGING_OWL_BLIND_ROUNDS` | `4` |  | :1080 |
+| `LOGGING_SNAKE_SEED` | `{'key': LOGGING_SNAKE_KEY, 'spot': LOGGING_SPOT, 'name': 'Лесная змея', 'hp': 30, 'dmg_min': 4, 'dmg_max': 8, 'dodge': 25, 'loss_ap': 10, 'chance': LOGGING_SNAKE_CHANCE, 'pity_target': LOGGING_SNAK…` |  | :1084 |
+| `LOGGING_OWL_SEED` | `{'key': LOGGING_OWL_KEY, 'spot': LOGGING_SPOT, 'name': 'Неясыть', 'hp': 90, 'dmg_min': 7, 'dmg_max': 12, 'dodge': 30, 'loss_ap': 15, 'chance': LOGGING_OWL_CHANCE, 'pity_target': LOGGING_OWL_PITY_TA…` |  | :1114 |
+| `LOGGING_ITEM_SEEDS` | `[(LOGGING_AXE_NAME, 'Крепкий лесорубский топор: без него к срубам не подпустят. Повышает шанс успешной рубки деревьев.', 300, 150, 1, 'mining', 0), (LOGGING_WOOD_NAME, 'Свежие срубленные брёвна из …` |  | :1146 |
+| `LOGGING_SHOP_ITEMS` | `(LOGGING_AXE_NAME,)` |  | :1180 |
+| `LOGGING_ENEMY_DROPS` | `('Змеиная кожа', 'Змеиный яд', 'Совиное перо')` |  | :1183 |
+| `LOGGING_MARKET_RESOURCES` | `(LOGGING_PLANK_NAME, LOGGING_FIREWOOD_NAME)` |  | :1186 |
+| `REPORT_DAILY_LIMIT` | `3` |  | :1188 |
+| `REPORT_AUTO_APPROVE_TROOPS` | `100` |  | :1189 |
+| `NEWS_PUBLISH_BONUS` | `10` |  | :1193 |
+| `NEWS_PUBLISH_CAP` | `28` |  | :1194 |
+| `ROLE_SALARY_PAY_DAY` | `28` |  | :1197 |
+| `REPORT_DAILY_PAY_CAP` | `4000` |  | :1202 |
+| `REPORT_MAX_TROOPS` | `1000000` |  | :1203 |
+| `REPORT_MAX_REGION` | `38` | 0 = Столица, 1..38 регионы | :1204 |
+| `WALL_TEXT_MAX_LEN` | `40` | лимит символов на одно изречение | :1207 |
+| `WALL_FREE_PER_DAY` | `2` | бесплатных сообщений в сутки | :1208 |
+| `WALL_PAID_STEPS` | `[(3, 30), (3, 90), (3, 200)]` | далее платные ступени: (кол-во, цена НМ) | :1209 |
+| `WALL_REVIEW_TOTAL` | `11` | максимум сообщений в сутки (2 + 3+3+3) | :1214 |
+| `WALL_PAGE_SIZE` | `5` | постов на страницу стены | :1215 |
+| `WALL_ARCHIVE_PAGE_SIZE` | `8` | записей архива стены на страницу списка | :1216 |
+| `REPORT_ARCHIVE_PAGE` | `8` | отчётов на страницу архива МВД и в «Моих отчётах» | :1219 |
+| `POLL_MAX_DAYS` | `10` | максимум дней, сколько живёт опрос. Не закрыл | :1222 |
+| `POLL_VISIBLE` | `4` | сколько новейших опросов висит в меню голосования. | :1225 |
+| `POLL_ARCHIVE_DAYS_PER_PAGE` | `5` | дней (дат) архива опросов на страницу списка | :1228 |
+| `POLL_ARCHIVE_PER_DAY` | `6` | опросов под одним заголовком-днём | :1229 |
+| `REP_SPEECH_MAX_LEN` | `100` | лимит символов одного обращения | :1232 |
+| `REP_SPEECH_PER_DAY` | `2` | обращений в сутки от представителя | :1233 |
+| `AUTO_PROMOTE_MAX_TROOPS` | `4040` |  | :1238 |
 
 ## Буклет туриста
 

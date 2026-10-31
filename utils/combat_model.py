@@ -101,11 +101,36 @@ def roll_pilot_damage(stats: dict, enemy) -> dict:
             'armor_blocked': blocked, 'crit': crit}
 
 
-def roll_enemy_damage(stats: dict, enemy) -> dict:
-    """Удар врага по пилоту: свой диапазон урона, crit, поглощение бронёй."""
+def armor_hit(damage: int, armor: int, pierce_pct: int | None = None,
+              minimum: int = 1) -> dict:
+    """Урон врага с учётом брони пилота.
+
+    pierce_pct — способность «пробитие брони»: удар мимо брони, врага наносит
+    pierce_pct% своего урона (50 — половину, 100 — весь), броня не режет.
+    Без пробития броня вычитается из урона, но не ниже minimum.
+    """
+    if pierce_pct:
+        dealt = max(minimum, int(round(damage * int(pierce_pct) / 100.0)))
+        return {'damage': dealt, 'armor_blocked': 0, 'pierced': True}
+    blocked = min(damage, armor)
+    dealt = max(minimum, damage - armor)
+    return {'damage': dealt, 'armor_blocked': blocked, 'pierced': False}
+
+
+def _enemy_pierce_roll(enemy) -> int | None:
+    """Бросок «пробития брони» из on_hit_effects врага (None — не сработало)."""
+    if not isinstance(enemy, dict):
+        return None
+    from utils.onhit import parse_on_hit_effects, roll_armor_pierce
+    return roll_armor_pierce(parse_on_hit_effects(enemy.get('on_hit_effects')))
+
+
+def roll_enemy_damage(stats: dict, enemy, pierce_pct: int | None = None) -> dict:
+    """Удар врага по пилоту: свой диапазон урона, crit, броня или пробитие брони."""
     player_dodge = int(stats.get('dodge') or 0)
     if roll_dodge(player_dodge):
-        return {'damage': 0, 'dodged': True, 'raw': 0, 'armor_blocked': 0, 'crit': False}
+        return {'damage': 0, 'dodged': True, 'raw': 0, 'armor_blocked': 0, 'crit': False,
+                'pierced': False}
 
     lo, hi = _enemy_range(enemy)
     if hi < lo:
@@ -118,11 +143,11 @@ def roll_enemy_damage(stats: dict, enemy) -> dict:
         damage = int(round(damage * float(enemy.get('crit_mult') or 1.5)))
         crit = True
 
-    armor = int(stats.get('armor') or 0)
-    blocked = min(damage, armor)
-    damage = max(1, damage - armor)
-    return {'damage': damage, 'dodged': False, 'raw': damage + blocked,
-            'armor_blocked': blocked, 'crit': crit}
+    if pierce_pct is None:
+        pierce_pct = _enemy_pierce_roll(enemy)
+    hit = armor_hit(damage, int(stats.get('armor') or 0), pierce_pct, minimum=1)
+    return {'damage': hit['damage'], 'dodged': False, 'raw': damage,
+            'armor_blocked': hit['armor_blocked'], 'crit': crit, 'pierced': hit['pierced']}
 
 
 def enemy_hp(enemy, default: int = 1) -> int:

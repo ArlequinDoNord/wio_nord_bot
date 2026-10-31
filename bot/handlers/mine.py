@@ -663,6 +663,7 @@ async def mine_battle_hit(callback: CallbackQuery):
     eres = roll_enemy_damage(stats, {
         'dmg_min': battle.get('dmg_min') or MINE_BAT_SEED['dmg_min'],
         'dmg_max': battle.get('dmg_max') or MINE_BAT_SEED['dmg_max'],
+        'on_hit_effects': battle.get('on_hit_effects') or [],
     })
     bat_hit = eres['damage']
     if eres['dodged']:
