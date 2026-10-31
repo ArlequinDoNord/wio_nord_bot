@@ -1,5 +1,0 @@
-fire_lab_sessions ['id', 'user_id', 'status', 'hp', 'hp_max', 'steps', 'path_history', 'blessing', 'well_visits', 'tree_visits', 'chest_visits', 'boss_defeated', 'entered_at', 'ended_at', 'enemy_json', 'effects_json', 'boss_encounters', 'fish_used']
-fire_lab_entries ['user_id', 'day', 'qty']
-fire_lab_tier ['user_id', 'tier', 'runs', 'updated_at']
-user_fire_fish ['user_id', 'item_id', 'marked_at']
-firelab_enemies ['id', 'key', 'spot', 'name', 'hp', 'dmg_min', 'dmg_max', 'armor', 'dodge', 'loss_ap', 'bleed_chance', 'bleed_dmg', 'chance', 'pity_target', 'reward_nm', 'drops', 'description', 'image', 'photo_key', 'enabled', 'admin_tuned', 'on_hit_effects']
