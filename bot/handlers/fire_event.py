@@ -143,23 +143,23 @@ async def _roll_room(user_id: int, session, path: str, history: list) -> str:
     if well_visits < well_max and _window_matches(well_pattern):
         return "well"
 
-    # 1) случайные особые комнаты
-    if tree_visits < tree_max and random.random() < float(getattr(config, "FIRE_LAB_P_TREE", 0.09)):
-        return "tree"
-    if well_visits < well_max and random.random() < float(getattr(config, "FIRE_LAB_P_WELL", 0.07)):
-        return "well"
-
-    # 2) босс: после 13 комнат, шанс 50%, максимум встреч
+    # 1) одна выборка по таблице шансов (config.FIRE_LAB_ROOM_WEIGHTS): древо, колодец,
+    # босс (с 13-й комнаты, до 2 встреч), враг; остаток — пустая развилка
     boss_after = int(getattr(config, "FIRE_LAB_BOSS_AFTER_ROOMS", 13) or 13)
-    if steps >= boss_after and boss_encounters < boss_max \
-            and random.random() < float(getattr(config, "FIRE_LAB_BOSS_P", 0.50)):
-        return "boss"
-
-    # 3) обычный враг 50% (4 вида поровну)
-    if random.random() < float(getattr(config, "FIRE_LAB_ENEMY_P", 0.50)):
-        return "enemy"
-
-    # 4) пустая развилка
+    avail = {
+        "tree": tree_visits < tree_max,
+        "well": well_visits < well_max,
+        "boss": steps >= boss_after and boss_encounters < boss_max,
+    }
+    table = config.FIRE_LAB_ROOM_WEIGHTS[(avail["boss"], avail["tree"] or avail["well"])]
+    roll = random.random() * 100
+    acc = 0
+    for outcome, pct in table:
+        if outcome in avail and not avail[outcome]:
+            continue
+        acc += pct
+        if roll < acc:
+            return outcome
     return "empty"
 
 
