@@ -58,6 +58,7 @@ from database.db import (
     create_water_fish,
     get_water_fish_candidates, WATER_LABELS, set_callsign, set_wing,
     get_water_junk_rows, update_water_junk, JUNK_EMOJI,
+    get_junk_pool, get_water_junk_row, add_water_junk, remove_water_junk, create_water_junk,
     get_forest_mushroom_rows, get_forest_mushroom_row, update_forest_mushroom_field,
     set_forest_mushroom_sell_price, add_forest_mushroom, remove_forest_mushroom,
     create_forest_mushroom, get_forest_mushroom_candidates,
@@ -208,6 +209,10 @@ class AdminFishing(StatesGroup):
     c_night_weight = State()  # вес ночью
     c_photo = State()         # фото
     c_super_rare = State()    # супер-редкая (только для «Бывалого» 4 ур.)
+    j_name = State()          # находка со дна: название
+    j_sell = State()          # цена продажи
+    j_chance = State()        # шанс выпадения %
+    j_photo = State()         # фото (или «-»)
 
 
 class AdminForest(StatesGroup):
@@ -6900,8 +6905,15 @@ async def _admin_fishing_junk_card(source, water: str, prefix: str = ""):
                 text=f"{emo} 🖼 Фото",
                 callback_data=f"fishing_j:photo:{water}:{name}"),
         ])
+        buttons.append([InlineKeyboardButton(
+            text=f"🗑 Убрать «{name}»",
+            callback_data=f"fishing_jx:del:{r['id']}")])
     if not rows:
         lines.append("Записей пока нет.")
+    buttons.append([InlineKeyboardButton(text="➕ Добавить из пула",
+                                         callback_data=f"fishing_jx:pool:{water}")])
+    buttons.append([InlineKeyboardButton(text="✨ Создать находку",
+                                         callback_data=f"fishing_jx:new:{water}")])
     buttons.append([InlineKeyboardButton(text="🔙 К списку рыб",
                                          callback_data=f"fishing:water:{water}")])
     markup = InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -6946,6 +6958,165 @@ async def admin_fishing_junk_field_pick(callback: CallbackQuery, state: FSMConte
             except Exception:
                 pass
     await callback.message.answer(prompt, reply_markup=cancel_keyboard())
+
+
+JUNK_POOL_LIMIT = 30
+
+
+@router.callback_query(F.data.startswith("fishing_jx:pool:"))
+async def admin_fishing_junk_pool(callback: CallbackQuery, state: FSMContext):
+    """Выбор предмета из пула ресурсов, чтобы добавить его находкой водоёма."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    water = callback.data.split(":", 2)[2]
+    if water not in WATER_LABELS:
+        return
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    pool = await get_junk_pool(water)
+    lines = [f"➕ Находка из пула\n🐟 {WATER_LABELS[water]}\n"]
+    rows = []
+    if pool:
+        for it in pool[:JUNK_POOL_LIMIT]:
+            rows.append([InlineKeyboardButton(
+                text=f"{it['name']} (продажа {it['sell_price']} НМ)",
+                callback_data=f"fishing_jx:pick:{water}:{it['id']}")])
+        if len(pool) > JUNK_POOL_LIMIT:
+            lines.append(f"Показаны первые {JUNK_POOL_LIMIT} из {len(pool)}. "
+                         "Остальные — через «✨ Создать находку» или сузь список.")
+    else:
+        lines.append("Подходящих ресурсов в пуле нет. Создай находку новую.")
+    rows.append([InlineKeyboardButton(text="🔙 К находкам",
+                                      callback_data=f"fishing:junk:{water}")])
+    await callback.message.edit_text("\n".join(lines),
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("fishing_jx:pick:"))
+async def admin_fishing_junk_pick(callback: CallbackQuery, state: FSMContext):
+    """Добавляет предмет из пула находкой водоёма и показывает карточку."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        _, _, water, item_id = callback.data.split(":", 3)
+        item_id = int(item_id)
+    except ValueError:
+        return
+    if water not in WATER_LABELS:
+        return
+    item = await get_item(item_id)
+    if not item:
+        await callback.message.answer("❌ Предмет не найден.")
+        return
+    jid = await add_water_junk(water, item['name'])
+    if not jid:
+        await callback.message.answer("⚠️ Такая находка уже есть в этом водоёме.")
+        return
+    await log_action(callback.from_user.id, 'edit_fishing', None,
+                     f"junk add water={water} name={item['name']}")
+    await _admin_fishing_junk_card(
+        callback, water, prefix=f"✅ «{item['name']}» добавлена в находки.\n\n")
+
+
+@router.callback_query(F.data.startswith("fishing_jx:del:"))
+async def admin_fishing_junk_del(callback: CallbackQuery, state: FSMContext):
+    """Убирает находку из водоёма (предмет и его запасы у игроков остаются)."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    try:
+        junk_id = int(callback.data.split(":", 2)[2])
+    except (ValueError, IndexError):
+        return
+    row = await get_water_junk_row(junk_id)
+    if not row:
+        await callback.message.answer("❌ Находка не найдена.")
+        return
+    await remove_water_junk(junk_id)
+    await log_action(callback.from_user.id, 'edit_fishing', None,
+                     f"junk del water={row['water']} name={row['name']}")
+    await _admin_fishing_junk_card(
+        callback, row['water'], prefix=f"🗑 «{row['name']}» убрана из находок.\n\n")
+
+
+@router.callback_query(F.data.startswith("fishing_jx:new:"))
+async def admin_fishing_junk_new(callback: CallbackQuery, state: FSMContext):
+    """Мастер новой находки: название → цена продажи → шанс."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    water = callback.data.split(":", 2)[2]
+    if water not in WATER_LABELS:
+        return
+    await state.clear()
+    await state.update_data(water=water)
+    await state.set_state(AdminFishing.j_name)
+    await callback.message.answer(
+        f"✨ Новая находка со дна\n🐟 {WATER_LABELS[water]}\n\n"
+        "Шаг 1/3 — Название предмета (например «Ржавая банка»):",
+        reply_markup=cancel_keyboard())
+
+
+@router.message(AdminFishing.j_name)
+async def admin_fishing_junk_new_name(message: Message, state: FSMContext):
+    name = (message.text or "").strip()
+    if not name or len(name) > 60:
+        await message.answer("❌ Название — от 1 до 60 символов.", reply_markup=cancel_keyboard())
+        return
+    await state.update_data(j_name=name)
+    await state.set_state(AdminFishing.j_sell)
+    await message.answer("Шаг 2/3 — Цена продажи скупщику, Нордмарок (целое число ≥ 0):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminFishing.j_sell)
+async def admin_fishing_junk_new_sell(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    if not text.isdigit():
+        await message.answer("❌ Введи целое число ≥ 0.", reply_markup=cancel_keyboard())
+        return
+    await state.update_data(j_sell=int(text))
+    await state.set_state(AdminFishing.j_chance)
+    await message.answer("Шаг 3/3 — Шанс выпадения со дна, % (целое число 0–100):",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminFishing.j_chance)
+async def admin_fishing_junk_new_chance(message: Message, state: FSMContext):
+    text = (message.text or "").strip()
+    if not text.isdigit() or int(text) > 100:
+        await message.answer("❌ Введи целое число от 0 до 100.", reply_markup=cancel_keyboard())
+        return
+    await state.update_data(j_chance=int(text))
+    await state.set_state(AdminFishing.j_photo)
+    await message.answer("Шаг 4/4 — Фото находки (отправь картинку) или «-», чтобы пропустить. "
+                         "Потом можно поменять кнопкой «🖼 Фото» в карточке находок.",
+                         reply_markup=cancel_keyboard())
+
+
+@router.message(AdminFishing.j_photo)
+async def admin_fishing_junk_new_photo(message: Message, state: FSMContext):
+    photo_id = message.photo[-1].file_id if message.photo else None
+    text = (message.text or "").strip()
+    if photo_id is None and text not in ("-", "—"):
+        await message.answer("❌ Пришли фото или «-», чтобы пропустить.",
+                             reply_markup=cancel_keyboard())
+        return
+    data = await state.get_data()
+    water = data.get("water")
+    name = data.get("j_name")
+    jid = await create_water_junk(water, name, data.get("j_sell", 0), data.get("j_chance", 0),
+                                  added_by=message.from_user.id, photo_file_id=photo_id)
+    await state.clear()
+    if not jid:
+        await message.answer("⚠️ Находка с таким названием уже есть в этом водоёме.")
+        return
+    await log_action(message.from_user.id, 'edit_fishing', None,
+                     f"junk new water={water} name={name} chance={data.get('j_chance')} "
+                     f"photo={'да' if photo_id else 'нет'}")
+    await message.answer(f"✅ Находка «{name}» создана"
+                         f"{' с фото' if photo_id else ''}.")
 
 
 @router.callback_query(F.data == "admin:fishing")

@@ -199,10 +199,10 @@ async def run():
     # ── 4. Подсказка с актуальными шансами ──
     hint = await junk_hint("lake")
     check("подсказка озера актуальна",
-          "(водоросли 0%, сапог 0%)" in hint)
+          "Кусочек водорослей 0%" in hint and "Старый сапог 0%" in hint)
     hint2 = await junk_hint("reservoir")
     check("подсказка водохранилища дефолтна",
-          "(водоросли 15%" in hint2 and "сапог 2%" in hint2)
+          "Кусочек водорослей 15%" in hint2 and "Старый сапог 2%" in hint2)
     check("junk_photo отдаёт file_id", await junk_photo("lake", "Кусочек водорослей") == "FID_SEAWEED")
 
     # ── 5. Админ-карточка находок ──

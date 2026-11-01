@@ -8630,18 +8630,22 @@ async def ensure_water_fish():
     # Находки со дна (без наживки): шанс и картинка на водоём.
     # Существующие строки не трогаем — только добираем отсутствующие,
     # поэтому правки админа (admin_tuned) переживают перезапуски.
-    for _water in WATER_LABELS:
-        for _jname in JUNK_ITEM_NAMES:
-            _jc = await conn.execute(
-                "SELECT id FROM water_junk WHERE water = ? AND name = ?",
-                (_water, _jname)
-            )
-            if not (await _jc.fetchone()):
-                await conn.execute(
-                    "INSERT INTO water_junk (water, name, chance) VALUES (?, ?, ?)",
-                    (_water, _jname, JUNK_DEFAULT_CHANCES.get(_jname, 0))
+    # Засев один раз: после этого админ вправе убрать любую находку, и она не вернётся.
+    if not await get_setting(JUNK_SEEDED_KEY):
+        for _water in WATER_LABELS:
+            for _jname in JUNK_ITEM_NAMES:
+                _jc = await conn.execute(
+                    "SELECT id FROM water_junk WHERE water = ? AND name = ?",
+                    (_water, _jname)
                 )
-                changed = True
+                if not (await _jc.fetchone()):
+                    await conn.execute(
+                        "INSERT INTO water_junk (water, name, chance) VALUES (?, ?, ?)",
+                        (_water, _jname, JUNK_DEFAULT_CHANCES.get(_jname, 0))
+                    )
+                    changed = True
+        await conn.commit()
+        await set_setting(JUNK_SEEDED_KEY, "1")
     if changed:
         await conn.commit()
     return changed
@@ -8659,14 +8663,80 @@ async def get_water_junk_rows(water: str):
 
 
 async def get_water_junk_map(water: str) -> dict:
-    """name → {'chance': %, 'photo_file_id': ...|None}. Пустые водоёмы
-    отдают дефолтные шансы из JUNK_DEFAULT_CHANCES (слоёный фолбэк)."""
+    """name → {'chance': %, 'photo_file_id': ...|None} в порядке добавления.
+    Пустой водоём — пустой словарь: удалённые админом находки не возвращаются."""
     rows = await get_water_junk_rows(water)
-    if not rows:
-        return {n: {"chance": JUNK_DEFAULT_CHANCES.get(n, 0), "photo_file_id": None}
-                for n in JUNK_ITEM_NAMES}
     return {r['name']: {"chance": r['chance'] or 0,
                         "photo_file_id": r['photo_file_id']} for r in rows}
+
+
+JUNK_SEEDED_KEY = "water_junk_seeded"
+JUNK_NEW_DEFAULT_CHANCE = 5
+
+
+async def get_junk_pool(water: str) -> list:
+    """Предметы-ресурсы, которых ещё нет среди находок водоёма (для «Добавить из пула»)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id, name, sell_price FROM items WHERE category = 'resource' "
+        "AND name NOT IN (SELECT name FROM water_junk WHERE water = ?) "
+        "ORDER BY name", (water,))
+    return await cursor.fetchall()
+
+
+async def get_water_junk_row(junk_id: int):
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id, water, name, chance, photo_file_id FROM water_junk WHERE id = ?",
+        (junk_id,))
+    return await cursor.fetchone()
+
+
+async def add_water_junk(water: str, name: str, chance: int = JUNK_NEW_DEFAULT_CHANCE) -> int:
+    """Добавляет находку водоёма по имени предмета. 0 — уже есть / ошибка."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id FROM water_junk WHERE water = ? AND name = ?", (water, name))
+    if await cursor.fetchone():
+        return 0
+    cursor = await conn.execute(
+        "INSERT INTO water_junk (water, name, chance, admin_tuned) VALUES (?, ?, ?, 1)",
+        (water, name, max(0, min(100, int(chance)))))
+    await conn.commit()
+    return cursor.lastrowid or 0
+
+
+async def remove_water_junk(junk_id: int) -> bool:
+    conn = await get_db()
+    cursor = await conn.execute("DELETE FROM water_junk WHERE id = ?", (junk_id,))
+    await conn.commit()
+    return cursor.rowcount > 0
+
+
+async def create_water_junk(water: str, name: str, sell_price: int, chance: int,
+                            description: str = None, added_by: int = None,
+                            photo_file_id: str = None) -> int:
+    """Создаёт новую находку: предмет-ресурс (скрыт из магазина) + строка водоёма.
+    Фото (если задано) кладётся и в строку водоёма, и в предмет «Хранилища».
+    Возвращает id строки water_junk или 0, если такое имя уже есть в водоёме."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id FROM water_junk WHERE water = ? AND name = ?", (water, name))
+    if await cursor.fetchone():
+        return 0
+    item = await get_item_by_name(name)
+    if not item:
+        cursor = await conn.execute(
+            """INSERT INTO items (name, description, photo_file_id, price, sell_price, rarity,
+               category, stock, added_by, market_ok, is_available)
+               VALUES (?, ?, ?, 0, ?, 1, 'resource', -1, ?, 1, 0)""",
+            (name, description, photo_file_id, int(sell_price), added_by))
+    cursor = await conn.execute(
+        "INSERT INTO water_junk (water, name, chance, photo_file_id, admin_tuned) "
+        "VALUES (?, ?, ?, ?, 1)",
+        (water, name, max(0, min(100, int(chance))), photo_file_id))
+    await conn.commit()
+    return cursor.lastrowid or 0
 
 
 async def update_water_junk(water: str, name: str, field: str, value) -> bool:

@@ -101,38 +101,45 @@ JUNK_BOOT_CHANCE = JUNK_DEFAULT_CHANCES.get(BOOT_NAME, 2)
 
 
 async def junk_chances(water: str) -> dict:
-    """name → шанс % для находок водоёма (из БД, с фолбэком на дефолты)."""
+    """name → шанс % для всех находок водоёма (из БД, в порядке добавления)."""
     m = await get_water_junk_map(water)
-    if not m:
-        return {SEAWEED_NAME: JUNK_SEAWEED_CHANCE, BOOT_NAME: JUNK_BOOT_CHANCE}
     return {name: (row.get("chance") or 0) for name, row in m.items()}
 
 
 async def junk_hint(water: str) -> str:
-    """Строка-подсказка «(водоросли X%, сапог Y%)» с текущими шансами водоёма."""
+    """Строка-подсказка «(название X%, название Y%)» с шансами водоёма."""
     c = await junk_chances(water)
-    return (f"(водоросли {c.get(SEAWEED_NAME, 0)}%, "
-            f"сапог {c.get(BOOT_NAME, 0)}%)")
+    if not c:
+        return "(находок со дна нет)"
+    return "(" + ", ".join(f"{name} {chance}%" for name, chance in c.items()) + ")"
 
 
 async def _pick_junk(water: str):
     """Случайная находка со дна без наживки: None — ничего.
-    Шансы берутся из water_junk по водоёму (админ-редактор рыбалки)."""
+    Шансы берутся из water_junk по водоёму (админ-редактор рыбалки).
+    Шансы накапливаются по порядку: r в [0,100) попадает в один из отрезков."""
     c = await junk_chances(water)
-    seaweed = max(0, c.get(SEAWEED_NAME, 0))
-    boot = max(0, c.get(BOOT_NAME, 0))
     r = random.random() * 100
-    if boot and r < boot:
-        return BOOT_NAME
-    if seaweed and r < boot + seaweed:
-        return SEAWEED_NAME
+    acc = 0.0
+    for name, chance in c.items():
+        ch = max(0, chance or 0)
+        if not ch:
+            continue
+        acc += ch
+        if r < acc:
+            return name
     return None
 
 
 async def junk_photo(water: str, name: str):
-    """Telegram photo_file_id находки в водоёме (или None)."""
+    """Telegram photo_file_id находки: своя картинка водоёма, иначе картинка предмета
+    из «Хранилища» (или None)."""
     m = await get_water_junk_map(water)
-    return (m.get(name) or {}).get("photo_file_id")
+    photo = (m.get(name) or {}).get("photo_file_id")
+    if photo:
+        return photo
+    item = await get_item_by_name(name)
+    return item["photo_file_id"] if item and item["photo_file_id"] else None
 
 
 def _lake_path() -> str:

@@ -47,6 +47,7 @@ async def main():
     await update_user(UID, nordmarks=1000)
     hay = await get_item_by_name(config.FIRE_LAB_HAY_NAME)
     candy = await get_item_by_name(config.FIRE_LAB_CANDY_NAME)
+    pie = await get_item_by_name(config.FIRE_LAB_PIE_NAME)
 
     class FakeBot:
         async def send_message(self, chat_id, text, **kw):
@@ -97,15 +98,15 @@ async def main():
 
     check("картинка лавки есть в менеджере «Картинки Круговорота»", "shop" in db.FIRE_PHOTO_KEYS)
 
-    print("\n2. Лавка включена: обмен 3 сена → 1 леденец")
+    print("\n2. Лавка включена: обмен 3 сена → 1 пирог")
     config.FIRE_EXCHANGE_ENABLED = True
     try:
         await fe.fire_event_xchg_cb(FakeCB("fireevent:xchg:0"))
-        check("3 сена → 1 леденец", await qty(hay) == 0 and await qty(candy) == 1)
+        check("3 сена → 1 пирог", await qty(hay) == 0 and await qty(pie) == 1)
         FakeCB.alerts.clear()
         await fe.fire_event_xchg_cb(FakeCB("fireevent:xchg:0"))
         check("без сена обмен отказан (alert)", any("Нужно" in a for a in FakeCB.alerts))
-        check("леденцы не изменились", await qty(candy) == 1)
+        check("пироги не изменились", await qty(pie) == 1)
     finally:
         config.FIRE_EXCHANGE_ENABLED = False
 

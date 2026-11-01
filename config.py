@@ -291,8 +291,9 @@ FIRE_SET_REGEN_HP = 1                     # сет праздничной оде
 FIRE_EXCHANGE_ENABLED = False
 FIRE_EXCHANGE_OFFERS = (
     # (что отдаём, сколько, что получаем, сколько)
-    (FIRE_LAB_HAY_NAME, 3, FIRE_LAB_CANDY_NAME, 1),
-    (FIRE_LAB_BRANCH_NAME, 3, FIRE_LAB_PIE_NAME, 1),
+    # сено падает реже (67 против 88 у веток) → более ценный пирог; ветки → леденец
+    (FIRE_LAB_HAY_NAME, 3, FIRE_LAB_PIE_NAME, 1),
+    (FIRE_LAB_BRANCH_NAME, 3, FIRE_LAB_CANDY_NAME, 1),
 )
 FIRE_LAB_FISH_DELAY = (7, 15)             # колодец: поклёвка через N секунд (как на озере)
 FIRE_LAB_NOBAIT_FIND_P = 0.12             # колодец без наживки: шанс поднять что-то со дна (%/100)
