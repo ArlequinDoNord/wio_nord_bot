@@ -784,14 +784,33 @@ async def _item_qty(uid: int, name: str) -> int:
     return int(inv['quantity'] or 0) if inv else 0
 
 
+def _offer(idx: int):
+    """Обмен лавки: ((отдаю, сколько), ...), получаю, сколько получаю.
+
+    Две формы записи в config.FIRE_EXCHANGE_OFFERS: старая четвёрка
+    (отдаю, сколько, получаю, сколько) и новая тройка с несколькими позициями оплаты.
+    """
+    o = config.FIRE_EXCHANGE_OFFERS[idx]
+    if len(o) == 4:
+        give, give_qty, get, get_qty = o
+        return ((give, give_qty),), get, get_qty
+    costs, get, get_qty = o
+    return tuple(costs), get, get_qty
+
+
 async def _exchange_screen(cb, uid: int, note: str = "") -> None:
     rows = []
     lines = ["🛍 <b>Лавка Круговорота</b>", "Праздничный сбор на сладости.", ""]
-    for idx, (give, give_qty, get, get_qty) in enumerate(config.FIRE_EXCHANGE_OFFERS):
-        have = await _item_qty(uid, give)
-        lines.append(f"• {give_qty} × {_esc(give)} → {get_qty} × {_esc(get)} (у тебя: {have})")
+    for idx in range(len(config.FIRE_EXCHANGE_OFFERS)):
+        costs, get, get_qty = _offer(idx)
+        cost_txt = " + ".join(f"{q} × {_esc(n)}" for n, q in costs)
+        have_parts = []
+        for n, q in costs:
+            have_parts.append(f"{await _item_qty(uid, n)}/{q}")
+        have_txt = ", ".join(have_parts)
+        lines.append(f"• {cost_txt} → {get_qty} × {_esc(get)} (у тебя: {have_txt})")
         rows.append([InlineKeyboardButton(
-            text=f"{give_qty} {give} → {get_qty} {get}",
+            text=" + ".join(f"{q} {n}" for n, q in costs) + f" → {get_qty} {get}",
             callback_data=f"fireevent:xchg:{idx}")])
     rows.append([InlineKeyboardButton(text="🔙 Назад ко входу", callback_data="fireevent:enter")])
     if note:
@@ -827,23 +846,31 @@ async def fire_event_xchg_cb(cb: CallbackQuery):
     uid = cb.from_user.id
     try:
         idx = int(cb.data.split(":")[2])
-        give, give_qty, get, get_qty = config.FIRE_EXCHANGE_OFFERS[idx]
+        costs, get, get_qty = _offer(idx)
     except (ValueError, IndexError):
         await cb.answer("❌ Нет такого обмена.", show_alert=True)
         return
-    give_item = await db.get_item_by_name(give)
     get_item = await db.get_item_by_name(get)
-    if not give_item or not get_item:
+    cost_items = []
+    for name, qty in costs:
+        item = await db.get_item_by_name(name)
+        if not item:
+            item = None
+        cost_items.append((name, qty, item))
+    if not get_item or any(it is None for _, _, it in cost_items):
         await cb.answer("⚠️ Товар лавки не заведён. Сообщи хранителю.", show_alert=True)
         return
-    if await _item_qty(uid, give) < give_qty:
-        await cb.answer(f"❌ Нужно {give_qty} × {give}.", show_alert=True)
-        return
-    if not await db.remove_inventory_item(uid, give_item['id'], give_qty):
-        await cb.answer("❌ Не удалось списать предметы.", show_alert=True)
-        return
+    for name, qty, _ in cost_items:
+        if await _item_qty(uid, name) < qty:
+            await cb.answer(f"❌ Нужно {qty} × {name}.", show_alert=True)
+            return
+    for name, qty, item in cost_items:
+        if not await db.remove_inventory_item(uid, item['id'], qty):
+            await cb.answer("❌ Не удалось списать предметы.", show_alert=True)
+            return
     await db.add_inventory_item(uid, get_item['id'], get_qty)
-    await db.log_activity(uid, "firelab", f"Лавка: {give_qty} × {give} → {get_qty} × {get}")
+    paid = ", ".join(f"{q} × {n}" for n, q, _ in cost_items)
+    await db.log_activity(uid, "firelab", f"Лавка: {paid} → {get_qty} × {get}")
     await cb.answer("🛍 Обмен готов!")
     await _exchange_screen(cb, uid, note=f"✅ Получено: {get_qty} × {_esc(get)}.")
 

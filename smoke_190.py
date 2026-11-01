@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Smoke 190 — свиток «Рецепт: Тыквенный пирог» применяется, даже если рецепт был скрыт.
+"""Smoke 190 — выученный рецепт работает, даже если скрыт из магазина.
 
-1. Рецепт скрыт: использование не списывает свиток, сообщение «временно недоступен».
-2. Одноразовая миграция возвращает рецепт и свиток в продажу.
-3. Повторный запуск не трогает решение админа (скрытие после миграции сохраняется).
+is_available — только видимость в магазине. Праздничные рецепты скрыты, но выдаются
+свитком (лавка/достижение): свиток должен выучиваться и крафт должен работать.
+
+1. Скрытый рецепт: свиток выучивается, рецепт попадает в список выученных.
+2. Повторный запуск (ensure_recipes) не выставляет видимость обратно и не отнимает рецепт.
 """
 import asyncio
 import os
@@ -33,6 +35,7 @@ async def main():
 
     from database.db import (init_db, close_db, get_db, add_user, get_item_by_name,
                              add_inventory_item, get_inventory_item, ensure_firelab_items,
+                             get_learned_recipes,
                              ensure_recipes, ensure_recipe_shop_items, learn_recipe_from_item,
                              get_setting, has_user_recipe)
 
@@ -49,33 +52,25 @@ async def main():
         "SELECT id FROM recipes WHERE name = 'Тыквенный пирог'")).fetchone()
     check("свиток и рецепт созданы", item is not None and recipe is not None)
 
-    print("\n1. Рецепт скрыт: применение отказано, свиток не списан")
+    print("\n1. Рецепт скрыт из магазина: свиток всё равно выучивается и работает")
     await conn.execute("UPDATE recipes SET is_available = 0 WHERE name = 'Тыквенный пирог'")
     await conn.execute("UPDATE items SET is_available = 0 WHERE name = 'Рецепт: Тыквенный пирог'")
-    await conn.execute("DELETE FROM settings WHERE key = 'pie_recipe_visible_v1'")
     await conn.commit()
     await add_inventory_item(UID, item['id'], 1)
     ok, msg = await learn_recipe_from_item(UID, item['id'])
-    check("отказ при скрытом рецепте", ok is False)
-    check("сообщение «временно недоступен»", "временно недоступен" in msg)
-    inv = await get_inventory_item(UID, item['id'])
-    check("свиток не списан", inv is not None and int(inv['quantity']) == 1)
+    check("свиток выучился при скрытом рецепте", ok is True)
+    check("свиток списан после обучения", (await get_inventory_item(UID, item['id'])) is None
+          or int((await get_inventory_item(UID, item['id']))['quantity']) == 0)
+    learned = [r['name'] for r in await get_learned_recipes(UID)]
+    check("рецепт в списке выученных (для крафта)", "Тыквенный пирог" in learned)
 
-    print("\n2. Миграция возвращает рецепт в продажу")
-    await ensure_recipes()
-    check("флаг миграции выставлен", (await get_setting("pie_recipe_visible_v1")) == "1")
-    ok, msg = await learn_recipe_from_item(UID, item['id'])
-    check("свиток применился", ok is True)
-    check("рецепт выучен", await has_user_recipe(UID, recipe['id']))
-
-    print("\n3. Решение админа после миграции не перезаписывается")
-    await add_user(UID + 1, "t", "Пилот 190b", "")
-    await conn.execute("UPDATE recipes SET is_available = 0 WHERE name = 'Тыквенный пирог'")
-    await conn.commit()
+    print("\n2. Повторный запуск не выставляет рецепт обратно")
     await ensure_recipes()
     row = await (await conn.execute(
         "SELECT is_available FROM recipes WHERE name = 'Тыквенный пирог'")).fetchone()
     check("скрытие админа сохраняется", row['is_available'] == 0)
+    learned = [r['name'] for r in await get_learned_recipes(UID)]
+    check("выученный рецепт остаётся доступен после перезапуска", "Тыквенный пирог" in learned)
 
     print(f"\nИТОГО: {passed} passed, {failed} failed")
     await close_db()

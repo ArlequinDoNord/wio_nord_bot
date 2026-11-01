@@ -71,7 +71,7 @@
 | `locations.py` | Универсальные локации города: превью (всем) + вход (по доступу). | `router` | 0 | 5 | `city:`, `location:` | — |
 | `park.py` | Городской парк Аркхольма: озеро (статика), фонтан и аллея статуй. | `router` | 7 | 14 | `park:` | `AdminStatue`, `AdminStatueEdit` |
 | `fishing.py` | Рыбалка на Озере в парке. | `router` | 0 | 5 | `fish:` | — |
-| `forest.py` | Лес на окраине: опушка и лесная поляна, сбор грибов и кабан. | `router` | 0 | 4 | `forest:` | — |
+| `forest.py` | Лес на окраине: опушка и лесная поляна, сбор грибов и кабан. | `router` | 0 | 5 | `forest:` | — |
 | `mine.py` | Железная копи: ресурсная локация (v0.31.0). | `router` | 0 | 6 | `mine:` | — |
 | `logging_site.py` | Лесозаготовка: ресурсная локация в лесу (v0.37.0). | `router` | 0 | 9 | `logsite:` | — |
 | `storage.py` | Городские склады: накопление выкупленных казной ресурсов. | `router` | 0 | 1 | `storage:` | — |
@@ -230,8 +230,8 @@
 ### `forest.py` — Лес на окраине: опушка и лесная поляна, сбор грибов и кабан.
 
 - Роутеры: `router`
-- Хендлеры: message=0, callback_query=4
-- `F.data.startswith`: `forest:area:\d+:(glade|clearing)$`, `forest:battle:flee:\d+$`, `forest:battle:hit:\d+$`, `forest:cast:\d+(?::(glade|clearing))?$`
+- Хендлеры: message=0, callback_query=5
+- `F.data.startswith`: `forest:area:\d+:(glade|clearing)$`, `forest:battle:flee:\d+$`, `forest:battle:hit:\d+$`, `forest:berry:\d+:(glade|clearing)$`, `forest:cast:\d+(?::(glade|clearing))?$`
 
 ### `mine.py` — Железная копи: ресурсная локация (v0.31.0).
 

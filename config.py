@@ -294,6 +294,8 @@ FIRE_EXCHANGE_OFFERS = (
     # сено падает реже (67 против 88 у веток) → более ценный пирог; ветки → леденец
     (FIRE_LAB_HAY_NAME, 3, FIRE_LAB_PIE_NAME, 1),
     (FIRE_LAB_BRANCH_NAME, 3, FIRE_LAB_CANDY_NAME, 1),
+    # рецепт «Леденец из ягод» продаётся в лавке: две позиции оплаты
+    (((FIRE_LAB_HAY_NAME, 15), (FIRE_LAB_BRANCH_NAME, 15)), "Рецепт: Леденец из ягод", 1),
 )
 FIRE_LAB_FISH_DELAY = (7, 15)             # колодец: поклёвка через N секунд (как на озере)
 FIRE_LAB_NOBAIT_FIND_P = 0.12             # колодец без наживки: шанс поднять что-то со дна (%/100)
@@ -841,6 +843,44 @@ FOREST_WHITE_WOLF_SEED = {
     # Дропы отсутствуют: волк оставляет только суточные благословения.
     "loot": [],
 }
+
+# Ягоды леса (v0.41.19): отдельная кнопка «Искать ягоды» в каждой зоне. Единица — горсть.
+FOREST_BERRY_BLUEBERRY = "Горсть черники"
+FOREST_BERRY_RASPBERRY = "Горсть малины"
+FOREST_BERRY_STRAWBERRY = "Горсть земляники"
+FOREST_BEAR_SKIN_NAME = "Шкура медведя"
+# Исходы поиска ягод, в %. "bear" — встреча с медведем; пока медведь выключен
+# (enabled=0), исход превращается в «ничего». Остаток до 100% — пусто.
+FOREST_BERRY_TABLE = {
+    "glade": ((FOREST_BERRY_BLUEBERRY, 50),),
+    "clearing": ((FOREST_BERRY_BLUEBERRY, 40), (FOREST_BERRY_RASPBERRY, 25),
+                 (FOREST_BERRY_STRAWBERRY, 20), ("bear", 5)),  # остальные 10% — пусто
+}
+# Медведь: в 1.5 раза сильнее кабана, шкура точно. В поиске грибов не появляется (chance=0).
+FOREST_BEAR_SEED = {
+    "key": "bear",
+    "spot": "forest",
+    "name": "Медведь",
+    "hp": round(FOREST_BOAR_HP * 1.5),
+    "dmg_min": round(FOREST_BOAR_DMG[0] * 1.5),
+    "dmg_max": round(FOREST_BOAR_DMG[1] * 1.5),
+    "dodge": FOREST_BOAR_DODGE,
+    "loss_ap": FOREST_BOAR_LOSS_AP,
+    "chance": 0,
+    "pity_target": 0,
+    "enabled": 0,
+    "reward_nm": 0,
+    "photo_key": "city/forest_bear",
+    "description": (
+        "Медведь леса: в полтора раза сильнее кабана. Бьёт тяжело, шкура — "
+        "трофей. Пока не активен: встречается только в ягодных поисках."
+    ),
+    "loot": [(FOREST_BEAR_SKIN_NAME, 100)],
+}
+
+# Клановая накидка (v0.41.19): покупается в клановой лавке, слот «Клановая накидка».
+CLAN_CAPE_NAME = "Клановая накидка"
+CLAN_CAPE_DODGE = 2                       # +% уклонения, пока накидка надета
 
 # Мутировавший моллюск — редкий боевой улов в подземном водохранилище.
 MOLLUSK_SEED = {

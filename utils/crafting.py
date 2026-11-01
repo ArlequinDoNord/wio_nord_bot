@@ -201,6 +201,8 @@ async def finish_craft(user_id: int, ctx: dict) -> dict:
             expires_at = str(int(time.time()) + FOOD_EXPIRY_SEC)
 
         await add_inventory_item(user_id, item["id"], result_qty, expires_at=expires_at)
+        from database.db import track_fire_cook
+        await track_fire_cook(user_id, result_name)
 
         if recipe["required_expansion"] == "kitchen":
             await bump_achievement(user_id, "cooking", result_qty)

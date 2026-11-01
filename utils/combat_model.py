@@ -28,7 +28,8 @@ async def pilot_combat_stats(user_id: int, battle_states: list = None) -> dict:
     from database.db import (get_award_bonus, get_pilot_base_damage,
                              get_player_armor_with_bonus, get_player_crit_mult,
                              get_player_dodge, get_player_weapon_damage,
-                             get_player_crit_chance)
+                             get_player_crit_chance, get_accessory_bonus)
+    acc = await get_accessory_bonus(user_id)
 
     weapon_damage = await get_player_weapon_damage(user_id)
     state_info = await get_state_info(user_id)
@@ -48,7 +49,7 @@ async def pilot_combat_stats(user_id: int, battle_states: list = None) -> dict:
         'crit_chance': crit_chance,
         'crit_mult': await get_player_crit_mult(user_id),
         'dodge': await get_player_dodge(user_id, mult.get('dodge_mult', 1.0)),
-        'armor': await get_player_armor_with_bonus(user_id),
+        'armor': await get_player_armor_with_bonus(user_id) + acc['armor'],
         'hp_max': PILOT_BASE_HP + int(bonus.get('hp') or 0),
         'award_attack': bonus['attack'],
     }

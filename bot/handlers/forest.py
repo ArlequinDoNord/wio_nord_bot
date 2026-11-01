@@ -20,6 +20,8 @@ import asyncio
 import os
 import random
 
+import config
+
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -448,7 +450,10 @@ async def _area_markup(token: str, area: str):
     """
     rows = [[InlineKeyboardButton(
         text=f"{FOREST_AREA_EMOJI[area]} Искать грибы",
-        callback_data=f"forest:cast:{token}:{area}")]]
+        callback_data=f"forest:cast:{token}:{area}")],
+        [InlineKeyboardButton(
+            text="🫐 Искать ягоды",
+            callback_data=f"forest:berry:{token}:{area}")]]
     other = "clearing" if area == "glade" else "glade"
     if await _zone_open(other):
         rows.append([InlineKeyboardButton(
@@ -574,36 +579,7 @@ async def forest_cast(callback: CallbackQuery):
             else:
                 await set_forest_boar_attempts(user_id, counter_before + 1)
                 await reset_forest_wolf_counter(user_id)
-            from utils.combat_model import pilot_combat_stats
-            stats = await pilot_combat_stats(user_id)
-            player_hp = stats['hp_max']
-            token = FOREST_TOKEN.get(user_id, "")
-            FOREST_BATTLE[user_id] = {
-                "token": token,
-                "area": area,
-                "player_hp": player_hp,
-                "player_hp_max": player_hp,
-                "boar_hp": int(beast.get('hp') or FOREST_BOAR_HP),
-                "boar_hp_max": int(beast.get('hp') or FOREST_BOAR_HP),
-                "boar_name": beast.get('name') or "Дикий кабан",
-                "beast_key": beast.get('key') or "boar",
-                "is_white_wolf": beast.get('key') == 'white_wolf',
-                "emoji": _beast_emoji(beast),
-                "dodge": float(beast.get('dodge') or beast.get('dodge_chance') or 0),
-                "armor": int(beast.get('armor') or 0),
-                "crit_chance": int(beast.get('crit_chance') or 0),
-                "crit_mult": float(beast.get('crit_mult') or 1.5),
-                "dmg_min": int(beast.get('dmg_min') or FOREST_BOAR_DMG[0]),
-                "dmg_max": int(beast.get('dmg_max') or FOREST_BOAR_DMG[1]),
-                "loss_ap": int(beast.get('loss_ap') or FOREST_BOAR_LOSS_AP),
-                # v0.38.0: эффекты при ударе (кровотечение волка и др.) —
-                # единая система: JSON со строки зверя, активные — в on_hit.
-                "on_hit_effects": onhit.parse_on_hit_effects(beast.get('on_hit_effects')),
-                "boar": beast,
-                "round": 1,
-            }
-            onhit.register(user_id, FOREST_BATTLE[user_id])
-            await _show_battle(callback)
+            await _forest_beast_fight(callback, user_id, area, beast)
             return
 
         # Счётчики гарантии растут только там, где звери вообще есть.
@@ -668,6 +644,142 @@ async def forest_cast(callback: CallbackQuery):
             await _paint(callback, text=text, media_path=local_photo, kb=result_kb)
             return
         await _glade_paint(callback, text=text, kb=result_kb, area=area)
+    finally:
+        FOREST_CASTING.discard(user_id)
+
+
+async def _forest_beast_fight(callback, user_id: int, area: str, beast: dict) -> None:
+    """Начало боя с лесным зверем (кабан, волк, медведь): общая сборка боевого состояния."""
+    from utils.combat_model import pilot_combat_stats
+    stats = await pilot_combat_stats(user_id)
+    player_hp = stats['hp_max']
+    token = FOREST_TOKEN.get(user_id, "")
+    FOREST_BATTLE[user_id] = {
+        "token": token,
+        "area": area,
+        "player_hp": player_hp,
+        "player_hp_max": player_hp,
+        "boar_hp": int(beast.get('hp') or FOREST_BOAR_HP),
+        "boar_hp_max": int(beast.get('hp') or FOREST_BOAR_HP),
+        "boar_name": beast.get('name') or "Дикий кабан",
+        "beast_key": beast.get('key') or "boar",
+        "is_white_wolf": beast.get('key') == 'white_wolf',
+        "emoji": _beast_emoji(beast),
+        "dodge": float(beast.get('dodge') or beast.get('dodge_chance') or 0),
+        "armor": int(beast.get('armor') or 0),
+        "crit_chance": int(beast.get('crit_chance') or 0),
+        "crit_mult": float(beast.get('crit_mult') or 1.5),
+        "dmg_min": int(beast.get('dmg_min') or FOREST_BOAR_DMG[0]),
+        "dmg_max": int(beast.get('dmg_max') or FOREST_BOAR_DMG[1]),
+        "loss_ap": int(beast.get('loss_ap') or FOREST_BOAR_LOSS_AP),
+        # v0.38.0: эффекты при ударе (кровотечение волка и др.) —
+        # единая система: JSON со строки зверя, активные — в on_hit.
+        "on_hit_effects": onhit.parse_on_hit_effects(beast.get('on_hit_effects')),
+        "boar": beast,
+        "round": 1,
+    }
+    onhit.register(user_id, FOREST_BATTLE[user_id])
+    await _show_battle(callback)
+
+
+def _berry_markup(token: str, area: str):
+    emoji = FOREST_AREA_EMOJI.get(area, "🌲")
+    rows = [
+        [InlineKeyboardButton(text="🫐 Искать ягоды ещё", callback_data=f"forest:berry:{token}:{area}")],
+        [InlineKeyboardButton(text=f"{emoji} Искать грибы", callback_data=f"forest:cast:{token}:{area}")],
+    ]
+    if area == "clearing":
+        rows.append([InlineKeyboardButton(text="🪓 Лесозаготовка", callback_data="logsite:enter")])
+    rows.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.regexp(r"^forest:berry:\d+:(glade|clearing)$"))
+async def forest_berry(callback: CallbackQuery):
+    """Поиск ягод: горсть черники/малины/земляники; на прогалине — встреча с медведем.
+
+    Отдельно от грибов: свой исход (FOREST_BERRY_TABLE), та же стоимость ОД зоны.
+    """
+    if not await _forest_ok(callback):
+        return
+    user_id = callback.from_user.id
+    area = callback.data.split(":")[3]
+    if not await _area_allowed(area, user_id):
+        await callback.answer("🌲 Сюда туристов не пускают.", show_alert=True)
+        await _show_area(callback, area)
+        return
+    if user_id in FOREST_CASTING:
+        await callback.answer("Ты уже что-то ищешь — дождись результата!", show_alert=True)
+        return
+
+    FOREST_CASTING.add(user_id)
+    try:
+        if await get_active_run(user_id):
+            await callback.answer("⛔ Ты в подземелье — по лесу гулять нельзя!", show_alert=True)
+            return
+        if not await get_user(user_id):
+            await callback.answer("Сначала нажми /start", show_alert=True)
+            return
+
+        zone = await get_forest_zone(area)
+        ap_cost = int(zone.get("ap_cost") or FOREST_AP_COST)
+        area_name = (zone.get("title") or FOREST_AREA_NAME[area]).lower()
+        head = f"{FOREST_AREA_EMOJI[area]} {FOREST_AREA_NAME[area]}"
+        if not await remove_ap(user_id, ap_cost, reason=f"поиск ягод ({area_name})"):
+            await _show_area(callback, area)
+            return
+
+        delay = random.randint(*FOREST_RESULT_DELAY)
+        await _glade_paint(
+            callback,
+            text=f"{head}\n\n🫐 Ты пробираешься в кусты за ягодами...\n"
+                 f"Результат через {delay} секунд.",
+            kb=None, area=area)
+        await log_activity(user_id, "forest", f"Поиск ягод: {area_name} ({ap_cost} ОД)")
+        await asyncio.sleep(delay)
+
+        roll = random.random() * 100
+        acc, outcome = 0.0, None
+        for key, chance in config.FOREST_BERRY_TABLE.get(area, ()):
+            acc += float(chance)
+            if roll < acc:
+                outcome = key
+                break
+
+        token = FOREST_TOKEN.get(user_id, "")
+        fresh = await get_user(user_id) or {}
+        ap_now = int(fresh.get('ap', 0) or 0)
+        ap_line = f"\n\n⚡ ОД: {ap_now}/{int(fresh.get('ap_max', ap_now) or ap_now)}"
+
+        if outcome == "bear":
+            bear = await get_source_enemy_by_key("forest", "bear")
+            if bear and bear.get('enabled'):
+                await _forest_beast_fight(callback, user_id, area, dict(bear))
+                return
+            # Медведь выключен: исход без встречи — как пустая поляна.
+            outcome = None
+
+        if outcome is None:
+            await _glade_paint(
+                callback,
+                text=f"{head}\n\nКусты пусты — ягод в этот раз не нашлось." + ap_line,
+                kb=_berry_markup(token, area), area=area)
+            return
+
+        item = await get_item_by_name(outcome)
+        if not item:
+            await _glade_paint(
+                callback,
+                text=f"{head}\n\n🫐 Что-то нашёл, но предмет потерялся. Сообщи хранителю." + ap_line,
+                kb=_berry_markup(token, area), area=area)
+            return
+        await add_inventory_item(user_id, item['id'], 1)
+        await log_activity(user_id, "forest", f"Собрал «{item['name']}» ({area_name})")
+        await _glade_paint(
+            callback,
+            text=f"{head}\n\n🫐 Ты собрал: «{item['name']}» — горсть положена в инвентарь."
+                 + ap_line,
+            kb=_berry_markup(token, area), area=area)
     finally:
         FOREST_CASTING.discard(user_id)
 

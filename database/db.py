@@ -9751,6 +9751,115 @@ def _enemy_source_table(source: str) -> str:
     return table
 
 
+async def ensure_forest_berry_items():
+    """Ягоды (горсть) и шкура медведя: предметы-ресурсы вне магазина. Идемпотентно."""
+    specs = (
+        (config.FOREST_BERRY_BLUEBERRY, "Горсть спелой черники из леса.", 3),
+        (config.FOREST_BERRY_RASPBERRY, "Горсть лесной малины — растёт глубже в лесу.", 5),
+        (config.FOREST_BERRY_STRAWBERRY, "Горсть душистой земляники — редкая находка прогалины.", 8),
+        (config.FOREST_BEAR_SKIN_NAME, "Шкура медведя — трофей из леса.", 40),
+    )
+    conn = await get_db()
+    for name, desc, sell in specs:
+        if not await get_item_by_name(name):
+            await add_item(name=name, description=desc, price=sell * 2, sell_price=sell,
+                           rarity=1, category="resource", stock=-1, added_by=0,
+                           ap_cost=0, damage=0, heal=0)
+        await conn.execute("UPDATE items SET is_available = 0 WHERE name = ?", (name,))
+    await conn.commit()
+
+
+async def ensure_clan_cape_item():
+    """Клановая накидка: экипировка слота «Клановая накидка». Продаётся в клановой
+    лавке (админ добавляет её туда), в общей лавке не появляется."""
+    name = config.CLAN_CAPE_NAME
+    if not await get_item_by_name(name):
+        await add_item(name=name,
+                       description="Клановая накидка: носится на плечах, знак клана. "
+                                   "Покупается в клановой лавке.",
+                       price=0, sell_price=0, rarity=2, category="equipment", stock=-1,
+                       added_by=0, ap_cost=0, damage=0, heal=0, armor=0)
+    item = await get_item_by_name(name)
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE items SET equip_slot = 'clan_cape', dodge_bonus = ?, is_available = 0 WHERE id = ?",
+        (int(config.CLAN_CAPE_DODGE), item['id']))
+    await conn.commit()
+
+
+async def ensure_berry_candy_recipe():
+    """Рецепт «Леденец из ягод»: черника + малина + сахар. Создаётся скрытым:
+    открывает и продаёт его админ в менеджере рецептов. Свиток тоже скрыт."""
+    name = "Леденец из ягод"
+    ings = [[config.FOREST_BERRY_BLUEBERRY, 1], [config.FOREST_BERRY_RASPBERRY, 1],
+            [config.FIRE_SUGAR_NAME, 1]]
+    conn = await get_db()
+    if not await (await conn.execute("SELECT id FROM recipes WHERE name = ?", (name,))).fetchone():
+        await conn.execute(
+            "INSERT INTO recipes (name, description, result_item_name, result_quantity, "
+            "required_expansion, required_level, ingredients, ap_cost, production_time, "
+            "rarity, is_available) VALUES (?, ?, ?, 1, 'kitchen', 1, ?, 2, 30, 2, 0)",
+            (name, "Праздничный леденец из черники, малины и сахара.",
+             config.FIRE_LAB_CANDY_NAME, json.dumps(ings, ensure_ascii=False)))
+        await conn.commit()
+    scroll_name = RECIPE_ITEM_PREFIX + name
+    if not await get_item_by_name(scroll_name):
+        await add_item(name=scroll_name,
+                       description="📜 Обучает рецепту: Леденец из ягод.",
+                       price=0, sell_price=0, rarity=2, category="recipes", stock=-1,
+                       added_by=0, ap_cost=0, damage=0, heal=0)
+    await conn.execute(
+        "UPDATE items SET is_available = 0 WHERE name = ? AND category = 'recipes'",
+        (scroll_name,))
+    # «Предания предков» — только награда достижения «Рыбак древних», в магазине не продаётся.
+    await conn.execute(
+        "UPDATE items SET is_available = 0 WHERE name = ? AND category = 'recipes'",
+        (RECIPE_ITEM_PREFIX + config.FIRE_PREDKI_NAME,))
+    await conn.commit()
+
+
+# Праздничные блюда для достижения «Повар Круговорота»: 2 пирога и леденец.
+FIRE_COOK_ACH_KEY = "fire_cook"
+FIRE_COOK_RESULTS = (config.FIRE_LAB_PIE_NAME, "Рыбный пирог", config.FIRE_LAB_CANDY_NAME)
+
+
+async def track_fire_cook(user_id: int, result_name: str) -> int:
+    """Учитывает сделанное праздничное блюдо (каждый вид один раз). Возвращает
+    уровень достижения «Повар Круговорота» (0, если ещё не выдано)."""
+    if result_name not in FIRE_COOK_RESULTS:
+        return 0
+    conn = await get_db()
+    await conn.execute(
+        "CREATE TABLE IF NOT EXISTS fire_cook_crafts (user_id INTEGER NOT NULL, "
+        "result TEXT NOT NULL, PRIMARY KEY (user_id, result))")
+    await conn.execute(
+        "INSERT OR IGNORE INTO fire_cook_crafts (user_id, result) VALUES (?, ?)",
+        (user_id, result_name))
+    await conn.commit()
+    cur = await conn.execute(
+        "SELECT COUNT(*) AS c FROM fire_cook_crafts WHERE user_id = ?", (user_id,))
+    count = int((await cur.fetchone())['c'])
+    lvl, _n, _ = await set_achievement_progress(user_id, FIRE_COOK_ACH_KEY, count)
+    return lvl
+
+
+async def get_accessory_bonus(user_id: int) -> dict:
+    """Броня талисмана и клановой накидки. Их уклонение (dodge_bonus) уже учтено
+    в get_player_dodge (все надетые предметы), а броня считается только по слотам
+    головы/тела/рук/ног — поэтому здесь добираем только броню аксессуаров."""
+    eq = await get_equipment(user_id)
+    out = {"armor": 0}
+    for slot in ("talisman", "clan_cape"):
+        item_id = eq.get(slot)
+        if not item_id:
+            continue
+        item = await get_item(item_id)
+        if not item:
+            continue
+        out["armor"] += int(item["armor"] or 0)
+    return out
+
+
 async def ensure_forest_enemies():
     """Идемпотентно засевает врагов леса (кабан и Белый Волк Севера).
 
@@ -9761,12 +9870,16 @@ async def ensure_forest_enemies():
     серого волка (key='wolf'): его заменил Белый Волк Севера (key='white_wolf').
     """
     await ensure_forest_items()
+    await ensure_forest_berry_items()
+    await ensure_clan_cape_item()
+    await ensure_berry_candy_recipe()
     conn = await get_db()
     await conn.execute("DELETE FROM forest_enemies WHERE key = 'wolf'")
     await conn.commit()
     created_boar = await _ensure_source_enemies("forest", FOREST_BOAR_SEED)
     created_wolf = await _ensure_source_enemies("forest", FOREST_WHITE_WOLF_SEED)
-    created = created_boar or created_wolf
+    created_bear = await _ensure_source_enemies("forest", config.FOREST_BEAR_SEED)
+    created = created_boar or created_wolf or created_bear
     legacy_chance = round(100 / config.FOREST_BOAR_PITY_TARGET, 2)
     await conn.execute(
         "UPDATE forest_enemies SET chance = ? "
@@ -10154,6 +10267,10 @@ async def _ensure_source_enemies(source: str, seed: dict) -> bool:
     await conn.execute(
         f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({','.join(['?'] * len(cols))})",
         vals)
+    if "enabled" in seed:
+        # enabled не входит в ENEMY_SEED_FIELDS: выключенный при засеве зверь иначе встал бы включённым.
+        await conn.execute(f"UPDATE {table} SET enabled = ? WHERE key = ?",
+                           (int(seed["enabled"]), seed.get("key")))
     await conn.commit()
     return True
 
@@ -12384,30 +12501,13 @@ def item_fits_slot(item, slot: str) -> bool:
     if slot == 'duel':
         # Дуэльное снаряжение — только в отдельный слот (в PvE не влияет).
         return category == 'duel_gear'
-    if slot == 'talisman':
-        c2 = category if hasattr(category, '__str__') else str(category or '')
-        c2 = str(c2)
-        if c2 == 'talisman':
-            return True
-        if c2 == 'equipment':
-            if item.get('talisman') or item.get('is_talisman'):
-                return True
-            if hasattr(item, 'keys') and item['equip_slot'] == 'talisman':
-                return True
-            if item.get('equip_slot') == 'talisman':
-                return True
-        return False
-    if slot == 'clan_cape':
-        c2 = category if hasattr(category, '__str__') else str(category or '')
-        c2 = str(c2)
-        if c2 == 'equipment':
-            if item.get('clan_cape') or item.get('is_clan_cape'):
-                return True
-            if hasattr(item, 'keys') and item['equip_slot'] == 'clan_cape':
-                return True
-            if item.get('equip_slot') == 'clan_cape':
-                return True
-        return False
+    if slot in ('talisman', 'clan_cape'):
+        # Талисман и накидка — экипировка с явным equip_slot (строка Row или dict).
+        try:
+            eq_slot = item['equip_slot']
+        except (KeyError, IndexError, TypeError):
+            eq_slot = None
+        return category == 'equipment' and eq_slot == slot
     return False
 
 
@@ -13474,6 +13574,14 @@ ACHIEVEMENTS_DEF = {
              "reward_recipe": getattr(config, "FIRE_PREDKI_NAME", "Предания предков")},
         ],
     },
+    "fire_cook": {
+        "title": "Повар Круговорота", "emoji": "🍳",
+        "metric": "праздничных блюд сделано: оба пирога и леденец (каждого вида)",
+        "levels": [
+            {"level": 1, "threshold": 3, "name": "Повар Круговорота", "bonus": {},
+             "reward_nm": 0},
+        ],
+    },
     "fire_keeper": {
         "title": "Круговорот", "emoji": "🪔",
         "metric": "собраны все 7 знаков почитания предков (экип, семя, рецепты)",
@@ -13822,16 +13930,6 @@ async def ensure_recipes():
                  ingredients, r['ap'], r['time'], r.get('rarity', 1))
             )
             changed = True
-    # Одноразово: рецепт «Тыквенный пирог» и его свиток были скрыты (is_available=0),
-    # из-за чего выученный свиток не применялся («Рецепт не найден»). Возвращаем в продажу.
-    if not await get_setting("pie_recipe_visible_v1"):
-        await conn.execute("UPDATE recipes SET is_available = 1 WHERE name = ?",
-                           ("Тыквенный пирог",))
-        await conn.execute("UPDATE items SET is_available = 1 WHERE name = ? AND category = 'recipes'",
-                           (RECIPE_ITEM_PREFIX + "Тыквенный пирог",))
-        await conn.commit()
-        await set_setting("pie_recipe_visible_v1", "1")
-        changed = True
     if changed:
         await conn.commit()
     return changed
@@ -15196,8 +15294,10 @@ async def has_user_recipe(user_id: int, recipe_id: int) -> bool:
 async def get_learned_recipes(user_id: int, expansion: str = None, level: int = None):
     """Рецепты, открытые у пилота, в контексте расширения и уровня расширения."""
     conn = await get_db()
+    # is_available — только видимость в магазине: выученный рецепт работает всегда
+    # (праздничные рецепты скрыты из магазина, а выдаются лавкой и достижением).
     q = ("SELECT r.* FROM recipes r JOIN user_recipes ur ON ur.recipe_id = r.id "
-         "WHERE ur.user_id = ? AND r.is_available = 1")
+         "WHERE ur.user_id = ?")
     params = [user_id]
     if expansion:
         q += " AND r.required_expansion = ?"
@@ -15380,8 +15480,6 @@ async def learn_recipe_from_item(user_id: int, item_id: int):
     if book_recipes:
         learned, already = [], []
         for recipe in book_recipes:
-            if not recipe['is_available']:
-                continue
             if await has_user_recipe(user_id, recipe['id']):
                 already.append(recipe['name'])
                 continue
@@ -15402,14 +15500,10 @@ async def learn_recipe_from_item(user_id: int, item_id: int):
     if recipe_name.startswith(RECIPE_ITEM_PREFIX):
         recipe_name = recipe_name[len(RECIPE_ITEM_PREFIX):]
     conn = await get_db()
-    cursor = await conn.execute(
-        "SELECT * FROM recipes WHERE name = ? AND is_available = 1", (recipe_name,))
+    # Свиток работает, даже если рецепт скрыт из магазина: скрытие — про витрину.
+    cursor = await conn.execute("SELECT * FROM recipes WHERE name = ?", (recipe_name,))
     recipe = await cursor.fetchone()
     if not recipe:
-        hidden = await (await conn.execute(
-            "SELECT id FROM recipes WHERE name = ?", (recipe_name,))).fetchone()
-        if hidden:
-            return False, "Рецепт временно недоступен — сообщи администратору."
         return False, "Рецепт не найден."
     if await has_user_recipe(user_id, recipe['id']):
         return False, f"Рецепт «{recipe['name']}» уже выучен."
