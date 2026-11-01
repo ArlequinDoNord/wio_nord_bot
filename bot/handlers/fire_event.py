@@ -505,16 +505,13 @@ async def fire_event_wellback_cb(cb: CallbackQuery):
 
 
 async def _nobait_result(uid: int, left_now: int):
-    """Без наживки рыба не клюёт; редко со дна поднимается проволока или сено."""
+    """Без наживки рыба не клюёт; со дна поднимается находка колодца (water_junk, fire_well)."""
+    from bot.handlers import fishing as fs
     title = "🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА"
-    if random.random() >= float(getattr(config, "FIRE_LAB_NOBAIT_FIND_P", 0.12) or 0):
+    name = await fs._pick_junk("fire_well")
+    if not name:
         return _room_chrome(title, "🎣 Без наживки рыба не клюёт — со дна пусто.\n"
                                    f"Осталось попыток: {left_now}."), None
-    table = tuple(getattr(config, "FIRE_LAB_NOBAIT_FIND", ()))
-    if not table:
-        return _room_chrome(title, "🎣 Без наживки рыба не клюёт — со дна пусто.\n"
-                                   f"Осталось попыток: {left_now}."), None
-    name = random.choices([n for n, _ in table], weights=[w for _, w in table], k=1)[0]
     item = await db.get_item_by_name(name)
     if not item:
         return _room_chrome(title, "🪝 Что-то зацепилось, но предмет не заведён. "
@@ -525,7 +522,12 @@ async def _nobait_result(uid: int, left_now: int):
         title,
         f"🪝 Без наживки рыба не клюёт, но со дна поднялось: <b>{_esc(name)}</b>!\n"
         f"Осталось попыток: {left_now}.")
-    return text, await _fish_kw(name)
+    jphoto = await fs.junk_photo("fire_well", name)
+    if jphoto:
+        return text, {"photo_id": jphoto}
+    from utils.helpers import item_local_photo
+    local = item_local_photo(name)
+    return text, ({"media_path": local} if local else None)
 
 
 async def _fish_kw(fish_name: str) -> dict | None:

@@ -8633,6 +8633,8 @@ async def ensure_water_fish():
     # Засев один раз: после этого админ вправе убрать любую находку, и она не вернётся.
     if not await get_setting(JUNK_SEEDED_KEY):
         for _water in WATER_LABELS:
+            if _water == "fire_well":
+                continue  # у колодца свои находки (см. миграцию fire_well_junk_v1 ниже)
             for _jname in JUNK_ITEM_NAMES:
                 _jc = await conn.execute(
                     "SELECT id FROM water_junk WHERE water = ? AND name = ?",
@@ -8646,6 +8648,25 @@ async def ensure_water_fish():
                     changed = True
         await conn.commit()
         await set_setting(JUNK_SEEDED_KEY, "1")
+    # Колодец: без наживки со дна поднимается проволока или сено — это находки колодца
+    # в общей таблице water_junk (правятся в редакторе рыбалки). Одноразово: старые
+    # озёрные строки колодца (водоросли/сапог, не правленные админом) убираем.
+    if not await get_setting("fire_well_junk_v1"):
+        await conn.execute(
+            "DELETE FROM water_junk WHERE water = 'fire_well' AND admin_tuned = 0")
+        _well_p = float(getattr(config, "FIRE_LAB_NOBAIT_FIND_P", 0.12) or 0) * 100
+        _well_table = tuple(getattr(config, "FIRE_LAB_NOBAIT_FIND", ()))
+        _well_sum = sum(w for _, w in _well_table) or 1
+        for _wname, _wweight in _well_table:
+            _wc = await conn.execute(
+                "SELECT id FROM water_junk WHERE water = 'fire_well' AND name = ?", (_wname,))
+            if not await _wc.fetchone():
+                await conn.execute(
+                    "INSERT INTO water_junk (water, name, chance) VALUES ('fire_well', ?, ?)",
+                    (_wname, round(_well_p * _wweight / _well_sum)))
+        await conn.commit()
+        await set_setting("fire_well_junk_v1", "1")
+        changed = True
     if changed:
         await conn.commit()
     return changed
@@ -13801,6 +13822,16 @@ async def ensure_recipes():
                  ingredients, r['ap'], r['time'], r.get('rarity', 1))
             )
             changed = True
+    # Одноразово: рецепт «Тыквенный пирог» и его свиток были скрыты (is_available=0),
+    # из-за чего выученный свиток не применялся («Рецепт не найден»). Возвращаем в продажу.
+    if not await get_setting("pie_recipe_visible_v1"):
+        await conn.execute("UPDATE recipes SET is_available = 1 WHERE name = ?",
+                           ("Тыквенный пирог",))
+        await conn.execute("UPDATE items SET is_available = 1 WHERE name = ? AND category = 'recipes'",
+                           (RECIPE_ITEM_PREFIX + "Тыквенный пирог",))
+        await conn.commit()
+        await set_setting("pie_recipe_visible_v1", "1")
+        changed = True
     if changed:
         await conn.commit()
     return changed
@@ -15375,6 +15406,10 @@ async def learn_recipe_from_item(user_id: int, item_id: int):
         "SELECT * FROM recipes WHERE name = ? AND is_available = 1", (recipe_name,))
     recipe = await cursor.fetchone()
     if not recipe:
+        hidden = await (await conn.execute(
+            "SELECT id FROM recipes WHERE name = ?", (recipe_name,))).fetchone()
+        if hidden:
+            return False, "Рецепт временно недоступен — сообщи администратору."
         return False, "Рецепт не найден."
     if await has_user_recipe(user_id, recipe['id']):
         return False, f"Рецепт «{recipe['name']}» уже выучен."
