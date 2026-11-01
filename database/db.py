@@ -1944,6 +1944,37 @@ async def seed_locations(conn):
 RETIRED_ITEMS = ["Учебный истребитель", "Стандартный пулемёт", "T-Меч", "T-Броня",
                  "Бутылка пива"]
 
+SPOILED_FISH_NAME = "Испорченная рыба"
+
+
+async def merge_spoiled_fish() -> int:
+    """Старые виды «Испорченный …» → один предмет «Испорченная рыба».
+
+    Запасы игроков переносятся в «Испорченную рыбу», старые предметы прячутся
+    (is_available=0), записи не удаляются. Вызывается из ensure_life_items, где
+    предмет уже засеян. Возвращает число перенесённых единиц.
+    """
+    conn = await get_db()
+    target = await get_item_by_name(SPOILED_FISH_NAME)
+    if not target:
+        return 0
+    cur = await conn.execute(
+        "SELECT id FROM items WHERE name LIKE 'Испорченный %' AND id != ?", (target['id'],))
+    old_ids = [r['id'] for r in await cur.fetchall()]
+    moved = 0
+    for oid in old_ids:
+        cur = await conn.execute(
+            "SELECT id, user_id, quantity FROM inventory WHERE item_id = ?", (oid,))
+        for row in await cur.fetchall():
+            qty = int(row['quantity'] or 0)
+            if qty > 0:
+                await add_inventory_item(row['user_id'], target['id'], qty)
+                moved += qty
+            await conn.execute("DELETE FROM inventory WHERE id = ?", (row['id'],))
+        await conn.execute("UPDATE items SET is_available = 0 WHERE id = ?", (oid,))
+    await conn.commit()
+    return moved
+
 
 async def purge_retired_items():
     """Убирает снятые с игры предметы из всех таблиц и колонок.
@@ -12764,6 +12795,8 @@ async def ensure_life_items():
     # Лапка паука добавлен в дропы кристального паука в DEFAULT_DUNGEON
     # (синхронизируется через ensure_dungeon_enemy_drops на старте).
     await conn.commit()
+    # Старые виды протухшей рыбы → «Испорченная рыба» (после того, как предмет засеян).
+    await merge_spoiled_fish()
     return added
 
 
@@ -12815,25 +12848,6 @@ async def ensure_dungeon_reservoir_items():
             added = True
         await conn.execute("UPDATE items SET is_available = 0 WHERE name = ?", (iname,))
         await conn.execute("UPDATE items SET heal = ? WHERE name = ? AND heal != ?", (iheal, iname, iheal))
-
-    # Испорченная рыба водохранилища (после порчи).
-    reservoir_spoiled = (
-        ("Испорченный сом", "Протухший сом. Слегка восстанавливает HP, но навлекает несварение.",
-         90, 45, 2, 5),
-        ("Испорченный угорь", "Протухший угорь. Слегка восстанавливает HP, но навлекает несварение.",
-         150, 75, 3, 5),
-        ("Испорченный форель", "Спавший свет. Слегка восстанавливает HP, но навлекает несварение.",
-         360, 180, 4, 5),
-    )
-    for (iname, idesc, iprice, isell, irarity, iheal) in reservoir_spoiled:
-        cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (iname,))
-        if (await cursor.fetchone())['c'] == 0:
-            await add_item(
-                name=iname, description=idesc, price=iprice, sell_price=isell, rarity=irarity,
-                category="consumable", stock=-1, added_by=0, ap_cost=0, damage=0, heal=iheal,
-            )
-            added = True
-        await conn.execute("UPDATE items SET is_available = 0 WHERE name = ?", (iname,))
 
     # Напитки-лечение обморожения. (имя, описание, цена, продажа, рарность, heal, drink_effect).
     cure_frostbite_drinks = (
@@ -14043,21 +14057,7 @@ async def process_food_expiry(user_id: int) -> int:
         if spoiled_item:
             await add_inventory_item(user_id, spoiled_item['id'], row['quantity'])
         converted += row['quantity']
-    # также сливаем уже имеющиеся разные виды испорченной рыбы в один
-    cur = await conn.execute(
-        "SELECT inv.id, inv.item_id, inv.quantity, i.name FROM inventory inv "
-        "JOIN items i ON inv.item_id = i.id "
-        "WHERE inv.user_id = ? AND i.name LIKE 'Испорченный%'",
-        (user_id,)
-    )
-    srows = await cur.fetchall()
-    if srows and spoiled_item and (len(srows) > 1 or (len(srows) == 1 and srows[0]['name'] != 'Испорченная рыба')):
-        total = sum(int(r['quantity'] or 0) for r in srows)
-        for r in srows:
-            await conn.execute("DELETE FROM inventory WHERE id = ?", (r['id'],))
-        await add_inventory_item(user_id, spoiled_item['id'], total)
-        converted += 0
-    if converted or True:
+    if converted:
         await conn.commit()
     return converted
 

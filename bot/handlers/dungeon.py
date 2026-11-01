@@ -1915,7 +1915,7 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
                 await add_inventory_item(user_id, seed['id'], 1)
                 text += "\n\n🌱 Из яблока выпало семечко!"
         # Испорченная рыба: несварение на сутки
-        if item['name'].startswith("Испорченный"):
+        if item['name'].startswith("Испорченн"):
             from utils.states import apply_state_to
             await apply_state_to(user_id, "несварение", caused_by=user_id,
                                  reason="съедена испорченная рыба")

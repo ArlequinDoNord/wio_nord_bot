@@ -96,8 +96,8 @@ async def run():
         it = await get_item_by_name(n)
         check(f"предмет {n} существует", it is not None)
         check(f"{n}: is_available=0", it and it['is_available'] == 0)
-    spoiled = await get_item_by_name("Испорченный сом")
-    check("Испорченный сом засеян", spoiled is not None)
+    spoiled = await get_item_by_name("Испорченная рыба")
+    check("Испорченная рыба засеяна", spoiled is not None)
 
     # ── соль не едят ──
     from bot.handlers.inventory import NOT_EDIBLE_ITEMS

@@ -1217,7 +1217,7 @@
 - `wall:page:\d+$`: `bot/handlers/wall.py:156`
 - `weff:`: `bot/handlers/admin.py:1408`
 - `wing_set:`: `bot/handlers/admin.py:825`
-- `Испорченный`: `bot/handlers/dungeon.py:1918`
+- `Испорченн`: `bot/handlers/dungeon.py:1918`
 - `⛔`: `bot/handlers/wall.py:176`
 
 ## 4. ⚠️ Возможные конфликты

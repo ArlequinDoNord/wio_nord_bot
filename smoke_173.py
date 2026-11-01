@@ -2,7 +2,7 @@
 """Smoke 173 — Круговорот Фаза 2: враги, бой, босс, Тир «Огненное эха».
 
 1. seed врагов (5 шт: Пугало/Дитя Яблони/Ворон/Хуб + босс), броня Пугала/босса сидится.
-2. Тир: firelab_tier_enemy_bonus + firelab_tier_loot_mult (кап 5 не растит тир, runs копится).
+2. Тир: firelab_tier_enemy_bonus + firelab_tier_loot_mult (кап 10 не растит тир, runs копится).
 3. _tier_enemy: HP сдвиг с Тиром.
 4. Боевой цикл: победа над врагом, смерть (burn) → статус dead.
 5. Хуб: обморожение Призрака заменено на паутину — замедление 3 хода
@@ -93,13 +93,18 @@ async def main():
     check("5-й тир достигнут", await get_fire_lab_tier(UID) == 5)
     check("5-й тир: разово +8 (итого +16)", firelab_tier_enemy_bonus(5) == 16)
     check("лут-множитель тир 5 = 1.18 (4×2% + 10%)", abs(firelab_tier_loot_mult(5) - 1.18) < 1e-9)
+    for _ in range(5):
+        await inc_fire_lab_tier(UID)
+    check("тир 10 достигнут (кап)", await get_fire_lab_tier(UID) == 10)
+    check("бонус HP на тире 6 = 20", firelab_tier_enemy_bonus(6) == 20)
+    check("бонус HP на тире 9 = 32", firelab_tier_enemy_bonus(9) == 32)
+    check("бонус HP на тире 10 = 48 (+16 разово)", firelab_tier_enemy_bonus(10) == 48)
+    check("лут-множитель тир 10 = 1.36", abs(firelab_tier_loot_mult(10) - 1.36) < 1e-9)
     await inc_fire_lab_tier(UID)
-    check("кап: 6-й прогон не растит тир", await get_fire_lab_tier(UID) == 5)
-    check("но runs продолжает копиться",
-          await get_fire_lab_tier(UID) == 5)
+    check("кап: 11-й прогон не растит тир", await get_fire_lab_tier(UID) == 10)
     conn2 = await db.get_db()
     cur = await conn2.execute("SELECT runs FROM fire_lab_tier WHERE user_id = ?", (UID,))
-    check("runs = 6", (await cur.fetchone())['runs'] == 6)
+    check("runs продолжает копиться (11)", (await cur.fetchone())['runs'] == 11)
 
     print("\n3. _tier_enemy: сдвиг HP по Тиру")
     row_scarecrow = rows['scarecrow']
