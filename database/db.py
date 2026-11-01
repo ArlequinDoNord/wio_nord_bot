@@ -4041,22 +4041,39 @@ async def inc_fire_lab_tier(user_id: int) -> int:
 
 
 def firelab_tier_enemy_bonus(tier: int) -> int:
-    """Доп. HP всем врагам на указанном Тире: 1–4 по +2, 5-й разово +8 (итог +16)."""
+    """Доп. HP всем врагам на указанном Тире."""
+    t = max(0, int(tier or 0))
     step = int(getattr(config, "FIRE_LAB_TIER_HP_STEP", 2) or 2)
     last = int(getattr(config, "FIRE_LAB_TIER_HP_LAST", 8) or 8)
-    cap = int(getattr(config, "FIRE_LAB_TIER_MAX", 5) or 5)
-    tier = max(0, min(int(tier), cap))
-    return step * min(tier, cap - 1) + (last if tier >= cap else 0)
+    step_mid = int(getattr(config, "FIRE_LAB_TIER_HP_STEP_MID", 4) or 4)
+    hp10 = int(getattr(config, "FIRE_LAB_TIER_HP_10", 16) or 16)
+    if t <= 0:
+        return 0
+    if t <= 4:
+        return t * step
+    if t == 5:
+        return 4 * step + last
+    if t >= 6 and t <= 9:
+        return 4 * step + last + (t - 5) * step_mid
+    # 10+
+    return 4 * step + last + 4 * step_mid + hp10
 
 
 def firelab_tier_loot_mult(tier: int) -> float:
-    """Множитель шансов лута: Тир 1–4 → ×(1+2%)…, Тир 5 → ×(1+10%)."""
+    """Множитель шансов лута."""
+    t = max(0, int(tier or 0))
     step = float(getattr(config, "FIRE_LAB_TIER_LOOT_STEP", 0.02) or 0.02)
     last = float(getattr(config, "FIRE_LAB_TIER_LOOT_LAST", 0.10) or 0.10)
-    cap = int(getattr(config, "FIRE_LAB_TIER_MAX", 5) or 5)
-    tier = max(0, min(int(tier), cap))
-    bonus = step * min(tier, cap - 1) + (last if tier >= cap else 0)
-    return 1.0 + bonus
+    if t <= 0:
+        return 1.0
+    if t <= 4:
+        return 1.0 + step * t
+    if t == 5:
+        return 1.0 + step * 4.0 + last
+    if t >= 6 and t <= 9:
+        return 1.0 + step * 4.0 + last + step * (t - 5)
+    # 10+
+    return 1.0 + step * 4.0 + last + step * 4.0 + last
 
 
 # ============ ОКЛАДЫ ЗА ДОЛЖНОСТИ (ролевые, раз в месяц 28-го) ============
@@ -10820,7 +10837,7 @@ KVP_BADGE_NAME = "Значок В.У.С.П."
 # его старой версией: та же роль в игре, но слабее и без эффекта. Единственный
 # источник трости — босс К.В.П., один раз на аккаунт (см. kvp.py CANE_CHANCE).
 KVP_CANE_NAME = "Сержантская трость"
-KVP_MAX_COMPLETIONS = 4
+KVP_MAX_COMPLETIONS = 5
 KVP_OD_COST = 5  # стоимость прохождения препятствия (одиночное действие)
 
 # Предметы, которые нельзя передать другому игроку. Трость КВП — личная награда за
@@ -12218,6 +12235,8 @@ EQUIPMENT_SLOT_LABELS = {
     "potion3": "Активный слот 3",
     "smoke": "Дымовая шашка",
     "duel": "🥊 Дуэльное снаряжение",
+    "talisman": "Талисман",
+    "clan_cape": "Клановая накидка",
 }
 # Слоты, которые сейчас заблокированы (откроются позже).
 EQUIPMENT_LOCKED_SLOTS = {"weapon_aux", "potion3"}
@@ -12243,6 +12262,30 @@ def item_fits_slot(item, slot: str) -> bool:
     if slot == 'duel':
         # Дуэльное снаряжение — только в отдельный слот (в PvE не влияет).
         return category == 'duel_gear'
+    if slot == 'talisman':
+        c2 = category if hasattr(category, '__str__') else str(category or '')
+        c2 = str(c2)
+        if c2 == 'talisman':
+            return True
+        if c2 == 'equipment':
+            if item.get('talisman') or item.get('is_talisman'):
+                return True
+            if hasattr(item, 'keys') and item['equip_slot'] == 'talisman':
+                return True
+            if item.get('equip_slot') == 'talisman':
+                return True
+        return False
+    if slot == 'clan_cape':
+        c2 = category if hasattr(category, '__str__') else str(category or '')
+        c2 = str(c2)
+        if c2 == 'equipment':
+            if item.get('clan_cape') or item.get('is_clan_cape'):
+                return True
+            if hasattr(item, 'keys') and item['equip_slot'] == 'clan_cape':
+                return True
+            if item.get('equip_slot') == 'clan_cape':
+                return True
+        return False
     return False
 
 
@@ -12607,14 +12650,8 @@ async def ensure_life_items():
          300, 150, 3, "consumable", -1, 45, None, 0),
         ("Жареный налим", "Праздничный ужин: жареный налим. +55 HP в бою. Срок годности 4 суток.",
          440, 220, 3, "consumable", -1, 55, None, 0),
-        ("Испорченный сиг", "Протухшая рыба. Слегка восстанавливает HP, но навлекает несварение.",
-         14, 7, 1, "consumable", -1, 5, None, 0),
-        ("Испорченный муксун", "Протухшая рыба. Слегка восстанавливает HP, но навлекает несварение.",
-         34, 17, 2, "consumable", -1, 5, None, 0),
-        ("Испорченный чир", "Протухший деликатес. Слегка восстанавливает HP, но навлекает несварение.",
-         80, 40, 3, "consumable", -1, 5, None, 0),
-        ("Испорченный налим", "Протухшая ночная добыча. Слегка восстанавливает HP, но навлекает несварение.",
-         120, 60, 3, "consumable", -1, 5, None, 0),
+        ("Испорченная рыба", "Протухшая рыба всех видов. Слегка восстанавливает HP, но навлекает несварение.",
+         1, 0, 1, "consumable", -1, 5, None, 0),
         ("Яблоко", "Свежее яблоко из кадки. +15 HP в бою. Иногда из него выпадает семечко.",
          20, 10, 1, "consumable", -1, 15, None, 0),
         ("Улучшенная настойка здоровья", "Мощный эликсир: +50 HP в бою подземелья.",
@@ -13977,10 +14014,9 @@ async def consume_ingredient(user_id: int, name: str, qty: int) -> bool:
 # ---------- Порча жареной рыбы ----------
 
 async def process_food_expiry(user_id: int) -> int:
-    """Конвертирует протухшую жареную рыбу в испорченную. Возвращает число превращённых."""
+    """Конвертирует протухшую жареную рыбу в «Испорченную рыбу». Возвращает число превращённых."""
     conn = await get_db()
     now = time.time()
-    # Срок хранится в секундах с эпохи (эпоха = int). Возможен и строковый вариант из legacy.
     cursor = await conn.execute(
         "SELECT inv.id, inv.item_id, inv.quantity, inv.expires_at, i.name FROM inventory inv "
         "JOIN items i ON inv.item_id = i.id "
@@ -13989,6 +14025,13 @@ async def process_food_expiry(user_id: int) -> int:
     )
     rows = await cursor.fetchall()
     converted = 0
+    spoiled_item = await get_item_by_name("Испорченная рыба")
+    if not spoiled_item:
+        # на случай если ещё не заведён
+        cur = await conn.execute("SELECT id FROM items WHERE name LIKE 'Испорченный%' LIMIT 1")
+        r = await cur.fetchone()
+        if r:
+            spoiled_item = {'id': r['id']}
     for row in rows:
         try:
             exp = float(row['expires_at'])
@@ -13996,13 +14039,25 @@ async def process_food_expiry(user_id: int) -> int:
             continue
         if exp >= now:
             continue
-        spoiled_name = "Испорченный " + row['name'].replace("Жареный ", "", 1)
-        spoiled = await get_item_by_name(spoiled_name)
         await conn.execute("DELETE FROM inventory WHERE id = ?", (row['id'],))
-        if spoiled:
-            await add_inventory_item(user_id, spoiled['id'], row['quantity'])
+        if spoiled_item:
+            await add_inventory_item(user_id, spoiled_item['id'], row['quantity'])
         converted += row['quantity']
-    if converted:
+    # также сливаем уже имеющиеся разные виды испорченной рыбы в один
+    cur = await conn.execute(
+        "SELECT inv.id, inv.item_id, inv.quantity, i.name FROM inventory inv "
+        "JOIN items i ON inv.item_id = i.id "
+        "WHERE inv.user_id = ? AND i.name LIKE 'Испорченный%'",
+        (user_id,)
+    )
+    srows = await cur.fetchall()
+    if srows and spoiled_item and (len(srows) > 1 or (len(srows) == 1 and srows[0]['name'] != 'Испорченная рыба')):
+        total = sum(int(r['quantity'] or 0) for r in srows)
+        for r in srows:
+            await conn.execute("DELETE FROM inventory WHERE id = ?", (r['id'],))
+        await add_inventory_item(user_id, spoiled_item['id'], total)
+        converted += 0
+    if converted or True:
         await conn.commit()
     return converted
 

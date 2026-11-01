@@ -650,13 +650,20 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
 # ------------------------------ ДРЕВО ОГНЯ ------------------------------
 
 async def _enter_tree(cb, session, session_id: int):
-    """Древо Огня: благословение (+15% урона, +1 HP после удара) до конца сессии."""
+    """Древо Огня: благословение до конца сессии."""
     visits = await db.bump_fire_lab_room_visit(session_id, "tree")
     if not int(session['blessing'] or 0):
         await db.set_fire_lab_blessing(session_id)
         session = await db.get_active_fire_lab_session(cb.from_user.id)
-    pct = int(getattr(config, "FIRE_TREE_DMG_BONUS_PCT", 15) or 15)
-    regen = int(getattr(config, "FIRE_TREE_REGEN_HP", 1) or 1)
+    try:
+        tier = await db.get_fire_lab_tier(cb.from_user.id)
+    except Exception:
+        tier = 0
+    if int(tier or 0) >= 6:
+        pct, regen = 20, 2
+    else:
+        pct = int(getattr(config, "FIRE_TREE_DMG_BONUS_PCT", 15) or 15)
+        regen = int(getattr(config, "FIRE_TREE_REGEN_HP", 1) or 1)
     body = (
         "Тёплый свет сквозь листву: Древо Огня вспыхивает янтарными жилами и "
         "кланяется тебе кроной. Долгое пламя из его коры встаёт тебе в плечи.\n\n"
@@ -874,7 +881,7 @@ async def fire_event_go_cb(cb: CallbackQuery, state: FSMContext):
         await cb.answer(f"❌ Лимит заходов на сегодня исчерпан: {max_entries} в сутки.",
                         show_alert=True)
         return
-    from database.db import remove_nordmarks
+    from database.db import transfer_to_treasury
     hp = 0
     try:
         from utils.combat_model import pilot_combat_stats
@@ -884,14 +891,14 @@ async def fire_event_go_cb(cb: CallbackQuery, state: FSMContext):
         hp = 0
     if hp <= 0:
         hp = 10  # подстраховка
-    await remove_nordmarks(cb.from_user.id, fee, "firelab_entry",
-                           f"Вход в Огненный Лабиринт (заход {used + 1}/{max_entries})")
+    await transfer_to_treasury(cb.from_user.id, fee,
+                               f"Вход в Огненный Лабиринт (заход {used + 1}/{max_entries})")
     n = await inc_fire_lab_entries(cb.from_user.id, day)
     session_id = await create_fire_lab_session(cb.from_user.id, hp)
     updated = await get_active_fire_lab_session(cb.from_user.id)
     await cb.answer("🔥 Вход оплачен!")
     text = (f"🔥 <b>Дни Пламенного Круговорота</b>\n"
-            f"Вход оплачен: −{fee} НМ (заход {n}/{max_entries} за сутки).\n\n"
+            f"Вход оплачен: −{fee} НМ в казну (заход {n}/{max_entries} за сутки).\n\n"
             + _fork_text(updated))
     await _fire_paint(cb, text=text, kb=_fork_kb(session_id), **(await _room_kw("fork")))
 
@@ -1108,12 +1115,18 @@ async def fire_event_attack_cb(cb: CallbackQuery):
         log_lines.append("💥 Крит!")
     # благословение: +Х% урона
     if int(session.get('blessing') or 0):
-        pct = float(getattr(config, "FIRE_TREE_DMG_BONUS_PCT", 15) or 0)
+        try:
+            t2 = await db.get_fire_lab_tier(cb.from_user.id)
+        except Exception:
+            t2 = 0
+        if int(t2 or 0) >= 6:
+            pct, regen = 20.0, 2
+        else:
+            pct = float(getattr(config, "FIRE_TREE_DMG_BONUS_PCT", 15) or 0)
+            regen = int(getattr(config, "FIRE_TREE_REGEN_HP", 1) or 0)
         dmg = int(dmg * (1 + pct / 100.0))
         log_lines.append("🔥 Благословение усилило удар.")
-    # реген благословения — на каждом ударе игрока, в том числе если броня поглотила урон
-    if int(session.get('blessing') or 0):
-        regen = int(getattr(config, "FIRE_TREE_REGEN_HP", 1) or 0)
+        # реген благословения — на каждом ударе игрока
         session['hp'] = min(int(session['hp_max']), int(session['hp']) + regen)
         log_lines.append(f"🌿 Благословение: +{regen} HP")
     # праздничный сет (3 одежды + оружие): постоянная регенерация за ход
@@ -1354,12 +1367,20 @@ async def _after_player_tick(cb, session, session_id: int, enemy, effects, playe
             effects[FX_STUN] = effects.get(FX_STUN, 0) + 1
             fx_end = "\n🍎 Спелое яблоко — ты оглушён!"
         if key == "hub" and random.random() < float(getattr(config, "FIRE_LAB_HUB_SLOW_P", 0.25)):
+            if '_base_dodge' not in enemy:
+                try:
+                    enemy['_base_dodge'] = float(enemy.get('dodge') or 0)
+                except Exception:
+                    enemy['_base_dodge'] = 0.0
             effects[FX_SLOW] = int(getattr(config, "FIRE_LAB_HUB_SLOW_ROUNDS", 3) or 3)
-            # Хуб чуть добавляет уклонение сам
-            try:
-                enemy['dodge'] = float(enemy.get('dodge') or 0) + float(getattr(config, "FIRE_LAB_HUB_ENEMY_DODGE_BONUS", 10) or 0)
-            except Exception:
-                pass
+            # Хуб чуть добавляет уклонение сам — только один раз за действие замедления
+            if not effects.get('hub_dodge_on'):
+                try:
+                    bonus_h = float(getattr(config, "FIRE_LAB_HUB_ENEMY_DODGE_BONUS", 10) or 0)
+                    enemy['dodge'] = float(enemy.get('_base_dodge') or 0) + bonus_h
+                except Exception:
+                    pass
+                effects['hub_dodge_on'] = True
             fx_end = "\n🕸 Хуб опутывает паутиной: замедление (-укл, +укл Хуба)!"
         if key == FIRELAB_BOSS_KEY and hp_now > 0 and random.random() < float(
                 getattr(config, "FIRE_LAB_BOSS_BURN_P", 0.25)):
