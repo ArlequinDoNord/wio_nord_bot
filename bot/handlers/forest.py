@@ -281,6 +281,30 @@ def roll_boar_loot(r: float, loot_pct: float = 0) -> str:
     return ""
 
 
+def pick_forest_berry(pool_rows, r: float, rare_bonus: float = 0):
+    """Ягода по броску r в [0, 100) по шансам пула в процентах (остаток — пусто).
+
+    rare_bonus — процент от «Собирателя ягод»: шанс редких ягод (всё, кроме черники и
+    медведя) растёт на rare_bonus% относительно себя; прибавка берётся у черники, так что
+    сумма шансов не меняется. Без черники в пуле (опушка) бонус не действует.
+    """
+    from database.db import BEAR_REF
+    blueberry = next((row for row in pool_rows if row['name'] == config.FOREST_BERRY_BLUEBERRY), None)
+    bonus = float(rare_bonus or 0) if blueberry is not None else 0.0
+    acc = 0.0
+    for row in pool_rows:
+        w = float(row['chance'] or 0)
+        if row is blueberry:
+            w = max(0.0, w - sum(float(x['chance'] or 0) for x in pool_rows
+                                 if x['ref'] != BEAR_REF and x is not blueberry) * bonus / 100.0)
+        elif row['ref'] != BEAR_REF:
+            w += w * bonus / 100.0
+        acc += w
+        if r < acc:
+            return row
+    return None
+
+
 def pick_forest_mushroom(pool_rows, r: float, rarity_bonus: float = 0):
     """Гриб по броску r в [0, 100): FOREST_EMPTY_CHANCE % — пусто, остальное —
     шансы пула. Возвращает строку пула или None.
@@ -748,14 +772,10 @@ async def forest_berry(callback: CallbackQuery):
         await log_activity(user_id, "forest", f"Поиск ягод: {area_name} ({ap_cost} ОД)")
         await asyncio.sleep(delay)
 
-        roll = random.random() * 100
-        acc, outcome = 0.0, None
         from database.db import get_berry_pool, BEAR_REF
-        for row in await get_berry_pool(area):
-            acc += float(row['chance'])
-            if roll < acc:
-                outcome = "bear" if row['ref'] == BEAR_REF else row['name']
-                break
+        rare_pct = await get_achievement_bonus(user_id, "berries", "rarity_pct")
+        row = pick_forest_berry(await get_berry_pool(area), random.random() * 100, rare_bonus=rare_pct)
+        outcome = None if row is None else ("bear" if row['ref'] == BEAR_REF else row['name'])
 
         token = FOREST_TOKEN.get(user_id, "")
         fresh = await get_user(user_id) or {}
@@ -789,6 +809,7 @@ async def forest_berry(callback: CallbackQuery):
                 kb=_berry_markup(token, area), area=area)
             return
         await add_inventory_item(user_id, item['id'], 1)
+        await bump_achievement(user_id, "berries", 1)
         from database.db import tree_record_collect
         await tree_record_collect(user_id, item['name'])
         await log_activity(user_id, "forest", f"Собрал «{item['name']}» ({area_name})")

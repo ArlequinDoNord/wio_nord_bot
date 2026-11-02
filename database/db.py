@@ -13807,6 +13807,19 @@ ACHIEVEMENTS_DEF = {
              "bonus": {"rarity_pct": 10}},
         ],
     },
+    "berries": {
+        "title": "Собиратель ягод", "emoji": "🫐", "metric": "горстей ягод собрано",
+        "levels": [
+            {"level": 1, "threshold": 10, "name": "Уже не цветочки",
+             "bonus": {"rarity_pct": 2}},
+            {"level": 2, "threshold": 60, "name": "Для здоровья глазок",
+             "bonus": {"rarity_pct": 2}},
+            {"level": 3, "threshold": 240, "name": "Варенья наварю!",
+             "bonus": {"rarity_pct": 4}},
+            {"level": 4, "threshold": 600, "name": "Повелитель Ягод!",
+             "bonus": {"rarity_pct": 8}},
+        ],
+    },
     "monsters": {
         "title": "Монстры", "emoji": "👹",
         "metric": "повержено чудовищ (подземелья и шахты)",

@@ -496,6 +496,14 @@ async def profile_awards(callback: CallbackQuery):
     )
 
 
+def _achievement_status(levels: list, cur: int, prog: int) -> str:
+    """Строка прогресса: до следующего уровня или «выполнено» (работает и для ачивок с одним уровнем)."""
+    if cur >= len(levels):
+        return f"выполнено (уровень {len(levels)}: {levels[-1]['name']})"
+    nxt = levels[cur]
+    return f"{prog}/{nxt['threshold']} → {nxt['name']}"
+
+
 @router.callback_query(F.data == "profile:achievements")
 async def profile_achievements(callback: CallbackQuery):
     """Достижения пилота: по всем группам — прогресс, открытый уровень и следующий порог."""
@@ -514,14 +522,7 @@ async def profile_achievements(callback: CallbackQuery):
         levels = item['levels']
         cur = item['level']
         prog = item['progress']
-        if cur == 0:
-            nxt = levels[0]
-            status = f"{prog}/{nxt['threshold']} → {nxt['name']}"
-        elif cur >= 4:
-            status = f"выполнено (уровень 4: {levels[3]['name']})"
-        else:
-            nxt = levels[cur]
-            status = f"{prog}/{nxt['threshold']} → {nxt['name']}"
+        status = _achievement_status(levels, cur, prog)
         lines.append(
             f"{item['emoji']} {item['title']} — уровень {cur}: {status}"
         )

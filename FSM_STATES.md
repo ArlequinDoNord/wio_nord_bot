@@ -487,7 +487,7 @@
 |---|---|---|
 | `waiting_photo` | `bot/handlers/profile.py:255` `set_photo` | `bot/handlers/profile.py:263` `process_photo` |
 | `waiting_about` | `bot/handlers/profile.py:276` `edit_about` | `bot/handlers/profile.py:284` `process_about` |
-| `waiting_callsign` | `bot/handlers/profile.py:610` `profile_callsign`<br>`bot/handlers/profile.py:621` `profile_callsign`<br>`bot/handlers/profile.py:718` `profile_callsign_buy` | `bot/handlers/profile.py:658` `profile_callsign_input` |
+| `waiting_callsign` | `bot/handlers/profile.py:611` `profile_callsign`<br>`bot/handlers/profile.py:622` `profile_callsign`<br>`bot/handlers/profile.py:719` `profile_callsign_buy` | `bot/handlers/profile.py:659` `profile_callsign_input` |
 
 ### `ReportSubmit` — `bot/handlers/reports.py`
 
@@ -759,15 +759,15 @@
 - `pollarch:list`: `bot/handlers/poll_archive.py:125`
 - `prof:back`: `bot/handlers/profile.py:342`
 - `profile`: `bot/handlers/profile.py:244`
-- `profile:achievements`: `bot/handlers/profile.py:499`
+- `profile:achievements`: `bot/handlers/profile.py:507`
 - `profile:awards`: `bot/handlers/profile.py:469`
-- `profile:callsign`: `bot/handlers/profile.py:596`
-- `profile:callsign_buy`: `bot/handlers/profile.py:702`
-- `profile:callsign_cancel`: `bot/handlers/profile.py:650`
+- `profile:callsign`: `bot/handlers/profile.py:597`
+- `profile:callsign_buy`: `bot/handlers/profile.py:703`
+- `profile:callsign_cancel`: `bot/handlers/profile.py:651`
 - `profile:choose_status`: `bot/handlers/profile.py:302`
 - `profile:edit_about`: `bot/handlers/profile.py:273`
 - `profile:notify_toggle`: `bot/handlers/profile.py:349`
-- `profile:open`: `bot/handlers/profile.py:589`
+- `profile:open`: `bot/handlers/profile.py:590`
 - `profile:pilot_card`: `bot/handlers/profile.py:389`
 - `profile:public_toggle`: `bot/handlers/profile.py:369`
 - `profile:set_photo`: `bot/handlers/profile.py:252`
@@ -1040,12 +1040,12 @@
 - `fishsell:`: `bot/handlers/inventory.py:1606`
 - `fishuse:`: `bot/handlers/inventory.py:1305`
 - `forest:add:`: `bot/handlers/admin.py:8061`
-- `forest:area:\d+:(glade|clearing)$`: `bot/handlers/forest.py:428`
-- `forest:battle:flee:\d+$`: `bot/handlers/forest.py:1200`
-- `forest:battle:hit:\d+$`: `bot/handlers/forest.py:992`
-- `forest:berry:\d+:(glade|clearing)$`: `bot/handlers/forest.py:707`
+- `forest:area:\d+:(glade|clearing)$`: `bot/handlers/forest.py:452`
+- `forest:battle:flee:\d+$`: `bot/handlers/forest.py:1221`
+- `forest:battle:hit:\d+$`: `bot/handlers/forest.py:1013`
+- `forest:berry:\d+:(glade|clearing)$`: `bot/handlers/forest.py:731`
 - `forest:card:`: `bot/handlers/admin.py:7975`
-- `forest:cast:\d+(?::(glade|clearing))?$`: `bot/handlers/forest.py:505`
+- `forest:cast:\d+(?::(glade|clearing))?$`: `bot/handlers/forest.py:529`
 - `forest:del:`: `bot/handlers/admin.py:8080`
 - `forest:kind:`: `bot/handlers/admin.py:7989`
 - `forest:market:`: `bot/handlers/admin.py:8014`
@@ -1165,7 +1165,7 @@
 - `pollarch:days:\d+$`: `bot/handlers/poll_archive.py:154`
 - `prod:`: `bot/handlers/admin.py:1484`
 - `prof_sel_status:`: `bot/handlers/profile.py:327`
-- `profile:award:`: `bot/handlers/profile.py:550`
+- `profile:award:`: `bot/handlers/profile.py:551`
 - `rank_pick:`: `bot/handlers/admin.py:4950`
 - `rank_promote:`: `bot/handlers/admin.py:4909`
 - `rar:`: `bot/handlers/admin.py:1284`
