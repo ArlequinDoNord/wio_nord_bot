@@ -53,8 +53,8 @@ async def main():
     glade = sum(c for _, c in config.FOREST_BERRY_TABLE["glade"])
     clearing = sum(c for _, c in config.FOREST_BERRY_TABLE["clearing"])
     check("опушка: черника 50% (остальное пусто)", glade == 50)
-    check("прогалина: черника 40, малина 25, земляника 20, медведь 5 (=90%, пусто 10%)",
-          clearing == 90)
+    check("прогалина: черника 40, малина 25, земляника 20, медведь 5, пылающие 10 (=100%)",
+          clearing == 100)
     for name in (config.FOREST_BERRY_BLUEBERRY, config.FOREST_BERRY_RASPBERRY,
                  config.FOREST_BERRY_STRAWBERRY):
         it = await get_item_by_name(name)
@@ -63,15 +63,15 @@ async def main():
     print("\n2. Медведь")
     bear = await get_source_enemy_by_key("forest", "bear")
     check("медведь засеян", bear is not None)
-    check("медведь выключен", bear is not None and bear['enabled'] == 0)
+    check("медведь включён в выдачу", bear is not None and bear['enabled'] == 1)
     check("медведь не в обычном поиске (chance 0)", bear is not None and float(bear['chance'] or 0) == 0)
     check("медведь в 1.5 раза сильнее кабана по HP",
           bear is not None and bear['hp'] == round(config.FOREST_BOAR_HP * 1.5))
     skin = await get_item_by_name(config.FOREST_BEAR_SKIN_NAME)
     drops = [d['item_id'] for d in __import__('json').loads(bear['drops'] or '[]')] if bear else []
     check("шкура медведя — дроп", skin is not None and skin['id'] in drops)
-    check("выключенный медведь не попадает в список включённых",
-          all(e['key'] != 'bear' for e in await get_source_enemies("forest", enabled_only=True)))
+    check("включённый медведь есть в списке включённых",
+          any(e['key'] == 'bear' for e in await get_source_enemies("forest", enabled_only=True)))
 
     print("\n3. Рецепт леденца")
     recipe = await (await conn.execute(

@@ -589,6 +589,14 @@ async def forest_cast(callback: CallbackQuery):
 
         # ── выбор гриба из пула ЗОНЫ ──
         pool = await get_forest_mushroom_pool(area)
+        from database.db import tree_collect_allowed
+        allowed_pool = []
+        for _row in pool:
+            _it = await get_item(_row['item_id'])
+            if _it and (_it['name'] not in config.FIRE_DONATION_ONLY
+                        or await tree_collect_allowed(user_id, _it['name'])):
+                allowed_pool.append(_row)
+        pool = allowed_pool
         rarity_pct = await get_achievement_bonus(user_id, "mushrooms", "rarity_pct")
         row = pick_forest_mushroom(pool, random.random() * 100, rarity_bonus=rarity_pct)
         fresh = await get_user(user_id) or {}
@@ -619,6 +627,8 @@ async def forest_cast(callback: CallbackQuery):
             return
 
         await add_inventory_item(user_id, item['id'], 1)
+        from database.db import tree_record_collect
+        await tree_record_collect(user_id, item['name'])
         await log_activity(user_id, "forest", f"Нашёл «{item['name']}» ({area_name})")
         await bump_achievement(user_id, "mushrooms", 1)
         kind_label = "☠ Ядовитый гриб!" if (row.get('kind') or 'edible') == "toxic" else "🍄"
@@ -740,10 +750,11 @@ async def forest_berry(callback: CallbackQuery):
 
         roll = random.random() * 100
         acc, outcome = 0.0, None
-        for key, chance in config.FOREST_BERRY_TABLE.get(area, ()):
-            acc += float(chance)
+        from database.db import get_berry_pool, BEAR_REF
+        for row in await get_berry_pool(area):
+            acc += float(row['chance'])
             if roll < acc:
-                outcome = key
+                outcome = "bear" if row['ref'] == BEAR_REF else row['name']
                 break
 
         token = FOREST_TOKEN.get(user_id, "")
@@ -759,6 +770,10 @@ async def forest_berry(callback: CallbackQuery):
             # Медведь выключен: исход без встречи — как пустая поляна.
             outcome = None
 
+        if outcome in config.FIRE_DONATION_ONLY:
+            from database.db import tree_collect_allowed
+            if not await tree_collect_allowed(user_id, outcome):
+                outcome = None  # нужное количество уже добыто — не выпадает
         if outcome is None:
             await _glade_paint(
                 callback,
@@ -774,6 +789,8 @@ async def forest_berry(callback: CallbackQuery):
                 kb=_berry_markup(token, area), area=area)
             return
         await add_inventory_item(user_id, item['id'], 1)
+        from database.db import tree_record_collect
+        await tree_record_collect(user_id, item['name'])
         await log_activity(user_id, "forest", f"Собрал «{item['name']}» ({area_name})")
         await _glade_paint(
             callback,

@@ -13,8 +13,8 @@ load_dotenv()
 # При бампе: пишем в VERSION_NOTES только то, что изменилось в этом деплое, а
 # прошлые сдвигаем в PREV_VERSION / PREV_VERSION_NOTES. Больше двух записей не
 # держим — иначе приветствие превращается в простыню из трёх-четырёх деплоев.
-VERSION = "0.41.20"
-VERSION_NOTES = ("Праздничные хлопоты: в Круговороте что-то снова изменилось.")
+VERSION = "0.41.21"
+VERSION_NOTES = ("Праздничные хлопоты: в Круговороте что-то снова изменилось, и в глубинах леса тоже.")
 
 PREV_VERSION = "0.41.19"
 PREV_VERSION_NOTES = ("Праздничные хлопоты: в Круговороте что-то изменилось.")
@@ -343,6 +343,23 @@ FIRE_CANE_BURN_P = 20
 FIRE_CANE_BURN_DMG = 2
 FIRE_CANE_BURN_ROUNDS = 3
 FIRE_LANTERN_NAME = "Лампа Круговорота"       # награда за «Чтящего Предков» (Ф4б)
+
+# --- Пожертвования Древу Огня (v0.41.21) ---
+FIRE_MUSHROOM_NAME = "Огненный гриб"          # гриб леса; только пожертвование
+FIRE_BERRY_NAME = "Горсть Пылающих ягод"      # ягода леса (прогалина); только пожертвование
+FIRE_ORE_NAME = "Пламенная руда"              # добыча шахты; только пожертвование
+FIRE_ORE_CHANCE = 15                          # % за один удар киркой
+FIRE_TALISMAN_NAME = "Талисман памяти"        # награда за полное пожертвование: +1 регенерация за ход
+FIRE_TALISMAN_REGEN = 1
+FIRE_SPOILED_FOOD_NAME = "Испорченная еда"    # один предмет для любой испорченной съедобной еды
+# Требования пожертвования (на аккаунт, один раз) = сколько всего можно добыть каждого вида.
+FIRE_TREE_DONATION = (
+    (FIRE_MUSHROOM_NAME, 2),
+    (FIRE_BERRY_NAME, 2),
+    (FIRE_ORE_NAME, 1),
+)
+# Только пожертвование: не продаётся, не перерабатывается, на рынке не бывает.
+FIRE_DONATION_ONLY = (FIRE_MUSHROOM_NAME, FIRE_BERRY_NAME, FIRE_ORE_NAME)
 FIRE_AMBER_NAME = "Пламя Памяти"              # янтарь из Лампы (Ф4б), продам 100 НМ
 FIRE_LANTERN_MEDIT_AP = 20                    # 🪔 медитация раз в сутки
 FIRE_LANTERN_AMBER_DAYS = 7                   # янтарь раз в N суток
@@ -861,7 +878,8 @@ FOREST_BEAR_SKIN_NAME = "Шкура медведя"
 FOREST_BERRY_TABLE = {
     "glade": ((FOREST_BERRY_BLUEBERRY, 50),),
     "clearing": ((FOREST_BERRY_BLUEBERRY, 40), (FOREST_BERRY_RASPBERRY, 25),
-                 (FOREST_BERRY_STRAWBERRY, 20), ("bear", 5)),  # остальные 10% — пусто
+                 (FOREST_BERRY_STRAWBERRY, 20), ("bear", 5),
+                 (FIRE_BERRY_NAME, 10)),  # Пылающие ягоды 10%; сумма 100%, пустых исходов не осталось
 }
 # Медведь: в 1.5 раза сильнее кабана, шкура точно. В поиске грибов не появляется (chance=0).
 FOREST_BEAR_SEED = {
@@ -875,7 +893,7 @@ FOREST_BEAR_SEED = {
     "loss_ap": FOREST_BOAR_LOSS_AP,
     "chance": 0,
     "pity_target": 0,
-    "enabled": 0,
+    "enabled": 1,
     "reward_nm": 0,
     "photo_key": "city/forest_bear",
     "description": (

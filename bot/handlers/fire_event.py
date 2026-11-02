@@ -298,7 +298,7 @@ async def fire_event_step_cb(cb: CallbackQuery):
     history.append(path)
     conn = await db.get_db()
     await conn.execute(
-        "UPDATE fire_lab_sessions SET steps = steps + 1, path_history = ?, "
+        "UPDATE fire_lab_sessions SET steps = steps + 1, path_history = ?, well_open = 0, tree_open = 0, "
         "last_active_at = datetime('now') WHERE id = ?",
         (json.dumps(history, ensure_ascii=False), session_id))
     await conn.commit()
@@ -551,6 +551,10 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
     session = await _session_of(uid, session_id)
     if not session:
         return
+    if not session['well_open']:
+        await cb.answer("🎣 Колодец остался позади — удочку можно забросить только в нём.",
+                        show_alert=True)
+        return
     cap = int(getattr(config, "FIRE_LAB_WELL_FISH_TRIES", 6) or 6)
     if cap - int(session['fish_used'] or 0) <= 0:
         await cb.answer("🎣 Попытки этого визита исчерпаны — иди дальше.", show_alert=True)
@@ -675,7 +679,83 @@ async def _enter_tree(cb, session, session_id: int):
         f"💙 Сейчас: {int(session['hp'])}/{int(session['hp_max'])} HP."
     )
     text = _room_chrome("🌳 ДРЕВО ОГНЯ", body)
-    await _fire_paint(cb, text=text, kb=_cont_kb(session_id), **(await _room_kw('tree')))
+    await _fire_paint(cb, text=text, kb=_tree_kb(session_id), **(await _room_kw('tree')))
+
+
+def _tree_kb(session_id: int) -> InlineKeyboardMarkup:
+    """Комната древа: пожертвования, затем обычный «дальше»."""
+    rows = [[InlineKeyboardButton(text="🎁 Пожертвовать Древу",
+                                  callback_data=f"fireevent:donate:{session_id}")]]
+    rows.extend(_cont_kb(session_id).inline_keyboard)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _donate_screen(cb, uid: int, session_id: int, note: str = "") -> None:
+    prog = await db.tree_donation_progress(uid)
+    lines = ["🌳 <b>Пожертвования Древу Огня</b>",
+             "Древо принимает дары один раз — за все три вида получишь талисман памяти.", ""]
+    rows = []
+    for idx, (name, (done, need)) in enumerate(prog["items"].items()):
+        lines.append(f"• {_esc(name)}: {done}/{need}")
+        if done < need and not prog["talisman"]:
+            rows.append([InlineKeyboardButton(
+                text=f"🎁 Сдать «{name}»",
+                callback_data=f"fireevent:dgive:{session_id}:{idx}")])
+    if prog["talisman"]:
+        lines.append("\n✅ Талисман памяти получен. Больше пожертвовать нельзя.")
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"fireevent:backfork:{session_id}")])
+    if note:
+        lines += ["", note]
+    await _fire_paint(cb, text="\n".join(lines), kb=InlineKeyboardMarkup(inline_keyboard=rows),
+                      **(await _room_kw('tree')))
+
+
+@router.callback_query(F.data.startswith("fireevent:donate:"))
+async def fire_event_donate_cb(cb: CallbackQuery):
+    session_id = int(cb.data.split(":")[2])
+    session = await _session_of(cb.from_user.id, session_id)
+    if not session:
+        return
+    if not session['tree_open']:
+        await cb.answer("🌳 Древо осталось позади — жертвовать можно только в его комнате.",
+                        show_alert=True)
+        return
+    await cb.answer()
+    await _donate_screen(cb, cb.from_user.id, session_id)
+
+
+@router.callback_query(F.data.startswith("fireevent:dgive:"))
+async def fire_event_dgive_cb(cb: CallbackQuery):
+    _, _, sid, idx = cb.data.split(":")
+    session_id = int(sid)
+    session = await _session_of(cb.from_user.id, session_id)
+    if not session:
+        return
+    if not session['tree_open']:
+        await cb.answer("🌳 Древо осталось позади.", show_alert=True)
+        return
+    names = [name for name, _need in config.FIRE_TREE_DONATION]
+    try:
+        name = names[int(idx)]
+    except (ValueError, IndexError):
+        await cb.answer("❌ Нет такого дара.", show_alert=True)
+        return
+    ok, msg, granted = await db.tree_donate(cb.from_user.id, name, qty=99)
+    await cb.answer(msg, show_alert=not ok)
+    note = ""
+    if granted:
+        note = "✨ Древо откликнулось: ты получил талисман памяти!"
+    await _donate_screen(cb, cb.from_user.id, session_id, note=note)
+
+
+@router.callback_query(F.data.startswith("fireevent:backfork:"))
+async def fire_event_backfork_cb(cb: CallbackQuery):
+    session_id = int(cb.data.split(":")[2])
+    session = await _session_of(cb.from_user.id, session_id)
+    if not session:
+        return
+    await cb.answer()
+    await _paint_fork(cb, session, session_id)
 
 
 # ------------------------------ СУНДУК (убран из праздника) ------------------------------
@@ -1160,6 +1240,10 @@ async def fire_event_attack_cb(cb: CallbackQuery):
         log_lines.append(f"🌿 Благословение: +{regen} HP")
     # праздничный сет (3 одежды + оружие): постоянная регенерация за ход
     fire_set = await db.get_fire_set_status(cb.from_user.id)
+    treg = await db.get_talisman_regen(cb.from_user.id)
+    if treg and int(session['hp']) < int(session['hp_max']):
+        session['hp'] = min(int(session['hp_max']), int(session['hp']) + treg)
+        log_lines.append(f"🧿 Талисман памяти: +{treg} HP")
     if fire_set['regen'] and int(session['hp']) < int(session['hp_max']):
         session['hp'] = min(int(session['hp_max']), int(session['hp']) + fire_set['regen'])
         log_lines.append(f"🧥 Праздничный сет: +{fire_set['regen']} HP")

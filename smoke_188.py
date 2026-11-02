@@ -58,8 +58,8 @@ async def main():
 
     print("\n2. Слияние")
     moved = await merge_spoiled_fish()
-    target = await get_item_by_name("Испорченная рыба")
-    check("«Испорченная рыба» засеяна", target is not None)
+    target = await get_item_by_name("Испорченная еда")
+    check("«Испорченная еда» засеяна", target is not None)
     check("перенесено 3+2+4 = 9", moved == 9)
     inv1 = await get_inventory_item(U1, target['id'])
     inv2 = await get_inventory_item(U2, target['id'])

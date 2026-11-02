@@ -15,6 +15,8 @@ import os
 import random
 import time
 
+import config
+
 from aiogram.types import FSInputFile, InlineKeyboardButton, InlineKeyboardMarkup
 
 from database.db import (
@@ -347,6 +349,8 @@ async def get_user_raw_mushrooms(user_id: int) -> list[dict]:
         item_id = int(row.get("item_id") or row["id"])
         name = row.get("name") or ""
         if name.startswith(FRIED_PREFIXES):
+            continue
+        if name in config.FIRE_DONATION_ONLY:
             continue
         if name in FOREST_RAW_MUSHROOMS:
             kind = FOREST_RAW_MUSHROOMS[name][4]

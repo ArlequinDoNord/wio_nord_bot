@@ -92,6 +92,9 @@ async def main():
             return True
 
     sid = await create_fire_lab_session(UID, 50)
+    _conn = await db.get_db()
+    await _conn.execute("UPDATE fire_lab_sessions SET well_open = 1 WHERE id = ?", (sid,))
+    await _conn.commit()
 
     print("\n1. Без удочки — заброс не делается")
     ap0 = int((await db.get_user(UID))['ap'])

@@ -6,6 +6,8 @@
 «Значок В.У.С.П.» (+2% урона в подземельях и в К.В.П. и +3% уклонения, постоянно).
 """
 
+import asyncio
+import functools
 import os
 import random
 
@@ -35,6 +37,19 @@ from bot.handlers.dungeon import (
 )
 
 router = Router()
+
+# Нажатия кнопок курса обрабатываются по одному на игрока: быстрый повтор «Атаковать»
+# иначе читает одно и то же состояние и засчитывает победу (и награду) несколько раз.
+_KVP_LOCKS: dict = {}
+
+
+def _kvp_serial(handler):
+    @functools.wraps(handler)
+    async def wrapper(callback, *args, **kwargs):
+        lock = _KVP_LOCKS.setdefault(callback.from_user.id, asyncio.Lock())
+        async with lock:
+            return await handler(callback, *args, **kwargs)
+    return wrapper
 
 # ----- Константы курса -----
 ROOM_TOTAL = 8              # всего комнат
@@ -408,6 +423,7 @@ async def show_boss_room(message, run, user_id, state: FSMContext, current_hp=No
 # ----- Продолжить путь -----
 
 @router.callback_query(F.data.startswith("kvp:continue:"))
+@_kvp_serial
 async def kvp_continue(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     user_id = callback.from_user.id
@@ -438,6 +454,7 @@ async def kvp_continue(callback: CallbackQuery, state: FSMContext):
 # ----- Препятствие (вода / верёвка) -----
 
 @router.callback_query(F.data.startswith("kvp:attempt:"))
+@_kvp_serial
 async def kvp_attempt(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     user_id = callback.from_user.id
@@ -512,6 +529,7 @@ async def kvp_attempt(callback: CallbackQuery, state: FSMContext):
 # ----- Бой -----
 
 @router.callback_query(F.data.startswith("kvp:attack:"))
+@_kvp_serial
 async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     await callback.answer()
     user_id = callback.from_user.id

@@ -1781,6 +1781,10 @@ async def init_db():
     await _ensure_column(conn, "fire_lab_sessions", "effects_json", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "fire_lab_sessions", "boss_encounters", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "fire_lab_sessions", "fish_used", "INTEGER DEFAULT 0")
+    # 1 — игрок сейчас в колодце (удочка доступна); любой шаг дальше сбрасывает флаг
+    await _ensure_column(conn, "fire_lab_sessions", "well_open", "INTEGER DEFAULT 0")
+    # 1 — игрок сейчас в комнате древа (пожертвования доступны); любой шаг дальше сбрасывает
+    await _ensure_column(conn, "fire_lab_sessions", "tree_open", "INTEGER DEFAULT 0")
     # таблица создана ранней версией без этой колонки; CREATE IF NOT EXISTS её не добавит
     await _ensure_column(conn, "fire_lab_sessions", "last_active_at", "TIMESTAMP")
     # Праздничная рыбалка (Колодец): отмеченные виды рыбы пилота (UNIQUE).
@@ -1944,7 +1948,7 @@ async def seed_locations(conn):
 RETIRED_ITEMS = ["Учебный истребитель", "Стандартный пулемёт", "T-Меч", "T-Броня",
                  "Бутылка пива"]
 
-SPOILED_FISH_NAME = "Испорченная рыба"
+SPOILED_FISH_NAME = config.FIRE_SPOILED_FOOD_NAME
 
 
 async def merge_spoiled_fish() -> int:
@@ -3871,12 +3875,16 @@ async def bump_fire_lab_room_visit(session_id: int, room: str) -> int:
     conn = await get_db()
     if room == "well":
         await conn.execute(
-            f"UPDATE fire_lab_sessions SET {col} = {col} + 1, fish_used = 0 "
+            f"UPDATE fire_lab_sessions SET {col} = {col} + 1, fish_used = 0, well_open = 1, "
+            "tree_open = 0 WHERE id = ?", (session_id,))
+    elif room == "tree":
+        await conn.execute(
+            f"UPDATE fire_lab_sessions SET {col} = {col} + 1, well_open = 0, tree_open = 1 "
             "WHERE id = ?", (session_id,))
     else:
         await conn.execute(
-            f"UPDATE fire_lab_sessions SET {col} = {col} + 1 WHERE id = ?",
-            (session_id,))
+            f"UPDATE fire_lab_sessions SET {col} = {col} + 1, well_open = 0, tree_open = 0 "
+            "WHERE id = ?", (session_id,))
     await conn.commit()
     cur = await conn.execute(
         f"SELECT {col} AS v FROM fire_lab_sessions WHERE id = ?", (session_id,))
@@ -9751,6 +9759,257 @@ def _enemy_source_table(source: str) -> str:
     return table
 
 
+async def _ensure_tree_tables(conn):
+    await conn.execute(
+        "CREATE TABLE IF NOT EXISTS fire_tree_ledger (user_id INTEGER NOT NULL, "
+        "item_name TEXT NOT NULL, collected INTEGER NOT NULL DEFAULT 0, "
+        "donated INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (user_id, item_name))")
+    await conn.execute(
+        "CREATE TABLE IF NOT EXISTS fire_tree_talisman (user_id INTEGER PRIMARY KEY)")
+
+
+async def get_tree_ledger(user_id: int) -> dict:
+    """{название: {'collected': n, 'donated': n}} для пожертвований Древу."""
+    conn = await get_db()
+    await _ensure_tree_tables(conn)
+    cur = await conn.execute(
+        "SELECT item_name, collected, donated FROM fire_tree_ledger WHERE user_id = ?", (user_id,))
+    return {r["item_name"]: {"collected": r["collected"], "donated": r["donated"]}
+            for r in await cur.fetchall()}
+
+
+def _tree_need(name: str) -> int:
+    for item, need in config.FIRE_TREE_DONATION:
+        if item == name:
+            return int(need)
+    return 0
+
+
+async def tree_collect_allowed(user_id: int, name: str) -> bool:
+    """Можно ли ещё добыть предмет пожертвования: всего добывается не больше требуемого."""
+    if name not in config.FIRE_DONATION_ONLY:
+        return True
+    ledger = await get_tree_ledger(user_id)
+    return ledger.get(name, {}).get("collected", 0) < _tree_need(name)
+
+
+async def tree_record_collect(user_id: int, name: str) -> None:
+    """Учитывает добытый предмет пожертвования (если он такой)."""
+    if name not in config.FIRE_DONATION_ONLY:
+        return
+    conn = await get_db()
+    await _ensure_tree_tables(conn)
+    await conn.execute(
+        "INSERT INTO fire_tree_ledger (user_id, item_name, collected) VALUES (?, ?, 1) "
+        "ON CONFLICT(user_id, item_name) DO UPDATE SET collected = collected + 1",
+        (user_id, name))
+    await conn.commit()
+
+
+async def tree_donation_progress(user_id: int) -> dict:
+    """Прогресс пожертвований: {название: (сдано, нужно)} и флаг, получен ли талисман."""
+    ledger = await get_tree_ledger(user_id)
+    prog = {name: (ledger.get(name, {}).get("donated", 0), need)
+            for name, need in config.FIRE_TREE_DONATION}
+    conn = await get_db()
+    await _ensure_tree_tables(conn)
+    cur = await conn.execute("SELECT 1 FROM fire_tree_talisman WHERE user_id = ?", (user_id,))
+    return {"items": prog, "talisman": bool(await cur.fetchone())}
+
+
+async def tree_donate(user_id: int, name: str, qty: int = 1):
+    """Сдаёт предмет дереву. Когда сданы все требуемые — выдаёт талисман памяти один раз.
+
+    Возвращает (ok, сообщение, талисман_выдан_сейчас).
+    """
+    need = _tree_need(name)
+    if need <= 0:
+        return False, "Этот предмет древу не нужен.", False
+    conn = await get_db()
+    await _ensure_tree_tables(conn)
+    cur = await conn.execute("SELECT 1 FROM fire_tree_talisman WHERE user_id = ?", (user_id,))
+    if await cur.fetchone():
+        return False, "Ты уже всё пожертвовал — талисман памяти получен.", False
+    ledger = await get_tree_ledger(user_id)
+    donated = ledger.get(name, {}).get("donated", 0)
+    left = need - donated
+    if left <= 0:
+        return False, f"«{name}» уже сдано полностью.", False
+    item = await get_item_by_name(name)
+    inv = await get_inventory_item(user_id, item["id"]) if item else None
+    have = int(inv["quantity"] or 0) if inv else 0
+    qty = max(1, min(int(qty), left, have))
+    if qty <= 0:
+        return False, f"У тебя нет «{name}».", False
+    await remove_inventory_item(user_id, item["id"], qty)
+    await conn.execute(
+        "INSERT INTO fire_tree_ledger (user_id, item_name, donated) VALUES (?, ?, ?) "
+        "ON CONFLICT(user_id, item_name) DO UPDATE SET donated = donated + ?",
+        (user_id, name, qty, qty))
+    await conn.commit()
+    progress = await tree_donation_progress(user_id)
+    granted = False
+    if all(d >= n for d, n in progress["items"].values()):
+        tal = await get_item_by_name(config.FIRE_TALISMAN_NAME)
+        if tal:
+            await add_inventory_item(user_id, tal["id"], 1)
+            await conn.execute("INSERT OR IGNORE INTO fire_tree_talisman (user_id) VALUES (?)",
+                               (user_id,))
+            await conn.commit()
+            granted = True
+    return True, f"Сдано: {qty} × {name}.", granted
+
+
+async def get_talisman_regen(user_id: int) -> int:
+    """Регенерация за ход от надетого талисмана памяти (0, если не надет)."""
+    eq = await get_equipment(user_id)
+    item_id = eq.get("talisman")
+    if not item_id:
+        return 0
+    item = await get_item(item_id)
+    if item and item["name"] == config.FIRE_TALISMAN_NAME:
+        return int(config.FIRE_TALISMAN_REGEN)
+    return 0
+
+
+async def ensure_fire_tree_items():
+    """Предметы пожертвования и талисмана: скрыты, без цены продажи, не на рынке.
+
+    Испорченная еда: прежнее имя «Испорченная рыба» переименовываем в общее.
+    """
+    conn = await get_db()
+    specs = (
+        (config.FIRE_MUSHROOM_NAME, "Огненный гриб леса. Можно только пожертвовать Древу.", "resource"),
+        (config.FIRE_BERRY_NAME, "Горсть Пылающих ягод. Можно только пожертвовать Древу.", "resource"),
+        (config.FIRE_ORE_NAME, "Пламенная руда из шахты. Можно только пожертвовать Древу.", "resource"),
+    )
+    for name, desc, cat in specs:
+        if not await get_item_by_name(name):
+            await add_item(name=name, description=desc, price=0, sell_price=0, rarity=2,
+                           category=cat, stock=-1, added_by=0, ap_cost=0, damage=0, heal=0)
+        await conn.execute(
+            "UPDATE items SET sell_price = 0, market_ok = 0, is_available = 0 WHERE name = ?",
+            (name,))
+    if not await get_item_by_name(config.FIRE_TALISMAN_NAME):
+        await add_item(name=config.FIRE_TALISMAN_NAME,
+                       description="Талисман памяти: маленький кулон-дерево. +1 регенерация за ход, "
+                                   "пока надет. Получается один раз за пожертвования Древу.",
+                       price=0, sell_price=0, rarity=3, category="equipment", stock=-1,
+                       added_by=0, ap_cost=0, damage=0, heal=0, armor=0)
+    tal = await get_item_by_name(config.FIRE_TALISMAN_NAME)
+    await conn.execute(
+        "UPDATE items SET equip_slot = 'talisman', sell_price = 0, market_ok = 0, "
+        "is_available = 0 WHERE id = ?", (tal["id"],))
+    await conn.commit()
+
+
+BEAR_REF = "bear"
+
+
+def _berry_ref(item_id: int) -> str:
+    return f"item:{int(item_id)}"
+
+
+async def ensure_forest_berry_pool():
+    """Таблица ягод поиска по зонам (как у грибов): шансы правит админ. Засев — один раз."""
+    conn = await get_db()
+    await conn.execute(
+        "CREATE TABLE IF NOT EXISTS forest_berry_zone (area TEXT NOT NULL, ref TEXT NOT NULL, "
+        "item_id INTEGER, chance INTEGER NOT NULL DEFAULT 0, admin_tuned INTEGER NOT NULL DEFAULT 0, "
+        "PRIMARY KEY (area, ref))")
+    if not await get_setting("forest_berry_pool_v1"):
+        for area, entries in config.FOREST_BERRY_TABLE.items():
+            for name, pct in entries:
+                if name == "bear":
+                    await conn.execute(
+                        "INSERT OR IGNORE INTO forest_berry_zone (area, ref, item_id, chance) "
+                        "VALUES (?, ?, NULL, ?)", (area, BEAR_REF, int(pct)))
+                    continue
+                item = await get_item_by_name(name)
+                if item:
+                    await conn.execute(
+                        "INSERT OR IGNORE INTO forest_berry_zone (area, ref, item_id, chance) "
+                        "VALUES (?, ?, ?, ?)", (area, _berry_ref(item["id"]), item["id"], int(pct)))
+        await conn.commit()
+        await set_setting("forest_berry_pool_v1", "1")
+    # Медведь: включаем один раз; после этого админ решает сам (флаг в настройках).
+    if not await get_setting("bear_enabled_v1"):
+        await conn.execute("UPDATE forest_enemies SET enabled = 1 WHERE key = 'bear'")
+        await conn.commit()
+        await set_setting("bear_enabled_v1", "1")
+
+
+async def get_berry_pool(area: str) -> list:
+    """Строки пула ягод зоны: [{'ref', 'name', 'chance', 'item_id'}] в порядке добавления."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT z.ref, z.item_id, z.chance, i.name FROM forest_berry_zone z "
+        "LEFT JOIN items i ON i.id = z.item_id WHERE z.area = ? ORDER BY z.rowid", (area,))
+    out = []
+    for r in await cur.fetchall():
+        name = "Медведь" if r["ref"] == BEAR_REF else (r["name"] or f"#{r['item_id']}")
+        out.append({"ref": r["ref"], "name": name, "chance": int(r["chance"] or 0),
+                    "item_id": r["item_id"]})
+    return out
+
+
+async def berry_zone_total(area: str) -> int:
+    return sum(r["chance"] for r in await get_berry_pool(area))
+
+
+async def set_berry_chance(area: str, ref: str, chance: int) -> bool:
+    conn = await get_db()
+    cur = await conn.execute(
+        "UPDATE forest_berry_zone SET chance = ?, admin_tuned = 1 WHERE area = ? AND ref = ?",
+        (max(0, min(100, int(chance))), area, ref))
+    await conn.commit()
+    return cur.rowcount > 0
+
+
+async def add_berry_to_zone(area: str, item_id: int, chance: int) -> bool:
+    conn = await get_db()
+    cur = await conn.execute(
+        "INSERT OR IGNORE INTO forest_berry_zone (area, ref, item_id, chance, admin_tuned) "
+        "VALUES (?, ?, ?, ?, 1)", (area, _berry_ref(item_id), item_id, max(0, min(100, int(chance)))))
+    await conn.commit()
+    return cur.rowcount > 0
+
+
+async def remove_berry_from_zone(area: str, ref: str) -> bool:
+    conn = await get_db()
+    cur = await conn.execute(
+        "DELETE FROM forest_berry_zone WHERE area = ? AND ref = ?", (area, ref))
+    await conn.commit()
+    return cur.rowcount > 0
+
+
+async def get_berry_candidates(area: str) -> list:
+    """Ресурсы, которых ещё нет в пуле зоны (для «Добавить из списка»)."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT id, name, sell_price FROM items WHERE category = 'resource' "
+        "AND id NOT IN (SELECT item_id FROM forest_berry_zone WHERE area = ? AND item_id IS NOT NULL) "
+        "ORDER BY name", (area,))
+    return await cur.fetchall()
+
+
+async def create_berry_item(area: str, name: str, sell_price: int, chance: int,
+                            description: str = None, added_by: int = None) -> int:
+    """Создаёт новую ягоду: ресурс вне магазина, цена продажи 0 (только пожертвование не нужно).
+    Добавляет в пул зоны. Возвращает id предмета или 0, если такое имя уже есть."""
+    if await get_item_by_name(name):
+        return 0
+    await add_item(name=name, description=description or "Ягода леса.", price=0,
+                   sell_price=int(sell_price), rarity=1, category="resource", stock=-1,
+                   added_by=added_by, ap_cost=0, damage=0, heal=0)
+    item = await get_item_by_name(name)
+    conn = await get_db()
+    await conn.execute("UPDATE items SET is_available = 0, market_ok = 0 WHERE id = ?", (item["id"],))
+    await conn.commit()
+    await add_berry_to_zone(area, item["id"], chance)
+    return int(item["id"])
+
+
 async def ensure_forest_berry_items():
     """Ягоды (горсть) и шкура медведя: предметы-ресурсы вне магазина. Идемпотентно."""
     specs = (
@@ -9873,6 +10132,8 @@ async def ensure_forest_enemies():
     await ensure_forest_berry_items()
     await ensure_clan_cape_item()
     await ensure_berry_candy_recipe()
+    await ensure_fire_tree_items()
+    await ensure_forest_berry_pool()
     conn = await get_db()
     await conn.execute("DELETE FROM forest_enemies WHERE key = 'wolf'")
     await conn.commit()
@@ -10321,6 +10582,81 @@ async def get_source_enemy_drops(source: str, enemy_id: int) -> list:
     except (json.JSONDecodeError, TypeError):
         return []
     return drops if isinstance(drops, list) else []
+
+
+ENEMY_PLACE_TITLES = {"forest": "лес", "fishing": "водоём", "mine": "Железная копь",
+                      "logging": "лесозаготовка", "firelab": "Огненный Лабиринт"}
+AREA_TITLES = {"glade": "опушка леса", "clearing": "прогалина леса"}
+WATER_TITLES = {"reservoir": "водохранилище"}
+
+
+def _has_drop(drops_raw, item_id: int, name: str) -> bool:
+    try:
+        drops = json.loads(drops_raw or '[]')
+    except (TypeError, ValueError):
+        return False
+    if not isinstance(drops, list):
+        return False
+    return any(isinstance(d, dict) and (d.get('item_id') == item_id or d.get('item') == name)
+               for d in drops)
+
+
+async def get_item_sources(item_id: int) -> list:
+    """Откуда получить предмет: строки для карточки «Хранилища» (видно только админу)."""
+    item = await get_item(item_id)
+    if not item:
+        return []
+    name = item['name']
+    conn = await get_db()
+    out = []
+
+    for source, table in ENEMY_SOURCE_TABLES.items():
+        cur = await conn.execute(f"SELECT name, drops FROM {table} WHERE enabled = 1 ORDER BY id")
+        for r in await cur.fetchall():
+            if _has_drop(r['drops'], item_id, name):
+                out.append(f"враг «{r['name']}» — {ENEMY_PLACE_TITLES.get(source, source)}")
+    cur = await conn.execute("SELECT name, drops FROM dungeon_enemies "
+                             "WHERE drops IS NOT NULL AND drops != '[]' ORDER BY id")
+    for r in await cur.fetchall():
+        if _has_drop(r['drops'], item_id, name):
+            out.append(f"враг «{r['name']}» — подземелье")
+
+    cur = await conn.execute("SELECT zone FROM forest_mushrooms WHERE item_id = ? AND excluded = 0",
+                             (item_id,))
+    for r in await cur.fetchall():
+        out.append(f"гриб леса — {AREA_TITLES.get(r['zone'], r['zone'])}")
+    for area in AREA_TITLES:
+        for row in await get_berry_pool(area):
+            if row['item_id'] == item_id:
+                out.append(f"ягоды леса — {AREA_TITLES[area]}, шанс {row['chance']}%")
+
+    cur = await conn.execute("SELECT water FROM water_fish WHERE item_id = ?", (item_id,))
+    for r in await cur.fetchall():
+        out.append(f"рыбалка — {WATER_TITLES.get(r['water'], 'водоём')}")
+    cur = await conn.execute("SELECT water FROM water_junk WHERE name = ?", (name,))
+    for r in await cur.fetchall():
+        out.append(f"рыбалка, находка — {WATER_TITLES.get(r['water'], 'водоём')}")
+
+    if any(n == name for n, _ in config.FIRE_LAB_FISH_TABLE):
+        out.append("Огненный Лабиринт — колодец, улов")
+    if any(n == name for n, _ in config.FIRE_LAB_NOBAIT_FIND):
+        out.append("Огненный Лабиринт — колодец без наживки")
+    if name == config.FIRE_ORE_NAME:
+        out.append(f"Железная копь — добыча киркой, шанс {config.FIRE_ORE_CHANCE}%")
+    for offer in config.FIRE_EXCHANGE_OFFERS:
+        if isinstance(offer[0], str):
+            give_text, get = f"{offer[1]} «{offer[0]}»", offer[2]
+        else:
+            give_text = " + ".join(f"{q} «{nm}»" for nm, q in offer[0])
+            get = offer[1]
+        if get == name:
+            out.append(f"праздничная лавка Лабиринта — за {give_text}")
+
+    cur = await conn.execute("SELECT name FROM recipes WHERE result_item_name = ? ORDER BY id", (name,))
+    for r in await cur.fetchall():
+        out.append(f"крафт по рецепту «{r['name']}»")
+
+    return list(dict.fromkeys(out))
 
 
 async def set_source_enemy_drops(source: str, enemy_id: int, drops: list):
@@ -12816,8 +13152,19 @@ async def ensure_dungeon_shop_items():
     return added
 
 
+async def _rename_spoiled_food():
+    """«Испорченная рыба» → общее «Испорченная еда» (одно имя для любой испорченной еды)."""
+    conn = await get_db()
+    old = await get_item_by_name("Испорченная рыба")
+    if old and not await get_item_by_name(config.FIRE_SPOILED_FOOD_NAME):
+        await conn.execute("UPDATE items SET name = ? WHERE id = ?",
+                           (config.FIRE_SPOILED_FOOD_NAME, old["id"]))
+        await conn.commit()
+
+
 async def ensure_life_items():
     """Идемпотентно добавляет предметы жилья, мебели, семян, ресурсов и продовольствия."""
+    await _rename_spoiled_food()
     conn = await get_db()
     added = False
 
@@ -12872,7 +13219,7 @@ async def ensure_life_items():
          300, 150, 3, "consumable", -1, 45, None, 0),
         ("Жареный налим", "Праздничный ужин: жареный налим. +55 HP в бою. Срок годности 4 суток.",
          440, 220, 3, "consumable", -1, 55, None, 0),
-        ("Испорченная рыба", "Протухшая рыба всех видов. Слегка восстанавливает HP, но навлекает несварение.",
+        (config.FIRE_SPOILED_FOOD_NAME, "Протухшая еда всех видов. Слегка восстанавливает HP, но навлекает несварение.",
          1, 0, 1, "consumable", -1, 5, None, 0),
         ("Яблоко", "Свежее яблоко из кадки. +15 HP в бою. Иногда из него выпадает семечко.",
          20, 10, 1, "consumable", -1, 15, None, 0),
@@ -14238,7 +14585,7 @@ async def process_food_expiry(user_id: int) -> int:
     )
     rows = await cursor.fetchall()
     converted = 0
-    spoiled_item = await get_item_by_name("Испорченная рыба")
+    spoiled_item = await get_item_by_name(config.FIRE_SPOILED_FOOD_NAME)
     if not spoiled_item:
         # на случай если ещё не заведён
         cur = await conn.execute("SELECT id FROM items WHERE name LIKE 'Испорченный%' LIMIT 1")

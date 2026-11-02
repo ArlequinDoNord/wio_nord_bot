@@ -332,8 +332,8 @@ async def news_write_body(message: Message, state: FSMContext):
     if not body:
         await message.answer("❌ Текст не может быть пустым. Напиши его:")
         return
-    if len(body) > 3000:
-        await message.answer("❌ Текст новости не может быть длиннее 3000 символов. Сократи:")
+    if len(body) > 3800:
+        await message.answer("❌ Текст новости не может быть длиннее 3800 символов. Сократи:")
         return
     await state.update_data(body=body)
     await state.set_state(NewsWrite.photo)
@@ -458,8 +458,8 @@ async def news_edit_body(message: Message, state: FSMContext):
         await message.answer("Редактирование отменено.")
         return
     if new_body and new_body != "-":
-        if len(new_body) > 3000:
-            await message.answer("❌ Текст новости не может быть длиннее 3000 символов. Сократи:")
+        if len(new_body) > 3800:
+            await message.answer("❌ Текст новости не может быть длиннее 3800 символов. Сократи:")
             return
         await update_news(news_id, body=new_body)
     await state.clear()

@@ -1051,6 +1051,10 @@ async def storage_item(callback: CallbackQuery, state: FSMContext):
         if item.get('housing_slots'):
             hline += (f"{', ' if hline else ''}слотов {item['housing_slots']}")
         text += f"\n🏠 Жильё: {hline}\n"
+    from database.db import get_item_sources
+    sources = await get_item_sources(item_id)
+    if sources:
+        text += "\n📍 Откуда получить:\n" + "\n".join(f"• {s}" for s in sources) + "\n"
 
     rows = []
     if item.get('loot_only'):
@@ -1948,6 +1952,19 @@ async def edit_item_set_weapon_effect(callback: CallbackQuery, state: FSMContext
     await callback.message.answer(f"✅ Эффект оружия обновлён: {label}")
 
 
+def _after_photo_markup(item_id: int, category: str):
+    """Куда вернуться после картинки: к товарам категории, к товару или к категориям."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    label = ITEM_CATEGORIES.get(category, category or "товары")
+    rows = [
+        [InlineKeyboardButton(text=f"📦 К товарам: {label}",
+                              callback_data=f"storage:cat:{category}:page:0")],
+        [InlineKeyboardButton(text="🛒 К товару", callback_data=f"storage:item:{item_id}")],
+        [InlineKeyboardButton(text="⬅️ К категориям", callback_data="storage:cats")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 @router.message(AdminEditItem.photo)
 async def edit_item_photo(message: Message, state: FSMContext):
     data = await state.get_data()
@@ -1961,7 +1978,8 @@ async def edit_item_photo(message: Message, state: FSMContext):
         await update_item(item_id, photo_file_id=None)
         await log_action(message.from_user.id, 'edit_item', None, f"item_id={item_id} photo cleared")
         await state.clear()
-        await message.answer("✅ Картинка убрана.")
+        await message.answer("✅ Картинка убрана.",
+                             reply_markup=_after_photo_markup(item_id, item.get('category')))
         return
     if not message.photo:
         await message.answer("❌ Отправь именно фото (или «-» для очистки).")
@@ -1970,7 +1988,8 @@ async def edit_item_photo(message: Message, state: FSMContext):
     await update_item(item_id, photo_file_id=file_id)
     await log_action(message.from_user.id, 'edit_item', None, f"item_id={item_id} photo updated")
     await state.clear()
-    await message.answer(f"✅ Картинка товара «{item['name']}» обновлена.")
+    await message.answer(f"✅ Картинка товара «{item['name']}» обновлена.",
+                         reply_markup=_after_photo_markup(item_id, item.get('category')))
 
 
 @router.callback_query(F.data == "field:drink")
@@ -7760,6 +7779,7 @@ async def _forest_zone_view(message, area: str) -> tuple:
             InlineKeyboardButton(text="🎲 Шанс кабана", callback_data=f"forest:zset:{area}:boar_chance"),
             InlineKeyboardButton(text="🔁 Гарантия", callback_data=f"forest:zset:{area}:boar_every"),
         ])
+    rows.append([InlineKeyboardButton(text="🫐 Ягоды зоны", callback_data=f"berry:zone:{area}")])
     rows.append([InlineKeyboardButton(text="⬅️ К зонам леса", callback_data="admin:forest")])
     return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
 

@@ -479,7 +479,22 @@ async def mine_dig(callback: CallbackQuery):
         head = "⛏ ЖЕЛЕЗНАЯ КОПЬ"
         ap_block = f"\n\n{await _ap_line(user_id)}"
         result_kb = _result_markup(MINE_TOKEN.get(user_id, ""))
-        if random.random() * 100 < chance:
+        from config import FIRE_ORE_NAME, FIRE_ORE_CHANCE
+        from database.db import tree_collect_allowed, tree_record_collect
+        flame = None
+        if (await tree_collect_allowed(user_id, FIRE_ORE_NAME)
+                and random.random() * 100 < FIRE_ORE_CHANCE):
+            flame = await get_item_by_name(FIRE_ORE_NAME)
+        if flame:
+            await add_inventory_item(user_id, flame['id'], 1)
+            await tree_record_collect(user_id, FIRE_ORE_NAME)
+            await log_activity(user_id, "mine", f"Добыл «{flame['name']}»")
+            text = (
+                f"{head}\n\n"
+                "В породе блеснул жар — из камня выкололся тёплый кусок "
+                f"пламенной руды!\n\n🎒 Добыча: «{flame['name']}» — в инвентарь."
+            ) + ap_block
+        elif random.random() * 100 < chance:
             ore = await get_item_by_name(MINE_ORE_NAME)
             if ore:
                 await add_inventory_item(user_id, ore['id'], 1)

@@ -73,8 +73,8 @@ async def run():
           "long_text" in src and "> 900" in src)
     check("news_view: текстовые выпуски > 3900 уходят отдельным сообщением",
           "> 3900" in src)
-    check("news_write: лимит длины 3000",
-          "3000 символов" in src)
+    check("news_write: лимит длины 3800",
+          "3800 символов" in src)
 
     # ── 2. Снежинка спец отряда ──
     check("wing_label(4) = снежинка", wing_label("4") == "❄️ 4 СО «Polaris» (спец отряд)")
