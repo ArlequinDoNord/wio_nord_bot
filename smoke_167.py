@@ -291,14 +291,14 @@ async def main():
         print("\n7. Не хватает НМ")
         await update_user(MEMBER2, nordmarks=1)
         await upsert_clan_shop_item(clan_id, item1["id"], 5, -1)
+        stock_before = int((await get_clan_shop_item(clan_id, item1["id"]))['stock'])
         ok_p, msg_p, _ = await buy_clan_shop_item(clan_id, MEMBER2, item1["id"])
         check("не хватает НМ: отказ без выдачи предмета",
               ok_p is False and "Не хватает НМ" in str(msg_p))
         # в транзакциях From_user: счётчик не тронут у MEMBER2? (у него покупка была ok_m) — >=1
         # Предмет не выдан вторым: (qty не изменилась)
         row = await get_clan_shop_item(clan_id, item1["id"])
-        check("остаток не уменьшился при нехватке НМ", int(row['stock']) == -1
-              or int(row['stock']) >= 0)
+        check("остаток не уменьшился при нехватке НМ", int(row['stock']) == stock_before)
 
         print("\n8. Скрытие и удаление позиции")
         await set_clan_shop_active(clan_id, item1["id"], False)

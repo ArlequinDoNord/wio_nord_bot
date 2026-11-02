@@ -22,16 +22,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
 async def main():
-    passed = failed = 0
-
-    def check(name, cond):
-        nonlocal passed, failed
-        if cond:
-            passed += 1
-            print(f"  OK  {name}")
-        else:
-            failed += 1
-            print(f"  FAIL {name}")
+    from tests_support import Checker, FakeCB
+    check = Checker()
 
     import database.db as db
     import config
@@ -116,51 +108,7 @@ async def main():
 
     print("\n5. Экран комнаты Лампы (FakeCB)")
 
-    class FakeMsg:
-        text = None
-        kb = None
-        chat = type("C", (), {"id": 177001})()
-        message_id = 42
-
-        async def edit_text(self, t=None, reply_markup=None, **kw):
-            self.text = t
-            self.kb = reply_markup
-            return True
-        async def answer(self, *a, **kw):
-            if a and isinstance(a[0], str):
-                self.text = a[0]
-            if kw.get('reply_markup'):
-                self.kb = kw['reply_markup']
-            return True
-
-    class FakeBot:
-        last_text = None
-        last_kb = None
-
-        async def send_message(self, chat_id, text, **kw):
-            FakeBot.last_text = text
-            FakeBot.last_kb = kw.get("reply_markup")
-            return type("M", (), {"message_id": 43,
-                                  "chat": type("C", (), {"id": chat_id})()})()
-
-        async def send_photo(self, *a, **kw):
-            FakeBot.last_text = kw.get("caption") or (a[1] if len(a) > 1 else "")
-            FakeBot.last_kb = kw.get("reply_markup")
-            return type("M", (), {"message_id": 44,
-                                  "chat": type("C", (), {"id": (a[0] or 0)})()})()
-
-        async def edit_message_reply_markup(self, **kw):
-            return True
-
-    class FakeCB:
-        def __init__(self, uid, data):
-            self.from_user = type("U", (), {"id": uid})()
-            self.data = data
-            self.message = FakeMsg()
-            self.bot = FakeBot()
-        async def answer(self, *a, **kw):
-            return True
-
+    from tests_support import FakeBot
     slots = await get_housing_slots(UID)
     slot = slots.get(0)
     ht = (await get_player_housing(UID))["housing_type"]
@@ -180,7 +128,7 @@ async def main():
     owners = await get_lantern_owners()
     check("пилот с Лампой в списке владельцев", UID in owners)
 
-    print(f"\nИТОГО: {passed} passed, {failed} failed")
+    failed = check.summary()
     await close_db()
     if failed:
         sys.exit(1)

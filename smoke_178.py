@@ -24,16 +24,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
 async def main():
-    passed = failed = 0
-
-    def check(name, cond):
-        nonlocal passed, failed
-        if cond:
-            passed += 1
-            print(f"  OK  {name}")
-        else:
-            failed += 1
-            print(f"  FAIL {name}")
+    from tests_support import Checker
+    check = Checker()
 
     import database.db as db
     import config
@@ -159,7 +151,7 @@ async def main():
     check("роспуск клана чистит medit-table",
           (await cur.fetchone())['c'] == 0)
 
-    print(f"\nИТОГО: {passed} passed, {failed} failed")
+    failed = check.summary()
     await close_db()
     if failed:
         sys.exit(1)

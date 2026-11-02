@@ -6185,10 +6185,12 @@ async def get_region_stats():
 
 
 async def get_users_for_rank_promotion():
-    """Игроки, чьи войска достаточны для звания выше «Старший Лейтенант»,
-    но звание ещё не присвоено через админку (список-подсказка для админа)."""
+    """Игроки, чьи войска достаточны для звания выше «Старший Лейтенант»
+    и выше уже присвоенного админом (если оно есть). Пилот возвращается в список,
+    когда дорастает до следующего звания, — повторное повышение возможно."""
     from config import RANKS, AUTO_RANK_NAMES
     auto_cap = next((req for name, req in RANKS if name == AUTO_RANK_NAMES[-1]), 0)
+    rank_order = [name for name, _ in RANKS]
     result = []
     conn = await get_db()
     cursor = await conn.execute(
@@ -6196,8 +6198,6 @@ async def get_users_for_rank_promotion():
         (auto_cap,)
     )
     for row in await cursor.fetchall():
-        if row['promoted_rank']:
-            continue
         next_rank = None
         for rank_name, required in RANKS:
             if rank_name in AUTO_RANK_NAMES:
@@ -6206,6 +6206,10 @@ async def get_users_for_rank_promotion():
                 next_rank = rank_name
             else:
                 break
+        assigned = row['promoted_rank']
+        if next_rank and assigned in rank_order and \
+                rank_order.index(assigned) >= rank_order.index(next_rank):
+            continue
         if next_rank:
             result.append({
                 "user_id": row['user_id'],

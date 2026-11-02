@@ -23,16 +23,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
 async def main():
-    passed = failed = 0
-
-    def check(name, cond):
-        nonlocal passed, failed
-        if cond:
-            passed += 1
-            print(f"  OK  {name}")
-        else:
-            failed += 1
-            print(f"  FAIL {name}")
+    from tests_support import Checker, FakeCB
+    check = Checker()
 
     import database.db as db
     import config
@@ -132,9 +124,6 @@ async def main():
                   for i in ings]
     check("пирог: тыква+мука+соль+сахар+яйца",
           set(ings_names) == {"Тыква", "Мука", "Соль", "Сахар", config.FIRE_EGGS_NAME})
-    cur = await conn.execute(
-        "SELECT * FROM recipes WHERE name = ?", ("Обжигущая трость",)) \
-        if False else None
     cur = await conn.execute(
         "SELECT * FROM recipes WHERE name = ?", ("Обжигающая трость",))
     cane_r = await cur.fetchone()
@@ -242,50 +231,6 @@ async def main():
                   'is_boss': False}
     await fe._save_enemy(sid, enemy_stub)
 
-    class FakeBot:
-        last_text = None
-        last_kb = None
-        async def send_message(self, chat_id, text, **kw):
-            FakeBot.last_text = text
-            FakeBot.last_kb = kw.get('reply_markup')
-            return type("M", (), {"message_id": 43,
-                                  "chat": type("C", (), {"id": chat_id})()})()
-        async def send_photo(self, *a, **kw):
-            FakeBot.last_text = kw.get('caption') or (a[1] if len(a) > 1 else "")
-            FakeBot.last_kb = kw.get('reply_markup')
-            return type("M", (), {"message_id": 44,
-                                  "chat": type("C", (), {"id": (a[0] or 0)})()})()
-        async def delete_message(self, *a, **kw):
-            return True
-        async def edit_message_reply_markup(self, **kw):
-            return True
-
-    class FakeMsg:
-        text = None
-        kb = None
-        chat = type("C", (), {"id": 176001})()
-        message_id = 42
-        bot = FakeBot()
-        async def edit_text(self, t=None, reply_markup=None, **kw):
-            self.text = t
-            self.kb = reply_markup
-            return True
-        async def answer(self, *a, **kw):
-            if a and isinstance(a[0], str):
-                self.text = a[0]
-            if kw.get('reply_markup'):
-                self.kb = kw['reply_markup']
-            return True
-
-    class FakeCB:
-        def __init__(self, uid, data):
-            self.from_user = type("U", (), {"id": uid})()
-            self.data = data
-            self.message = FakeMsg()
-            self.bot = FakeBot()
-        async def answer(self, *a, **kw):
-            return True
-
     from bot.handlers import fire_event as fe
     cb = FakeCB(UID, f"fireevent:potion:{sid}:potion1")
     await fe.fire_event_potion_cb(cb)
@@ -327,14 +272,8 @@ async def main():
             hidden_ok = False
             break
     check("все прочие праздничные предметы тоже скрыты", hidden_ok)
-    visible_fish = await conn.execute(
-        "SELECT COUNT(*) AS c FROM items WHERE category = 'fishing' "
-        "AND is_available = 1")
-    cnt_visible = int((await visible_fish.fetchone())['c'] or 0)
-    check(f"в магазине по категории fishing видно {cnt_visible} (праздничных 0)",
-          cnt_visible >= 0)  # старые рыбы могут быть видимы — важен только ноль праздничных
 
-    print(f"\nИТОГО: {passed} passed, {failed} failed")
+    failed = check.summary()
     await close_db()
     if failed:
         sys.exit(1)

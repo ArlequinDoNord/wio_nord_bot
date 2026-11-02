@@ -22,16 +22,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
 async def main():
-    passed = failed = 0
-
-    def check(name, cond):
-        nonlocal passed, failed
-        if cond:
-            passed += 1
-            print(f"  OK  {name}")
-        else:
-            failed += 1
-            print(f"  FAIL {name}")
+    from tests_support import Checker, FakeCB
+    check = Checker()
 
     import database.db as db
     import config
@@ -118,50 +110,6 @@ async def main():
 
     print("\n4. Колодец: полное лечение + сброс попыток")
 
-    class FakeBot:
-        last_text = None
-        last_kb = None
-        async def send_message(self, chat_id, text, **kw):
-            FakeBot.last_text = text
-            FakeBot.last_kb = kw.get('reply_markup')
-            return type("M", (), {"message_id": 43,
-                                  "chat": type("C", (), {"id": chat_id})()})()
-        async def send_photo(self, *a, **kw):
-            FakeBot.last_text = kw.get('caption') or (a[1] if len(a) > 1 else "")
-            FakeBot.last_kb = kw.get('reply_markup')
-            return type("M", (), {"message_id": 44,
-                                  "chat": type("C", (), {"id": (a[0] or 0)})()})()
-        async def delete_message(self, *a, **kw):
-            return True
-        async def edit_message_reply_markup(self, **kw):
-            return True
-
-    class FakeMsg:
-        text = None
-        kb = None
-        chat = type("C", (), {"id": 175001})()
-        message_id = 42
-        bot = FakeBot()
-        async def edit_text(self, t=None, reply_markup=None, **kw):
-            self.text = t
-            self.kb = reply_markup
-            return True
-        async def answer(self, *a, **kw):
-            if a and isinstance(a[0], str):
-                self.text = a[0]
-            if kw.get('reply_markup'):
-                self.kb = kw['reply_markup']
-            return True
-
-    class FakeCB:
-        def __init__(self, uid, data):
-            self.from_user = type("U", (), {"id": uid})()
-            self.data = data
-            self.message = FakeMsg()
-            self.bot = FakeBot()
-        async def answer(self, *a, **kw):
-            return True
-
     sid2 = await create_fire_lab_session(UID, 50)
     conn = await db.get_db()
     await conn.execute("UPDATE fire_lab_sessions SET hp = 7 WHERE id = ?", (sid2,))
@@ -201,11 +149,15 @@ async def main():
           and not hasattr(config, "FIRE_LAB_CHEST_MAX"))
     check("_enter_chest/_roll_chest_loot удалены из хендлера",
           not hasattr(fe, "_enter_chest") and not hasattr(fe, "_roll_chest_loot"))
-    check("_roll_room больше не возвращает 'chest'",
-          "chest" not in (await fe._roll_room(
-              UID, {**session_stub, 'steps': 0, 'tree_visits': 0, 'well_visits': 0,
-                    'boss_encounters': 0}, "L", []) for _ in range(1))
-          if False else True)  # структурная проверка выше
+    stub = {'steps': 0, 'tree_visits': 0, 'well_visits': 0, 'chest_visits': 0,
+            'boss_encounters': 0, 'blessing': 0, 'hp': 100, 'hp_max': 100}
+    rolled = set()
+    hist = []
+    for _ in range(200):
+        hist.append("L")
+        stub['steps'] += 1
+        rolled.add(await fe._roll_room(UID, stub, "L", hist))
+    check("_roll_room не возвращает 'chest' (200 бросков)", "chest" not in rolled)
 
     print("\n7. Финиш 25 комнат: статус finished + Тир +1")
     await end_fire_lab_session(sid2, 'left')
@@ -224,7 +176,7 @@ async def main():
     check("текст: «Огненное эхо усил илось» в экране финала",
           "Огненное эхо усилилось" in (step_cb.message.text or ""))
 
-    print(f"\nИТОГО: {passed} passed, {failed} failed")
+    failed = check.summary()
     await close_db()
     if failed:
         sys.exit(1)

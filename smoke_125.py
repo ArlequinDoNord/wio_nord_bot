@@ -163,10 +163,8 @@ async def main():
         check("заблокированные слоты помечены",
               sum(1 for c in cbs if c.startswith("eqlock:")) == 2, cbs)
         check("возврат к категориям", "inventory:list" in cbs)
-        check("кнопка «🔙 К снаряжению» ведёт в inventory:eq",
-              "inventory:eq" in [b.callback_data for row in markup.inline_keyboard
-                                 for b in row]
-              or True)  # на главной вкладке её нет — она на экране слота
+        check("на главной вкладке кнопки «К снаряжению» нет (она на экране слота)",
+              "inventory:eq" not in cbs)
         check("все callback_data короче 64 байт",
               all(len(c.encode()) <= 64 for c in cbs),
               [c for c in cbs if len(c.encode()) > 64])

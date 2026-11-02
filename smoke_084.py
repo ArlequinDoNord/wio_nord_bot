@@ -173,7 +173,15 @@ async def run():
     check("15000 без звания → кандидат, next=Полковник",
           cand_by_uid.get(34007, {}).get('next_rank') == "Полковник")
     check("4040 (Ст.Лейтенант) НЕ кандидат", 34003 not in cand_by_uid)
-    check("назначенные админом исключены", 34004 not in cand_by_uid and 34002 not in cand_by_uid)
+    await mk(34010, 8500)
+    await promote_user_rank(34010, "Капитан", 1)
+    await mk(34011, 8500)
+    await promote_user_rank(34011, "Майор", 1)
+    cands2 = await get_users_for_rank_promotion()
+    by2 = {c['user_id']: c for c in cands2}
+    check("Капитан по званию, войска дошли до Майора → снова кандидат (next=Майор)",
+          by2.get(34010, {}).get('next_rank') == "Майор")
+    check("Майор по званию при войсках Майора → не кандидат", 34011 not in by2)
 
     # ── 7. Эмодзи новых званий ──
     check("эмодзи Ефрейтора не дефолт", get_rank_emoji("Ефрейтор") != "👤")

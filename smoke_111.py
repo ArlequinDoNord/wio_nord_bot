@@ -330,7 +330,7 @@ async def main():
     check("экран поляны с кабаном", "Кабан: вкл" in text2)
     check("на поляне туристы нет", "туристы: нет" in text2)
     check("кнопки зон есть в меню",
-          "forest:zone:glade" in str(markup) or True)
+          "berry:zone:glade" in str(markup))
 
     text3, _ = await admin._admin_forest_zones_view(cb.message)
     check("список зон показывает обе", "Опушка" in text3 or "опушка" in text3.lower())

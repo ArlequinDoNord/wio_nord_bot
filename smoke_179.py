@@ -96,8 +96,6 @@ async def main():
     await inc_fire_lab_tier(UID)
     await inc_fire_lab_tier(UID)
     e4 = fe._tier_enemy(crow, 4)
-    wire4 = next(d for d in e4['drops'] if d['item_id'] == dev and False) \
-        if False else None
     per0 = 0.08
     per4 = min(1.0, per0 * 1.08)
     check("перо ворона Тир 4: 8% → 8.64%",
@@ -155,7 +153,7 @@ async def main():
         async def answer(self, *a, **kw):
             return True
 
-    hp = int((await db.pilot_combat_stats_stub()) if False else 100)
+    hp = 100
     sid = await create_fire_lab_session(UID, hp)
     session = await get_active_fire_lab_session(UID)
     enemy = {
