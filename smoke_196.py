@@ -61,6 +61,10 @@ async def main():
     m_item = await get_item_by_name(mush)
     b_item = await get_item_by_name(berry)
     o_item = await get_item_by_name(ore)
+    ok_empty, _m, granted_empty = await tree_donate(UID, ore, qty=99)
+    check("без руды в инвентаре сдача не проходит", not ok_empty and not granted_empty)
+    check("без руды прогресс не растёт",
+          (await tree_donation_progress(UID))["items"][ore] == (0, 1))
     await add_inventory_item(UID, m_item['id'], 2)
     await add_inventory_item(UID, b_item['id'], 2)
     await add_inventory_item(UID, o_item['id'], 2)

@@ -9842,7 +9842,7 @@ async def tree_donate(user_id: int, name: str, qty: int = 1):
     item = await get_item_by_name(name)
     inv = await get_inventory_item(user_id, item["id"]) if item else None
     have = int(inv["quantity"] or 0) if inv else 0
-    qty = max(1, min(int(qty), left, have))
+    qty = min(int(qty), left, have)
     if qty <= 0:
         return False, f"У тебя нет «{name}».", False
     await remove_inventory_item(user_id, item["id"], qty)
