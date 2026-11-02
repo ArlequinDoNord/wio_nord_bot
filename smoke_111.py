@@ -166,7 +166,7 @@ async def main():
     expected_glade = {"Опёнок", "Подберёзовик", "Лисичка", "Белый гриб", "Бледная поганка"}
     check(f"опушка = 4 простых + поганка ({len(glade_names)})", glade_names == expected_glade)
     check("на опушке нет ежовика", "Ежовик гребенчатый" not in glade_names)
-    check("поляна = весь каталог (8)", len(clearing_names) == 8)
+    check("поляна = весь каталог (9, с огненным грибом)", len(clearing_names) == 9)
     check("поляна шире опушки", clearing_names > glade_names)
 
     g_zone = await get_forest_zone("glade")
@@ -249,7 +249,7 @@ async def main():
     pool_glade = await db.get_forest_mushroom_pool("glade")
     pool_clearing = await db.get_forest_mushroom_pool("clearing")
     check("пул сбора опушки = 5 грибов", len(pool_glade) == 5)
-    check("пул сбора поляны = 8 грибов", len(pool_clearing) == 8)
+    check("пул сбора поляны = 9 грибов", len(pool_clearing) == 9)
     check("пулы различаются",
           {r["name"] for r in pool_glade} != {r["name"] for r in pool_clearing})
 

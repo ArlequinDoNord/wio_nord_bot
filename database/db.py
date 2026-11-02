@@ -9939,6 +9939,39 @@ async def ensure_forest_berry_pool():
         await set_setting("bear_enabled_v1", "1")
 
 
+async def ensure_fire_mushroom_pool():
+    """Огненный гриб — на прогалину с весом 15; по 1 снимаем с пяти самых редких грибов. Один раз.
+
+    Пустота на прогалине — 0% (см. FOREST_EMPTY_BY_AREA): её 10% уходят грибу, остальные 5% — редким.
+    """
+    if await get_setting("fire_mushroom_pool_v1"):
+        return
+    item = await get_item_by_name(config.FIRE_MUSHROOM_NAME)
+    if not item:
+        return
+    conn = await get_db()
+    await conn.execute(
+        "INSERT OR IGNORE INTO forest_mushrooms (item_id, chance, kind, admin_tuned) "
+        "VALUES (?, 15, 'toxic', 1)", (item["id"],))
+    fm = await (await conn.execute(
+        "SELECT id, excluded FROM forest_mushrooms WHERE item_id = ?", (item["id"],))).fetchone()
+    if fm["excluded"]:
+        await set_setting("fire_mushroom_pool_v1", "1")
+        return
+    await conn.execute(
+        "INSERT OR IGNORE INTO forest_zone_pool (area, mushroom_id, chance) VALUES ('clearing', ?, 15)",
+        (fm["id"],))
+    rare = await (await conn.execute(
+        "SELECT zp.mushroom_id FROM forest_zone_pool zp WHERE zp.area = 'clearing' "
+        "AND zp.mushroom_id != ? ORDER BY zp.chance ASC, zp.mushroom_id LIMIT 5", (fm["id"],))).fetchall()
+    for row in rare:
+        await conn.execute(
+            "UPDATE forest_zone_pool SET chance = MAX(0, chance - 1) "
+            "WHERE area = 'clearing' AND mushroom_id = ?", (row["mushroom_id"],))
+    await conn.commit()
+    await set_setting("fire_mushroom_pool_v1", "1")
+
+
 async def get_berry_pool(area: str) -> list:
     """Строки пула ягод зоны: [{'ref', 'name', 'chance', 'item_id'}] в порядке добавления."""
     conn = await get_db()
@@ -10134,6 +10167,7 @@ async def ensure_forest_enemies():
     await ensure_berry_candy_recipe()
     await ensure_fire_tree_items()
     await ensure_forest_berry_pool()
+    await ensure_fire_mushroom_pool()
     conn = await get_db()
     await conn.execute("DELETE FROM forest_enemies WHERE key = 'wolf'")
     await conn.commit()

@@ -7744,7 +7744,8 @@ async def _forest_zone_view(message, area: str) -> tuple:
         lines.append("Кабан: выключен")
     rows = []
     if pool:
-        lines.append("\nГрибы зоны: числа — ВЕСА (делятся между собой, 10% — «пусто»).\n")
+        empty_pct = 0 if area == "clearing" else 10
+        lines.append(f"\nГрибы зоны: числа — ВЕСА (делятся между собой, {empty_pct}% — «пусто»).\n")
         for s in pool:
             kind_mark = "🍄" if (s.get('kind') or 'edible') == "edible" else "☠"
             lines.append(f"• {kind_mark} {s['name']} — вес {s['chance']}, "

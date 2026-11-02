@@ -305,7 +305,10 @@ def pick_forest_berry(pool_rows, r: float, rare_bonus: float = 0):
     return None
 
 
-def pick_forest_mushroom(pool_rows, r: float, rarity_bonus: float = 0):
+FOREST_EMPTY_BY_AREA = {"clearing": 0}
+
+
+def pick_forest_mushroom(pool_rows, r: float, rarity_bonus: float = 0, empty_chance: float = FOREST_EMPTY_CHANCE):
     """Гриб по броску r в [0, 100): FOREST_EMPTY_CHANCE % — пусто, остальное —
     шансы пула. Возвращает строку пула или None.
 
@@ -318,7 +321,7 @@ def pick_forest_mushroom(pool_rows, r: float, rarity_bonus: float = 0):
     rarity_bonus — процент от достижения «Тихий охотник»: сжимает окно «пусто»
     и раскрывает его на шансы пула.
     """
-    eff_empty = max(0.0, float(FOREST_EMPTY_CHANCE) * (100 - rarity_bonus) / 100)
+    eff_empty = max(0.0, float(empty_chance) * (100 - rarity_bonus) / 100)
     if r < eff_empty:
         return None
     total = sum(int(row['chance'] or 0) for row in pool_rows)
@@ -622,7 +625,8 @@ async def forest_cast(callback: CallbackQuery):
                 allowed_pool.append(_row)
         pool = allowed_pool
         rarity_pct = await get_achievement_bonus(user_id, "mushrooms", "rarity_pct")
-        row = pick_forest_mushroom(pool, random.random() * 100, rarity_bonus=rarity_pct)
+        row = pick_forest_mushroom(pool, random.random() * 100, rarity_bonus=rarity_pct,
+                                   empty_chance=FOREST_EMPTY_BY_AREA.get(area, FOREST_EMPTY_CHANCE))
         fresh = await get_user(user_id) or {}
         _ap = fresh.get('ap', 0) or 0
         _ap_max = fresh.get('ap_max', _ap) or _ap
