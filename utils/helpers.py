@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from config import RARITY_LEVELS, RARITY_EMOJI
+from utils.i18n import all_button_labels
 
 MOSCOW_TZ = timezone(timedelta(hours=3))
 
@@ -18,7 +19,7 @@ MAIN_MENU_TEXTS = {
     "📝 Сдать отчёт",
     "👑 Админ-панель",
     "🧱 Стена изречений",
-}
+} | all_button_labels()
 
 
 def is_main_menu_text(text: str) -> bool:

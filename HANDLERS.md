@@ -54,7 +54,7 @@
 
 | Модуль | Назначение | Роутеры | msg | cb | Неймспейсы `F.data` | FSM-классы |
 |---|---|---:|---:|---:|---|---|
-| `start.py` | — | `router` | 3 | 1 | `city:` | — |
+| `start.py` | — | `router` | 4 | 1 | `city:` | — |
 | `changelog.py` | Команда /changelog — «что нового» в боте. | `router` | 1 | 0 | — | — |
 | `profile.py` | — | `router` | 5 | 16 | `prof:`, `prof_sel_status:`, `profile:` | `ProfileStates` |
 | `bank.py` | — | `router` | 5 | 9 | `bank:` | `BankStates` |
@@ -98,7 +98,7 @@
 ### `start.py` — —
 
 - Роутеры: `router`
-- Хендлеры: message=3, callback_query=1
+- Хендлеры: message=4, callback_query=1
 - `F.data ==`: `city:menu`
 
 ### `changelog.py` — Команда /changelog — «что нового» в боте.

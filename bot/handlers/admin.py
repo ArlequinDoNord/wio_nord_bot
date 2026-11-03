@@ -710,7 +710,10 @@ async def show_admin_panel(user_id: int, to_edit: CallbackQuery = None, to_msg: 
         await to_msg.answer(text, reply_markup=markup)
 
 
-@router.message(F.text == "👑 Админ-панель")
+from utils.i18n import btn_labels
+
+
+@router.message(F.text.in_(btn_labels("btn.admin")))
 async def admin_panel(message: Message, state: FSMContext):
     await state.clear()
     user_id = message.from_user.id

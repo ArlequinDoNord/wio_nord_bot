@@ -128,7 +128,7 @@ async def run():
     src = inspect.getsource(H._housing_screen)
     check("city:menu in housing screen", "city:menu" in src)
     check("reply-кнопка «🏠 Жильё» обработана",
-          'F.text == "🏠 Жильё"' in inspect.getsource(H.housing_menu_reply))
+          'btn_labels("btn.housing")' in inspect.getsource(H.housing_menu_reply))
 
     # ── 6. fishing token guard ──
     from bot.handlers import fishing as F

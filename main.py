@@ -653,6 +653,9 @@ async def main():
     dp.include_router(duel_router)
     dp.include_router(mvd_router)
 
+    from utils.i18n import LangMiddleware
+    dp.update.outer_middleware(LangMiddleware())
+
     for r in (start_router, changelog_router, profile_router, bank_router, admin_router, admin_recipes_router, shop_router,
               inventory_router, reports_router, dungeon_router, pilots_router,
               polls_router, poll_archive_router, representative_router, library_router,

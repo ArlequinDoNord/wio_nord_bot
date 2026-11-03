@@ -236,7 +236,10 @@ async def profile_cmd(message: Message):
     await render_profile(message, message.from_user.id)
 
 
-@router.message(F.text == "Профиль")
+from utils.i18n import btn_labels
+
+
+@router.message(F.text.in_(btn_labels("btn.profile")))
 async def show_profile(message: Message):
     await render_profile(message, message.from_user.id)
 

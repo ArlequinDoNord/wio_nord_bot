@@ -562,7 +562,10 @@ async def unequip_slot_cb(callback: CallbackQuery):
     await _render_equip_slot(callback.message, user_id, slot)
 
 
-@router.message(F.text == "Инвентарь")
+from utils.i18n import btn_labels
+
+
+@router.message(F.text.in_(btn_labels("btn.inventory")))
 async def inventory_menu(message: Message):
     spoiled = await process_food_expiry(message.from_user.id)
     items = await get_inventory(message.from_user.id)

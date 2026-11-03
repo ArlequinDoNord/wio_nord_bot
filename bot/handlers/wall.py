@@ -140,7 +140,10 @@ def _post_date_short(created_at) -> str:
         return str(created_at)
 
 
-@router.message(F.text == "🧱 Стена изречений")
+from utils.i18n import btn_labels
+
+
+@router.message(F.text.in_(btn_labels("btn.wall")))
 async def wall_open_text(message: Message, state: FSMContext):
     await state.clear()
     await _show_wall(message, state, page=0)

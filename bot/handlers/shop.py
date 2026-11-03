@@ -196,7 +196,10 @@ async def shop_cmd(message: Message):
     await shop_menu(message)
 
 
-@router.message(F.text == "Магазин")
+from utils.i18n import btn_labels
+
+
+@router.message(F.text.in_(btn_labels("btn.shop")))
 async def shop_menu(message: Message):
     user = await get_user(message.from_user.id)
     if not user:

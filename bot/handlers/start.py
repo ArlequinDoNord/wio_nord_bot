@@ -7,7 +7,8 @@ from aiogram.fsm.context import FSMContext
 from database.db import (add_user, get_user, ensure_base_status, user_is_tourist,
                          get_all_locations, get_active_run, finalize_run_for,
                          get_latest_rep_speech, fire_event_visible)
-from keyboards.keyboards import main_menu_keyboard, city_keyboard
+from keyboards.keyboards import main_menu_keyboard, main_menu_kb, city_keyboard
+from utils.i18n import t, btn_labels
 from utils.permissions import is_admin
 from utils.helpers import resolve_image
 from config import VERSION, VERSION_NOTES
@@ -81,7 +82,7 @@ async def cmd_start(message: Message):
     else:
         await message.answer(welcome_text, reply_markup=start_markup, parse_mode="Markdown")
 
-    await message.answer("Выберите действие:", reply_markup=main_menu_keyboard(is_admin=admin_flag, is_pilot=pilot_flag))
+    await message.answer(t("menu.choose"), reply_markup=main_menu_keyboard(is_admin=admin_flag, is_pilot=pilot_flag))
 
 
 @router.message(Command("help"))
@@ -111,11 +112,11 @@ async def _city_caption() -> str:
     Речь — последнее обращение представителя (до REP_SPEECH_MAX_LEN символов),
     поэтому в подпись она помещается целиком вместе с заголовком.
     """
-    caption = "🏰 Город Аркхольм:"
+    caption = t("city.caption")
     speech = await get_latest_rep_speech()
     if not speech:
-        return caption + "\n\n📢 Речь представителя: пока не произнесена."
-    return (f"{caption}\n\n📢 Речь представителя\n{speech['text']}")
+        return caption + "\n\n" + t("city.speech_none")
+    return (f"{caption}\n\n{t('city.speech_title')}\n{speech['text']}")
 
 
 async def _city_photo():
@@ -127,7 +128,10 @@ async def _city_photo():
     return FSInputFile(resolve_image("city/arkholm"))
 
 
-@router.message(F.text == "Город")
+from utils.i18n import btn_labels
+
+
+@router.message(F.text.in_(btn_labels("btn.city")))
 async def show_city(message: Message, state: FSMContext):
     left_note = await _abandon_active_run_if_left(message.from_user.id, state)
     city_view = await _city_photo()
@@ -141,6 +145,18 @@ async def show_city(message: Message, state: FSMContext):
         reply_markup=city_keyboard(is_pilot=is_here_pilot, locations=locations,
                                    event_visible=db.fire_event_visible())
     )
+
+
+@router.message(F.text.in_(btn_labels("btn.lang")))
+async def toggle_language(message: Message, state: FSMContext):
+    from utils.i18n import current_lang, use_lang
+    uid = message.from_user.id
+    new_lang = "en" if current_lang() == "ru" else "ru"
+    await db.set_user_lang(uid, new_lang)
+    use_lang(new_lang)
+    key = "lang.switched_en" if new_lang == "en" else "lang.switched_ru"
+    from utils.i18n import t
+    await message.answer(t(key), reply_markup=await main_menu_kb(uid))
 
 
 async def _abandon_active_run_if_left(user_id: int, state: FSMContext) -> str | None:

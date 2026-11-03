@@ -101,7 +101,10 @@ def fmt_release(n) -> str:
             f"{n['body'] or ''}")
 
 
-@router.message(F.text == "📰 Новости Нордхайма")
+from utils.i18n import btn_labels
+
+
+@router.message(F.text.in_(btn_labels("btn.news")))
 async def news_tab(message: Message, user_id: int | None = None):
     """Вкладка «Новости Нордхайма» в главном меню и вход в здание «ГосСМИ».
 

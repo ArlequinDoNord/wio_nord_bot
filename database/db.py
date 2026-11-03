@@ -1147,6 +1147,7 @@ async def init_db():
     await _ensure_column(conn, "clan_members", "role", "TEXT NOT NULL DEFAULT 'member'")
     await _backfill_clan_member_roles()
     await _ensure_column(conn, "users", "promoted_rank", "TEXT")
+    await _ensure_column(conn, "users", "lang", "TEXT DEFAULT 'ru'")
     # Тратимый опыт: копится 1:1 с суточным фармом, не облагается налогом, звание
     # по нему НЕ считается (звание — по users.troops). Создан для будущего магазина
     # уникальных покупок: тратить можно, звания остаются.
@@ -6384,6 +6385,23 @@ async def backfill_rank_statuses():
         if await grant_all_rank_statuses(row['user_id'], rank) > 0:
             granted += 1
     return granted
+
+
+async def get_user_lang(user_id: int) -> str:
+    """Язык интерфейса пилота: 'ru' или 'en' (по умолчанию русский)."""
+    conn = await get_db()
+    cur = await conn.execute("SELECT lang FROM users WHERE user_id = ?", (user_id,))
+    row = await cur.fetchone()
+    lang = (row["lang"] if row else None) or "ru"
+    return lang if lang in ("ru", "en") else "ru"
+
+
+async def set_user_lang(user_id: int, lang: str) -> None:
+    if lang not in ("ru", "en"):
+        raise ValueError(f"Неизвестный язык: {lang}")
+    conn = await get_db()
+    await conn.execute("UPDATE users SET lang = ? WHERE user_id = ?", (lang, user_id))
+    await conn.commit()
 
 
 async def promote_user_rank(user_id: int, rank_name: str, promoted_by: int):

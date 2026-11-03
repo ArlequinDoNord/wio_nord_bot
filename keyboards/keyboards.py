@@ -2,17 +2,19 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMar
 
 
 def main_menu_keyboard(is_admin: bool = False, is_pilot: bool = True):
+    from utils.i18n import t
     keyboard = [
-        [KeyboardButton(text="Профиль")],
-        [KeyboardButton(text="📝 Сдать отчёт")],
-        [KeyboardButton(text="Инвентарь"), KeyboardButton(text="Магазин")],
-        [KeyboardButton(text="🏠 Жильё")],
-        [KeyboardButton(text="Город")],
-        [KeyboardButton(text="📰 Новости Нордхайма")],
-        [KeyboardButton(text="🧱 Стена изречений")],
+        [KeyboardButton(text=t("btn.profile"))],
+        [KeyboardButton(text=t("btn.report"))],
+        [KeyboardButton(text=t("btn.inventory")), KeyboardButton(text=t("btn.shop"))],
+        [KeyboardButton(text=t("btn.housing"))],
+        [KeyboardButton(text=t("btn.city"))],
+        [KeyboardButton(text=t("btn.news"))],
+        [KeyboardButton(text=t("btn.wall"))],
+        [KeyboardButton(text=t("btn.lang"))],
     ]
     if is_admin:
-        keyboard.append([KeyboardButton(text="👑 Админ-панель")])
+        keyboard.append([KeyboardButton(text=t("btn.admin"))])
     return ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
 
 
@@ -79,16 +81,17 @@ def admin_panel_keyboard(permissions: dict):
 
 def profile_keyboard(notify_enabled: bool = True, profile_public: bool = True, can_toggle_visibility: bool = False, has_callsign: bool = False,
                      clan_id: int | None = None, clan_name: str | None = None):
+    from utils.i18n import t
     rows = [
-        [InlineKeyboardButton(text="Изменить фото", callback_data="profile:set_photo")],
-        [InlineKeyboardButton(text="Выбрать статус", callback_data="profile:choose_status")],
-        [InlineKeyboardButton(text="📖 О себе", callback_data="profile:edit_about")],
+        [InlineKeyboardButton(text=t("profile.set_photo"), callback_data="profile:set_photo")],
+        [InlineKeyboardButton(text=t("profile.choose_status"), callback_data="profile:choose_status")],
+        [InlineKeyboardButton(text=t("profile.about"), callback_data="profile:edit_about")],
     ]
     callsign_text = "📡 Сменить позывной" if has_callsign else "📡 Установить позывной"
     rows.append([InlineKeyboardButton(text=callsign_text, callback_data="profile:callsign")])
-    rows.append([InlineKeyboardButton(text="🎖️ Награды", callback_data="profile:awards")])
-    rows.append([InlineKeyboardButton(text="🏅 Достижения", callback_data="profile:achievements")])
-    rows.append([InlineKeyboardButton(text="Карточка пилота", callback_data="profile:pilot_card")])
+    rows.append([InlineKeyboardButton(text=t("profile.awards"), callback_data="profile:awards")])
+    rows.append([InlineKeyboardButton(text=t("profile.achievements"), callback_data="profile:achievements")])
+    rows.append([InlineKeyboardButton(text=t("profile.pilot_card"), callback_data="profile:pilot_card")])
     if clan_id:
         # В caption название клана некликабельно (Telegram не поддерживает ссылки
         # внутри текста), поэтому переход в карточку — отдельной кнопкой.
@@ -231,10 +234,11 @@ QUARTER_HIDDEN_KEYS = ADMIN_QUARTER_KEYS + BUSINESS_QUARTER_KEYS + COUNTRYSIDE_K
 
 def city_keyboard(is_pilot: bool = True, locations: list = None,
                   event_visible: bool = False):
+    from utils.i18n import t
     buttons = [
-        [InlineKeyboardButton(text=BUSINESS_QUARTER_TEXT, callback_data="city:business")],
-        [InlineKeyboardButton(text=ADMIN_QUARTER_TEXT, callback_data="city:quarter")],
-        [InlineKeyboardButton(text=COUNTRYSIDE_TEXT, callback_data="city:countryside")],
+        [InlineKeyboardButton(text=t("city.business"), callback_data="city:business")],
+        [InlineKeyboardButton(text=t("city.admin"), callback_data="city:quarter")],
+        [InlineKeyboardButton(text=t("city.countryside"), callback_data="city:countryside")],
     ]
     # Дни Пламенного Круговорота: праздничная кнопка — видна только в окне дат
     # и при открытом лабиринте (решает вызывающий код; до Фазы 5 — скрыта,
@@ -404,8 +408,9 @@ def production_keyboard():
 
 
 def report_keyboard():
+    from utils.i18n import t
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Сдать отчёт", callback_data="report:submit")],
-        [InlineKeyboardButton(text="Мои отчёты", callback_data="report:my_reports")],
-        [InlineKeyboardButton(text="Назад", callback_data="back:main")],
+        [InlineKeyboardButton(text=t("report.btn_submit"), callback_data="report:submit")],
+        [InlineKeyboardButton(text=t("report.btn_my"), callback_data="report:my_reports")],
+        [InlineKeyboardButton(text=t("common.back"), callback_data="back:main")],
     ])

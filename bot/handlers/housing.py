@@ -294,7 +294,10 @@ async def housing_menu(cb: CallbackQuery):
     await _paint(cb, text, photo, kb)
 
 
-@router.message(F.text == "🏠 Жильё")
+from utils.i18n import btn_labels
+
+
+@router.message(F.text.in_(btn_labels("btn.housing")))
 async def housing_menu_reply(message: Message):
     """Открытие жилья из reply-кнопки главного меню."""
     uid = message.from_user.id

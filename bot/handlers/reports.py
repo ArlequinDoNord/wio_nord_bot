@@ -22,15 +22,19 @@ class ReportSubmit(StatesGroup):
 
 async def _report_menu_text(user_id: int) -> str:
     remaining = REPORT_DAILY_LIMIT - await count_reports_today(user_id)
-    header = "📋 Меню отчётов"
+    from utils.i18n import t
+    header = t("report.menu_header")
     if remaining > 0:
-        header += f"\nОсталось отчётов сегодня: {remaining}"
+        header += "\n" + t("report.remaining", n=remaining)
     else:
-        header += "\n⚠️ Лимит отчётов на сегодня исчерпан (3 из 3)."
+        header += "\n" + t("report.limit")
     return header
 
 
-@router.message(F.text == "📝 Сдать отчёт")
+from utils.i18n import btn_labels
+
+
+@router.message(F.text.in_(btn_labels("btn.report")))
 async def report_menu(message: Message):
     if await user_is_tourist(message.from_user.id):
         await message.answer(
@@ -100,10 +104,9 @@ async def report_submit_start(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         return
     await state.set_state(ReportSubmit.waiting_photo)
+    from utils.i18n import t
     await callback.message.answer(
-        "📸 Прикрепи скриншот карты братства, где видно твой текущий регион "
-        "с твоим общим кол-вом войск, твой ник и суточное накопление войск.\n"
-        f"Отправь фото одним сообщением.\n\nОсталось отчётов на сегодня: {remaining}",
+        t("report.photo_prompt", remaining=remaining),
         reply_markup=cancel_keyboard()
     )
 
@@ -116,13 +119,9 @@ async def report_receive_photo(message: Message, state: FSMContext):
     photo = message.photo[-1]
     await state.update_data(screenshot_file_id=photo.file_id)
     await state.set_state(ReportSubmit.waiting_daily_troops)
+    from utils.i18n import t
     await message.answer(
-        "✍️ Сколько войск ты заработал за СЕГОДНЯШНИЕ сутки?\n"
-        "Только то, что набежало сегодня — НЕ всё накопленное за все дни.\n"
-        f"(цифрами, до {REPORT_MAX_TROOPS:,})".replace(",", " ")
-        + "\n\nℹ️ За сутки считается накопленное с 10:00 до 10:00. Если сдашь "
-          "несколько отчётов, платят по ПОСЛЕДНЕМУ — отчёты не складываются. "
-          "Поэтому сдавай отчёт по мере накопления, а не один раз в конце.",
+        t("report.daily_prompt", max=f"{REPORT_MAX_TROOPS:,}".replace(",", " ")),
         reply_markup=cancel_keyboard()
     )
 
@@ -147,12 +146,11 @@ async def report_receive_daily_troops(message: Message, state: FSMContext):
     await state.update_data(daily_troops=troops)
     await state.set_state(ReportSubmit.waiting_total_troops)
     prev_total = await report_prev_day_total(message.from_user.id)
-    prev_note = (f"\n🗓 За прошлые сутки ты сдал: {prev_total}." if prev_total else "")
+    from utils.i18n import t
+    prev_note = ("\n" + t("report.prev_day", n=prev_total)) if prev_total else ""
     await message.answer(
-        f"🗺 Сколько у тебя сейчас войск на карте в регионе? (цифрами, до {REPORT_MAX_TROOPS:,})"
-        .replace(",", " ")
-        + prev_note + "\n\nЭто число нужно для статистики сил по регионам — на оплату "
-                       "оно не влияет.",
+        t("report.total_prompt", max=f"{REPORT_MAX_TROOPS:,}".replace(",", " "))
+        + prev_note + t("report.total_note"),
         reply_markup=cancel_keyboard()
     )
 
