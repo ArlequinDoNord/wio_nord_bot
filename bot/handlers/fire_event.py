@@ -1415,8 +1415,8 @@ async def _after_player_tick(cb, session, session_id: int, enemy, effects, playe
         await _paint_fork(cb, updated, session_id, prefix=text)
         return
     # фиксация врага и эффектов
-    await conn.execute("UPDATE fire_lab_sessions SET enemy_json = ? WHERE id = ?",
-                       (json.dumps(enemy, ensure_ascii=False), session_id))
+    await conn.execute("UPDATE fire_lab_sessions SET enemy_json = ?, hp = ? WHERE id = ?",
+                       (json.dumps(enemy, ensure_ascii=False), int(session['hp']), session_id))
     await _save_sessions_effects(session_id, effects)
     await conn.commit()
     session = await db.get_active_fire_lab_session(cb.from_user.id)
