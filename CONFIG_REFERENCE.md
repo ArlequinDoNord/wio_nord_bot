@@ -13,10 +13,10 @@
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `VERSION` | `'0.43.1'` |  | :16 |
-| `VERSION_NOTES` | `'В глубинах Круговорота что-то изменилось.'` |  | :17 |
-| `PREV_VERSION` | `'0.43.0'` |  | :19 |
-| `PREV_VERSION_NOTES` | `'В казне что-то поменялось.'` |  | :20 |
+| `VERSION` | `'0.43.2'` |  | :16 |
+| `VERSION_NOTES` | `'В Круговороте и в лесу что-то добавилось.'` |  | :17 |
+| `PREV_VERSION` | `'0.43.1'` |  | :19 |
+| `PREV_VERSION_NOTES` | `'В глубинах Круговорота что-то изменилось.'` |  | :20 |
 | `TOURIST_BOOKLET_DESCRIPTION` | `'Печатная карта Нордхайма для гостей города. Просматривай превью городских локаций — и отмечай их в буклете. Собери все 9 и получи награду от командования.'` |  | :24 |
 | `TOURIST_BOOKLET_PRICE` | `1` |  | :27 |
 | `TOURIST_BOOKLET_SELL_PRICE` | `0` | буклет не продаётся (иначе чек-лист теряется) | :28 |
@@ -69,7 +69,7 @@
 | `FIRELAB_ENEMY_SEEDS` | `(FIRELAB_SCARECROW_SEED, FIRELAB_APPLE_CHILD_SEED, FIRELAB_CROW_SEED, FIRELAB_HUB_SEED, FIRELAB_PUMPKIN_SEED)` |  | :221 |
 | `FIRE_EVENT_ENABLED` | `True` |  | :229 |
 | `FIRE_EVENT_START` | `(2026, 10, 30, 0, 0)` | МСК, ночь на пятницу 30.10 | :230 |
-| `FIRE_EVENT_DURATION_DAYS` | `5` | до ~00:00 МСК 4.11 | :231 |
+| `FIRE_EVENT_DURATION_DAYS` | `6` | до ~00:00 МСК 5.11 | :231 |
 | `FIRE_LAB_ENABLED` | `True` |  | :233 |
 | `FIRE_EVENT_LAB_FEE` | `32` | вход в лабиринт, НМ | :234 |
 | `FIRE_EVENT_MAX_ENTRIES_DAY` | `4` | максимум заходов за сутки | :235 |
@@ -372,7 +372,7 @@
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `FIRE_TREE_CLAN_REQ_LAMPS` | `7` | сколько чланов с Лампой нужно для установки | :417 |
+| `FIRE_TREE_CLAN_REQ_LAMPS` | `5` | сколько чланов с Лампой нужно для получения Древа | :417 |
 
 ## Суточный цикл Нордхайма
 

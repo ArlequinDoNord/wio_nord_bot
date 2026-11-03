@@ -13,11 +13,11 @@ load_dotenv()
 # При бампе: пишем в VERSION_NOTES только то, что изменилось в этом деплое, а
 # прошлые сдвигаем в PREV_VERSION / PREV_VERSION_NOTES. Больше двух записей не
 # держим — иначе приветствие превращается в простыню из трёх-четырёх деплоев.
-VERSION = "0.43.1"
-VERSION_NOTES = ("В глубинах Круговорота что-то изменилось.")
+VERSION = "0.43.2"
+VERSION_NOTES = ("В Круговороте и в лесу что-то добавилось.")
 
-PREV_VERSION = "0.43.0"
-PREV_VERSION_NOTES = ("В казне что-то поменялось.")
+PREV_VERSION = "0.43.1"
+PREV_VERSION_NOTES = ("В глубинах Круговорота что-то изменилось.")
 
 # ── Буклет туриста ─────────────────────────────────────────────────────────────
 TOURIST_BOOKLET_NAME = "Буклет туриста"
@@ -228,7 +228,7 @@ FIRELAB_ENEMY_SEEDS = (FIRELAB_SCARECROW_SEED, FIRELAB_APPLE_CHILD_SEED,
 # «идёт подготовка к празднику» (без названий механик/наград).
 FIRE_EVENT_ENABLED = True
 FIRE_EVENT_START = (2026, 10, 30, 0, 0)   # МСК, ночь на пятницу 30.10
-FIRE_EVENT_DURATION_DAYS = 5              # до ~00:00 МСК 4.11
+FIRE_EVENT_DURATION_DAYS = 6              # до ~00:00 МСК 5.11
 # Лабиринт (каркас): включает и кнопку города, и FSM лабиринта.
 FIRE_LAB_ENABLED = True
 FIRE_EVENT_LAB_FEE = 32                   # вход в лабиринт, НМ
@@ -414,7 +414,7 @@ CLAN_EXPANSION_INFO = {
 }
 
 # ── Древо Пламенного Круговорота (клановое расширение 'tree') ──────
-FIRE_TREE_CLAN_REQ_LAMPS = 7           # сколько чланов с Лампой нужно для установки
+FIRE_TREE_CLAN_REQ_LAMPS = 5           # сколько чланов с Лампой нужно для получения Древа
 FIRE_TREE_CLAN_MEDIT_AP = 20           # 🧘 медитация у Древа (в доп. к домашней)
 FIRE_TREE_CLAN_ESSENCE_NAME = "Эссенция Памяти"
 FIRE_TREE_CLAN_ESSENCE_DAYS = 30       # раз в 30 дней (от установки/сбора)

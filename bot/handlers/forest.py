@@ -720,12 +720,16 @@ async def _forest_beast_fight(callback, user_id: int, area: str, beast: dict) ->
     await _show_battle(callback)
 
 
-def _berry_markup(token: str, area: str):
+async def _berry_markup(token: str, area: str):
+    """Кнопки после поиска ягод: ещё ягоды, грибы, на опушке — углубиться в лес, город."""
     emoji = FOREST_AREA_EMOJI.get(area, "🌲")
     rows = [
         [InlineKeyboardButton(text="🫐 Искать ягоды ещё", callback_data=f"forest:berry:{token}:{area}")],
         [InlineKeyboardButton(text=f"{emoji} Искать грибы", callback_data=f"forest:cast:{token}:{area}")],
     ]
+    if area == "glade" and await _zone_open("clearing"):
+        rows.append([InlineKeyboardButton(text=f"{FOREST_AREA_EMOJI['clearing']} Углубиться в лес",
+                                          callback_data=f"forest:area:{token}:clearing")])
     if area == "clearing":
         rows.append([InlineKeyboardButton(text="🪓 Лесозаготовка", callback_data="logsite:enter")])
     rows.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
@@ -802,7 +806,7 @@ async def forest_berry(callback: CallbackQuery):
             await _glade_paint(
                 callback,
                 text=f"{head}\n\nКусты пусты — ягод в этот раз не нашлось." + ap_line,
-                kb=_berry_markup(token, area), area=area)
+                kb=await _berry_markup(token, area), area=area)
             return
 
         item = await get_item_by_name(outcome)
@@ -810,7 +814,7 @@ async def forest_berry(callback: CallbackQuery):
             await _glade_paint(
                 callback,
                 text=f"{head}\n\n🫐 Что-то нашёл, но предмет потерялся. Сообщи хранителю." + ap_line,
-                kb=_berry_markup(token, area), area=area)
+                kb=await _berry_markup(token, area), area=area)
             return
         await add_inventory_item(user_id, item['id'], 1)
         await bump_achievement(user_id, "berries", 1)
@@ -821,7 +825,7 @@ async def forest_berry(callback: CallbackQuery):
             callback,
             text=f"{head}\n\n🫐 Ты собрал: «{item['name']}» — горсть положена в инвентарь."
                  + ap_line,
-            kb=_berry_markup(token, area), area=area)
+            kb=await _berry_markup(token, area), area=area)
     finally:
         FOREST_CASTING.discard(user_id)
 

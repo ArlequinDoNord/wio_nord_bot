@@ -10443,7 +10443,7 @@ async def ensure_firelab_items() -> dict:
         # --- Фаза 4: посадка/ингредиенты ---
         (config.FIRE_PUMPKIN_SEED_NAME,
          "Семечко тыквы из Огненного Лабиринта. Посади в кадку в жилье — "
-         "вырастет тыква (2 суток до первого плода).",
+         "вырастет тыква (созревает 30 суток, потом плоды раз в 3 дня).",
          25, 12, 2, "seeds", 0, 0),
         (config.FIRE_PUMPKIN_NAME,
          "Спелая тыква с праздничной плантации: золотистая, тугая, слегка "
@@ -13714,6 +13714,8 @@ PLANT_STAGES = [
     ("Плодоносящее", None),
 ]
 FRUIT_EVERY_DAYS = 2
+# Интервал плодов по семечку (переопределяет FRUIT_EVERY_DAYS); заполняется ниже.
+PLANT_FRUIT_DAYS: dict = {}
 APPLE_SEED_NAME = "Яблочное семечко"
 APPLE_NAME = "Яблоко"
 # Название растения в кадке: seed_name → как называется выросшее растение
@@ -13732,6 +13734,13 @@ if getattr(config, "FIRE_PUMPKIN_SEED_NAME", None):
     _pumpkin_plant = getattr(config, "FIRE_PUMPKIN_NAME", "Тыква")
     PLANT_NAMES[config.FIRE_PUMPKIN_SEED_NAME] = _pumpkin_plant
     PLANT_HARVEST[config.FIRE_PUMPKIN_SEED_NAME] = _pumpkin_plant
+    # Тыква плодоносит реже яблони: плод раз в 3 суток (у яблони — FRUIT_EVERY_DAYS = 2).
+    PLANT_FRUIT_DAYS[config.FIRE_PUMPKIN_SEED_NAME] = 3
+
+
+def fruit_every_days(seed_name: str | None) -> int:
+    """Раз в сколько суток растение даёт плод (по семечку, иначе FRUIT_EVERY_DAYS)."""
+    return PLANT_FRUIT_DAYS.get(seed_name or "", FRUIT_EVERY_DAYS)
 
 
 def plant_harvest_name(seed_name: str | None) -> str:
@@ -14885,7 +14894,7 @@ def plant_stage_info(data: dict, now: float):
     else:
         t4 = started + boundaries[3]
         base = float(data.get('last_harvest_at') or t4)
-        interval = FRUIT_EVERY_DAYS * 86400
+        interval = fruit_every_days(data.get('seed')) * 86400
         since_base = max(0.0, now - base)
         fruits = min(FRUIT_MAX, int(since_base // interval))
         if fruits >= FRUIT_MAX:

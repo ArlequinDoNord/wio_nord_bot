@@ -2,6 +2,8 @@
 
 import json
 import os
+
+from config import FIRE_PUMPKIN_SEED_NAME
 import time
 
 from aiogram import Router, F
@@ -99,6 +101,12 @@ PLANT_PHOTOS: dict[str, dict[int, str]] = {
         2: "assets/img/housing/plant_apple_2.jpg",  # Саженец
         3: "assets/img/housing/plant_apple_3.jpg",  # Цветущее
         4: "assets/img/housing/plant_apple_4.jpg",  # Плодоносящее
+    },
+    FIRE_PUMPKIN_SEED_NAME: {
+        1: "assets/img/housing/plant_pumpkin_1.jpg",  # Росток
+        2: "assets/img/housing/plant_pumpkin_2.jpg",  # Саженец
+        3: "assets/img/housing/plant_pumpkin_3.jpg",  # Цветущее
+        4: "assets/img/housing/plant_pumpkin_4.jpg",  # Плодоносящее
     },
 }
 
