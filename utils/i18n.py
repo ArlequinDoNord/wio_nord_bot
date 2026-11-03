@@ -43,6 +43,76 @@ STRINGS = {
     "profile.awards": {"ru": "🎖️ Награды", "en": "🎖️ Awards"},
     "profile.achievements": {"ru": "🏅 Достижения", "en": "🏅 Achievements"},
     "profile.pilot_card": {"ru": "Карточка пилота", "en": "Pilot card"},
+    # банк: раздел «Штрафы»
+    "bank.fines_btn": {"ru": "⚖️ Штрафы", "en": "⚖️ Fines"},
+    "fines.title": {"ru": "⚖️ Твои штрафы", "en": "⚖️ Your fines"},
+    "fines.none": {"ru": "✅ Неоплаченных штрафов нет.", "en": "✅ You have no unpaid fines."},
+    "fines.line": {"ru": "#{id} · осталось {left} НМ из {total} НМ\nПричина: {reason}",
+                   "en": "#{id} · {left} NM left of {total} NM\nReason: {reason}"},
+    "fines.btn_pay_all": {"ru": "💰 Оплатить всё ({left} НМ)", "en": "💰 Pay all ({left} NM)"},
+    "fines.btn_pay_part": {"ru": "✏️ Оплатить часть", "en": "✏️ Pay part"},
+    "fines.ask_amount": {"ru": "Сколько НМ внести по штрафу #{id}? Введи целое число:",
+                         "en": "How many NM to pay toward fine #{id}? Enter a whole number:"},
+    "fines.paid_full": {"ru": "✅ Штраф #{id} оплачен полностью: {taken} НМ.",
+                        "en": "✅ Fine #{id} paid in full: {taken} NM."},
+    "fines.paid_part": {"ru": "✅ По штрафу #{id} внесено {taken} НМ.",
+                        "en": "✅ {taken} NM paid toward fine #{id}."},
+    "fines.not_found": {"ru": "❌ Штраф не найден или уже закрыт.",
+                        "en": "❌ Fine not found or already closed."},
+    "fines.nothing": {"ru": "❌ Нечего списывать.", "en": "❌ Nothing to pay."},
+    "fines.no_money": {"ru": "❌ Недостаточно НМ на счёте для этой суммы.",
+                       "en": "❌ Not enough NM in your account for this amount."},
+    "fines.bad_amount": {"ru": "❌ Введи целое число больше нуля:",
+                         "en": "❌ Enter a whole number greater than zero:"},
+    # админ: штрафы (только супер-админ)
+    "admin.fines_btn": {"ru": "⚖️ Штрафы", "en": "⚖️ Fines"},
+    "admin.fines_menu": {"ru": "⚖️ Штрафы пилотов. Выбери действие:",
+                         "en": "⚖️ Pilot fines. Choose an action:"},
+    "admin.fine_new": {"ru": "➕ Наложить штраф", "en": "➕ Issue fine"},
+    "admin.fine_list": {"ru": "📋 Активные штрафы", "en": "📋 Active fines"},
+    "admin.fine_cancel_btn": {"ru": "🗑 Отменить #{id}", "en": "🗑 Cancel #{id}"},
+    "admin.fine_pick_user": {"ru": "Выбери пилота из списка или введи ID:",
+                             "en": "Pick a pilot from the list or enter their ID:"},
+    "admin.fine_ask_user": {"ru": "Укажи ID пилота (число):", "en": "Enter the pilot's ID (number):"},
+    "admin.fine_ask_amount": {"ru": "Сумма штрафа в НМ (целое число больше нуля):",
+                              "en": "Fine amount in NM (whole number greater than zero):"},
+    "admin.fine_ask_reason": {"ru": "Причина штрафа (текст, будет показан пилоту):",
+                              "en": "Fine reason (text, shown to the pilot):"},
+    "admin.fine_bad_number": {"ru": "❌ Нужно целое число больше нуля. Попробуй ещё раз:",
+                              "en": "❌ A whole number greater than zero is required. Try again:"},
+    "admin.fine_no_user": {"ru": "❌ Пилот с таким ID не найден. Укажи другой ID:",
+                           "en": "❌ No pilot with that ID. Enter another ID:"},
+    "admin.fine_issued": {"ru": "✅ Штраф #{id} наложен на {name}: {amount} НМ.\nПричина: {reason}",
+                          "en": "✅ Fine #{id} issued to {name}: {amount} NM.\nReason: {reason}"},
+    "admin.fine_cancel_done": {"ru": "✅ Штраф #{id} отменён.", "en": "✅ Fine #{id} cancelled."},
+    "admin.fine_none": {"ru": "Активных штрафов нет.", "en": "There are no active fines."},
+    "admin.fine_not_super": {"ru": "⛔ Штрафы накладывает только супер-админ.",
+                             "en": "⛔ Only the super admin can issue fines."},
+    "fine.issued": {"ru": "⚖️ Тебе наложен штраф: {amount} НМ.\nПричина: {reason}\n"
+                         "Каждые игровые сутки будет списываться 10% суммы, пока штраф не закрыт. "
+                         "Оплатить можно в банке, раздел «Штрафы».",
+                    "en": "⚖️ A fine of {amount} NM was issued to you.\nReason: {reason}\n"
+                          "10% of the amount will be taken each game day until it is paid. "
+                          "You can pay it at the bank, section «Fines»."},
+    "fine.cancelled": {"ru": "✅ Штраф #{id} отменён администратором.",
+                       "en": "✅ Fine #{id} was cancelled by an administrator."},
+    # штрафы
+    "fine.blocked": {
+        "ru": ("⚖️ У тебя есть неоплаченный штраф: покупки, переводы и передача предметов "
+               "недоступны, пока он не закрыт. Оплатить можно в банке, раздел «Штрафы»."),
+        "en": ("⚖️ You have an unpaid fine: purchases, transfers and item handovers are "
+               "unavailable until it is paid. Pay it at the bank, section «Fines»."),
+    },
+    "fine.charged": {
+        "ru": ("⚖️ По штрафу списано {taken} НМ (10% суммы).\nОсталось: {left} НМ.\n"
+               "Причина: {reason}\nОплатить можно в банке, раздел «Штрафы»."),
+        "en": ("⚖️ {taken} NM was taken for your fine (10% of the amount).\nLeft: {left} NM.\n"
+               "Reason: {reason}\nYou can pay it at the bank, section «Fines»."),
+    },
+    "fine.closed": {
+        "ru": "⚖️ Штраф закрыт.\nСписано за сутки: {taken} НМ.\nПричина: {reason}",
+        "en": "⚖️ Fine closed.\nTaken today: {taken} NM.\nReason: {reason}",
+    },
     # отчёт
     "report.start": {"ru": "📝 Сдать отчёт", "en": "📝 Submit report"},
     "report.menu_header": {"ru": "📋 Меню отчётов", "en": "📋 Report menu"},
@@ -90,6 +160,20 @@ def t(key: str, **fmt) -> str:
     if entry is None:
         return key
     text = entry.get(_current.get()) or entry["ru"]
+    return text.format(**fmt) if fmt else text
+
+
+async def t_user(user_id: int, key: str, **fmt) -> str:
+    """Текст на языке конкретного пилота — для фоновых задач и рассылок (вне обработчика)."""
+    from database.db import get_user_lang
+    try:
+        lang = await get_user_lang(user_id)
+    except Exception:
+        lang = "ru"
+    entry = STRINGS.get(key)
+    if entry is None:
+        return key
+    text = entry.get(lang) or entry["ru"]
     return text.format(**fmt) if fmt else text
 
 

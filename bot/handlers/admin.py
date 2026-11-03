@@ -474,6 +474,14 @@ async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
                 [InlineKeyboardButton(text="Снять роль", callback_data="rolop:remove")],
             ])
         )
+    elif next_step == "fine_target":
+        from utils.i18n import t
+        if not await _is_super_admin(callback.from_user.id):
+            await callback.message.answer(t("admin.fine_not_super"))
+            await state.clear()
+            return
+        await state.set_state(AdminFine.amount)
+        await callback.message.answer(t("admin.fine_ask_amount"), reply_markup=cancel_keyboard())
     elif next_step == "status_pick":
         if not await can_view_status_panel(callback.from_user.id):
             await callback.message.answer("❌ Нет прав для выдачи статусов.")
@@ -698,6 +706,8 @@ def weapon_effect_choice_markup(prefix: str = "weff:"):
 async def show_admin_panel(user_id: int, to_edit: CallbackQuery = None, to_msg: Message = None):
     from keyboards.keyboards import admin_panel_keyboard
     flags = await perm_flags(user_id)
+    if await _is_super_admin(user_id):
+        flags['can_issue_fines'] = True
     text = (
         "👑 АДМИН-ПАНЕЛЬ\n\n"
         "Выберите раздел. Доступные действия зависят от вашей роли:\n\n"
@@ -2678,6 +2688,153 @@ FINHIST_PER_PAGE = 15
 
 async def _is_super_admin(user_id: int) -> bool:
     return 'super_admin' in await get_user_role(user_id)
+
+
+class AdminFine(StatesGroup):
+    user_id = State()
+    amount = State()
+    reason = State()
+
+
+def _fines_menu_kb():
+    from utils.i18n import t
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t("admin.fine_new"), callback_data="fines:new")],
+        [InlineKeyboardButton(text=t("admin.fine_list"), callback_data="fines:list")],
+        [InlineKeyboardButton(text="🔙 В админ-панель", callback_data="admin:menu")],
+    ])
+
+
+@router.callback_query(F.data == "fines:menu")
+async def fines_menu(callback: CallbackQuery, state: FSMContext):
+    from utils.i18n import t
+    await callback.answer()
+    await state.clear()
+    if not await _is_super_admin(callback.from_user.id):
+        await callback.message.answer(t("admin.fine_not_super"))
+        return
+    await callback.message.answer(t("admin.fines_menu"), reply_markup=_fines_menu_kb())
+
+
+@router.callback_query(F.data == "fines:new")
+async def fines_new(callback: CallbackQuery, state: FSMContext):
+    from utils.i18n import t
+    await callback.answer()
+    if not await _is_super_admin(callback.from_user.id):
+        await callback.message.answer(t("admin.fine_not_super"))
+        return
+    await state.set_state(AdminFine.user_id)
+    markup = await pilot_picker_markup("fine_target")
+    await callback.message.answer(t("admin.fine_pick_user"), reply_markup=markup)
+
+
+@router.message(AdminFine.user_id)
+async def fines_new_user(message: Message, state: FSMContext):
+    from utils.i18n import t
+    text = (message.text or "").strip()
+    if text == "Отмена":
+        await state.clear()
+        await message.answer("Отменено", reply_markup=cancel_keyboard())
+        return
+    if not text.isdigit():
+        await message.answer(t("admin.fine_no_user"), reply_markup=cancel_keyboard())
+        return
+    target = await get_user(int(text))
+    if not target:
+        await message.answer(t("admin.fine_no_user"), reply_markup=cancel_keyboard())
+        return
+    await state.update_data(target_id=int(text),
+                            target_name=target['first_name'] or str(target['user_id']))
+    await state.set_state(AdminFine.amount)
+    await message.answer(t("admin.fine_ask_amount"), reply_markup=cancel_keyboard())
+
+
+@router.message(AdminFine.amount)
+async def fines_new_amount(message: Message, state: FSMContext):
+    from utils.i18n import t
+    text = (message.text or "").strip()
+    if not text.isdigit() or int(text) <= 0:
+        await message.answer(t("admin.fine_bad_number"), reply_markup=cancel_keyboard())
+        return
+    await state.update_data(amount=int(text))
+    await state.set_state(AdminFine.reason)
+    await message.answer(t("admin.fine_ask_reason"), reply_markup=cancel_keyboard())
+
+
+@router.message(AdminFine.reason)
+async def fines_new_reason(message: Message, state: FSMContext):
+    from utils.i18n import t, t_user
+    from database.db import create_fine
+    from utils.permissions import log_action
+    reason = (message.text or "").strip()
+    if not reason or len(reason) > 300:
+        await message.answer("❌ Причина — от 1 до 300 символов.", reply_markup=cancel_keyboard())
+        return
+    data = await state.get_data()
+    await state.clear()
+    fid = await create_fine(data['target_id'], data['amount'], reason, message.from_user.id)
+    await log_action(message.from_user.id, 'fine_issue', data['target_id'],
+                     f"fine={fid} amount={data['amount']} reason={reason}")
+    await message.answer(t("admin.fine_issued", id=fid, name=data['target_name'],
+                           amount=data['amount'], reason=reason),
+                         reply_markup=_fines_menu_kb())
+    try:
+        await message.bot.send_message(
+            data['target_id'],
+            await t_user(data['target_id'], "fine.issued", amount=data['amount'], reason=reason))
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data == "fines:list")
+async def fines_list(callback: CallbackQuery):
+    from utils.i18n import t
+    from database.db import get_all_active_fines
+    await callback.answer()
+    if not await _is_super_admin(callback.from_user.id):
+        await callback.message.answer(t("admin.fine_not_super"))
+        return
+    fines = await get_all_active_fines()
+    if not fines:
+        await callback.message.answer(t("admin.fine_none"), reply_markup=_fines_menu_kb())
+        return
+    rows, lines = [], []
+    for f in fines:
+        target = await get_user(f['user_id'])
+        name = (target['first_name'] if target else None) or str(f['user_id'])
+        lines.append(f"#{f['id']} · {name} · осталось {f['amount_left']} НМ из {f['amount_total']}\n"
+                     f"   {f['reason']}")
+        rows.append([InlineKeyboardButton(text=t("admin.fine_cancel_btn", id=f['id']),
+                                          callback_data=f"fines:cancel:{f['id']}")])
+    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="fines:menu")])
+    await callback.message.answer("\n".join(lines),
+                                  reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+
+
+@router.callback_query(F.data.startswith("fines:cancel:"))
+async def fines_cancel(callback: CallbackQuery):
+    from utils.i18n import t, t_user
+    from database.db import cancel_fine, get_all_active_fines
+    from utils.permissions import log_action
+    await callback.answer()
+    if not await _is_super_admin(callback.from_user.id):
+        await callback.message.answer(t("admin.fine_not_super"))
+        return
+    fid = int(callback.data.split(":")[2])
+    owner = None
+    for f in await get_all_active_fines():
+        if f['id'] == fid:
+            owner = f['user_id']
+    if not await cancel_fine(fid):
+        await callback.message.answer(t("fines.not_found"))
+        return
+    await log_action(callback.from_user.id, 'fine_cancel', owner, f"fine={fid}")
+    await callback.message.answer(t("admin.fine_cancel_done", id=fid))
+    if owner:
+        try:
+            await callback.bot.send_message(owner, await t_user(owner, "fine.cancelled", id=fid))
+        except Exception:
+            pass
 
 
 def _txn_line(t, uid: int) -> str:

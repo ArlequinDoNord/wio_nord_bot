@@ -2190,15 +2190,26 @@ async def add_nordmarks(user_id: int, amount: int, tx_type: str, description: st
     await _maybe_money_achievement(user_id)
 
 
-async def remove_nordmarks(user_id: int, amount: int, tx_type: str, description: str = ""):
+async def remove_nordmarks(user_id: int, amount: int, tx_type: str, description: str = "") -> int:
+    """Списывает нордмарки, но не больше, чем есть на счёте (баланс не уходит в минус).
+
+    Возвращает фактически списанную сумму (0, если списывать нечего).
+    """
     conn = await get_db()
-    await conn.execute("UPDATE users SET nordmarks = nordmarks - ? WHERE user_id = ?", (amount, user_id))
+    cur = await conn.execute("SELECT nordmarks FROM users WHERE user_id = ?", (user_id,))
+    row = await cur.fetchone()
+    balance = int(row["nordmarks"] or 0) if row else 0
+    take = max(0, min(int(amount), balance))
+    if take <= 0:
+        return 0
+    await conn.execute("UPDATE users SET nordmarks = nordmarks - ? WHERE user_id = ?", (take, user_id))
     await conn.execute(
         "INSERT INTO transactions (from_user, amount, tx_type, description) VALUES (?, ?, ?, ?)",
-        (user_id, amount, tx_type, description)
+        (user_id, take, tx_type, description)
     )
     await conn.commit()
     await _maybe_money_achievement(user_id)
+    return take
 
 
 async def transfer_nordmarks(from_user: int, to_user: int, amount: int, description: str = ""):
@@ -6385,6 +6396,126 @@ async def backfill_rank_statuses():
         if await grant_all_rank_statuses(row['user_id'], rank) > 0:
             granted += 1
     return granted
+
+
+FINE_CHARGE_PERCENT = 10
+
+
+async def _ensure_fines_table(conn):
+    await conn.execute(
+        "CREATE TABLE IF NOT EXISTS fines (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "user_id INTEGER NOT NULL, amount_total INTEGER NOT NULL, amount_left INTEGER NOT NULL, "
+        "reason TEXT NOT NULL, issued_by INTEGER, status TEXT NOT NULL DEFAULT 'active', "
+        "created_at TEXT DEFAULT (datetime('now')), last_charge_day TEXT)")
+
+
+def fine_charge_base(amount_total: int) -> int:
+    """Суточное списание штрафа: 10% от исходной суммы (округление вверх, минимум 1)."""
+    return max(1, -(-int(amount_total) * FINE_CHARGE_PERCENT // 100))
+
+
+async def create_fine(user_id: int, amount: int, reason: str, issued_by: int) -> int:
+    conn = await get_db()
+    await _ensure_fines_table(conn)
+    cur = await conn.execute(
+        "INSERT INTO fines (user_id, amount_total, amount_left, reason, issued_by) VALUES (?, ?, ?, ?, ?)",
+        (user_id, int(amount), int(amount), reason, issued_by))
+    await conn.commit()
+    return cur.lastrowid
+
+
+async def get_active_fines(user_id: int) -> list:
+    conn = await get_db()
+    await _ensure_fines_table(conn)
+    cur = await conn.execute(
+        "SELECT * FROM fines WHERE user_id = ? AND status = 'active' ORDER BY id", (user_id,))
+    return await cur.fetchall()
+
+
+async def get_all_active_fines() -> list:
+    conn = await get_db()
+    await _ensure_fines_table(conn)
+    cur = await conn.execute("SELECT * FROM fines WHERE status = 'active' ORDER BY id")
+    return await cur.fetchall()
+
+
+async def has_unpaid_fines(user_id: int) -> bool:
+    return bool(await get_active_fines(user_id))
+
+
+async def fines_block_text(user_id: int):
+    """Текст отказа для должника (покупки, переводы, передача) или None, если всё можно."""
+    if not await has_unpaid_fines(user_id):
+        return None
+    from utils.i18n import t
+    return t("fine.blocked")
+
+
+async def pay_fine(user_id: int, fine_id: int, amount: int = None):
+    """Оплата штрафа пилотом. amount=None — всё, что осталось. Возвращает (ok, сообщение, списано)."""
+    conn = await get_db()
+    await _ensure_fines_table(conn)
+    cur = await conn.execute("SELECT * FROM fines WHERE id = ? AND user_id = ?", (fine_id, user_id))
+    fine = await cur.fetchone()
+    if not fine or fine["status"] != "active":
+        return False, "not_found", 0
+    user = await get_user(user_id)
+    balance = int(user["nordmarks"] or 0) if user else 0
+    left = int(fine["amount_left"])
+    want = left if amount is None else min(int(amount), left)
+    if want <= 0:
+        return False, "nothing", 0
+    if balance < want:
+        return False, "no_money", 0
+    taken = await remove_nordmarks(user_id, want, "fine", f"Оплата штрафа #{fine_id}: {fine['reason']}")
+    new_left = left - taken
+    status = "paid" if new_left <= 0 else "active"
+    await conn.execute("UPDATE fines SET amount_left = ?, status = ? WHERE id = ?",
+                       (new_left, status, fine_id))
+    await conn.commit()
+    return True, ("paid_full" if status == "paid" else "paid_part"), taken
+
+
+async def cancel_fine(fine_id: int) -> bool:
+    conn = await get_db()
+    await _ensure_fines_table(conn)
+    cur = await conn.execute(
+        "UPDATE fines SET status = 'cancelled' WHERE id = ? AND status = 'active'", (fine_id,))
+    await conn.commit()
+    return cur.rowcount > 0
+
+
+async def process_fines_daily(game_day: str) -> list:
+    """Суточное списание по активным штрафам (один раз за игровые сутки).
+
+    Списывается 10% от исходной суммы (не больше остатка). Если на счёте меньше
+    полного суточного платежа — в этот день ничего не списывается, штраф ждёт.
+    Возвращает события для уведомлений: dict(user_id, taken, left, closed, fine_id, reason).
+    """
+    conn = await get_db()
+    await _ensure_fines_table(conn)
+    cur = await conn.execute(
+        "SELECT * FROM fines WHERE status = 'active' AND (last_charge_day IS NULL OR last_charge_day != ?) "
+        "ORDER BY id", (game_day,))
+    events = []
+    for fine in await cur.fetchall():
+        uid = fine["user_id"]
+        base = fine_charge_base(fine["amount_total"])
+        user = await get_user(uid)
+        balance = int(user["nordmarks"] or 0) if user else 0
+        if balance < base:
+            continue
+        due = min(base, int(fine["amount_left"]))
+        taken = await remove_nordmarks(uid, due, "fine", f"Суточное списание по штрафу #{fine['id']}: {fine['reason']}")
+        new_left = int(fine["amount_left"]) - taken
+        closed = new_left <= 0
+        await conn.execute(
+            "UPDATE fines SET amount_left = ?, status = ?, last_charge_day = ? WHERE id = ?",
+            (new_left, "paid" if closed else "active", game_day, fine["id"]))
+        await conn.commit()
+        events.append({"user_id": uid, "taken": taken, "left": new_left, "closed": closed,
+                       "fine_id": fine["id"], "reason": fine["reason"]})
+    return events
 
 
 async def get_user_lang(user_id: int) -> str:

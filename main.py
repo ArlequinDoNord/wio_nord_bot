@@ -271,6 +271,25 @@ async def scheduled_jobs(bot: Bot):
         except Exception as e:
             logger.error(f"Ошибка начисления налога на жильё: {e}", exc_info=True)
         try:
+            from database.db import process_fines_daily
+            from utils.helpers import MOSCOW_TZ
+            from utils.i18n import t_user
+            from datetime import datetime as _dt
+            game_day = _dt.now(MOSCOW_TZ).strftime("%Y-%m-%d")
+            for ev in await process_fines_daily(game_day):
+                if ev["closed"]:
+                    text = await t_user(ev["user_id"], "fine.closed",
+                                        taken=ev["taken"], reason=ev["reason"])
+                else:
+                    text = await t_user(ev["user_id"], "fine.charged", taken=ev["taken"],
+                                        left=ev["left"], reason=ev["reason"])
+                try:
+                    await bot.send_message(ev["user_id"], text)
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error(f"Ошибка суточного списания штрафов: {e}", exc_info=True)
+        try:
             res = await pay_salaries()
             if res['paid'] or res['debt']:
                 logger.info(

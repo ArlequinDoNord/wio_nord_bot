@@ -1752,6 +1752,12 @@ async def inv_transfer_message(message: Message, state: FSMContext):
         )
         await state.clear()
         return
+    from database.db import fines_block_text
+    blocked = await fines_block_text(from_user)
+    if blocked:
+        await message.answer(blocked)
+        await state.clear()
+        return
     inv = await get_inventory_item(from_user, item_id)
     if not inv or inv['quantity'] < amount:
         await message.answer(f"❌ У тебя нет столько. В наличии: {inv['quantity'] if inv else 0} шт.")

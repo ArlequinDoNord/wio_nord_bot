@@ -1261,6 +1261,11 @@ async def clan_hall_bitem_cb(cb: CallbackQuery):
 @router.callback_query(F.data.startswith("clanh:buy:"))
 async def clan_hall_buy_cb(cb: CallbackQuery):
     """Покупка в клановой лавке: лимиты и остатки считает buy_clan_shop_item в db."""
+    from database.db import fines_block_text
+    blocked = await fines_block_text(cb.from_user.id)
+    if blocked:
+        await cb.answer(blocked, show_alert=True)
+        return
     parts = cb.data.split(":")
     clan_id = int(parts[2])
     slot_index = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else 0

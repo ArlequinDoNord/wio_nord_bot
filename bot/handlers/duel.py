@@ -246,6 +246,12 @@ async def duel_help(callback: CallbackQuery):
 @router.callback_query(F.data == "duel:card:buy")
 async def duel_buy_card(callback: CallbackQuery):
     uid = callback.from_user.id
+    from database.db import fines_block_text
+    blocked = await fines_block_text(uid)
+    if blocked:
+        await _ack(callback)
+        await callback.message.answer(blocked)
+        return
     if not await _has_access(uid):
         await _ack(callback)
         await callback.message.answer("⛔ Клубная карта доступна с «Пилота 2 класса».")

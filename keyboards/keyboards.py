@@ -33,7 +33,10 @@ async def main_menu_kb(user_id: int):
 
 
 def admin_panel_keyboard(permissions: dict):
+    from utils.i18n import t
     buttons = []
+    if permissions.get('can_issue_fines'):
+        buttons.append([InlineKeyboardButton(text=t("admin.fines_btn"), callback_data="fines:menu")])
     if permissions.get('can_manage_shop'):
         buttons.append([InlineKeyboardButton(text="🛒 Управление магазином", callback_data="admin:shop")])
         buttons.append([InlineKeyboardButton(text="📜 Менеджер рецептов", callback_data="recadm:menu")])
@@ -152,11 +155,13 @@ def shop_admin_keyboard():
 
 
 def bank_keyboard():
+    from utils.i18n import t
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Мой баланс", callback_data="bank:balance")],
         [InlineKeyboardButton(text="Перевести", callback_data="bank:transfer")],
         [InlineKeyboardButton(text="🏛️ В казну", callback_data="bank:treasury")],
         [InlineKeyboardButton(text="История транзакций", callback_data="bank:history")],
+        [InlineKeyboardButton(text=t("bank.fines_btn"), callback_data="bank:fines")],
         [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
     ])
 

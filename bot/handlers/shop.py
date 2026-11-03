@@ -604,6 +604,11 @@ class _MsgSender:
 
 async def _buy_item_impl(callback: CallbackQuery, item_id: int, qty: int, special_verified: bool = False):
     user_id = callback.from_user.id
+    from database.db import fines_block_text
+    blocked = await fines_block_text(user_id)
+    if blocked:
+        await callback.answer(blocked, show_alert=True)
+        return
     item = await get_item(item_id)
 
     if not item or not item['is_available']:
@@ -826,6 +831,11 @@ async def fish_offer_view(callback: CallbackQuery):
 async def fish_buy(callback: CallbackQuery):
     await callback.answer()
     user_id = callback.from_user.id
+    from database.db import fines_block_text
+    blocked = await fines_block_text(user_id)
+    if blocked:
+        await callback.message.answer(blocked)
+        return
     offer_id = int(callback.data.split(":")[1])
     offer = await get_fish_offer(offer_id)
     if not offer:
@@ -950,6 +960,11 @@ async def item_offer_view(callback: CallbackQuery):
 async def item_buy(callback: CallbackQuery):
     await callback.answer()
     user_id = callback.from_user.id
+    from database.db import fines_block_text
+    blocked = await fines_block_text(user_id)
+    if blocked:
+        await callback.message.answer(blocked)
+        return
     offer_id = int(callback.data.split(":")[1])
     offer = await get_item_offer(offer_id)
     if not offer:
@@ -1113,6 +1128,11 @@ async def buy_housing_cancel(callback: CallbackQuery):
 async def buy_housing_confirm(callback: CallbackQuery):
     await callback.answer()
     uid = callback.from_user.id
+    from database.db import fines_block_text
+    blocked = await fines_block_text(uid)
+    if blocked:
+        await callback.message.answer(blocked)
+        return
     item_id = int(callback.data.split(":")[1])
     item = await get_item(item_id)
     if not item or item['category'] != 'housing':

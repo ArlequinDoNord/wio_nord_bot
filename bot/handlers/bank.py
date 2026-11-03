@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.db import get_user, transfer_nordmarks, get_transactions_history, get_all_users, transfer_to_treasury, get_treasury_balance, log_activity, user_is_tourist
@@ -15,6 +15,7 @@ class BankStates(StatesGroup):
     waiting_amount = State()
     waiting_message = State()
     waiting_treasury_amount = State()
+    waiting_fine_amount = State()
 
 
 def tx_type_label(tx_type: str) -> str:
@@ -369,6 +370,13 @@ async def process_message(message: Message, state: FSMContext):
             )
             return
 
+    from database.db import fines_block_text
+    blocked = await fines_block_text(message.from_user.id)
+    if blocked:
+        await state.clear()
+        await message.answer(blocked, reply_markup=await main_menu_kb(message.from_user.id))
+        return
+
     await transfer_nordmarks(
         message.from_user.id,
         recipient_id,
@@ -398,6 +406,84 @@ async def process_message(message: Message, state: FSMContext):
     if text:
         reply += f"\n📨 Сообщение: «{text}»"
     await message.answer(reply, reply_markup=await main_menu_kb(message.from_user.id))
+
+
+async def _fines_screen(uid: int):
+    """Текст и клавиатура раздела «Штрафы» для пилота."""
+    from database.db import get_active_fines, fine_charge_base
+    from utils.i18n import t
+    fines = await get_active_fines(uid)
+    rows = []
+    if not fines:
+        text = t("fines.title") + "\n\n" + t("fines.none")
+    else:
+        lines = [t("fines.title"), ""]
+        for f in fines:
+            lines.append(t("fines.line", id=f["id"], left=f["amount_left"],
+                           total=f["amount_total"], reason=f["reason"]))
+            rows.append([InlineKeyboardButton(text=t("fines.btn_pay_all", left=f["amount_left"]),
+                                              callback_data=f"fine:payall:{f['id']}")])
+            rows.append([InlineKeyboardButton(text=t("fines.btn_pay_part"),
+                                              callback_data=f"fine:part:{f['id']}")])
+            lines.append("")
+        text = "\n".join(lines).rstrip()
+    rows.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data == "bank:fines")
+async def bank_fines(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    await state.clear()
+    text, kb = await _fines_screen(callback.from_user.id)
+    await callback.message.answer(text, reply_markup=kb)
+
+
+def _fine_result_text(code: str, fine_id: int, taken: int) -> str:
+    from utils.i18n import t
+    return t("fines." + code, id=fine_id, taken=taken)
+
+
+@router.callback_query(F.data.startswith("fine:payall:"))
+async def bank_fine_pay_all(callback: CallbackQuery):
+    from database.db import pay_fine
+    await callback.answer()
+    fine_id = int(callback.data.split(":")[2])
+    ok, code, taken = await pay_fine(callback.from_user.id, fine_id)
+    await callback.message.answer(_fine_result_text(code, fine_id, taken))
+    text, kb = await _fines_screen(callback.from_user.id)
+    await callback.message.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("fine:part:"))
+async def bank_fine_pay_part(callback: CallbackQuery, state: FSMContext):
+    from utils.i18n import t
+    await callback.answer()
+    fine_id = int(callback.data.split(":")[2])
+    await state.set_state(BankStates.waiting_fine_amount)
+    await state.update_data(fine_id=fine_id)
+    await callback.message.answer(t("fines.ask_amount", id=fine_id), reply_markup=cancel_keyboard())
+
+
+@router.message(BankStates.waiting_fine_amount)
+async def bank_fine_amount(message: Message, state: FSMContext):
+    from database.db import pay_fine
+    from utils.i18n import t
+    text = (message.text or "").strip()
+    if text == "Отмена" or text.lower() == "/cancel":
+        await state.clear()
+        await message.answer("Операция отменена", reply_markup=await main_menu_kb(message.from_user.id))
+        return
+    if not text.isdigit() or int(text) <= 0:
+        await message.answer(t("fines.bad_amount"), reply_markup=cancel_keyboard())
+        return
+    data = await state.get_data()
+    await state.clear()
+    fine_id = int(data["fine_id"])
+    ok, code, taken = await pay_fine(message.from_user.id, fine_id, int(text))
+    await message.answer(_fine_result_text(code, fine_id, taken))
+    screen, kb = await _fines_screen(message.from_user.id)
+    await message.answer(screen, reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("bank:history"))
