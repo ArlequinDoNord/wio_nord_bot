@@ -421,9 +421,9 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `target` | `bot/handlers/inventory.py:1669` `inv_transfer_start` | `bot/handlers/inventory.py:1678` `inv_transfer_target` |
-| `amount` | `bot/handlers/inventory.py:1685` `inv_transfer_target` | `bot/handlers/inventory.py:1693` `inv_transfer_amount` |
-| `message` | `bot/handlers/inventory.py:1725` `inv_transfer_amount` | `bot/handlers/inventory.py:1734` `inv_transfer_message` |
+| `target` | `bot/handlers/inventory.py:1694` `inv_transfer_start` | `bot/handlers/inventory.py:1703` `inv_transfer_target` |
+| `amount` | `bot/handlers/inventory.py:1710` `inv_transfer_target` | `bot/handlers/inventory.py:1718` `inv_transfer_amount` |
+| `message` | `bot/handlers/inventory.py:1750` `inv_transfer_amount` | `bot/handlers/inventory.py:1759` `inv_transfer_message` |
 
 ### `KvpFSM` — `bot/handlers/kvp.py`
 
@@ -690,11 +690,11 @@
 - `fines:menu`: `bot/handlers/admin.py:2708`
 - `fines:new`: `bot/handlers/admin.py:2719`
 - `finh:open`: `bot/handlers/admin.py:2918`
-- `fireevent:enter`: `bot/handlers/fire_event.py:799`
-- `fireevent:go`: `bot/handlers/fire_event.py:958`
-- `fireevent:potioncancel`: `bot/handlers/fire_event.py:1373`
-- `fireevent:shop`: `bot/handlers/fire_event.py:906`
-- `fireevent:souvenir`: `bot/handlers/fire_event.py:830`
+- `fireevent:enter`: `bot/handlers/fire_event.py:810`
+- `fireevent:go`: `bot/handlers/fire_event.py:969`
+- `fireevent:potioncancel`: `bot/handlers/fire_event.py:1404`
+- `fireevent:shop`: `bot/handlers/fire_event.py:917`
+- `fireevent:souvenir`: `bot/handlers/fire_event.py:841`
 - `fireph:menu`: `bot/handlers/admin_firephotos.py:73`
 - `fish:recover`: `bot/handlers/fishing.py:507`
 - `forest:addlist`: `bot/handlers/admin.py:8197`
@@ -1012,28 +1012,28 @@
 - `finh:list:`: `bot/handlers/admin.py:2929`
 - `finh:u:`: `bot/handlers/admin.py:2941`
 - `finuser:`: `bot/handlers/admin.py:2667`
-- `fireevent:attack:`: `bot/handlers/fire_event.py:1149`
-- `fireevent:backfork:`: `bot/handlers/fire_event.py:751`
-- `fireevent:bait:`: `bot/handlers/fire_event.py:457`
-- `fireevent:baitset:`: `bot/handlers/fire_event.py:479`
-- `fireevent:cont:`: `bot/handlers/fire_event.py:363`
-- `fireevent:dgive:`: `bot/handlers/fire_event.py:727`
-- `fireevent:donate:`: `bot/handlers/fire_event.py:713`
-- `fireevent:fishing:`: `bot/handlers/fire_event.py:545`
-- `fireevent:leave:`: `bot/handlers/fire_event.py:764`
-- `fireevent:potion:`: `bot/handlers/fire_event.py:1274`
-- `fireevent:potionok:`: `bot/handlers/fire_event.py:1367`
-- `fireevent:step:`: `bot/handlers/fire_event.py:286`
-- `fireevent:wellback:`: `bot/handlers/fire_event.py:497`
-- `fireevent:xchg:`: `bot/handlers/fire_event.py:918`
+- `fireevent:attack:`: `bot/handlers/fire_event.py:1180`
+- `fireevent:backfork:`: `bot/handlers/fire_event.py:762`
+- `fireevent:bait:`: `bot/handlers/fire_event.py:468`
+- `fireevent:baitset:`: `bot/handlers/fire_event.py:490`
+- `fireevent:cont:`: `bot/handlers/fire_event.py:374`
+- `fireevent:dgive:`: `bot/handlers/fire_event.py:738`
+- `fireevent:donate:`: `bot/handlers/fire_event.py:724`
+- `fireevent:fishing:`: `bot/handlers/fire_event.py:556`
+- `fireevent:leave:`: `bot/handlers/fire_event.py:775`
+- `fireevent:potion:`: `bot/handlers/fire_event.py:1305`
+- `fireevent:potionok:`: `bot/handlers/fire_event.py:1398`
+- `fireevent:step:`: `bot/handlers/fire_event.py:297`
+- `fireevent:wellback:`: `bot/handlers/fire_event.py:508`
+- `fireevent:xchg:`: `bot/handlers/fire_event.py:929`
 - `fireph:set:`: `bot/handlers/admin_firephotos.py:82`
 - `fish:bait:\d+$`: `bot/handlers/fishing.py:521`
 - `fish:bait:set:\d+:[a-z]+$`: `bot/handlers/fishing.py:563`
 - `fish:cast:\d+$`: `bot/handlers/fishing.py:573`
 - `fish:lake:\d+$`: `bot/handlers/fishing.py:500`
 - `fishbuy:`: `bot/handlers/shop.py:830`
-- `fishcatch:`: `bot/handlers/inventory.py:1300`
-- `fishgo:`: `bot/handlers/inventory.py:1551`
+- `fishcatch:`: `bot/handlers/inventory.py:1325`
+- `fishgo:`: `bot/handlers/inventory.py:1576`
 - `fishing:addfish:`: `bot/handlers/admin.py:7469`
 - `fishing:addlist:`: `bot/handlers/admin.py:7439`
 - `fishing:del:`: `bot/handlers/admin.py:7492`
@@ -1051,11 +1051,11 @@
 - `fishing_jx:new:`: `bot/handlers/admin.py:7222`
 - `fishing_jx:pick:`: `bot/handlers/admin.py:7174`
 - `fishing_jx:pool:`: `bot/handlers/admin.py:7145`
-- `fishmarket:`: `bot/handlers/inventory.py:1453`
+- `fishmarket:`: `bot/handlers/inventory.py:1478`
 - `fishoffer:`: `bot/handlers/shop.py:755`
-- `fishprice:`: `bot/handlers/inventory.py:1533`
-- `fishsell:`: `bot/handlers/inventory.py:1609`
-- `fishuse:`: `bot/handlers/inventory.py:1308`
+- `fishprice:`: `bot/handlers/inventory.py:1558`
+- `fishsell:`: `bot/handlers/inventory.py:1634`
+- `fishuse:`: `bot/handlers/inventory.py:1333`
 - `forest:add:`: `bot/handlers/admin.py:8222`
 - `forest:area:\d+:(glade|clearing)$`: `bot/handlers/forest.py:455`
 - `forest:battle:flee:\d+$`: `bot/handlers/forest.py:1225`
@@ -1106,22 +1106,23 @@
 - `http`: `bot/handlers/library.py:360`
 - `inv_equip:`: `bot/handlers/inventory.py:806`
 - `inv_sell:`: `bot/handlers/inventory.py:941`
+- `inv_sell_ask:`: `bot/handlers/inventory.py:1039`
 - `inv_sell_keep1:`: `bot/handlers/inventory.py:961`
-- `inv_sell_ok:`: `bot/handlers/inventory.py:1036`
+- `inv_sell_ok:`: `bot/handlers/inventory.py:1061`
 - `inv_sellall:`: `bot/handlers/inventory.py:951`
-- `inv_sellmore:`: `bot/handlers/inventory.py:1146`
+- `inv_sellmore:`: `bot/handlers/inventory.py:1171`
 - `inv_slot:`: `bot/handlers/inventory.py:860`
-- `inv_transfer:`: `bot/handlers/inventory.py:1641`
+- `inv_transfer:`: `bot/handlers/inventory.py:1666`
 - `inv_unequip:`: `bot/handlers/inventory.py:836`
 - `inv_unslot:`: `bot/handlers/inventory.py:895`
 - `inv_use:`: `bot/handlers/inventory.py:917`
 - `inventory:cat:[^:]+$`: `bot/handlers/inventory.py:607`
 - `invitem:`: `bot/handlers/inventory.py:799`
 - `itembuy:`: `bot/handlers/shop.py:959`
-- `itemgo:`: `bot/handlers/inventory.py:1244`
-- `itemmarket:`: `bot/handlers/inventory.py:1154`
+- `itemgo:`: `bot/handlers/inventory.py:1269`
+- `itemmarket:`: `bot/handlers/inventory.py:1179`
 - `itemoffer:`: `bot/handlers/shop.py:891`
-- `itemprice:`: `bot/handlers/inventory.py:1233`
+- `itemprice:`: `bot/handlers/inventory.py:1258`
 - `kvp:attack:`: `bot/handlers/kvp.py:531`
 - `kvp:attempt:`: `bot/handlers/kvp.py:456`
 - `kvp:continue:`: `bot/handlers/kvp.py:425`

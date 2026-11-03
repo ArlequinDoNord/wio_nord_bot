@@ -175,13 +175,19 @@ async def _get_forelab_enemy(kind: str = None):
     return None
 
 
-def _tier_enemy(e, tier: int):
+def _tier_enemy(e, tier: int, rarities: dict = None):
     """Словарь врага со сдвигом по Тиру Огненного эха (HP +bonus) и дропами.
 
-    Дроп-карточки читаются из строки firelab_enemies (drops_json), шанс каждой
-    умножается на tier-множитель и капсится на 1: min(1, base × (1+bonus)).
+    Шансы дропов по полю редкости предмета (rarities: {item_id: rarity}):
+    - редкий лут (редкость >= FIRE_LAB_RARE_MIN_RARITY): +FIRE_LAB_RARE_TIER_BONUS
+      за каждый тир (аддитивно, в п.п.);
+    - остальные: базовый шанс × tier-множитель.
+    Всё капсится на 1.
     """
     loot_mult = db.firelab_tier_loot_mult(tier)
+    rarities = rarities or {}
+    rare_min = int(getattr(config, "FIRE_LAB_RARE_MIN_RARITY", 3))
+    rare_bonus = float(getattr(config, "FIRE_LAB_RARE_TIER_BONUS", 0.014))
     drops = []
     try:
         raw = e.get('drops') if hasattr(e, 'get') else None
@@ -193,8 +199,13 @@ def _tier_enemy(e, tier: int):
         raw = []
     for d in raw:
         try:
-            base = float(d['chance'] or 0) * loot_mult
-            drops.append({"item_id": int(d['item_id']), "qty": int(d.get('qty') or 1),
+            item_id = int(d['item_id'])
+            chance = float(d['chance'] or 0)
+            if int(rarities.get(item_id, 1)) >= rare_min:
+                base = chance + rare_bonus * max(0, int(tier or 0))
+            else:
+                base = chance * loot_mult
+            drops.append({"item_id": item_id, "qty": int(d.get('qty') or 1),
                           "chance": min(1.0, base), "base": base})
         except (KeyError, TypeError, ValueError):
             continue
@@ -1014,6 +1025,26 @@ async def fire_event_go_cb(cb: CallbackQuery, state: FSMContext):
 
 # ============================== БОЕВОЙ ЦИКЛ (Фаза 2) ==============================
 
+async def _drop_rarities(enemy) -> dict:
+    """{item_id: rarity} для дропов врага — по полю редкости предмета."""
+    try:
+        raw = json.loads(enemy['drops'] or '[]')
+    except (KeyError, TypeError, ValueError):
+        return {}
+    out = {}
+    if not isinstance(raw, list):
+        return out
+    for d in raw:
+        try:
+            iid = int(d['item_id'])
+        except (KeyError, TypeError, ValueError):
+            continue
+        it = await db.get_item(iid)
+        if it:
+            out[iid] = int(it['rarity'] or 1)
+    return out
+
+
 async def _start_battle(cb, session, session_id: int, room: str, tier: int):
     """Начало боя: выбор врага, запись в сессию, отрисовка боевого экрана."""
     conn = await db.get_db()
@@ -1037,7 +1068,7 @@ async def _start_battle(cb, session, session_id: int, room: str, tier: int):
             await _paint_fork(cb, session, session_id)
             return
         enemy = random.choice(obstacles)
-    eng = _tier_enemy(enemy, tier)
+    eng = _tier_enemy(enemy, tier, await _drop_rarities(enemy))
     await _save_enemy(session_id, eng)
     await _paint_battle(cb, session, eng)
 

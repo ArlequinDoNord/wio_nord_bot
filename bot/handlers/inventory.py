@@ -1020,8 +1020,11 @@ async def _sell_confirm(callback: CallbackQuery, item_id: int, qty: int):
 
     total = item['sell_price'] * qty
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from config import SALE_CONFIRM_MIN_RARITY
+    rare = int(item['rarity'] or 1) >= SALE_CONFIRM_MIN_RARITY
+    yes_cb = f"inv_sell_ask:{item_id}:{qty}" if rare else f"inv_sell_ok:{item_id}:{qty}"
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да, продать", callback_data=f"inv_sell_ok:{item_id}:{qty}")],
+        [InlineKeyboardButton(text="✅ Да, продать", callback_data=yes_cb)],
         [InlineKeyboardButton(text="↩️ Нет, отмена", callback_data=f"invitem:{item_id}")],
     ])
     await callback.answer()
@@ -1029,6 +1032,28 @@ async def _sell_confirm(callback: CallbackQuery, item_id: int, qty: int):
         callback.message,
         f"💵 Продать «{item['name']}» x{qty} за {total} {plural_nordmark(total)}?\n\n"
         f"Предмет будет списан сразу.{cap_note}",
+        markup
+    )
+
+
+@router.callback_query(F.data.startswith("inv_sell_ask:"))
+async def inv_sell_ask(callback: CallbackQuery):
+    """Второй шаг для редких предметов: явное подтверждение продажи редкости."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from utils.i18n import t
+    await callback.answer()
+    _, item_s, qty_s = callback.data.split(":")
+    item = await get_item(int(item_s))
+    if not item:
+        return
+    markup = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t("sell.rare_final"), callback_data=f"inv_sell_ok:{item_s}:{qty_s}")],
+        [InlineKeyboardButton(text=t("sell.cancel"), callback_data=f"invitem:{item_s}")],
+    ])
+    rarity = t(f"rarity.{int(item['rarity'] or 1)}")
+    await edit_or_replace(
+        callback.message,
+        t("sell.rare_ask", name=item['name'], rarity=rarity, qty=qty_s),
         markup
     )
 

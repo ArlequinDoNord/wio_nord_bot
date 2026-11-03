@@ -43,6 +43,21 @@ STRINGS = {
     "profile.awards": {"ru": "🎖️ Награды", "en": "🎖️ Awards"},
     "profile.achievements": {"ru": "🏅 Достижения", "en": "🏅 Achievements"},
     "profile.pilot_card": {"ru": "Карточка пилота", "en": "Pilot card"},
+    # редкость предметов
+    "rarity.1": {"ru": "Обычный", "en": "Common"},
+    "rarity.2": {"ru": "Качественный", "en": "Quality"},
+    "rarity.3": {"ru": "Редкий", "en": "Rare"},
+    "rarity.4": {"ru": "Шедевр", "en": "Masterpiece"},
+    "rarity.5": {"ru": "Легендарный", "en": "Legendary"},
+    # подтверждение продажи редких предметов
+    "sell.rare_ask": {
+        "ru": ("⚠️ «{name}» — редкость: {rarity}.\n"
+               "Продать {qty} шт.? Такой предмет потом не вернуть."),
+        "en": ("⚠️ «{name}» — rarity: {rarity}.\n"
+               "Sell {qty} pcs.? You won't get such an item back."),
+    },
+    "sell.rare_final": {"ru": "✅ Да, точно продать", "en": "✅ Yes, sell for sure"},
+    "sell.cancel": {"ru": "↩️ Нет, отмена", "en": "↩️ No, cancel"},
     # банк: раздел «Штрафы»
     "bank.fines_btn": {"ru": "⚖️ Штрафы", "en": "⚖️ Fines"},
     "fines.title": {"ru": "⚖️ Твои штрафы", "en": "⚖️ Your fines"},

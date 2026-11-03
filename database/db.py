@@ -10395,6 +10395,11 @@ async def ensure_firelab_items() -> dict:
     (сено, ветка) и предмет-рецепт для крафта тыквенного пирога (рецепт-
     строка создаётся недоступной — состав согласует владелец на Фазе 4).
     """
+    if not await get_setting("firelab_keys_rarity_v1"):
+        conn0 = await get_db()
+        await conn0.execute("UPDATE items SET rarity = 3 WHERE name = ?", (config.FIRE_KEYS_NAME,))
+        await conn0.commit()
+        await set_setting("firelab_keys_rarity_v1", "1")
     out: dict = {}
     items = (
         # (name, description, price, sell_price, rarity, category, heal, loot_only)
@@ -10476,7 +10481,7 @@ async def ensure_firelab_items() -> dict:
          "Вилы стража посевов: одиночная зубастая работа. "
          f"К удару +{getattr(config, 'FIRE_KEYS_DMG', 2)}, шанс кровотечения "
          f"{getattr(config, 'FIRE_KEYS_BLEED_P', 10)}% (−{getattr(config, 'FIRE_KEYS_BLEED_DMG', 2)} HP/ход).",
-         180, 90, 2, "weapon", 0, 0),
+         180, 90, 3, "weapon", 0, 0),
         (config.FIRE_CANE_NAME,
          "Сержантская трость, закованная в РПУ: поджигает врага при ударе. "
          f"К удару +{getattr(config, 'FIRE_CANE_DMG', 3)}, шанс поджога "
