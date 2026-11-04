@@ -13,12 +13,10 @@ load_dotenv()
 # При бампе: пишем в VERSION_NOTES только то, что изменилось в этом деплое, а
 # прошлые сдвигаем в PREV_VERSION / PREV_VERSION_NOTES. Больше двух записей не
 # держим — иначе приветствие превращается в простыню из трёх-четырёх деплоев.
-VERSION = "0.43.2"
-VERSION_NOTES = ("В Круговороте и в лесу что-то добавилось.")
-
-PREV_VERSION = "0.43.1"
-PREV_VERSION_NOTES = ("В глубинах Круговорота что-то изменилось.")
-
+VERSION = "0.43.3"
+VERSION_NOTES = ("В глубинах... что-то изменилось")
+PREV_VERSION = "0.43.2"
+PREV_VERSION_NOTES = ("В Круговороте и в лесу что-то добавилось.")
 # ── Буклет туриста ─────────────────────────────────────────────────────────────
 TOURIST_BOOKLET_NAME = "Буклет туриста"
 TOURIST_BOOKLET_DESCRIPTION = ("Печатная карта Нордхайма для гостей города. "
@@ -228,7 +226,7 @@ FIRELAB_ENEMY_SEEDS = (FIRELAB_SCARECROW_SEED, FIRELAB_APPLE_CHILD_SEED,
 # «идёт подготовка к празднику» (без названий механик/наград).
 FIRE_EVENT_ENABLED = True
 FIRE_EVENT_START = (2026, 10, 30, 0, 0)   # МСК, ночь на пятницу 30.10
-FIRE_EVENT_DURATION_DAYS = 6              # до ~00:00 МСК 5.11
+FIRE_EVENT_DURATION_DAYS = 7              # до ~00:00 МСК 6.11 (т.е. весь 5.11)
 # Лабиринт (каркас): включает и кнопку города, и FSM лабиринта.
 FIRE_LAB_ENABLED = True
 FIRE_EVENT_LAB_FEE = 32                   # вход в лабиринт, НМ
@@ -691,6 +689,8 @@ AP_DAILY_RESTORE_LIMIT = 150
 AP_EXHAUSTED_MINUTES = 2880          # 2 суток
 AP_EXHAUSTED_DAILY_RECOVERY = 75     # суточное восстановление в «истощении»
 AP_EXHAUSTED_MAX_AP = 90             # максимум ОД в «истощении»
+# Лампа Круговорота в личном жилье: сокращает «истощение» (передозировку энергетиком) на N%
+FIRE_LANTERN_EXHAUST_REDUCE_PCT = 50
 
 # Водоросли: лимит применения в сутки (при превышении — «несварение»)
 SEAWEED_DAILY_LIMIT = 6

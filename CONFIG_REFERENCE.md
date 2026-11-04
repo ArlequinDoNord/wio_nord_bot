@@ -7,229 +7,230 @@
 > (комментариям-разделителям `# ── … ──`). Длинные значения усечены `…`;
 > точное значение — в `config.py` по строке из первой колонки.
 
-Всего констант: **358**; разделов: **11**.
+Всего констант: **359**; разделов: **11**.
 
 ## Без раздела
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `VERSION` | `'0.43.2'` |  | :16 |
-| `VERSION_NOTES` | `'В Круговороте и в лесу что-то добавилось.'` |  | :17 |
-| `PREV_VERSION` | `'0.43.1'` |  | :19 |
-| `PREV_VERSION_NOTES` | `'В глубинах Круговорота что-то изменилось.'` |  | :20 |
-| `TOURIST_BOOKLET_DESCRIPTION` | `'Печатная карта Нордхайма для гостей города. Просматривай превью городских локаций — и отмечай их в буклете. Собери все 9 и получи награду от командования.'` |  | :24 |
-| `TOURIST_BOOKLET_PRICE` | `1` |  | :27 |
-| `TOURIST_BOOKLET_SELL_PRICE` | `0` | буклет не продаётся (иначе чек-лист теряется) | :28 |
-| `TOURIST_BOOKLET_AWARD` | `'Опытный турист'` |  | :29 |
-| `TOURIST_BOOKLET_AWARD_EMOJI` | `'🧭'` |  | :30 |
-| `TOURIST_BOOKLET_AWARD_DESCRIPTION` | `'Посетил все городские локации Нордхайма по «Буклету туриста». Знак почётного гостя города.'` |  | :31 |
-| `TOURIST_BOOKLET_REWARD_NM` | `20` |  | :33 |
-| `TOURIST_BOOKLET_REWARD_TX` | `'booklet'` |  | :34 |
-| `TOURIST_BOOKLET_LOCATIONS` | `('townhall', 'library', 'park', 'gossmi', 'bank', 'kvp', 'hq', 'contracts', 'nii')` |  | :37 |
-| `CLAN_HALL_ENABLED` | `True` |  | :44 |
-| `FIRELAB_SCARECROW_HP` | `25` |  | :47 |
-| `FIRELAB_SCARECROW_DMG` | `(3, 5)` |  | :48 |
-| `FIRELAB_SCARECROW_DODGE` | `10` |  | :49 |
-| `FIRELAB_SCARECROW_ARMOR` | `1` | броня Пугала (стены соломы) | :50 |
-| `FIRELAB_APPLE_CHILD_HP` | `27` |  | :51 |
-| `FIRELAB_APPLE_CHILD_DMG` | `(2, 4)` |  | :52 |
-| `FIRELAB_APPLE_CHILD_DODGE` | `9` |  | :53 |
-| `FIRELAB_CROW_HP` | `16` |  | :54 |
-| `FIRELAB_CROW_DMG` | `(2, 4)` |  | :55 |
-| `FIRELAB_CROW_DODGE` | `20` |  | :56 |
-| `FIRELAB_GHOST_HP` | `24` |  | :57 |
-| `FIRELAB_GHOST_DMG` | `(2, 4)` |  | :58 |
-| `FIRELAB_GHOST_DODGE` | `15` |  | :59 |
-| `FIRELAB_HUB_DODGE` | `FIRELAB_GHOST_DODGE` |  | :60 |
-| `FIRELAB_HUB_HP` | `FIRELAB_GHOST_HP` |  | :61 |
-| `FIRELAB_HUB_DMG` | `FIRELAB_GHOST_DMG` |  | :62 |
-| `FIRELAB_PUMPKIN_HP` | `60` |  | :63 |
-| `FIRELAB_PUMPKIN_DMG` | `(4, 7)` |  | :64 |
-| `FIRELAB_PUMPKIN_DODGE` | `5` |  | :65 |
-| `FIRELAB_PUMPKIN_ARMOR` | `2` | броня босса | :66 |
-| `FIRE_LAB_PIE_NAME` | `'Кусочек тыквенного пирога'` |  | :70 |
-| `FIRE_LAB_CANDY_NAME` | `'Леденец языков пламени'` |  | :71 |
-| `FIRE_LAB_HAY_NAME` | `'Пучок сена'` |  | :72 |
-| `FIRE_LAB_BRANCH_NAME` | `'Ветка дерева'` |  | :73 |
-| `FIRE_LAB_RECIPE_NAME` | `'Рецепт: Тыквенный пирог'` |  | :74 |
-| `FIRE_PUMPKIN_SEED_NAME` | `'Семечко тыквы'` | посадка в кадку / клан. сад | :75 |
-| `FIRE_CROW_FEATHER_NAME` | `'Перо ворона'` | ресурс (дроп стража? — Ф5) | :76 |
-| `FIRE_WIRE_NAME` | `'Моток железной проволоки'` | ингредиент трости | :77 |
-| `FIRE_EGGS_NAME` | `'Яйца'` | ингредиент пирога (x2) | :78 |
-| `FIRE_CROWN_NAME` | `'Огненный венец'` | голова: броня 2, лечение +25% | :79 |
-| `FIRE_CLOAK_NAME` | `'Плащ Памяти'` | тело: броня 2, уклон +5% | :80 |
-| `FIRE_GLOVES_NAME` | `'Перчатки стража посевов'` | руки: броня 2, уклон +3% | :81 |
-| `FIRE_KEYS_NAME` | `'Вилы'` | оружие: +2 к удару, кровотечение | :82 |
-| `FIRE_FLAME_DEVICE_NAME` | `'Ручное пламенеющее устройство'` | ингредиент трости | :83 |
-| `FIRELAB_SCARECROW_SEED` | `{'key': 'scarecrow', 'spot': 'firelab', 'name': 'Пугало', 'hp': FIRELAB_SCARECROW_HP, 'dmg_min': FIRELAB_SCARECROW_DMG[0], 'dmg_max': FIRELAB_SCARECROW_DMG[1], 'dodge': FIRELAB_SCARECROW_DODGE, 'ar…` |  | :85 |
-| `FIRELAB_APPLE_CHILD_SEED` | `{'key': 'apple_child', 'spot': 'firelab', 'name': 'Дитя Яблони', 'hp': FIRELAB_APPLE_CHILD_HP, 'dmg_min': FIRELAB_APPLE_CHILD_DMG[0], 'dmg_max': FIRELAB_APPLE_CHILD_DMG[1], 'dodge': FIRELAB_APPLE_C…` |  | :112 |
-| `FIRELAB_CROW_SEED` | `{'key': 'crow', 'spot': 'firelab', 'name': 'Ворон', 'hp': FIRELAB_CROW_HP, 'dmg_min': FIRELAB_CROW_DMG[0], 'dmg_max': FIRELAB_CROW_DMG[1], 'dodge': FIRELAB_CROW_DODGE, 'loss_ap': 0, 'chance': 0, 'p…` |  | :139 |
-| `FIRELAB_HUB_SEED` | `{'key': 'hub', 'spot': 'firelab', 'name': 'Хуб', 'hp': FIRELAB_HUB_HP, 'dmg_min': FIRELAB_HUB_DMG[0], 'dmg_max': FIRELAB_HUB_DMG[1], 'dodge': FIRELAB_HUB_DODGE, 'loss_ap': 0, 'chance': 0, 'pity_tar…` |  | :164 |
-| `FIRELAB_PUMPKIN_SEED` | `{'key': 'pumpkin_boss', 'spot': 'firelab', 'name': 'Мощный Мистер Огненная Тыква', 'hp': FIRELAB_PUMPKIN_HP, 'dmg_min': FIRELAB_PUMPKIN_DMG[0], 'dmg_max': FIRELAB_PUMPKIN_DMG[1], 'dodge': FIRELAB_P…` |  | :191 |
-| `FIRELAB_ENEMY_SEEDS` | `(FIRELAB_SCARECROW_SEED, FIRELAB_APPLE_CHILD_SEED, FIRELAB_CROW_SEED, FIRELAB_HUB_SEED, FIRELAB_PUMPKIN_SEED)` |  | :221 |
-| `FIRE_EVENT_ENABLED` | `True` |  | :229 |
-| `FIRE_EVENT_START` | `(2026, 10, 30, 0, 0)` | МСК, ночь на пятницу 30.10 | :230 |
-| `FIRE_EVENT_DURATION_DAYS` | `6` | до ~00:00 МСК 5.11 | :231 |
-| `FIRE_LAB_ENABLED` | `True` |  | :233 |
-| `FIRE_EVENT_LAB_FEE` | `32` | вход в лабиринт, НМ | :234 |
-| `FIRE_EVENT_MAX_ENTRIES_DAY` | `4` | максимум заходов за сутки | :235 |
-| `FIRE_LAB_SESSION_TTL_SEC` | `3600` | неактивность: сессия закрывается автоматически (1 ч) | :236 |
-| `FIRE_LAB_FORK_KEY` | `'city/fire_maze'` | развилка (вход/смерть/уход/финиш) | :239 |
-| `FIRE_LAB_WELL_KEY` | `'city/fire_well'` | Колодец | :240 |
-| `FIRE_LAB_TREE_KEY` | `'city/fire_tree'` | Древо Огня | :241 |
-| `FIRE_LAB_SCARECROW_BLIND_P` | `0.15` | Пугало: «сено в лицо» — ослепление | :246 |
-| `FIRE_LAB_APPLE_STUN_P` | `0.1` | Дитя Яблони: «яблочко» — оглушение | :247 |
-| `FIRE_LAB_CROW_BLIND_P` | `0.15` | Ворон: ослепление (как сова) | :248 |
-| `FIRE_LAB_HUB_SLOW_P` | `0.25` |  | :249 |
-| `FIRE_LAB_HUB_SLOW_ROUNDS` | `3` |  | :250 |
-| `FIRE_LAB_HUB_PLAYER_DODGE_PENALTY` | `35` |  | :251 |
-| `FIRE_LAB_HUB_ENEMY_DODGE_BONUS` | `10` |  | :252 |
-| `FIRE_LAB_BOSS_BURN_P` | `0.25` | Босс «Мистер Тыква»: поджиг игрока | :253 |
-| `FIRE_LAB_BOSS_BURN_DMG` | `2` | −HP/ход | :254 |
-| `FIRE_LAB_BOSS_BURN_ROUNDS` | `3` |  | :255 |
-| `FIRE_LAB_BOSS_MAX` | `2` | максимум встреч с боссом за заход | :256 |
-| `FIRE_LAB_ROOMS_MAX` | `25` | после 25 комнат-развилок выход автоматом | :257 |
-| `FIRE_LAB_TIER_MAX` | `10` | кап усилений | :260 |
-| `FIRE_LAB_TIER_HP_STEP` | `2` | +HP всем врагам за тир (1–4) | :261 |
-| `FIRE_LAB_TIER_HP_LAST` | `8` | 5-й тир: разово +8 (итого +16) | :262 |
-| `FIRE_LAB_TIER_HP_STEP_MID` | `4` | +HP всем врагам за тир (6–9) | :263 |
-| `FIRE_LAB_TIER_HP_10` | `16` | 10-й тир: разово +16 | :264 |
-| `FIRE_LAB_TIER_LOOT_STEP` | `0.02` | лут ×(1+2%) за тир (1–4, 6–9) | :265 |
-| `FIRE_LAB_RARE_MIN_RARITY` | `3` | редкий лут = предмет с полем редкости >= 3 («Редкий» и выше) | :266 |
-| `FIRE_LAB_RARE_TIER_BONUS` | `0.014` | редкий лут: +1.4 п.п. шанса за каждый тир (в долях) | :267 |
-| `FIRE_LAB_TIER_LOOT_LAST` | `0.1` | 5-й и 10-й тиры: ×(1+10%) | :268 |
-| `FIRE_LAB_WELL_MAX` | `3` | максимум посещений колодца за заход | :271 |
-| `FIRE_LAB_TREE_MAX` | `1` | древо — раз за заход | :272 |
-| `FIRE_LAB_ROOM_WEIGHTS` | `{(False, True): (('tree', 9), ('well', 6), ('enemy', 60)), (False, False): (('enemy', 65),), (True, True): (('tree', 9), ('well', 6), ('boss', 32), ('enemy', 41)), (True, False): (('boss', 32), ('e…` |  | :276 |
-| `FIRE_TREE_DMG_BONUS_PCT` | `15` | +15% урона | :285 |
-| `FIRE_TREE_REGEN_HP` | `1` | +1 HP после каждого удара игрока | :286 |
-| `FIRE_LAB_PATTERN_WELL` | `('L', 'L', 'S', 'S')` | ЛЛПП → Колодец (до 3) | :290 |
-| `FIRE_LAB_PATTERN_TREE` | `('L', 'L', 'S', 'S', 'R', 'R')` | ЛЛППНН → Древо Огня (1) | :291 |
-| `FIRE_LAB_WELL_FISH_TRIES` | `6` | попыток рыбалки за один визит в Колодец | :294 |
-| `FIRE_LAB_WELL_HEAL` | `50` | колодец: фиксированное лечение за визит, HP | :295 |
-| `FIRE_LAB_WELL_AP` | `10` | колодец: восстановление ОД за визит (не выше максимума) | :296 |
-| `FIRE_SET_REGEN_HP` | `1` | сет праздничной одежды+оружия: регенерация за ход в Лабиринте | :297 |
-| `FIRE_EXCHANGE_ENABLED` | `True` |  | :300 |
-| `FIRE_EXCHANGE_OFFERS` | `((FIRE_LAB_HAY_NAME, 3, FIRE_LAB_PIE_NAME, 1), (FIRE_LAB_BRANCH_NAME, 3, FIRE_LAB_CANDY_NAME, 1), (((FIRE_LAB_HAY_NAME, 15), (FIRE_LAB_BRANCH_NAME, 15)), 'Рецепт: Леденец из ягод', 1))` |  | :301 |
-| `FIRE_LAB_FISH_DELAY` | `(7, 15)` | колодец: поклёвка через N секунд (как на озере) | :309 |
-| `FIRE_LAB_NOBAIT_FIND_P` | `0.12` | колодец без наживки: шанс поднять что-то со дна (%/100) | :310 |
-| `FIRE_LAB_NOBAIT_FIND` | `((FIRE_WIRE_NAME, 35), (FIRE_LAB_HAY_NAME, 65))` | что поднимается без наживки (вес) | :311 |
-| `FIRE_LAB_FISH_OSETR_NAME` | `'Спектральная Латимерия'` | рыба 1 (rarity 2) | :316 |
-| `FIRE_LAB_FISH_SOUL_NAME` | `'Скелетная Арована'` | рыба 2 (rarity 3) | :317 |
-| `FIRE_LAB_FISH_CARP_NAME` | `'Пылающая Душа'` | рыба 3 (rarity 4, редкая) | :318 |
-| `FIRE_LAB_FISH_TABLE` | `((FIRE_LAB_FISH_OSETR_NAME, 60), (FIRE_LAB_FISH_SOUL_NAME, 25), (FIRE_LAB_FISH_CARP_NAME, 15))` | взвешенный выбор улова | :319 |
-| `FIRE_FISHER_ACH_KEY` | `'fire_fisher'` |  | :325 |
-| `FIRE_FISHER_THRESHOLD` | `3` |  | :326 |
-| `FIRE_FISHER_REWARD_NM` | `150` |  | :327 |
-| `FIRE_LAB_PIE_HEAL` | `15` |  | :329 |
-| `FIRE_LAB_CANDY_HEAL` | `12` |  | :330 |
-| `FIRE_PUMPKIN_NAME` | `'Тыква'` | плод; ингредиент пирога | :334 |
-| `FIRE_SUGAR_NAME` | `'Сахар'` | ингредиент пирога | :335 |
-| `FIRE_KEYS_DMG` | `2` |  | :336 |
-| `FIRE_KEYS_BLEED_P` | `10` |  | :337 |
-| `FIRE_KEYS_BLEED_DMG` | `2` |  | :338 |
-| `FIRE_CROWN_HEAL_BONUS_PCT` | `25` |  | :339 |
-| `FIRE_CLOAK_DODGE` | `5` |  | :340 |
-| `FIRE_GLOVES_DODGE` | `3` |  | :341 |
-| `FIRE_CANE_NAME` | `'Обжигающая трость'` | оружие: удар 3, поджог 20% | :342 |
-| `FIRE_CANE_DMG` | `3` |  | :343 |
-| `FIRE_CANE_BURN_P` | `20` |  | :344 |
-| `FIRE_CANE_BURN_DMG` | `2` |  | :345 |
-| `FIRE_CANE_BURN_ROUNDS` | `3` |  | :346 |
-| `FIRE_LANTERN_NAME` | `'Лампа Круговорота'` | награда за «Чтящего Предков» (Ф4б) | :347 |
-| `FIRE_MUSHROOM_NAME` | `'Огненный гриб'` | гриб леса; только пожертвование | :350 |
-| `FIRE_BERRY_NAME` | `'Горсть Пылающих ягод'` | ягода леса (прогалина); только пожертвование | :351 |
-| `FIRE_ORE_NAME` | `'Пламенная руда'` | добыча шахты; только пожертвование | :352 |
-| `FIRE_ORE_CHANCE` | `15` | % за один удар киркой | :353 |
-| `FIRE_TALISMAN_NAME` | `'Талисман памяти'` | награда за полное пожертвование: +1 регенерация за ход | :354 |
-| `FIRE_TALISMAN_REGEN` | `1` |  | :355 |
-| `FIRE_SPOILED_FOOD_NAME` | `'Испорченная еда'` | один предмет для любой испорченной съедобной еды | :356 |
-| `FIRE_TREE_DONATION` | `((FIRE_MUSHROOM_NAME, 2), (FIRE_BERRY_NAME, 2), (FIRE_ORE_NAME, 1))` |  | :358 |
-| `FIRE_DONATION_ONLY` | `(FIRE_MUSHROOM_NAME, FIRE_BERRY_NAME, FIRE_ORE_NAME)` |  | :364 |
-| `FIRE_AMBER_NAME` | `'Пламя Памяти'` | янтарь из Лампы (Ф4б), продам 100 НМ | :365 |
-| `FIRE_LANTERN_MEDIT_AP` | `20` | 🪔 медитация раз в сутки | :366 |
-| `FIRE_LANTERN_AMBER_DAYS` | `7` | янтарь раз в N суток | :367 |
-| `FIRE_PREDKI_NAME` | `'Предания предков'` |  | :370 |
-| `FIRE_PREDKI_HEAL` | `60` | +60 HP в бою | :371 |
-| `FIRE_PREDKI_REGEN` | `50` | регенерация: 50% от лечения | :372 |
-| `FIRE_PREDKI_REGEN_TURNS` | `4` | разлитая на 4 хода (нестандарт!) | :373 |
-| `FIRE_PREDKI_DODGE_PCT` | `5` | суточный баф: уворот +5% | :374 |
-| `FIRE_PREDKI_DODGE_HOURS` | `24` | длительность бафа (не продлевается) | :375 |
-| `CLAN_BUILDING_TYPES` | `{'house': {'name': 'Дом Клана', 'slots': 2, 'max_level': 2, 'days': 2, 'price_nm': 3000, 'required': {'Доска': 60, 'Бревна': 20, 'Железная руда': 15}}, 'manor': {'name': 'Клановое поместье', 'slots…` |  | :377 |
-| `CLAN_BUILDING_NO_RESOURCES_MULT` | `2` |  | :392 |
-| `CLAN_EXPANSION_TYPES` | `('kitchen', 'workbench', 'shower', 'garden', 'library', 'shop', 'tree')` |  | :394 |
-| `CLAN_EXPANSION_INFO` | `{'kitchen': {'name': 'Кухня', 'icon': '🍳', 'desc': 'Готовка по выученным рецептам; уровень задаёт доступные блюда.'}, 'workbench': {'name': 'Крафтовый стол', 'icon': '🛠', 'desc': 'Крафт снаряжения …` |  | :396 |
-| `FIRE_TREE_CLAN_MEDIT_AP` | `20` | 🧘 медитация у Древа (в доп. к домашней) | :418 |
-| `FIRE_TREE_CLAN_ESSENCE_NAME` | `'Эссенция Памяти'` |  | :419 |
-| `FIRE_TREE_CLAN_ESSENCE_DAYS` | `30` | раз в 30 дней (от установки/сбора) | :420 |
-| `FIRE_TREE_CLAN_ESSENCE_SELL` | `500` | продажа кристалла на скупке | :421 |
-| `CLAN_EXPANSION_UPGRADE` | `{2: {'nm': 1500, 'required': {'Доска': 20, 'Железная руда': 10}}, 3: {'nm': 4000, 'required': {'Доска': 50, 'Железная руда': 30}}, 4: {'nm': 9000, 'required': {'Доска': 100, 'Железная руда': 60}}}` |  | :423 |
-| `CLAN_SHOWER_AP_BY_LEVEL` | `{1: 25, 2: 50, 3: 75, 4: 100}` |  | :431 |
-| `CLAN_SHOWER_SOBER_MINUTES` | `{1: 60, 2: 120, 3: 180, 4: 240}` |  | :432 |
-| `CLAN_GARDEN_PLOTS` | `{1: 2, 2: 3, 3: 4, 4: 6}` |  | :434 |
-| `CLAN_SHOP_DAILY_LIMIT` | `3` |  | :435 |
-| `CLAN_SHOP_DISCOUNT` | `10` |  | :436 |
-| `BOT_TOKEN` | `os.getenv('BOT_TOKEN')` |  | :438 |
-| `ADMIN_IDS` | `[int(x) for x in os.getenv('ADMIN_IDS', '').split(',') if x.strip()]` |  | :439 |
-| `_news_raw` | `os.getenv('NEWS_CHAT_ID', '').strip()` |  | :442 |
-| `NEWS_CHAT_ID` | `int(_news_raw) if _news_raw.lstrip('-').isdigit() else None` |  | :443 |
-| `DB_PATH` | `os.getenv('DATABASE_PATH', 'database/nordmark.db')` |  | :446 |
-| `FSM_STORAGE_PATH` | `os.getenv('FSM_STORAGE_PATH', '').strip() or os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), 'fsm')` |  | :455 |
-| `REPORT_DAY_START_MINUTE` | `0` |  | :465 |
-| `RANKS` | `[('Рекрут', 0), ('Рядовой', 100), ('Ефрейтор', 350), ('Капрал', 500), ('Сержант', 850), ('Старший Сержант', 1500), ('Лейтенант', 2500), ('Старший Лейтенант', 4040), ('Капитан', 6000), ('Майор', 850…` |  | :467 |
-| `MAX_SELF_RANK_TROOPS` | `4040` |  | :488 |
-| `AUTO_RANK_NAMES` | `('Рекрут', 'Рядовой', 'Ефрейтор', 'Капрал', 'Сержант', 'Старший Сержант', 'Лейтенант', 'Старший Лейтенант')` |  | :491 |
-| `AWARD_MAX_SHOP_DISCOUNT` | `40` |  | :498 |
-| `AWARD_MIN_REPORT_TAX` | `5` |  | :499 |
-| `RANK_STATUS_TAGS` | `{'Ефрейтор': 'pilot2', 'Старший Сержант': 'pilot1', 'Старший Лейтенант': 'veteran', 'Майор': 'master_pilot', 'Полковник': 'ace'}` |  | :501 |
-| `LEGIONER_ACCESS_CAP_ORDER` | `5` |  | :514 |
-| `RANK_DAMAGE_TIERS` | `{'ace': (4, 8), 'master_pilot': (3, 5), 'veteran': (2, 4), 'pilot1': (1, 3), 'pilot2': (1, 2), 'recruit': (1, 1), 'tourist': (0, 1)}` |  | :520 |
-| `RANK_CRIT_CHANCE` | `{'ace': 7.5, 'master_pilot': 6.0, 'veteran': 4.5, 'pilot1': 3.0, 'pilot2': 1.5, 'recruit': 0.0, 'tourist': 0.0}` |  | :538 |
-| `PILOT_CRIT_MULT` | `1.4` |  | :552 |
-| `PILOT_NO_WEAPON_DMG` | `(1, 1)` |  | :555 |
-| `DUEL_ZONE_LABELS` | `{'head': 'Голова', 'body': 'Тело', 'hands': 'Руки', 'legs': 'Ноги'}` |  | :562 |
-| `DUEL_ZONE_EMOJI` | `{'head': '🧠', 'body': '🫀', 'hands': '✊', 'legs': '🦵'}` |  | :568 |
-| `DUEL_AP_COST` | `15` | списывается с обоих при старте боя | :574 |
-| `DUEL_RATING_WIN` | `2` | рейтинг за победу | :575 |
-| `DUEL_RATING_LOSS` | `-3` | рейтинг за поражение | :576 |
-| `DUEL_RATING_DRAW` | `0` | рейтинг за ничью | :577 |
-| `DUEL_RATING_FORFEIT` | `-1` | рейтинг тому, кто покинул бой («Покинуть дуэль») | :578 |
-| `DUEL_RATING_FORFEIT_WIN` | `1` | рейтинг сопернику, если противник покинул бой (меньше чистой победы) | :579 |
-| `DUEL_MIN_DAMAGE` | `1` | минимум урона за попавший (не уклонённый) удар | :580 |
-| `DUEL_GUARD_REDUCTION` | `0.5` | доля урона, остающаяся при угаданной зоне защиты | :581 |
-| `DUEL_HEAL_BETWEEN` | `0` | восстановление HP между раундами (пока нет) | :582 |
-| `DUEL_CHALLENGE_TIMEOUT_SEC` | `120` | сколько живёт неотвеченный вызов | :583 |
-| `DUEL_STALE_SEC` | `1800` | зависшая дуэль авто-завершается как void | :584 |
-| `DUEL_GLOVES_NAME` | `'Дуэльные перчатки'` |  | :585 |
-| `DUEL_GLOVES_DAMAGE` | `7` |  | :586 |
-| `DUEL_GLOVES_PRICE` | `200` |  | :587 |
-| `DUEL_GLOVES_SELL` | `100` |  | :588 |
-| `DUEL_CLUB_CARD_NAME` | `'Клубная карта «Дом Дуэлей»'` |  | :589 |
-| `DUEL_CLUB_CARD_PRICE` | `150` |  | :590 |
-| `DUEL_CLUB_CARD_SELL` | `75` |  | :591 |
-| `DUEL_CLUB_CARD_DAYS` | `30` |  | :592 |
-| `DUEL_ACCESS_TAG` | `'pilot2'` |  | :595 |
-| `RARITY_LEVELS` | `{1: 'Обычный', 2: 'Качественный', 3: 'Редкий', 4: 'Шедевр', 5: 'Легендарный'}` |  | :597 |
-| `SALE_CONFIRM_MIN_RARITY` | `3` |  | :606 |
-| `RARITY_EMOJI` | `{1: '⬜', 2: '🟩', 3: '🟦', 4: '🟪', 5: '🟧'}` |  | :608 |
-| `ITEM_CATEGORIES` | `{'weapon': 'Оружие', 'consumable': 'Расходники', 'building': 'Недвижимость', 'housing': 'Жильё', 'furniture': 'Мебель и расширения', 'seeds': 'Семена', 'equipment': 'Одежда', 'resource': 'Ресурсы',…` |  | :616 |
-| `MARKET_LICENSE_SLOTS` | `2` | доп. слоты при активной лицензии | :640 |
-| `MARKET_LICENSE_DAYS` | `30` | срок действия лицензии (дней) | :641 |
-| `MARKET_LICENSE_PRICE` | `500` | цена лицензии в НМ | :642 |
-| `DUNGEON_HEAL_HARD_LIMIT` | `10` | после этого — ×1/2 | :659 |
-| `DUNGEON_HEAL_SOFT_MULT` | `2 / 3` |  | :660 |
-| `DUNGEON_HEAL_HARD_MULT` | `1 / 2` |  | :661 |
-| `ESCAPE_HP_BONUS` | `20` |  | :676 |
-| `DUNGEON_SMOKE_ESCAPE` | `95` |  | :677 |
-| `DUNGEON_SMOKE_MAX` | `2` |  | :678 |
-| `DUNGEON_ESCAPE_DRUNK_MULT` | `0.5` |  | :681 |
-| `AP_MAX` | `150` |  | :683 |
-| `AP_DAILY_RECOVERY` | `100` |  | :684 |
-| `AP_BONUS_FROM_CONSUMABLE` | `50` |  | :685 |
-| `AP_DAILY_RESTORE_LIMIT` | `150` |  | :690 |
-| `AP_EXHAUSTED_MINUTES` | `2880` | 2 суток | :691 |
-| `AP_EXHAUSTED_DAILY_RECOVERY` | `75` | суточное восстановление в «истощении» | :692 |
-| `AP_EXHAUSTED_MAX_AP` | `90` | максимум ОД в «истощении» | :693 |
+| `VERSION` | `'0.43.3'` |  | :16 |
+| `VERSION_NOTES` | `'В глубинах... что-то изменилось'` |  | :17 |
+| `PREV_VERSION` | `'0.43.2'` |  | :18 |
+| `PREV_VERSION_NOTES` | `'В Круговороте и в лесу что-то добавилось.'` |  | :19 |
+| `TOURIST_BOOKLET_DESCRIPTION` | `'Печатная карта Нордхайма для гостей города. Просматривай превью городских локаций — и отмечай их в буклете. Собери все 9 и получи награду от командования.'` |  | :22 |
+| `TOURIST_BOOKLET_PRICE` | `1` |  | :25 |
+| `TOURIST_BOOKLET_SELL_PRICE` | `0` | буклет не продаётся (иначе чек-лист теряется) | :26 |
+| `TOURIST_BOOKLET_AWARD` | `'Опытный турист'` |  | :27 |
+| `TOURIST_BOOKLET_AWARD_EMOJI` | `'🧭'` |  | :28 |
+| `TOURIST_BOOKLET_AWARD_DESCRIPTION` | `'Посетил все городские локации Нордхайма по «Буклету туриста». Знак почётного гостя города.'` |  | :29 |
+| `TOURIST_BOOKLET_REWARD_NM` | `20` |  | :31 |
+| `TOURIST_BOOKLET_REWARD_TX` | `'booklet'` |  | :32 |
+| `TOURIST_BOOKLET_LOCATIONS` | `('townhall', 'library', 'park', 'gossmi', 'bank', 'kvp', 'hq', 'contracts', 'nii')` |  | :35 |
+| `CLAN_HALL_ENABLED` | `True` |  | :42 |
+| `FIRELAB_SCARECROW_HP` | `25` |  | :45 |
+| `FIRELAB_SCARECROW_DMG` | `(3, 5)` |  | :46 |
+| `FIRELAB_SCARECROW_DODGE` | `10` |  | :47 |
+| `FIRELAB_SCARECROW_ARMOR` | `1` | броня Пугала (стены соломы) | :48 |
+| `FIRELAB_APPLE_CHILD_HP` | `27` |  | :49 |
+| `FIRELAB_APPLE_CHILD_DMG` | `(2, 4)` |  | :50 |
+| `FIRELAB_APPLE_CHILD_DODGE` | `9` |  | :51 |
+| `FIRELAB_CROW_HP` | `16` |  | :52 |
+| `FIRELAB_CROW_DMG` | `(2, 4)` |  | :53 |
+| `FIRELAB_CROW_DODGE` | `20` |  | :54 |
+| `FIRELAB_GHOST_HP` | `24` |  | :55 |
+| `FIRELAB_GHOST_DMG` | `(2, 4)` |  | :56 |
+| `FIRELAB_GHOST_DODGE` | `15` |  | :57 |
+| `FIRELAB_HUB_DODGE` | `FIRELAB_GHOST_DODGE` |  | :58 |
+| `FIRELAB_HUB_HP` | `FIRELAB_GHOST_HP` |  | :59 |
+| `FIRELAB_HUB_DMG` | `FIRELAB_GHOST_DMG` |  | :60 |
+| `FIRELAB_PUMPKIN_HP` | `60` |  | :61 |
+| `FIRELAB_PUMPKIN_DMG` | `(4, 7)` |  | :62 |
+| `FIRELAB_PUMPKIN_DODGE` | `5` |  | :63 |
+| `FIRELAB_PUMPKIN_ARMOR` | `2` | броня босса | :64 |
+| `FIRE_LAB_PIE_NAME` | `'Кусочек тыквенного пирога'` |  | :68 |
+| `FIRE_LAB_CANDY_NAME` | `'Леденец языков пламени'` |  | :69 |
+| `FIRE_LAB_HAY_NAME` | `'Пучок сена'` |  | :70 |
+| `FIRE_LAB_BRANCH_NAME` | `'Ветка дерева'` |  | :71 |
+| `FIRE_LAB_RECIPE_NAME` | `'Рецепт: Тыквенный пирог'` |  | :72 |
+| `FIRE_PUMPKIN_SEED_NAME` | `'Семечко тыквы'` | посадка в кадку / клан. сад | :73 |
+| `FIRE_CROW_FEATHER_NAME` | `'Перо ворона'` | ресурс (дроп стража? — Ф5) | :74 |
+| `FIRE_WIRE_NAME` | `'Моток железной проволоки'` | ингредиент трости | :75 |
+| `FIRE_EGGS_NAME` | `'Яйца'` | ингредиент пирога (x2) | :76 |
+| `FIRE_CROWN_NAME` | `'Огненный венец'` | голова: броня 2, лечение +25% | :77 |
+| `FIRE_CLOAK_NAME` | `'Плащ Памяти'` | тело: броня 2, уклон +5% | :78 |
+| `FIRE_GLOVES_NAME` | `'Перчатки стража посевов'` | руки: броня 2, уклон +3% | :79 |
+| `FIRE_KEYS_NAME` | `'Вилы'` | оружие: +2 к удару, кровотечение | :80 |
+| `FIRE_FLAME_DEVICE_NAME` | `'Ручное пламенеющее устройство'` | ингредиент трости | :81 |
+| `FIRELAB_SCARECROW_SEED` | `{'key': 'scarecrow', 'spot': 'firelab', 'name': 'Пугало', 'hp': FIRELAB_SCARECROW_HP, 'dmg_min': FIRELAB_SCARECROW_DMG[0], 'dmg_max': FIRELAB_SCARECROW_DMG[1], 'dodge': FIRELAB_SCARECROW_DODGE, 'ar…` |  | :83 |
+| `FIRELAB_APPLE_CHILD_SEED` | `{'key': 'apple_child', 'spot': 'firelab', 'name': 'Дитя Яблони', 'hp': FIRELAB_APPLE_CHILD_HP, 'dmg_min': FIRELAB_APPLE_CHILD_DMG[0], 'dmg_max': FIRELAB_APPLE_CHILD_DMG[1], 'dodge': FIRELAB_APPLE_C…` |  | :110 |
+| `FIRELAB_CROW_SEED` | `{'key': 'crow', 'spot': 'firelab', 'name': 'Ворон', 'hp': FIRELAB_CROW_HP, 'dmg_min': FIRELAB_CROW_DMG[0], 'dmg_max': FIRELAB_CROW_DMG[1], 'dodge': FIRELAB_CROW_DODGE, 'loss_ap': 0, 'chance': 0, 'p…` |  | :137 |
+| `FIRELAB_HUB_SEED` | `{'key': 'hub', 'spot': 'firelab', 'name': 'Хуб', 'hp': FIRELAB_HUB_HP, 'dmg_min': FIRELAB_HUB_DMG[0], 'dmg_max': FIRELAB_HUB_DMG[1], 'dodge': FIRELAB_HUB_DODGE, 'loss_ap': 0, 'chance': 0, 'pity_tar…` |  | :162 |
+| `FIRELAB_PUMPKIN_SEED` | `{'key': 'pumpkin_boss', 'spot': 'firelab', 'name': 'Мощный Мистер Огненная Тыква', 'hp': FIRELAB_PUMPKIN_HP, 'dmg_min': FIRELAB_PUMPKIN_DMG[0], 'dmg_max': FIRELAB_PUMPKIN_DMG[1], 'dodge': FIRELAB_P…` |  | :189 |
+| `FIRELAB_ENEMY_SEEDS` | `(FIRELAB_SCARECROW_SEED, FIRELAB_APPLE_CHILD_SEED, FIRELAB_CROW_SEED, FIRELAB_HUB_SEED, FIRELAB_PUMPKIN_SEED)` |  | :219 |
+| `FIRE_EVENT_ENABLED` | `True` |  | :227 |
+| `FIRE_EVENT_START` | `(2026, 10, 30, 0, 0)` | МСК, ночь на пятницу 30.10 | :228 |
+| `FIRE_EVENT_DURATION_DAYS` | `7` | до ~00:00 МСК 6.11 (т.е. весь 5.11) | :229 |
+| `FIRE_LAB_ENABLED` | `True` |  | :231 |
+| `FIRE_EVENT_LAB_FEE` | `32` | вход в лабиринт, НМ | :232 |
+| `FIRE_EVENT_MAX_ENTRIES_DAY` | `4` | максимум заходов за сутки | :233 |
+| `FIRE_LAB_SESSION_TTL_SEC` | `3600` | неактивность: сессия закрывается автоматически (1 ч) | :234 |
+| `FIRE_LAB_FORK_KEY` | `'city/fire_maze'` | развилка (вход/смерть/уход/финиш) | :237 |
+| `FIRE_LAB_WELL_KEY` | `'city/fire_well'` | Колодец | :238 |
+| `FIRE_LAB_TREE_KEY` | `'city/fire_tree'` | Древо Огня | :239 |
+| `FIRE_LAB_SCARECROW_BLIND_P` | `0.15` | Пугало: «сено в лицо» — ослепление | :244 |
+| `FIRE_LAB_APPLE_STUN_P` | `0.1` | Дитя Яблони: «яблочко» — оглушение | :245 |
+| `FIRE_LAB_CROW_BLIND_P` | `0.15` | Ворон: ослепление (как сова) | :246 |
+| `FIRE_LAB_HUB_SLOW_P` | `0.25` |  | :247 |
+| `FIRE_LAB_HUB_SLOW_ROUNDS` | `3` |  | :248 |
+| `FIRE_LAB_HUB_PLAYER_DODGE_PENALTY` | `35` |  | :249 |
+| `FIRE_LAB_HUB_ENEMY_DODGE_BONUS` | `10` |  | :250 |
+| `FIRE_LAB_BOSS_BURN_P` | `0.25` | Босс «Мистер Тыква»: поджиг игрока | :251 |
+| `FIRE_LAB_BOSS_BURN_DMG` | `2` | −HP/ход | :252 |
+| `FIRE_LAB_BOSS_BURN_ROUNDS` | `3` |  | :253 |
+| `FIRE_LAB_BOSS_MAX` | `2` | максимум встреч с боссом за заход | :254 |
+| `FIRE_LAB_ROOMS_MAX` | `25` | после 25 комнат-развилок выход автоматом | :255 |
+| `FIRE_LAB_TIER_MAX` | `10` | кап усилений | :258 |
+| `FIRE_LAB_TIER_HP_STEP` | `2` | +HP всем врагам за тир (1–4) | :259 |
+| `FIRE_LAB_TIER_HP_LAST` | `8` | 5-й тир: разово +8 (итого +16) | :260 |
+| `FIRE_LAB_TIER_HP_STEP_MID` | `4` | +HP всем врагам за тир (6–9) | :261 |
+| `FIRE_LAB_TIER_HP_10` | `16` | 10-й тир: разово +16 | :262 |
+| `FIRE_LAB_TIER_LOOT_STEP` | `0.02` | лут ×(1+2%) за тир (1–4, 6–9) | :263 |
+| `FIRE_LAB_RARE_MIN_RARITY` | `3` | редкий лут = предмет с полем редкости >= 3 («Редкий» и выше) | :264 |
+| `FIRE_LAB_RARE_TIER_BONUS` | `0.014` | редкий лут: +1.4 п.п. шанса за каждый тир (в долях) | :265 |
+| `FIRE_LAB_TIER_LOOT_LAST` | `0.1` | 5-й и 10-й тиры: ×(1+10%) | :266 |
+| `FIRE_LAB_WELL_MAX` | `3` | максимум посещений колодца за заход | :269 |
+| `FIRE_LAB_TREE_MAX` | `1` | древо — раз за заход | :270 |
+| `FIRE_LAB_ROOM_WEIGHTS` | `{(False, True): (('tree', 9), ('well', 6), ('enemy', 60)), (False, False): (('enemy', 65),), (True, True): (('tree', 9), ('well', 6), ('boss', 32), ('enemy', 41)), (True, False): (('boss', 32), ('e…` |  | :274 |
+| `FIRE_TREE_DMG_BONUS_PCT` | `15` | +15% урона | :283 |
+| `FIRE_TREE_REGEN_HP` | `1` | +1 HP после каждого удара игрока | :284 |
+| `FIRE_LAB_PATTERN_WELL` | `('L', 'L', 'S', 'S')` | ЛЛПП → Колодец (до 3) | :288 |
+| `FIRE_LAB_PATTERN_TREE` | `('L', 'L', 'S', 'S', 'R', 'R')` | ЛЛППНН → Древо Огня (1) | :289 |
+| `FIRE_LAB_WELL_FISH_TRIES` | `6` | попыток рыбалки за один визит в Колодец | :292 |
+| `FIRE_LAB_WELL_HEAL` | `50` | колодец: фиксированное лечение за визит, HP | :293 |
+| `FIRE_LAB_WELL_AP` | `10` | колодец: восстановление ОД за визит (не выше максимума) | :294 |
+| `FIRE_SET_REGEN_HP` | `1` | сет праздничной одежды+оружия: регенерация за ход в Лабиринте | :295 |
+| `FIRE_EXCHANGE_ENABLED` | `True` |  | :298 |
+| `FIRE_EXCHANGE_OFFERS` | `((FIRE_LAB_HAY_NAME, 3, FIRE_LAB_PIE_NAME, 1), (FIRE_LAB_BRANCH_NAME, 3, FIRE_LAB_CANDY_NAME, 1), (((FIRE_LAB_HAY_NAME, 15), (FIRE_LAB_BRANCH_NAME, 15)), 'Рецепт: Леденец из ягод', 1))` |  | :299 |
+| `FIRE_LAB_FISH_DELAY` | `(7, 15)` | колодец: поклёвка через N секунд (как на озере) | :307 |
+| `FIRE_LAB_NOBAIT_FIND_P` | `0.12` | колодец без наживки: шанс поднять что-то со дна (%/100) | :308 |
+| `FIRE_LAB_NOBAIT_FIND` | `((FIRE_WIRE_NAME, 35), (FIRE_LAB_HAY_NAME, 65))` | что поднимается без наживки (вес) | :309 |
+| `FIRE_LAB_FISH_OSETR_NAME` | `'Спектральная Латимерия'` | рыба 1 (rarity 2) | :314 |
+| `FIRE_LAB_FISH_SOUL_NAME` | `'Скелетная Арована'` | рыба 2 (rarity 3) | :315 |
+| `FIRE_LAB_FISH_CARP_NAME` | `'Пылающая Душа'` | рыба 3 (rarity 4, редкая) | :316 |
+| `FIRE_LAB_FISH_TABLE` | `((FIRE_LAB_FISH_OSETR_NAME, 60), (FIRE_LAB_FISH_SOUL_NAME, 25), (FIRE_LAB_FISH_CARP_NAME, 15))` | взвешенный выбор улова | :317 |
+| `FIRE_FISHER_ACH_KEY` | `'fire_fisher'` |  | :323 |
+| `FIRE_FISHER_THRESHOLD` | `3` |  | :324 |
+| `FIRE_FISHER_REWARD_NM` | `150` |  | :325 |
+| `FIRE_LAB_PIE_HEAL` | `15` |  | :327 |
+| `FIRE_LAB_CANDY_HEAL` | `12` |  | :328 |
+| `FIRE_PUMPKIN_NAME` | `'Тыква'` | плод; ингредиент пирога | :332 |
+| `FIRE_SUGAR_NAME` | `'Сахар'` | ингредиент пирога | :333 |
+| `FIRE_KEYS_DMG` | `2` |  | :334 |
+| `FIRE_KEYS_BLEED_P` | `10` |  | :335 |
+| `FIRE_KEYS_BLEED_DMG` | `2` |  | :336 |
+| `FIRE_CROWN_HEAL_BONUS_PCT` | `25` |  | :337 |
+| `FIRE_CLOAK_DODGE` | `5` |  | :338 |
+| `FIRE_GLOVES_DODGE` | `3` |  | :339 |
+| `FIRE_CANE_NAME` | `'Обжигающая трость'` | оружие: удар 3, поджог 20% | :340 |
+| `FIRE_CANE_DMG` | `3` |  | :341 |
+| `FIRE_CANE_BURN_P` | `20` |  | :342 |
+| `FIRE_CANE_BURN_DMG` | `2` |  | :343 |
+| `FIRE_CANE_BURN_ROUNDS` | `3` |  | :344 |
+| `FIRE_LANTERN_NAME` | `'Лампа Круговорота'` | награда за «Чтящего Предков» (Ф4б) | :345 |
+| `FIRE_MUSHROOM_NAME` | `'Огненный гриб'` | гриб леса; только пожертвование | :348 |
+| `FIRE_BERRY_NAME` | `'Горсть Пылающих ягод'` | ягода леса (прогалина); только пожертвование | :349 |
+| `FIRE_ORE_NAME` | `'Пламенная руда'` | добыча шахты; только пожертвование | :350 |
+| `FIRE_ORE_CHANCE` | `15` | % за один удар киркой | :351 |
+| `FIRE_TALISMAN_NAME` | `'Талисман памяти'` | награда за полное пожертвование: +1 регенерация за ход | :352 |
+| `FIRE_TALISMAN_REGEN` | `1` |  | :353 |
+| `FIRE_SPOILED_FOOD_NAME` | `'Испорченная еда'` | один предмет для любой испорченной съедобной еды | :354 |
+| `FIRE_TREE_DONATION` | `((FIRE_MUSHROOM_NAME, 2), (FIRE_BERRY_NAME, 2), (FIRE_ORE_NAME, 1))` |  | :356 |
+| `FIRE_DONATION_ONLY` | `(FIRE_MUSHROOM_NAME, FIRE_BERRY_NAME, FIRE_ORE_NAME)` |  | :362 |
+| `FIRE_AMBER_NAME` | `'Пламя Памяти'` | янтарь из Лампы (Ф4б), продам 100 НМ | :363 |
+| `FIRE_LANTERN_MEDIT_AP` | `20` | 🪔 медитация раз в сутки | :364 |
+| `FIRE_LANTERN_AMBER_DAYS` | `7` | янтарь раз в N суток | :365 |
+| `FIRE_PREDKI_NAME` | `'Предания предков'` |  | :368 |
+| `FIRE_PREDKI_HEAL` | `60` | +60 HP в бою | :369 |
+| `FIRE_PREDKI_REGEN` | `50` | регенерация: 50% от лечения | :370 |
+| `FIRE_PREDKI_REGEN_TURNS` | `4` | разлитая на 4 хода (нестандарт!) | :371 |
+| `FIRE_PREDKI_DODGE_PCT` | `5` | суточный баф: уворот +5% | :372 |
+| `FIRE_PREDKI_DODGE_HOURS` | `24` | длительность бафа (не продлевается) | :373 |
+| `CLAN_BUILDING_TYPES` | `{'house': {'name': 'Дом Клана', 'slots': 2, 'max_level': 2, 'days': 2, 'price_nm': 3000, 'required': {'Доска': 60, 'Бревна': 20, 'Железная руда': 15}}, 'manor': {'name': 'Клановое поместье', 'slots…` |  | :375 |
+| `CLAN_BUILDING_NO_RESOURCES_MULT` | `2` |  | :390 |
+| `CLAN_EXPANSION_TYPES` | `('kitchen', 'workbench', 'shower', 'garden', 'library', 'shop', 'tree')` |  | :392 |
+| `CLAN_EXPANSION_INFO` | `{'kitchen': {'name': 'Кухня', 'icon': '🍳', 'desc': 'Готовка по выученным рецептам; уровень задаёт доступные блюда.'}, 'workbench': {'name': 'Крафтовый стол', 'icon': '🛠', 'desc': 'Крафт снаряжения …` |  | :394 |
+| `FIRE_TREE_CLAN_MEDIT_AP` | `20` | 🧘 медитация у Древа (в доп. к домашней) | :416 |
+| `FIRE_TREE_CLAN_ESSENCE_NAME` | `'Эссенция Памяти'` |  | :417 |
+| `FIRE_TREE_CLAN_ESSENCE_DAYS` | `30` | раз в 30 дней (от установки/сбора) | :418 |
+| `FIRE_TREE_CLAN_ESSENCE_SELL` | `500` | продажа кристалла на скупке | :419 |
+| `CLAN_EXPANSION_UPGRADE` | `{2: {'nm': 1500, 'required': {'Доска': 20, 'Железная руда': 10}}, 3: {'nm': 4000, 'required': {'Доска': 50, 'Железная руда': 30}}, 4: {'nm': 9000, 'required': {'Доска': 100, 'Железная руда': 60}}}` |  | :421 |
+| `CLAN_SHOWER_AP_BY_LEVEL` | `{1: 25, 2: 50, 3: 75, 4: 100}` |  | :429 |
+| `CLAN_SHOWER_SOBER_MINUTES` | `{1: 60, 2: 120, 3: 180, 4: 240}` |  | :430 |
+| `CLAN_GARDEN_PLOTS` | `{1: 2, 2: 3, 3: 4, 4: 6}` |  | :432 |
+| `CLAN_SHOP_DAILY_LIMIT` | `3` |  | :433 |
+| `CLAN_SHOP_DISCOUNT` | `10` |  | :434 |
+| `BOT_TOKEN` | `os.getenv('BOT_TOKEN')` |  | :436 |
+| `ADMIN_IDS` | `[int(x) for x in os.getenv('ADMIN_IDS', '').split(',') if x.strip()]` |  | :437 |
+| `_news_raw` | `os.getenv('NEWS_CHAT_ID', '').strip()` |  | :440 |
+| `NEWS_CHAT_ID` | `int(_news_raw) if _news_raw.lstrip('-').isdigit() else None` |  | :441 |
+| `DB_PATH` | `os.getenv('DATABASE_PATH', 'database/nordmark.db')` |  | :444 |
+| `FSM_STORAGE_PATH` | `os.getenv('FSM_STORAGE_PATH', '').strip() or os.path.join(os.path.dirname(os.path.abspath(DB_PATH)), 'fsm')` |  | :453 |
+| `REPORT_DAY_START_MINUTE` | `0` |  | :463 |
+| `RANKS` | `[('Рекрут', 0), ('Рядовой', 100), ('Ефрейтор', 350), ('Капрал', 500), ('Сержант', 850), ('Старший Сержант', 1500), ('Лейтенант', 2500), ('Старший Лейтенант', 4040), ('Капитан', 6000), ('Майор', 850…` |  | :465 |
+| `MAX_SELF_RANK_TROOPS` | `4040` |  | :486 |
+| `AUTO_RANK_NAMES` | `('Рекрут', 'Рядовой', 'Ефрейтор', 'Капрал', 'Сержант', 'Старший Сержант', 'Лейтенант', 'Старший Лейтенант')` |  | :489 |
+| `AWARD_MAX_SHOP_DISCOUNT` | `40` |  | :496 |
+| `AWARD_MIN_REPORT_TAX` | `5` |  | :497 |
+| `RANK_STATUS_TAGS` | `{'Ефрейтор': 'pilot2', 'Старший Сержант': 'pilot1', 'Старший Лейтенант': 'veteran', 'Майор': 'master_pilot', 'Полковник': 'ace'}` |  | :499 |
+| `LEGIONER_ACCESS_CAP_ORDER` | `5` |  | :512 |
+| `RANK_DAMAGE_TIERS` | `{'ace': (4, 8), 'master_pilot': (3, 5), 'veteran': (2, 4), 'pilot1': (1, 3), 'pilot2': (1, 2), 'recruit': (1, 1), 'tourist': (0, 1)}` |  | :518 |
+| `RANK_CRIT_CHANCE` | `{'ace': 7.5, 'master_pilot': 6.0, 'veteran': 4.5, 'pilot1': 3.0, 'pilot2': 1.5, 'recruit': 0.0, 'tourist': 0.0}` |  | :536 |
+| `PILOT_CRIT_MULT` | `1.4` |  | :550 |
+| `PILOT_NO_WEAPON_DMG` | `(1, 1)` |  | :553 |
+| `DUEL_ZONE_LABELS` | `{'head': 'Голова', 'body': 'Тело', 'hands': 'Руки', 'legs': 'Ноги'}` |  | :560 |
+| `DUEL_ZONE_EMOJI` | `{'head': '🧠', 'body': '🫀', 'hands': '✊', 'legs': '🦵'}` |  | :566 |
+| `DUEL_AP_COST` | `15` | списывается с обоих при старте боя | :572 |
+| `DUEL_RATING_WIN` | `2` | рейтинг за победу | :573 |
+| `DUEL_RATING_LOSS` | `-3` | рейтинг за поражение | :574 |
+| `DUEL_RATING_DRAW` | `0` | рейтинг за ничью | :575 |
+| `DUEL_RATING_FORFEIT` | `-1` | рейтинг тому, кто покинул бой («Покинуть дуэль») | :576 |
+| `DUEL_RATING_FORFEIT_WIN` | `1` | рейтинг сопернику, если противник покинул бой (меньше чистой победы) | :577 |
+| `DUEL_MIN_DAMAGE` | `1` | минимум урона за попавший (не уклонённый) удар | :578 |
+| `DUEL_GUARD_REDUCTION` | `0.5` | доля урона, остающаяся при угаданной зоне защиты | :579 |
+| `DUEL_HEAL_BETWEEN` | `0` | восстановление HP между раундами (пока нет) | :580 |
+| `DUEL_CHALLENGE_TIMEOUT_SEC` | `120` | сколько живёт неотвеченный вызов | :581 |
+| `DUEL_STALE_SEC` | `1800` | зависшая дуэль авто-завершается как void | :582 |
+| `DUEL_GLOVES_NAME` | `'Дуэльные перчатки'` |  | :583 |
+| `DUEL_GLOVES_DAMAGE` | `7` |  | :584 |
+| `DUEL_GLOVES_PRICE` | `200` |  | :585 |
+| `DUEL_GLOVES_SELL` | `100` |  | :586 |
+| `DUEL_CLUB_CARD_NAME` | `'Клубная карта «Дом Дуэлей»'` |  | :587 |
+| `DUEL_CLUB_CARD_PRICE` | `150` |  | :588 |
+| `DUEL_CLUB_CARD_SELL` | `75` |  | :589 |
+| `DUEL_CLUB_CARD_DAYS` | `30` |  | :590 |
+| `DUEL_ACCESS_TAG` | `'pilot2'` |  | :593 |
+| `RARITY_LEVELS` | `{1: 'Обычный', 2: 'Качественный', 3: 'Редкий', 4: 'Шедевр', 5: 'Легендарный'}` |  | :595 |
+| `SALE_CONFIRM_MIN_RARITY` | `3` |  | :604 |
+| `RARITY_EMOJI` | `{1: '⬜', 2: '🟩', 3: '🟦', 4: '🟪', 5: '🟧'}` |  | :606 |
+| `ITEM_CATEGORIES` | `{'weapon': 'Оружие', 'consumable': 'Расходники', 'building': 'Недвижимость', 'housing': 'Жильё', 'furniture': 'Мебель и расширения', 'seeds': 'Семена', 'equipment': 'Одежда', 'resource': 'Ресурсы',…` |  | :614 |
+| `MARKET_LICENSE_SLOTS` | `2` | доп. слоты при активной лицензии | :638 |
+| `MARKET_LICENSE_DAYS` | `30` | срок действия лицензии (дней) | :639 |
+| `MARKET_LICENSE_PRICE` | `500` | цена лицензии в НМ | :640 |
+| `DUNGEON_HEAL_HARD_LIMIT` | `10` | после этого — ×1/2 | :657 |
+| `DUNGEON_HEAL_SOFT_MULT` | `2 / 3` |  | :658 |
+| `DUNGEON_HEAL_HARD_MULT` | `1 / 2` |  | :659 |
+| `ESCAPE_HP_BONUS` | `20` |  | :674 |
+| `DUNGEON_SMOKE_ESCAPE` | `95` |  | :675 |
+| `DUNGEON_SMOKE_MAX` | `2` |  | :676 |
+| `DUNGEON_ESCAPE_DRUNK_MULT` | `0.5` |  | :679 |
+| `AP_MAX` | `150` |  | :681 |
+| `AP_DAILY_RECOVERY` | `100` |  | :682 |
+| `AP_BONUS_FROM_CONSUMABLE` | `50` |  | :683 |
+| `AP_DAILY_RESTORE_LIMIT` | `150` |  | :688 |
+| `AP_EXHAUSTED_MINUTES` | `2880` | 2 суток | :689 |
+| `AP_EXHAUSTED_DAILY_RECOVERY` | `75` | суточное восстановление в «истощении» | :690 |
+| `AP_EXHAUSTED_MAX_AP` | `90` | максимум ОД в «истощении» | :691 |
+| `FIRE_LANTERN_EXHAUST_REDUCE_PCT` | `50` |  | :693 |
 | `SEAWEED_DAILY_LIMIT` | `6` |  | :696 |
 | `DIGESTIVE_UPSET_MINUTES` | `1440` | 24 часа | :697 |
 | `ALCOHOL_WEAK_DRUNK_LIMIT` | `3` |  | :702 |
@@ -366,59 +367,59 @@
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `TOURIST_BOOKLET_NAME` | `'Буклет туриста'` |  | :23 |
+| `TOURIST_BOOKLET_NAME` | `'Буклет туриста'` |  | :21 |
 
 ## Древо Пламенного Круговорота (клановое расширение 'tree')
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `FIRE_TREE_CLAN_REQ_LAMPS` | `5` | сколько чланов с Лампой нужно для получения Древа | :417 |
+| `FIRE_TREE_CLAN_REQ_LAMPS` | `5` | сколько чланов с Лампой нужно для получения Древа | :415 |
 
 ## Суточный цикл Нордхайма
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `REPORT_DAY_START_HOUR` | `10` |  | :464 |
+| `REPORT_DAY_START_HOUR` | `10` |  | :462 |
 
 ## Дом Дуэлей (PvP-арена)
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `DUEL_ZONES` | `('head', 'body', 'hands', 'legs')` |  | :561 |
+| `DUEL_ZONES` | `('head', 'body', 'hands', 'legs')` |  | :559 |
 
 ## Рынок: слоты продажи
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `MARKET_BASE_SLOTS` | `1` | слоты без лицензии | :639 |
+| `MARKET_BASE_SLOTS` | `1` | слоты без лицензии | :637 |
 
 ## Налог на недвижимость (НМ/мес)
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `HOUSING_TAX` | `{'municipal': 0, 'studio': 20, 'apartment': 35, 'improved': 60, 'mansion': 100}` |  | :645 |
+| `HOUSING_TAX` | `{'municipal': 0, 'studio': 20, 'apartment': 35, 'improved': 60, 'mansion': 100}` |  | :643 |
 
 ## Банк: лимит счёта туриста (НМ)
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `TOURIST_BALANCE_LIMIT` | `200` |  | :655 |
+| `TOURIST_BALANCE_LIMIT` | `200` |  | :653 |
 
 ## Данж: лимит хила (количество применений за забег)
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `DUNGEON_HEAL_SOFT_LIMIT` | `6` | после этого — ×2/3 | :658 |
+| `DUNGEON_HEAL_SOFT_LIMIT` | `6` | после этого — ×2/3 | :656 |
 
 ## Сброс протухших забегов подземелья
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `DUNGEON_RUN_STALE_SEC` | `3600` |  | :667 |
+| `DUNGEON_RUN_STALE_SEC` | `3600` |  | :665 |
 
 ## Данж: побег и дымовая шашка
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `ESCAPE_BASE_CHANCE` | `25` |  | :675 |
+| `ESCAPE_BASE_CHANCE` | `25` |  | :673 |
 
