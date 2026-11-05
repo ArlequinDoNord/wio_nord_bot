@@ -55,7 +55,7 @@ async def main():
           config.FIRE_LAB_ENABLED in (True, False))
     check("старт = 30.10 (пятница), МСК",
           config.FIRE_EVENT_START[:3] == (2026, 10, 30))
-    check("длительность 6 суток (до 5.11)", config.FIRE_EVENT_DURATION_DAYS == 6)
+    check("длительность 7 суток (до конца 5.11)", config.FIRE_EVENT_DURATION_DAYS == 7)
     check("вход 32 НМ", config.FIRE_EVENT_LAB_FEE == 32)
     check("максимум 4 захода/сутки", config.FIRE_EVENT_MAX_ENTRIES_DAY == 4)
 

@@ -173,8 +173,8 @@ async def main():
         check("manor: 4 слота, макс. уровень 2",
               clan_expansion_slots("manor") == 4
               and clan_expansion_max_level("manor") == 2)
-        check("castle: 6 слотов (7-й резерв), макс. уровень 4",
-              clan_expansion_slots("castle") == 6
+        check("castle: 7 слотов (все доступны сразу), макс. уровень 4",
+              clan_expansion_slots("castle") == 7
               and clan_expansion_max_level("castle") == 4)
         check("неизвестный тип: 0 слотов",
               clan_expansion_slots(None) == 0
@@ -347,23 +347,22 @@ async def main():
         check("5-й слот поместья недоступен",
               ok3 is False and "4" in msg3)
 
-        print("\n8. Резиденция: 6 слотов и 7-й резерв")
+        print("\n8. Резиденция: 7 слотов, все доступны сразу")
         await set_clan_building_built(clan_id, "castle")
         ok5, _ = await install_clan_expansion(clan_id, LEADER, 5, "library")
         ok6, _ = await install_clan_expansion(clan_id, LEADER, 6, "shop")
         check("в резиденции доступны 5-й и 6-й слоты", ok5 is True and ok6 is True)
         ok7, msg7 = await install_clan_expansion(clan_id, LEADER, 7, "kitchen")
-        check("7-й слот — резерв, установка запрещена",
-              ok7 is False and "резерв" in msg7.lower())
+        check("7-й слот не запрещён как резерв", "резерв" not in msg7.lower())
         txt = clan_hall.build_hall_inside_text(
             {"name": "Северный Бастион"}, {"building_type": "castle"})
-        check("7-й слот помечен резервным в тексте", "7. 🔒" in txt)
+        check("7-й слот в тексте не помечен резервным", "Резервный слот" not in txt and "7. ▫️" in txt)
         cb_castle = FakeCallback(LEADER, f"clanh:expmanage:{clan_id}")
         await clan_hall.clan_hall_expmanage_cb(cb_castle)
-        check("на экране управления резиденцией виден резерв",
-              "Резервный слот" in (cb_castle.message.text or ""))
-        check("нет кнопки выбора для резервного слота",
-              f"clanh:expchoose:{clan_id}:7" not in cbs(cb_castle.message.kb))
+        check("на экране управления резерва нет",
+              "Резервный слот" not in (cb_castle.message.text or ""))
+        check("7-й слот резиденции доступен: установка прошла или слот свободен",
+              ok7 is True or f"clanh:expchoose:{clan_id}:7" in cbs(cb_castle.message.kb))
 
         print("\n9. Выбор типа исключает установленные")
         cb_choose = FakeCallback(LEADER, f"clanh:expchoose:{clan_id}:1")

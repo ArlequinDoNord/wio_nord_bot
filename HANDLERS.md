@@ -84,7 +84,7 @@
 | `clans.py` | Партии и кланы: реестр из Ратуши. | `router` | 7 | 24 | `city:`, `clanhier:`, `clans:` | `ClansCreate`, `ClansEdit`, `ClansMessage` |
 | `clan_hall.py` | Клан-холл: клановый склад и строительство кланового здания (Фаза 1). | `router` | 3 | 38 | `clanh:` | `ClanHallAdminPhoto` |
 | `admin_shop_clan.py` | Админ-менеджер клановых лавок (Фаза 7). | `router` | 5 | 9 | `clanshopadm:` | `ClanShopAdmin` |
-| `admin_clanphotos.py` | Админ-менеджер картинок клан-холла (Фаза 8). | `router` | 3 | 5 | `clanhph:` | `ClanPhotosAdmin` |
+| `admin_clanphotos.py` | Админ-менеджер картинок клан-холла (Фаза 8). | `router` | 3 | 7 | `clanhph:` | `ClanPhotosAdmin` |
 | `admin_firephotos.py` | Админ-менеджер картинок праздника «Пламенный Круговорот». | `router` | 1 | 2 | `fireph:` | `FirePhotosAdmin` |
 | `admin_berries.py` | Админ-редактор ягод леса по зонам (как грибы): шанс, добавить, убрать, создать. | `router` | 4 | 7 | `berry:` | `BerryAdmin` |
 | `fire_event.py` | Дни Пламенного Круговорота — праздничное событие (ТЗ — FIRE_EVENT.md). | `router` | 0 | 19 | `fireevent:` | — |
@@ -320,9 +320,9 @@
 ### `admin_clanphotos.py` — Админ-менеджер картинок клан-холла (Фаза 8).
 
 - Роутеры: `router`
-- Хендлеры: message=3, callback_query=5
+- Хендлеры: message=3, callback_query=7
 - FSM: `ClanPhotosAdmin`
-- `F.data.startswith`: `clanhph:bclan:`, `clanhph:buildings`, `clanhph:exp:`
+- `F.data.startswith`: `clanhph:bclan:`, `clanhph:bclr:`, `clanhph:bset:`, `clanhph:buildings`, `clanhph:exp:`
 - `F.data ==`: `clanhph:construction`, `clanhph:menu`
 
 ### `admin_firephotos.py` — Админ-менеджер картинок праздника «Пламенный Круговорот».

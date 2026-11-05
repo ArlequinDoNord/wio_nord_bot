@@ -437,8 +437,10 @@ async def main():
         await clan_hall.clan_hall_cb(cb_max)
         check("на резиденции кнопки улучшения нет",
               f"clanh:upgrade:{clan_id}" not in cbs(cb_max.message.kb))
-        check("в резиденции 7 слотов, 7-й резервный",
-              "7. 🔒" in (clan_hall.build_hall_inside_text(
+        check("в резиденции 7 слотов, 7-й не резервный",
+              "7. ▫️" in (clan_hall.build_hall_inside_text(
+                  {"name": "Северный Бастион"}, {"building_type": "castle"}) or "")
+              and "Резервный слот" not in (clan_hall.build_hall_inside_text(
                   {"name": "Северный Бастион"}, {"building_type": "castle"}) or ""))
 
         print("\n7. Очистка при роспуске клана")

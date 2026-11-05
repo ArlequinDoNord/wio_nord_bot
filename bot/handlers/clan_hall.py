@@ -83,6 +83,7 @@ from database.db import (
     plant_clan_seed,
     resolve_clan_building_with_event,
     set_clan_building_photo,
+    update_clan_building_photos,
     set_clan_construction_photo,
     set_clan_expansion_photo,
     start_clan_building_project,
@@ -133,7 +134,7 @@ router.callback_query.middleware(clan_hall_guard)
 router.message.middleware(clan_hall_guard)
 router.edited_message.middleware(clan_hall_guard)
 
-STORAGE_PAGE = 12
+STORAGE_PAGE = 8  # товаров на странице в меню вклада на склад
 
 
 class ClanHallAdminPhoto(StatesGroup):
@@ -151,11 +152,18 @@ def _building_cfg(btype: str | None) -> dict:
     return btypes.get(btype or "", {})
 
 
-async def resolve_clan_hall_photo(building_row) -> str | None:
+CLAN_BUILDING_TOD_KEYS = ("dawn", "day", "sunset", "night")
+CLAN_BUILDING_TOD_LABELS = {
+    "dawn": "🌅 Рассвет", "day": "☀️ День", "sunset": "🌇 Закат", "night": "🌙 Ночь",
+}
+
+
+async def resolve_clan_hall_photo(building_row, tod: str | None = None) -> str | None:
     """Подбирает фото для экрана клан-холла по статусу здания.
 
-    - building / upgrading -> общая картинка-заглушка стройки (settings.clan_construction_photo);
-    - built -> индивидуальная картинка здания клана (clan_buildings.building_photo_file_id);
+    - building / upgrading -> общая картинка-заглушка стройки;
+    - built -> картинка здания клана по времени суток (photo_dawn/day/sunset/night)
+      с фолбэком на другие слоты и legacy building_photo_file_id;
     - choosing / funding -> None.
     """
     if not building_row:
@@ -164,8 +172,17 @@ async def resolve_clan_hall_photo(building_row) -> str | None:
     if status in ("building", "upgrading"):
         return await get_clan_construction_photo()
     if status == "built":
-        photo = building_row["building_photo_file_id"] if "building_photo_file_id" in building_row.keys() else None
-        return (photo or "").strip() or None
+        if tod is None:
+            from utils.helpers import time_of_day_key
+            tod = time_of_day_key()
+        keys = building_row.keys()
+        for k in (tod, "day", "dawn", "sunset", "night"):
+            if f"photo_{k}" in keys:
+                val = (building_row[f"photo_{k}"] or "").strip()
+                if val:
+                    return val
+        legacy = building_row["building_photo_file_id"] if "building_photo_file_id" in keys else None
+        return (legacy or "").strip() or None
     return None
 
 
@@ -224,6 +241,35 @@ def build_donate_text(clan, items) -> str:
     if not items:
         lines.append("\nУ тебя нет ресурсов для вклада.")
     return "\n".join(lines)
+
+
+def build_donate_page_markup(clan_id: int, items: list, page: int) -> InlineKeyboardMarkup:
+    total = len(items)
+    pages = max(1, (total + STORAGE_PAGE - 1) // STORAGE_PAGE)
+    page = max(0, min(page, pages - 1))
+    start = page * STORAGE_PAGE
+    chunk = items[start:start + STORAGE_PAGE]
+    rows = []
+    for it in chunk:
+        rows.append([InlineKeyboardButton(
+            text=f"{it['name']} · {it['quantity']} шт.",
+            callback_data=f"clanh:item:{clan_id}:{it['id']}")])
+    if pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(
+                text="◀️", callback_data=f"clanh:donate:{clan_id}:{page - 1}"))
+        nav.append(InlineKeyboardButton(
+            text=f"{page + 1}/{pages}", callback_data="clanh:noop"))
+        if page < pages - 1:
+            nav.append(InlineKeyboardButton(
+                text="▶️", callback_data=f"clanh:donate:{clan_id}:{page + 1}"))
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text="🏰 К зданию клана",
+                                      callback_data=f"clanh:hall:{clan_id}")])
+    rows.append([InlineKeyboardButton(text="🔙 К складу",
+                                      callback_data=f"clanh:storage:{clan_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def build_donate_item_text(item, have: int, stored: int) -> str:
@@ -407,9 +453,7 @@ def build_hall_inside_text(clan, building_row, expansions=None) -> str:
     ]
     for idx in range(1, slots + 1):
         exp = by_slot.get(idx)
-        if btype == "castle" and idx == 7:
-            lines.append(f"  {idx}. 🔒 <i>Резервный слот</i>")
-        elif exp:
+        if exp:
             et = exp["expansion_type"]
             lvl = int(exp["expansion_level"] or 1)
             lines.append(
@@ -469,8 +513,6 @@ def build_expansions_manage_text(clan, building_row, expansions) -> str:
                 f" — ур. {lvl}")
         else:
             lines.append(f"  {idx}. ▫️ <i>Пустой слот</i>")
-    if btype == "castle":
-        lines.append(f"  {clan_expansion_slots(btype) + 1}. 🔒 <i>Резервный слот</i>")
     lines.append("")
     lines.append("• Установка — бесплатная, тип выбирает глава клана.")
     lines.append("• Улучшение — мгновенное: НМ главы + ресурсы с кланового склада.")
@@ -702,12 +744,14 @@ async def _paint(cb: CallbackQuery, text: str, kb: InlineKeyboardMarkup,
 
 
 async def _member_clan(cb: CallbackQuery, clan_id: int):
-    """Клан, если отправитель — его член. Иначе alert и None."""
+    """Клан, если отправитель — его член (или глава). Иначе alert и None."""
     clan = await get_clan(clan_id)
     if not clan or clan["kind"] != "clan":
         await cb.answer("❌ Клан не найден.", show_alert=True)
         return None
-    if not await is_clan_member(clan_id, cb.from_user.id):
+    uid = cb.from_user.id
+    is_leader = clan["leader_id"] and int(clan["leader_id"]) == int(uid)
+    if not is_leader and not await is_clan_member(clan_id, uid):
         await cb.answer("❌ Доступно только членам клана.", show_alert=True)
         return None
     return clan
@@ -2139,10 +2183,11 @@ async def clan_hall_admphoto_cb(cb: CallbackQuery, state: FSMContext):
     clan = await get_clan(clan_id)
     if not clan:
         return
-    await state.update_data(clanh_photo_clan_id=clan_id)
+    await state.update_data(clanh_photo_clan_id=clan_id, clanh_photo_tod="day")
     await state.set_state(ClanHallAdminPhoto.wait_building_photo)
     await cb.message.answer(
-        f"🖼 Пришли фото готового здания для клана «{_esc(clan['name'])}»:",
+        f"🖼 Пришли фото готового здания (☀️ День) для клана «{_esc(clan['name'])}».\n"
+        f"Все 4 времени суток (рассвет/день/закат/ночь) — в админ-панели: «Картинки клан-холла».",
         parse_mode="HTML",
     )
 
@@ -2153,8 +2198,9 @@ async def clan_hall_admnophoto_cb(cb: CallbackQuery):
         await cb.answer("❌ Недостаточно прав.", show_alert=True)
         return
     clan_id = int(cb.data.split(":")[2])
+    await update_clan_building_photos(clan_id, {k: None for k in CLAN_BUILDING_TOD_KEYS})
     await set_clan_building_photo(clan_id, None)
-    await cb.answer("✅ Индивидуальное фото здания убрано.", show_alert=True)
+    await cb.answer("✅ Картинки здания убраны (все 4 времени суток).", show_alert=True)
     clan = await get_clan(clan_id)
     if clan and await is_clan_member(clan_id, cb.from_user.id):
         building = await ensure_clan_building(clan_id)
@@ -2182,15 +2228,19 @@ async def clan_hall_admphoto_save(message: Message, state: FSMContext):
         return
     data = await state.get_data()
     clan_id = int(data.get("clanh_photo_clan_id") or 0)
+    tod = data.get("clanh_photo_tod") or "day"
+    if tod not in CLAN_BUILDING_TOD_KEYS:
+        tod = "day"
     clan = await get_clan(clan_id)
     if not clan:
         await state.clear()
         await message.answer("❌ Клан не найден.")
         return
     file_id = message.photo[-1].file_id
-    await set_clan_building_photo(clan_id, file_id)
+    await update_clan_building_photos(clan_id, {tod: file_id})
     await state.clear()
-    await message.answer(f"✅ Индивидуальное фото здания клана «{clan['name']}» сохранено.")
+    await message.answer(
+        f"✅ Фото здания «{clan['name']}» ({CLAN_BUILDING_TOD_LABELS[tod]}) сохранено.")
 
 
 @router.message(ClanHallAdminPhoto.wait_construction_photo, F.photo)
@@ -2281,27 +2331,16 @@ async def clan_storage_cb(cb: CallbackQuery):
 @router.callback_query(F.data.startswith("clanh:donate:"))
 async def clan_donate_cb(cb: CallbackQuery):
     await cb.answer()
-    clan_id = int(cb.data.split(":")[2])
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    page = int(parts[3]) if len(parts) > 3 and parts[3].lstrip("-").isdigit() else 0
     clan = await _member_clan(cb, clan_id)
     if not clan:
         return
     inv = await get_inventory(cb.from_user.id)
     items = [i for i in inv if i["category"] == "resource" and (i["quantity"] or 0) > 0]
-    rows = []
-    for it in items[:STORAGE_PAGE]:
-        rows.append([InlineKeyboardButton(
-            text=f"{it['name']} · {it['quantity']} шт.",
-            callback_data=f"clanh:item:{clan_id}:{it['id']}")])
-    if len(items) > STORAGE_PAGE:
-        rows.append([InlineKeyboardButton(
-            text=f"… и ещё {len(items) - STORAGE_PAGE}",
-            callback_data="clanh:noop")])
-    rows.append([InlineKeyboardButton(text="🏰 К зданию клана",
-                                      callback_data=f"clanh:hall:{clan_id}")])
-    rows.append([InlineKeyboardButton(text="🔙 К складу",
-                                      callback_data=f"clanh:storage:{clan_id}")])
     await _paint(cb, build_donate_text(clan, items),
-                 InlineKeyboardMarkup(inline_keyboard=rows))
+                 build_donate_page_markup(clan_id, items, page))
 
 
 @router.callback_query(F.data.startswith("clanh:item:"))
@@ -2364,17 +2403,8 @@ async def clan_donate_give_cb(cb: CallbackQuery):
         inv_all = await get_inventory(cb.from_user.id)
         items = [i for i in inv_all
                  if i["category"] == "resource" and (i["quantity"] or 0) > 0]
-        rows = []
-        for it in items[:STORAGE_PAGE]:
-            rows.append([InlineKeyboardButton(
-                text=f"{it['name']} · {it['quantity']} шт.",
-                callback_data=f"clanh:item:{clan_id}:{it['id']}")])
-        rows.append([InlineKeyboardButton(text="🏰 К зданию клана",
-                                          callback_data=f"clanh:hall:{clan_id}")])
-        rows.append([InlineKeyboardButton(text="🔙 К складу",
-                                          callback_data=f"clanh:storage:{clan_id}")])
         await _paint(cb, build_donate_text(clan, items),
-                     InlineKeyboardMarkup(inline_keyboard=rows))
+                     build_donate_page_markup(clan_id, items, 0))
         return
 
     rows = [[

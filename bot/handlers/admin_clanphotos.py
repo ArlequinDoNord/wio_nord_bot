@@ -35,11 +35,13 @@ from database.db import (
     clan_expansion_name,
     get_all_clan_buildings,
     get_clan,
+    get_clan_building,
     get_clan_construction_photo,
     get_clan_expansion_photo,
     set_clan_building_photo,
     set_clan_construction_photo,
     set_clan_expansion_photo,
+    update_clan_building_photos,
 )
 from utils.permissions import has_permission
 from keyboards.keyboards import cancel_keyboard
@@ -205,9 +207,26 @@ async def clanph_construction_photo_save(message: Message, state: FSMContext):
     await message.answer("❌ Нужно фото (или «-» чтобы убрать). Открой заново: админ → Картинки клан-холла.")
 
 
+BUILDING_TOD_KEYS = ("dawn", "day", "sunset", "night")
+BUILDING_TOD_LABELS = {
+    "dawn": "🌅 Рассвет", "day": "☀️ День", "sunset": "🌇 Закат", "night": "🌙 Ночь",
+}
+
+
+def _building_photo_count(b) -> int:
+    n = 0
+    for k in BUILDING_TOD_KEYS:
+        val = b.get(f"photo_{k}") if hasattr(b, "get") else (b[f"photo_{k}"] if f"photo_{k}" in b.keys() else None)
+        if (val or "").strip():
+            n += 1
+    if not n and (b.get("building_photo_file_id") or "").strip():
+        n = 1  # legacy
+    return n
+
+
 @router.callback_query(F.data.startswith("clanhph:buildings"))
 async def clanph_buildings_cb(cb: CallbackQuery, state: FSMContext):
-    """Выбор клана для индивидуальной картинки здания."""
+    """Выбор клана для индивидуальных картинок здания (4 времени суток)."""
     await cb.answer()
     if not await _require(cb):
         return
@@ -225,43 +244,104 @@ async def clanph_buildings_cb(cb: CallbackQuery, state: FSMContext):
             "funding": "💰 сбор",
             "choosing": "⚙️ выбор проекта",
         }.get(status, status)
-        has = bool((b.get("building_photo_file_id") or "").strip())
+        cnt = _building_photo_count(b)
         title = b.get("clan_name") or f"#{b['clan_id']}"
-        lines.append(f"{_mark(has)} «{_esc(title)}» — {marks}")
+        lines.append(f"{_mark(cnt > 0)} «{_esc(title)}» — {marks} ({cnt}/4)")
         rows.append([InlineKeyboardButton(
-            text=f"{_mark(has)} {title}",
+            text=f"{_mark(cnt > 0)} {title} ({cnt}/4)",
             callback_data=f"clanhph:bclan:{b['clan_id']}")])
-    lines.append("\nОтклони клан и загрузи картинку того, каким он будет после постройки.")
+    lines.append("\nВыбери клан и загрузи 4 картинки (рассвет, день, закат, ночь).")
     rows.append([InlineKeyboardButton(text="🖼 Назад", callback_data="clanhph:menu")])
+    text = "\n".join(lines)
     if hasattr(cb, "message") and getattr(cb, "message", None) is not None:
         try:
-            await cb.message.edit_text("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+            await cb.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
                                        parse_mode="HTML")
             return
         except Exception:
             pass
-    await cb.message.answer("\n".join(lines), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+    await cb.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
                             parse_mode="HTML")
 
 
-@router.callback_query(F.data.startswith("clanhph:bclan:"))
-async def clanph_bclan_cb(cb: CallbackQuery, state: FSMContext):
-    """Запрос индивидуальной картинки здания отдельного клана (в т.ч. во время стройки)."""
-    await cb.answer()
-    if not await _require(cb):
-        return
-    clan_id = int(cb.data.split(":")[2])
+async def _render_building_slots(cb: CallbackQuery, clan_id: int) -> None:
     clan = await get_clan(clan_id)
     if not clan:
         await cb.message.answer("❌ Клан не найден.")
         return
-    await state.update_data(clanhph_clan_id=clan_id)
+    b = await get_clan_building(clan_id)
+    lines = [
+        f"🏢 <b>Картинки здания</b> — «{_esc(clan['name'])}»",
+        "",
+        "Загрузи картинку для каждого времени суток (видно после постройки).",
+        "",
+    ]
+    rows = []
+    for tod in BUILDING_TOD_KEYS:
+        val = None
+        if b:
+            val = b.get(f"photo_{tod}") if hasattr(b, "get") else (b[f"photo_{tod}"] if f"photo_{tod}" in b.keys() else None)
+        has = bool((val or "").strip())
+        lines.append(f"{_mark(has)} {BUILDING_TOD_LABELS[tod]}")
+        rows.append([InlineKeyboardButton(
+            text=f"{_mark(has)} {BUILDING_TOD_LABELS[tod]}",
+            callback_data=f"clanhph:bset:{clan_id}:{tod}")])
+        if has:
+            rows.append([InlineKeyboardButton(
+                text=f"🗑 Убрать «{BUILDING_TOD_LABELS[tod]}»",
+                callback_data=f"clanhph:bclr:{clan_id}:{tod}")])
+    rows.append([InlineKeyboardButton(text="🔙 К списку кланов", callback_data="clanhph:buildings")])
+    text = "\n".join(lines)
+    try:
+        await cb.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+                                   parse_mode="HTML")
+    except Exception:
+        await cb.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows),
+                                parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("clanhph:bclan:"))
+async def clanph_bclan_cb(cb: CallbackQuery, state: FSMContext):
+    """Экран 4 слотов картинок здания клана."""
+    await cb.answer()
+    if not await _require(cb):
+        return
+    await state.clear()
+    clan_id = int(cb.data.split(":")[2])
+    await _render_building_slots(cb, clan_id)
+
+
+@router.callback_query(F.data.startswith("clanhph:bclr:"))
+async def clanph_bclr_cb(cb: CallbackQuery, state: FSMContext):
+    await cb.answer()
+    if not await _require(cb):
+        return
+    _, _, clan_id_s, tod = cb.data.split(":")
+    if tod not in BUILDING_TOD_KEYS:
+        return
+    await update_clan_building_photos(int(clan_id_s), {tod: None})
+    await cb.answer("🗑 Убрано.", show_alert=False)
+    await _render_building_slots(cb, int(clan_id_s))
+
+
+@router.callback_query(F.data.startswith("clanhph:bset:"))
+async def clanph_bset_cb(cb: CallbackQuery, state: FSMContext):
+    await cb.answer()
+    if not await _require(cb):
+        return
+    _, _, clan_id_s, tod = cb.data.split(":")
+    if tod not in BUILDING_TOD_KEYS:
+        return
+    clan_id = int(clan_id_s)
+    clan = await get_clan(clan_id)
+    if not clan:
+        await cb.message.answer("❌ Клан не найден.")
+        return
+    await state.update_data(clanhph_clan_id=clan_id, clanhph_btod=tod)
     await state.set_state(ClanPhotosAdmin.wait_building_photo)
     await cb.message.answer(
-        f"🏢 Картинка здания клана «{_esc(clan['name'])}»\n\n"
-        f"Отправь фото — это будет <b>вид здания после постройки</b> (устанавливать"
-        f" можно и пока идёт стройка/сбор; показываться начнёт, когда здание построено).\n"
-        f"«-» — убрать картинку здания.",
+        f"🏢 Картинка здания «{_esc(clan['name'])}» — {BUILDING_TOD_LABELS[tod]}\n\n"
+        f"Отправь фото (или «-» чтобы убрать этот слот).",
         reply_markup=cancel_keyboard())
 
 
@@ -272,20 +352,24 @@ async def clanph_building_photo_save(message: Message, state: FSMContext):
         return
     data = await state.get_data()
     clan_id = data.get("clanhph_clan_id")
+    tod = data.get("clanhph_btod")
     if not clan_id:
         await state.clear()
         await message.answer("❌ Клан не распознан. Открой заново: админ → Картинки клан-холла → Картинки зданий.")
         return
+    if not tod or tod not in BUILDING_TOD_KEYS:
+        # legacy path fallback
+        tod = "day"
     if message.photo:
-        await set_clan_building_photo(int(clan_id), message.photo[-1].file_id)
+        await update_clan_building_photos(int(clan_id), {tod: message.photo[-1].file_id})
         await state.clear()
-        await message.answer("✅ Картинка здания клана сохранена (видна после постройки).")
+        await message.answer(f"✅ Картинка ({BUILDING_TOD_LABELS[tod]}) сохранена.")
         return
     text_in = (message.text or "").strip()
     if text_in == "-":
-        await set_clan_building_photo(int(clan_id), None)
+        await update_clan_building_photos(int(clan_id), {tod: None})
         await state.clear()
-        await message.answer("✅ Картинка здания клана удалена.")
+        await message.answer(f"✅ Картинка ({BUILDING_TOD_LABELS[tod]}) удалена.")
         return
     await state.clear()
     await message.answer("❌ Нужно фото (или «-» чтобы убрать). Открой заново: админ → Картинки клан-холла.")

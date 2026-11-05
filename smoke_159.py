@@ -375,7 +375,7 @@ async def main():
         txt_castle = clan_hall.build_hall_inside_text(
             {"name": "Северный Бастион"}, {"building_type": "castle"}
         )
-        check("7-й слот Замка помечен как резервный", "7. 🔒" in txt_castle and "Резервный слот" in txt_castle)
+        check("7-й слот Замка не резервный (доступен)", "Резервный слот" not in txt_castle)
 
         print("\n7. Оплата без ресурсов (двойная цена)")
         clan2 = await create_clan("clan", "Ледяной Клинок", "Второй клан", LEADER)

@@ -1776,6 +1776,8 @@ async def init_db():
     await _migrate_reservoir_balance()
     # Клан-холл: фото готового здания (добавляет клан, админ проставляет)
     await _ensure_column(conn, "clan_buildings", "building_photo_file_id", "TEXT")
+    for _col in ("photo_dawn", "photo_day", "photo_sunset", "photo_night"):
+        await _ensure_column(conn, "clan_buildings", _col, "TEXT")
     await _ensure_column(conn, "firelab_enemies", "on_hit_effects", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "firelab_enemies", "armor", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "fire_lab_sessions", "enemy_json", "TEXT DEFAULT NULL")
@@ -2818,7 +2820,8 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
         if item['ap_cost'] > 0:
             from config import (AP_DAILY_RESTORE_LIMIT,
                                 AP_EXHAUSTED_MINUTES, AP_EXHAUSTED_DAILY_RECOVERY, AP_EXHAUSTED_MAX_AP,
-                                SEAWEED_DAILY_LIMIT, DIGESTIVE_UPSET_MINUTES)
+                                SEAWEED_DAILY_LIMIT, DIGESTIVE_UPSET_MINUTES,
+                                FIRE_LANTERN_EXHAUST_REDUCE_PCT)
 
             if 'истощён' in state_keys:
                 return False, (
@@ -2883,14 +2886,18 @@ async def process_item_use(user_id: int, item_id: int) -> tuple:
                 )
 
             if restored_today >= AP_DAILY_RESTORE_LIMIT:
+                # Лампа Круговорота в личном жилье смягчает передозировку (см. config).
+                ex_min = AP_EXHAUSTED_MINUTES
+                if await has_lantern_installed(user_id):
+                    ex_min = int(AP_EXHAUSTED_MINUTES * (100 - FIRE_LANTERN_EXHAUST_REDUCE_PCT) / 100)
                 await set_user_state(
-                    user_id, "истощён", AP_EXHAUSTED_MINUTES, user_id,
+                    user_id, "истощён", ex_min, user_id,
                     f"Лимит восстановления ОД за сутки ({AP_DAILY_RESTORE_LIMIT}) исчерпан"
                 )
                 return True, (
                     f"Ты использовал {item['name']} и получил +{amount} AP!\n"
                     f"⚠️ Лимит восстановления ОД за сутки ({AP_DAILY_RESTORE_LIMIT}) исчерпан — "
-                    f"наступило состояние «истощён» на 2 суток.\n"
+                    f"наступило состояние «истощён» на {ex_min // 60} ч.\n"
                     f"Восстановление: {AP_EXHAUSTED_DAILY_RECOVERY} ОД/сутки, максимум {AP_EXHAUSTED_MAX_AP} ОД."
                 )
             if is_seaweed:
@@ -16315,14 +16322,38 @@ async def set_clan_expansion_photo(exp_type: str, photo_file_id: str | None) -> 
     await conn.commit()
 
 
+CLAN_BUILDING_PHOTO_KEYS = ("dawn", "day", "sunset", "night")
+
+
 async def set_clan_building_photo(clan_id: int, photo_file_id: str | None):
-    """Установить или сбросить индивидуальную картинку готового здания клана."""
+    """Установить или сбросить индивидуальную картинку готового здания клана (legacy-слот)."""
     await ensure_clan_building(clan_id)
     conn = await get_db()
     await conn.execute(
         """UPDATE clan_buildings SET building_photo_file_id = ?, updated_at = datetime('now')
            WHERE clan_id = ?""",
         (photo_file_id, clan_id))
+    await conn.commit()
+
+
+async def update_clan_building_photos(clan_id: int, photos: dict):
+    """Задать file_id картинок здания клана по времени суток (ключи CLAN_BUILDING_PHOTO_KEYS).
+
+    Передавай только меняемые ключи (частичное обновление), None очищает.
+    """
+    await ensure_clan_building(clan_id)
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT photo_dawn, photo_day, photo_sunset, photo_night "
+        "FROM clan_buildings WHERE clan_id = ?",
+        (clan_id,))
+    row = await cur.fetchone()
+    cur_vals = {k: (row[k] if row else None) for k in CLAN_BUILDING_PHOTO_KEYS}
+    cur_vals.update({k: v for k, v in photos.items() if k in CLAN_BUILDING_PHOTO_KEYS})
+    await conn.execute(
+        "UPDATE clan_buildings SET photo_dawn = ?, photo_day = ?, photo_sunset = ?, "
+        "photo_night = ?, updated_at = datetime('now') WHERE clan_id = ?",
+        (cur_vals["dawn"], cur_vals["day"], cur_vals["sunset"], cur_vals["night"], clan_id))
     await conn.commit()
 
 
@@ -16681,14 +16712,10 @@ CLAN_EXPANSION_RESERVE_SLOT = 7
 def clan_expansion_slots(building_type: str | None) -> int:
     """Сколько слотов расширений реально доступно для типа здания.
 
-    У резиденции 7-й слот объявлен в конфиге, но оставлен резервом под будущие
-    механики — устанавливать туда расширения нельзя.
+    У резиденции все 7 слотов доступны сразу (заполнять можно по мере желания).
     """
     cfg = getattr(config, "CLAN_BUILDING_TYPES", {}).get(building_type or "", {})
-    slots = int(cfg.get("slots") or 0)
-    if building_type == "castle" and slots >= CLAN_EXPANSION_RESERVE_SLOT:
-        slots -= 1
-    return slots
+    return int(cfg.get("slots") or 0)
 
 
 def clan_expansion_max_level(building_type: str | None) -> int:
@@ -16736,8 +16763,6 @@ async def install_clan_expansion(clan_id: int, user_id: int, slot_index: int,
     max_slot = clan_expansion_slots(btype)
     slot_index = int(slot_index)
     if slot_index < 1 or slot_index > max_slot:
-        if btype == "castle" and slot_index == CLAN_EXPANSION_RESERVE_SLOT:
-            return False, "🔒 7-й слот резиденции — резерв под будущие механики."
         return False, f"❌ В этом здании доступно слотов: {max_slot}."
     exp_types = getattr(config, "CLAN_EXPANSION_TYPES", ())
     if expansion_type not in exp_types:

@@ -510,8 +510,13 @@ def _glade_markup(token: str, area: str = "glade"):
     return _simple_markup(token, area)
 
 
-async def _result_markup(token: str, area: str = "glade"):
-    """Кнопки после находки: искать ещё в этой же зоне или уйти."""
+FOREST_ORIGIN: dict = {}  # user_id -> "berry" | "mushroom": с чего начался бой со зверем
+
+
+async def _result_markup(token: str, area: str = "glade", user_id: int = None):
+    """Кнопки после находки/боя: искать ещё тем же способом (ягоды или грибы), или уйти."""
+    if user_id is not None and FOREST_ORIGIN.get(user_id) == "berry":
+        return await _berry_markup(token, area)
     return _simple_markup(token, area)
 
 
@@ -606,6 +611,7 @@ async def forest_cast(callback: CallbackQuery):
             else:
                 await set_forest_boar_attempts(user_id, counter_before + 1)
                 await reset_forest_wolf_counter(user_id)
+            FOREST_ORIGIN[user_id] = "mushroom"
             await _forest_beast_fight(callback, user_id, area, beast)
             return
 
@@ -637,7 +643,7 @@ async def forest_cast(callback: CallbackQuery):
             ap_line += f" — можно искать ещё"
         ap_block = f"\n\n{ap_line}"
         head = f"{area_emoji} {FOREST_AREA_NAME[area]}"
-        result_kb = await _result_markup(FOREST_TOKEN.get(user_id, ""), area)
+        result_kb = await _result_markup(FOREST_TOKEN.get(user_id, ""), area, user_id)
 
         if row is None:
             text = (
@@ -793,6 +799,7 @@ async def forest_berry(callback: CallbackQuery):
         if outcome == "bear":
             bear = await get_source_enemy_by_key("forest", "bear")
             if bear and bear.get('enabled'):
+                FOREST_ORIGIN[user_id] = "berry"
                 await _forest_beast_fight(callback, user_id, area, dict(bear))
                 return
             # Медведь выключен: исход без встречи — как пустая поляна.
@@ -1014,7 +1021,7 @@ async def _white_wolf_defeat(callback, user_id, battle, *, big: bool, prefix: st
         f"−{removed} ОД."
     )
     await _glade_paint(callback, text=text,
-                       kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area),
+                       kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area, user_id),
                        area=battle_area)
 
 
@@ -1055,7 +1062,7 @@ async def forest_battle_hit(callback: CallbackQuery):
                 f"Зверь уходит, оставив тебя в чаще (−{removed} ОД)."
             )
             await _glade_paint(callback, text=text,
-                         kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area),
+                         kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area, user_id),
                          area=battle_area)
             return
 
@@ -1146,7 +1153,7 @@ async def forest_battle_hit(callback: CallbackQuery):
             f"{result_line}"
         )
         await _glade_paint(callback, text=text,
-                     kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area),
+                     kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area, user_id),
                      area=battle_area)
         return
 
@@ -1202,7 +1209,7 @@ async def forest_battle_hit(callback: CallbackQuery):
             f"зверь ушёл в чащу. Победа досталась ему ценой твоих сил: −{removed} ОД."
         )
         await _glade_paint(callback, text=text,
-                     kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area),
+                     kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area, user_id),
                      area=battle_area)
         return
 
