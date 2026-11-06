@@ -16348,7 +16348,7 @@ async def update_clan_building_photos(clan_id: int, photos: dict):
         "FROM clan_buildings WHERE clan_id = ?",
         (clan_id,))
     row = await cur.fetchone()
-    cur_vals = {k: (row[k] if row else None) for k in CLAN_BUILDING_PHOTO_KEYS}
+    cur_vals = {k: (row[f"photo_{k}"] if row else None) for k in CLAN_BUILDING_PHOTO_KEYS}
     cur_vals.update({k: v for k, v in photos.items() if k in CLAN_BUILDING_PHOTO_KEYS})
     await conn.execute(
         "UPDATE clan_buildings SET photo_dawn = ?, photo_day = ?, photo_sunset = ?, "
