@@ -251,7 +251,7 @@ async def _hierarchy_screen(callback: CallbackQuery, clan_id: int):
         await callback.answer("⚠️ Только членам клана.", show_alert=True)
         return
     roles_map = await get_clan_member_roles(clan_id)
-    is_leader = (clan.get('leader_id') is not None
+    is_leader = (clan['leader_id'] is not None
                  and int(clan['leader_id']) == uid) or (roles_map.get(uid) == 'leader')
     order = getattr(_config, "CLAN_ROLE_ORDER", ())
     titles = getattr(_config, "CLAN_ROLES", {})
@@ -306,7 +306,7 @@ async def clan_hierarchy_cb(callback: CallbackQuery):
             await callback.message.answer("❌ Клан не найден.")
         return
     uid = int(callback.from_user.id)
-    is_leader = (clan.get('leader_id') is not None
+    is_leader = (clan['leader_id'] is not None
                  and int(clan['leader_id']) == uid) or (
         (await get_clan_member_role(clan_id, uid)) == 'leader')
     can_admin = await has_permission(uid, "can_manage_clans")
