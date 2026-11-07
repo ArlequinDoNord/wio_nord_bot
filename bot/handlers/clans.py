@@ -280,7 +280,7 @@ async def _hierarchy_screen(callback: CallbackQuery, clan_id: int):
             r = roles_map.get(mu['user_id'], 'member')
             rows.append([InlineKeyboardButton(
                 text=f"{titles.get(r, r).split(' ', 1)[-1]} — {await player_display(mu)}",
-                callback_data=f"clanhier:set:{clan_id}:{mu['user_id']}")])
+                callback_data=f"clanhier:{clan_id}:set:{mu['user_id']}")])
     rows.append([InlineKeyboardButton(text="🔙 В карточку клана",
                                       callback_data=f"clans:view:{clan_id}")])
     await _redraw(callback, "\n".join(lines),
@@ -333,7 +333,7 @@ async def clan_hierarchy_cb(callback: CallbackQuery):
         return
 
     # Экран выбора роли для члена
-    if len(parts) >= 4 and parts[2] == "set":
+    if len(parts) == 4 and parts[2] == "set":
         if not (is_leader or can_admin):
             await callback.answer("⚠️ Только глава клана.", show_alert=True)
             return
