@@ -244,14 +244,15 @@ async def _hierarchy_screen(callback: CallbackQuery, clan_id: int):
     if not clan or clan['kind'] != 'clan':
         await callback.message.answer("❌ Клан не найден.")
         return
-    uid = callback.from_user.id
+    uid = int(callback.from_user.id)
     members = await get_clan_member_ids(clan_id)
-    is_leader = clan['leader_id'] == uid
     can_admin = await has_permission(uid, "can_manage_clans")
     if uid not in members and not can_admin:
         await callback.answer("⚠️ Только членам клана.", show_alert=True)
         return
     roles_map = await get_clan_member_roles(clan_id)
+    is_leader = (clan.get('leader_id') is not None
+                 and int(clan['leader_id']) == uid) or (roles_map.get(uid) == 'leader')
     order = getattr(_config, "CLAN_ROLE_ORDER", ())
     titles = getattr(_config, "CLAN_ROLES", {})
 
@@ -304,8 +305,10 @@ async def clan_hierarchy_cb(callback: CallbackQuery):
         else:
             await callback.message.answer("❌ Клан не найден.")
         return
-    uid = callback.from_user.id
-    is_leader = clan['leader_id'] == uid
+    uid = int(callback.from_user.id)
+    is_leader = (clan.get('leader_id') is not None
+                 and int(clan['leader_id']) == uid) or (
+        (await get_clan_member_role(clan_id, uid)) == 'leader')
     can_admin = await has_permission(uid, "can_manage_clans")
 
     # Назначение роли (один ответ на колбэк — с текстом результата)

@@ -424,8 +424,13 @@ def build_hall_built_text(clan, building_row) -> str:
         tname = tcfg.get("name") or building_row["target_type"] or "новый уровень"
         completes = str(building_row["completes_at"] or "")[:16].replace("T", " ")
         lines.append(f"• 🚧 Идёт улучшение до «<b>{_esc(tname)}</b>» (до {completes} UTC)")
-    has_photo = bool(
-        "building_photo_file_id" in building_row.keys()
+    keys = building_row.keys()
+    has_photo = any(
+        (building_row.get(f"photo_{k}") or "").strip()
+        for k in ("dawn", "day", "sunset", "night")
+        if f"photo_{k}" in keys
+    ) or bool(
+        "building_photo_file_id" in keys
         and (building_row["building_photo_file_id"] or "").strip()
     )
     if not has_photo and building_row["status"] == "built":
