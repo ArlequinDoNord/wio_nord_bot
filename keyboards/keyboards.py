@@ -157,12 +157,12 @@ def shop_admin_keyboard():
 def bank_keyboard():
     from utils.i18n import t
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Мой баланс", callback_data="bank:balance")],
-        [InlineKeyboardButton(text="Перевести", callback_data="bank:transfer")],
-        [InlineKeyboardButton(text="🏛️ В казну", callback_data="bank:treasury")],
-        [InlineKeyboardButton(text="История транзакций", callback_data="bank:history")],
+        [InlineKeyboardButton(text=t("bank.my_balance"), callback_data="bank:balance")],
+        [InlineKeyboardButton(text=t("bank.transfer_btn"), callback_data="bank:transfer")],
+        [InlineKeyboardButton(text=t("bank.to_treasury"), callback_data="bank:treasury")],
+        [InlineKeyboardButton(text=t("bank.history_btn"), callback_data="bank:history")],
         [InlineKeyboardButton(text=t("bank.fines_btn"), callback_data="bank:fines")],
-        [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
+        [InlineKeyboardButton(text=t("bank.back_to_city"), callback_data="city:menu")],
     ])
 
 

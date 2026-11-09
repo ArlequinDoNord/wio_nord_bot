@@ -348,19 +348,19 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `waiting_recipient` | `bot/handlers/bank.py:151` `bank_transfer_manual` | `bot/handlers/bank.py:258` `process_recipient` |
-| `waiting_amount` | `bot/handlers/bank.py:163` `set_recipient` | `bot/handlers/bank.py:280` `process_amount` |
-| `waiting_message` | `bot/handlers/bank.py:323` `process_amount` | `bot/handlers/bank.py:332` `process_message` |
-| `waiting_treasury_amount` | `bot/handlers/bank.py:209` `bank_treasury` | `bot/handlers/bank.py:219` `process_treasury_amount` |
-| `waiting_fine_amount` | `bot/handlers/bank.py:463` `bank_fine_pay_part` | `bot/handlers/bank.py:469` `bank_fine_amount` |
+| `waiting_recipient` | `bot/handlers/bank.py:152` `bank_transfer_manual` | `bot/handlers/bank.py:259` `process_recipient` |
+| `waiting_amount` | `bot/handlers/bank.py:164` `set_recipient` | `bot/handlers/bank.py:281` `process_amount` |
+| `waiting_message` | `bot/handlers/bank.py:324` `process_amount` | `bot/handlers/bank.py:333` `process_message` |
+| `waiting_treasury_amount` | `bot/handlers/bank.py:210` `bank_treasury` | `bot/handlers/bank.py:220` `process_treasury_amount` |
+| `waiting_fine_amount` | `bot/handlers/bank.py:464` `bank_fine_pay_part` | `bot/handlers/bank.py:470` `bank_fine_amount` |
 
 ### `ClanHallAdminPhoto` — `bot/handlers/clan_hall.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `wait_building_photo` | `bot/handlers/clan_hall.py:2192` `clan_hall_admphoto_cb` | `bot/handlers/clan_hall.py:2230` `clan_hall_admphoto_save` |
-| `wait_construction_photo` | `bot/handlers/clan_hall.py:2223` `clan_hall_admconstphoto_cb` | `bot/handlers/clan_hall.py:2252` `clan_hall_admconstphoto_save` |
-| `wait_expansion_photo` | `bot/handlers/clan_hall.py:2276` `clan_hall_admexphoto_cb` | `bot/handlers/clan_hall.py:2288` `clan_hall_admexphoto_save` |
+| `wait_building_photo` | `bot/handlers/clan_hall.py:2193` `clan_hall_admphoto_cb` | `bot/handlers/clan_hall.py:2231` `clan_hall_admphoto_save` |
+| `wait_construction_photo` | `bot/handlers/clan_hall.py:2224` `clan_hall_admconstphoto_cb` | `bot/handlers/clan_hall.py:2253` `clan_hall_admconstphoto_save` |
+| `wait_expansion_photo` | `bot/handlers/clan_hall.py:2277` `clan_hall_admexphoto_cb` | `bot/handlers/clan_hall.py:2289` `clan_hall_admexphoto_save` |
 
 ### `ClansCreate` — `bot/handlers/clans.py`
 
@@ -388,7 +388,7 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `in_dungeon` | `bot/handlers/dungeon.py:937` `contract_enter_confirm`<br>`bot/handlers/dungeon.py:1016` `post_captain_menu`<br>`bot/handlers/dungeon.py:2462` `resv_deeper` | — |
+| `in_dungeon` | `bot/handlers/dungeon.py:937` `contract_enter_confirm`<br>`bot/handlers/dungeon.py:1016` `post_captain_menu`<br>`bot/handlers/dungeon.py:2492` `resv_deeper` | — |
 | `in_combat` | — | — |
 | `in_boss` | `bot/handlers/dungeon.py:2094` `show_boss` | — |
 | `confirm_enter` | `bot/handlers/dungeon.py:866` `contract_enter` | — |
@@ -640,13 +640,13 @@
 - `aw_comment:skip`: `bot/handlers/admin.py:4401`
 - `aw_confirm`: `bot/handlers/admin.py:3997`
 - `back:main`: `bot/handlers/admin.py:5316`
-- `bank:balance`: `bot/handlers/bank.py:73`
-- `bank:fines`: `bot/handlers/bank.py:434`
-- `bank:menu`: `bot/handlers/bank.py:192`
-- `bank:noop`: `bot/handlers/bank.py:539`
-- `bank:transfer`: `bot/handlers/bank.py:132`
-- `bank:transfer_manual`: `bot/handlers/bank.py:148`
-- `bank:treasury`: `bot/handlers/bank.py:205`
+- `bank:balance`: `bot/handlers/bank.py:74`
+- `bank:fines`: `bot/handlers/bank.py:435`
+- `bank:menu`: `bot/handlers/bank.py:193`
+- `bank:noop`: `bot/handlers/bank.py:540`
+- `bank:transfer`: `bot/handlers/bank.py:133`
+- `bank:transfer_manual`: `bot/handlers/bank.py:149`
+- `bank:treasury`: `bot/handlers/bank.py:206`
 - `booklet:claim`: `bot/handlers/tourist_booklet.py:71`
 - `booklet:menu`: `bot/handlers/tourist_booklet.py:65`
 - `cancel`: `bot/handlers/admin.py:5324`
@@ -660,7 +660,7 @@
 - `city:pilots:list`: `bot/handlers/pilots.py:129`
 - `city:quarter`: `bot/handlers/locations.py:229`
 - `city:vote`: `bot/handlers/polls.py:70`
-- `clanh:noop`: `bot/handlers/clan_hall.py:2446`
+- `clanh:noop`: `bot/handlers/clan_hall.py:2602`
 - `clanhph:construction`: `bot/handlers/admin_clanphotos.py:174`
 - `clanhph:menu`: `bot/handlers/admin_clanphotos.py:116`
 - `clans:create_skip`: `bot/handlers/clans.py:817`
@@ -674,9 +674,9 @@
 - `duel:menu`: `bot/handlers/duel.py:218`
 - `duel:top`: `bot/handlers/duel.py:298`
 - `dungeon:enemies`: `bot/handlers/admin.py:5922`
-- `dungeon:exit`: `bot/handlers/dungeon.py:2605`
-- `dungeon:exit:cancel`: `bot/handlers/dungeon.py:2690`
-- `dungeon:exit:confirm`: `bot/handlers/dungeon.py:2652`
+- `dungeon:exit`: `bot/handlers/dungeon.py:2635`
+- `dungeon:exit:cancel`: `bot/handlers/dungeon.py:2720`
+- `dungeon:exit:confirm`: `bot/handlers/dungeon.py:2682`
 - `dungeon:photos`: `bot/handlers/admin.py:5689`
 - `dungeon:photos:clear`: `bot/handlers/admin.py:5733`
 - `enemy:fi`: `bot/handlers/admin.py:9747`
@@ -809,7 +809,7 @@
 - `report:menu`: `bot/handlers/reports.py:51`
 - `report:my_reports`: `bot/handlers/reports.py:393`
 - `report:submit`: `bot/handlers/reports.py:61`
-- `resv:recover`: `bot/handlers/dungeon.py:2408`
+- `resv:recover`: `bot/handlers/dungeon.py:2438`
 - `salary:choose`: `bot/handlers/admin.py:5508`
 - `salary:pay`: `bot/handlers/admin.py:5520`
 - `shop:catalog`: `bot/handlers/shop.py:233`
@@ -852,9 +852,9 @@
 - `aw_pick:`: `bot/handlers/admin.py:4385`
 - `awr_grant:`: `bot/handlers/admin.py:4452`
 - `bait:set:`: `bot/handlers/fishing.py:183`
-- `bank:history`: `bot/handlers/bank.py:489`
-- `bank:pickrecipient:`: `bot/handlers/bank.py:178`
-- `bank:transfer:list:`: `bot/handlers/bank.py:138`
+- `bank:history`: `bot/handlers/bank.py:490`
+- `bank:pickrecipient:`: `bot/handlers/bank.py:179`
+- `bank:transfer:list:`: `bot/handlers/bank.py:139`
 - `berry:add:(glade|clearing)$`: `bot/handlers/admin_berries.py:117`
 - `berry:chance:(glade|clearing):.+$`: `bot/handlers/admin_berries.py:83`
 - `berry:del:(glade|clearing):.+$`: `bot/handlers/admin_berries.py:107`
@@ -869,43 +869,46 @@
 - `cat:`: `bot/handlers/admin.py:1306`
 - `city/`: `bot/handlers/locations.py:91`
 - `city:pilots:list:`: `bot/handlers/pilots.py:135`
-- `clanh:admconstphoto:`: `bot/handlers/clan_hall.py:2215`
-- `clanh:admexphoto:`: `bot/handlers/clan_hall.py:2262`
-- `clanh:admnophoto:`: `bot/handlers/clan_hall.py:2200`
-- `clanh:admphoto:`: `bot/handlers/clan_hall.py:2181`
-- `clanh:bitem:`: `bot/handlers/clan_hall.py:1267`
-- `clanh:buy:`: `bot/handlers/clan_hall.py:1310`
-- `clanh:cancel:`: `bot/handlers/clan_hall.py:2047`
-- `clanh:choose:`: `bot/handlers/clan_hall.py:2016`
-- `clanh:craft:`: `bot/handlers/clan_hall.py:1638`
-- `clanh:donate:`: `bot/handlers/clan_hall.py:2336`
-- `clanh:expchoose:`: `bot/handlers/clan_hall.py:1505`
-- `clanh:expinstall:`: `bot/handlers/clan_hall.py:1518`
-- `clanh:expmanage:`: `bot/handlers/clan_hall.py:1494`
-- `clanh:expup:`: `bot/handlers/clan_hall.py:1536`
-- `clanh:give:`: `bot/handlers/clan_hall.py:2382`
-- `clanh:hall:`: `bot/handlers/clan_hall.py:1996`
-- `clanh:harvest:`: `bot/handlers/clan_hall.py:1933`
-- `clanh:harvestall:`: `bot/handlers/clan_hall.py:1965`
-- `clanh:inside:`: `bot/handlers/clan_hall.py:2123`
-- `clanh:item:`: `bot/handlers/clan_hall.py:2351`
-- `clanh:libgive:`: `bot/handlers/clan_hall.py:1378`
-- `clanh:log:`: `bot/handlers/clan_hall.py:2431`
-- `clanh:mushproc:`: `bot/handlers/clan_hall.py:1790`
-- `clanh:mushrooms:`: `bot/handlers/clan_hall.py:1773`
-- `clanh:plant:`: `bot/handlers/clan_hall.py:1909`
-- `clanh:plantlist:`: `bot/handlers/clan_hall.py:1861`
-- `clanh:recipe:`: `bot/handlers/clan_hall.py:1569`
-- `clanh:shower:`: `bot/handlers/clan_hall.py:1825`
-- `clanh:start:`: `bot/handlers/clan_hall.py:2061`
-- `clanh:startfull:`: `bot/handlers/clan_hall.py:2090`
-- `clanh:storage:`: `bot/handlers/clan_hall.py:2315`
-- `clanh:tree_essence:`: `bot/handlers/clan_hall.py:1152`
-- `clanh:tree_essence_inv:`: `bot/handlers/clan_hall.py:1187`
-- `clanh:tree_essence_store:`: `bot/handlers/clan_hall.py:1215`
-- `clanh:tree_medit:`: `bot/handlers/clan_hall.py:1136`
-- `clanh:upgrade:`: `bot/handlers/clan_hall.py:2032`
-- `clanh:use:`: `bot/handlers/clan_hall.py:1552`
+- `clanh:admconstphoto:`: `bot/handlers/clan_hall.py:2216`
+- `clanh:admexphoto:`: `bot/handlers/clan_hall.py:2263`
+- `clanh:admnophoto:`: `bot/handlers/clan_hall.py:2201`
+- `clanh:admphoto:`: `bot/handlers/clan_hall.py:2182`
+- `clanh:bitem:`: `bot/handlers/clan_hall.py:1268`
+- `clanh:buy:`: `bot/handlers/clan_hall.py:1311`
+- `clanh:cancel:`: `bot/handlers/clan_hall.py:2048`
+- `clanh:choose:`: `bot/handlers/clan_hall.py:2017`
+- `clanh:craft:`: `bot/handlers/clan_hall.py:1639`
+- `clanh:donate:`: `bot/handlers/clan_hall.py:2343`
+- `clanh:expchoose:`: `bot/handlers/clan_hall.py:1506`
+- `clanh:expinstall:`: `bot/handlers/clan_hall.py:1519`
+- `clanh:expmanage:`: `bot/handlers/clan_hall.py:1495`
+- `clanh:expup:`: `bot/handlers/clan_hall.py:1537`
+- `clanh:give:`: `bot/handlers/clan_hall.py:2389`
+- `clanh:hall:`: `bot/handlers/clan_hall.py:1997`
+- `clanh:harvest:`: `bot/handlers/clan_hall.py:1934`
+- `clanh:harvestall:`: `bot/handlers/clan_hall.py:1966`
+- `clanh:inside:`: `bot/handlers/clan_hall.py:2124`
+- `clanh:item:`: `bot/handlers/clan_hall.py:2358`
+- `clanh:libgive:`: `bot/handlers/clan_hall.py:1379`
+- `clanh:log:`: `bot/handlers/clan_hall.py:2438`
+- `clanh:mushproc:`: `bot/handlers/clan_hall.py:1791`
+- `clanh:mushrooms:`: `bot/handlers/clan_hall.py:1774`
+- `clanh:plant:`: `bot/handlers/clan_hall.py:1910`
+- `clanh:plantlist:`: `bot/handlers/clan_hall.py:1862`
+- `clanh:recipe:`: `bot/handlers/clan_hall.py:1570`
+- `clanh:shower:`: `bot/handlers/clan_hall.py:1826`
+- `clanh:start:`: `bot/handlers/clan_hall.py:2062`
+- `clanh:startfull:`: `bot/handlers/clan_hall.py:2091`
+- `clanh:storage:`: `bot/handlers/clan_hall.py:2316`
+- `clanh:tree_essence:`: `bot/handlers/clan_hall.py:1153`
+- `clanh:tree_essence_inv:`: `bot/handlers/clan_hall.py:1188`
+- `clanh:tree_essence_store:`: `bot/handlers/clan_hall.py:1216`
+- `clanh:tree_medit:`: `bot/handlers/clan_hall.py:1137`
+- `clanh:upgrade:`: `bot/handlers/clan_hall.py:2033`
+- `clanh:use:`: `bot/handlers/clan_hall.py:1553`
+- `clanh:wd:`: `bot/handlers/clan_hall.py:2501`
+- `clanh:wditem:`: `bot/handlers/clan_hall.py:2519`
+- `clanh:wdtake:`: `bot/handlers/clan_hall.py:2553`
 - `clanhier:`: `bot/handlers/clans.py:291`
 - `clanhph:bclan:`: `bot/handlers/admin_clanphotos.py:303`
 - `clanhph:bclr:`: `bot/handlers/admin_clanphotos.py:314`
@@ -1007,8 +1010,8 @@
 - `field:required_status`: `bot/handlers/admin.py:1864`
 - `field_req:`: `bot/handlers/admin.py:1897`
 - `fin:`: `bot/handlers/admin.py:2592`
-- `fine:part:`: `bot/handlers/bank.py:458`
-- `fine:payall:`: `bot/handlers/bank.py:447`
+- `fine:part:`: `bot/handlers/bank.py:459`
+- `fine:payall:`: `bot/handlers/bank.py:448`
 - `fines:cancel:`: `bot/handlers/admin.py:2814`
 - `finh:h:`: `bot/handlers/admin.py:2953`
 - `finh:list:`: `bot/handlers/admin.py:2929`
@@ -1229,12 +1232,12 @@
 - `resv:bait:\d+$`: `bot/handlers/dungeon.py:2135`
 - `resv:bait:set:\d+:[a-z]+$`: `bot/handlers/dungeon.py:2183`
 - `resv:cast:\d+$`: `bot/handlers/dungeon.py:2202`
-- `resv:deeper:\d+$`: `bot/handlers/dungeon.py:2439`
+- `resv:deeper:\d+$`: `bot/handlers/dungeon.py:2469`
 - `resv:enter:\d+$`: `bot/handlers/dungeon.py:2097`
-- `resv:eq:\d+$`: `bot/handlers/dungeon.py:2474`
-- `resv:eqclear:[a-z0-9_]+:\d+$`: `bot/handlers/dungeon.py:2582`
-- `resv:eqset:[a-z0-9_]+:\d+:\d+$`: `bot/handlers/dungeon.py:2558`
-- `resv:eqslot:[a-z0-9_]+:\d+$`: `bot/handlers/dungeon.py:2512`
+- `resv:eq:\d+$`: `bot/handlers/dungeon.py:2504`
+- `resv:eqclear:[a-z0-9_]+:\d+$`: `bot/handlers/dungeon.py:2612`
+- `resv:eqset:[a-z0-9_]+:\d+:\d+$`: `bot/handlers/dungeon.py:2588`
+- `resv:eqslot:[a-z0-9_]+:\d+$`: `bot/handlers/dungeon.py:2542`
 - `resv:menu:\d+$`: `bot/handlers/dungeon.py:2121`
 - `role:`: `bot/handlers/admin.py:3161`
 - `rolop:`: `bot/handlers/admin.py:3112`

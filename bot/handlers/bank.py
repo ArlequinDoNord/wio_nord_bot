@@ -6,6 +6,7 @@ from database.db import get_user, transfer_nordmarks, get_transactions_history, 
 from config import TOURIST_BALANCE_LIMIT
 from keyboards.keyboards import bank_keyboard, cancel_keyboard, main_menu_kb
 from utils.helpers import format_amount, plural_nordmark, is_main_menu_text
+from utils.i18n import t
 
 router = Router()
 
@@ -121,7 +122,7 @@ async def _recipient_page(callback, page: int):
     if nav:
         buttons.append(nav)
     buttons.append([InlineKeyboardButton(text="✍️ Ввести username вручную", callback_data="bank:transfer_manual")])
-    buttons.append([InlineKeyboardButton(text="🔙 В банк", callback_data="bank:menu")])
+    buttons.append([InlineKeyboardButton(text=t("bank.back"), callback_data="bank:menu")])
     await callback.message.answer(
         f"💸 Кому перевести? Всего пилотов: {len(users)}.\n"
         f"Выбери пилота из списка или введи username вручную:",
@@ -427,7 +428,7 @@ async def _fines_screen(uid: int):
                                               callback_data=f"fine:part:{f['id']}")])
             lines.append("")
         text = "\n".join(lines).rstrip()
-    rows.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
+    rows.append([InlineKeyboardButton(text=t("bank.back_to_city"), callback_data="city:menu")])
     return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -498,10 +499,10 @@ async def bank_history(callback: CallbackQuery):
         callback.from_user.id, page=page, per_page=PER_PAGE)
 
     if not txns:
-        await callback.message.answer("Пока нет транзакций.")
+        await callback.message.answer(t("bank.no_txns"))
         return
 
-    text = f"📜 История транзакций (стр. {page + 1}):\n\n"
+    text = t("bank.history_title", page=page + 1)
     for t in txns:
         me = callback.from_user.id
         incoming = t['to_user'] == me and t['from_user'] != me
@@ -527,12 +528,12 @@ async def bank_history(callback: CallbackQuery):
     rows = []
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton(text="⬅️ Новее", callback_data=f"bank:history:{page - 1}"))
+        nav.append(InlineKeyboardButton(text=t("bank.newer"), callback_data=f"bank:history:{page - 1}"))
     rows.append([InlineKeyboardButton(text=f"• {page + 1} •", callback_data="bank:noop")])
     if has_next:
-        nav.append(InlineKeyboardButton(text="Старее ▶️", callback_data=f"bank:history:{page + 1}"))
+        nav.append(InlineKeyboardButton(text=t("bank.older"), callback_data=f"bank:history:{page + 1}"))
     rows.append(nav)
-    rows.append([InlineKeyboardButton(text="🔙 В банк", callback_data="bank:menu")])
+    rows.append([InlineKeyboardButton(text=t("bank.back"), callback_data="bank:menu")])
     await callback.message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 

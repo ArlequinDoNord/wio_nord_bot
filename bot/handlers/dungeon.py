@@ -55,7 +55,7 @@ from config import (
     DUNGEON_SMOKE_MAX,
     FISH_AP_COST,
 )
-from config import RESERVOIR_AP_COST as RESERVOIR_AP_COST_CFG
+from config import RESERVOIR_AP_COST as RESERVOIR_AP_COST_CFG, FISH_BAIT_MISS_SEAWEED_CHANCE
 
 
 # Достижения: ачивка «Эликсиры» считает применения зелий лечения (настоек),
@@ -2350,6 +2350,36 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                                        photo_id=wf_photo)
                     return
             else:
+                # Промах с наживкой: шанс вытащить водоросли (как на озере).
+                if random.random() * 100 < FISH_BAIT_MISS_SEAWEED_CHANCE:
+                    sea = await get_item_by_name("Кусочек водорослей")
+                    if sea:
+                        kind = await get_water_fish_kind("reservoir", "Кусочек водорослей")
+                        await add_fish_catch(user_id, sea['id'], 1, kind=kind or "resource")
+                        await log_activity(user_id, "dungeon_reservoir_fish",
+                                           "Промах с наживкой, выловил «Кусочек водорослей»")
+                        result = (
+                            "🎣 РЫБАЛКА\n\n"
+                            "Поплавок дёрнулся, ты подсекаешь... и вдруг пусто.\n"
+                            "Зато на крючке что-то зацепилось: «Кусочек водорослей»!\n\n"
+                            "🎒 Улов записан в «Улов»."
+                        ) + ap_block
+                        jphoto = await junk_photo("reservoir", "Кусочек водорослей")
+                        if jphoto:
+                            await _resv_answer(user_id, callback.message, result,
+                                               _reservoir_result_markup(next_step),
+                                               photo_id=jphoto)
+                            return
+                        local_photo = item_local_photo("Кусочек водорослей")
+                        if local_photo:
+                            await _resv_answer(user_id, callback.message, result,
+                                               _reservoir_result_markup(next_step),
+                                               photo=local_photo)
+                            return
+                        await _resv_answer(user_id, callback.message, result,
+                                           _reservoir_result_markup(next_step),
+                                           photo=_reservoir_photo())
+                        return
                 result = (
                     "🎣 РЫБАЛКА\n\n"
                     "Поплавок дёрнулся, ты подсекаешь... и вдруг пусто.\n"

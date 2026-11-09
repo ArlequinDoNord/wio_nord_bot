@@ -24,7 +24,7 @@ from database.db import (
     bump_achievement, get_achievement_bonus,
 )
 from utils.helpers import resolve_image, time_of_day_key, plural_nordmark, item_local_photo, fish_weight_tier, fish_sell_price
-from config import FISH_AP_COST, FISH_WEIGHTS
+from config import FISH_AP_COST, FISH_WEIGHTS, FISH_BAIT_MISS_SEAWEED_CHANCE
 
 router = Router()
 
@@ -682,6 +682,33 @@ async def fish_cast(callback: CallbackQuery):
                 else:
                     text = "🎣 Рыбалка\n\n🐟 Что-то поймал, но предмет потерялся. Сообщи хранителю."
             else:
+                # Промах с наживкой: с небольшим шансом можно вытащить водоросли.
+                if random.random() * 100 < FISH_BAIT_MISS_SEAWEED_CHANCE:
+                    sea = await get_item_by_name(SEAWEED_NAME)
+                    if sea:
+                        kind = await get_water_fish_kind("lake", SEAWEED_NAME)
+                        await add_fish_catch(user_id, sea['id'], 1, kind=kind or "resource")
+                        await log_activity(user_id, "fishing", f"Промах с наживкой, выловил «{SEAWEED_NAME}»")
+                        text = (
+                            "🎣 РЫБАЛКА\n\n"
+                            "Поплавок дёрнулся, ты подсекаешь... и вдруг пусто.\n"
+                            f"Зато на крючке что-то зацепилось: «{SEAWEED_NAME}»!\n\n"
+                            "🎒 Улов записан в «Улов»."
+                        )
+                        jphoto = await junk_photo("lake", SEAWEED_NAME)
+                        if jphoto:
+                            await _paint(callback, text=text + ap_block, photo_id=jphoto,
+                                         kb=_result_markup(FISH_TOKEN.get(user_id, "")))
+                            return
+                        local_photo = item_local_photo(SEAWEED_NAME)
+                        if local_photo:
+                            await _paint(callback, text=text + ap_block, media_path=local_photo,
+                                         kb=_result_markup(FISH_TOKEN.get(user_id, "")))
+                            return
+                        text += ap_block
+                        await _paint(callback, text=text, media_path=_lake_path(),
+                                     kb=_result_markup(FISH_TOKEN.get(user_id, "")))
+                        return
                 text = (
                     "🎣 РЫБАЛКА\n\n"
                     "Поплавок дёрнулся, ты подсекаешь... и вдруг пусто.\n"

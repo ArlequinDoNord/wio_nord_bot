@@ -28,6 +28,7 @@ from aiogram.types import (
 import config
 from database.db import (
     add_inventory_item, add_clan_storage, get_item_by_name, log_activity,
+    take_clan_storage, can_withdraw_clan_storage,
     PLANT_NAMES,
     PLANT_STAGES,
     can_harvest_clan_garden,
@@ -228,7 +229,7 @@ def build_clan_storage_text(clan, rows) -> str:
             total += r["qty"]
             lines.append(f"• {_esc(r['name'])} — <b>{r['qty']}</b>")
         lines.append(f"\nВсего единиц: <b>{total}</b>")
-    lines.append("\nВклад невозвратен: ресурсы идут на нужды клана.")
+    lines.append("\nВклад невозвратен: ресурсы идут на нужды клана. Глава может забрать ресурсы со склада.")
     return "\n".join(lines)
 
 
@@ -2320,9 +2321,14 @@ async def clan_storage_cb(cb: CallbackQuery):
     if not clan:
         return
     rows = await get_clan_storage(clan_id)
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    kb_rows = [
         [InlineKeyboardButton(text="➕ Внести ресурсы",
                               callback_data=f"clanh:donate:{clan_id}")],
+    ]
+    if await can_withdraw_clan_storage(clan_id, cb.from_user.id):
+        kb_rows.append([InlineKeyboardButton(text="📤 Забрать ресурсы",
+                                             callback_data=f"clanh:wd:{clan_id}")])
+    kb_rows.extend([
         [InlineKeyboardButton(text="🧾 Вклады",
                               callback_data=f"clanh:log:{clan_id}")],
         [InlineKeyboardButton(text="🏰 Здание клана",
@@ -2330,7 +2336,8 @@ async def clan_storage_cb(cb: CallbackQuery):
         [InlineKeyboardButton(text="🔙 К клану",
                               callback_data=f"clans:view:{clan_id}")],
     ])
-    await _paint(cb, build_clan_storage_text(clan, rows), kb)
+    await _paint(cb, build_clan_storage_text(clan, rows),
+                 InlineKeyboardMarkup(inline_keyboard=kb_rows))
 
 
 @router.callback_query(F.data.startswith("clanh:donate:"))
@@ -2441,6 +2448,155 @@ async def clan_contrib_cb(cb: CallbackQuery):
                               callback_data=f"clanh:storage:{clan_id}")],
     ])
     await _paint(cb, build_contrib_text(clan, rows), kb)
+
+
+# ── Выдача ресурсов со склада (только глава клана) ──────────────────────────
+
+
+def build_withdraw_text(clan, rows) -> str:
+    lines = [f"📤 <b>Забрать ресурсы</b> — «{_esc(clan['name'])}»", ""]
+    if not rows:
+        lines.append("На складе ничего нет.")
+    else:
+        lines.append("Выбери ресурс, который хочешь забрать в инвентарь:")
+    return "\n".join(lines)
+
+
+def build_withdraw_page_markup(clan_id: int, rows: list, page: int) -> InlineKeyboardMarkup:
+    total = len(rows)
+    pages = max(1, (total + STORAGE_PAGE - 1) // STORAGE_PAGE)
+    page = max(0, min(page, pages - 1))
+    start = page * STORAGE_PAGE
+    chunk = rows[start:start + STORAGE_PAGE]
+    kb_rows = []
+    for r in chunk:
+        kb_rows.append([InlineKeyboardButton(
+            text=f"{r['name']} · {r['qty']} шт.",
+            callback_data=f"clanh:wditem:{clan_id}:{r['item_id']}")])
+    if pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton(
+                text="◀️", callback_data=f"clanh:wd:{clan_id}:{page - 1}"))
+        nav.append(InlineKeyboardButton(
+            text=f"{page + 1}/{pages}", callback_data="clanh:noop"))
+        if page < pages - 1:
+            nav.append(InlineKeyboardButton(
+                text="▶️", callback_data=f"clanh:wd:{clan_id}:{page + 1}"))
+        kb_rows.append(nav)
+    kb_rows.append([InlineKeyboardButton(text="🔙 К складу",
+                                         callback_data=f"clanh:storage:{clan_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=kb_rows)
+
+
+def build_withdraw_item_text(item, stored: int, have: int) -> str:
+    return (
+        f"📤 <b>{_esc(item['name'])}</b>\n\n"
+        f"На складе клана: <b>{stored}</b>\n"
+        f"У тебя в инвентаре: <b>{have}</b>\n\n"
+        "Сколько забрать?"
+    )
+
+
+@router.callback_query(F.data.startswith("clanh:wd:"))
+async def clan_withdraw_cb(cb: CallbackQuery):
+    await cb.answer()
+    parts = cb.data.split(":")
+    clan_id = int(parts[2])
+    page = int(parts[3]) if len(parts) > 3 and parts[3].lstrip("-").isdigit() else 0
+    if not await can_withdraw_clan_storage(clan_id, cb.from_user.id):
+        await cb.answer("❌ Только глава клана может забирать ресурсы со склада.", show_alert=True)
+        return
+    clan = await get_clan(clan_id)
+    if not clan:
+        return
+    rows = await get_clan_storage(clan_id)
+    rows = [r for r in rows if (r["qty"] or 0) > 0]
+    await _paint(cb, build_withdraw_text(clan, rows),
+                 build_withdraw_page_markup(clan_id, rows, page))
+
+
+@router.callback_query(F.data.startswith("clanh:wditem:"))
+async def clan_withdraw_item_cb(cb: CallbackQuery):
+    await cb.answer()
+    _, _, clan_id_s, item_id_s = cb.data.split(":")
+    clan_id, item_id = int(clan_id_s), int(item_id_s)
+    if not await can_withdraw_clan_storage(clan_id, cb.from_user.id):
+        await cb.answer("❌ Только глава клана может забирать ресурсы со склада.", show_alert=True)
+        return
+    clan = await get_clan(clan_id)
+    if not clan:
+        return
+    item = await get_item(item_id)
+    if not item:
+        await cb.answer("❌ Предмет не найден.", show_alert=True)
+        return
+    stored = await get_clan_storage_qty(clan_id, item_id)
+    inv = await get_inventory_item(cb.from_user.id, item_id)
+    have = inv["quantity"] if inv else 0
+    kb_rows = []
+    if stored > 0:
+        btns = [InlineKeyboardButton(text="+1",
+                                     callback_data=f"clanh:wdtake:{clan_id}:{item_id}:1")]
+        if stored >= 10:
+            btns.append(InlineKeyboardButton(
+                text="+10", callback_data=f"clanh:wdtake:{clan_id}:{item_id}:10"))
+        btns.append(InlineKeyboardButton(
+            text=f"Всё ({stored})", callback_data=f"clanh:wdtake:{clan_id}:{item_id}:all"))
+        kb_rows.append(btns)
+    kb_rows.append([InlineKeyboardButton(text="🔙 К списку",
+                                         callback_data=f"clanh:wd:{clan_id}")])
+    await _paint(cb, build_withdraw_item_text(item, stored, have),
+                 InlineKeyboardMarkup(inline_keyboard=kb_rows))
+
+
+@router.callback_query(F.data.startswith("clanh:wdtake:"))
+async def clan_withdraw_take_cb(cb: CallbackQuery):
+    _, _, clan_id_s, item_id_s, amount = cb.data.split(":")
+    clan_id, item_id = int(clan_id_s), int(item_id_s)
+    if not await can_withdraw_clan_storage(clan_id, cb.from_user.id):
+        await cb.answer("❌ Только глава клана может забирать ресурсы со склада.", show_alert=True)
+        return
+    clan = await get_clan(clan_id)
+    if not clan:
+        return
+    item = await get_item(item_id)
+    if not item:
+        await cb.answer("❌ Предмет не найден.", show_alert=True)
+        return
+    stored = await get_clan_storage_qty(clan_id, item_id)
+    qty = stored if amount == "all" else int(amount)
+    if qty <= 0 or qty > stored:
+        await cb.answer("❌ Недостаточно ресурсов на складе.", show_alert=True)
+        return
+    if not await take_clan_storage(clan_id, item_id, qty):
+        await cb.answer("❌ Не удалось забрать ресурс (склад изменился).", show_alert=True)
+        return
+    await add_inventory_item(cb.from_user.id, item_id, qty)
+    await log_activity(cb.from_user.id, "clan_storage_withdraw",
+                       f"Клан {clan_id}: забрал {item['name']} x{qty}")
+    await cb.answer(f"✅ Забрано: {item['name']} × {qty}", show_alert=True)
+
+    stored = await get_clan_storage_qty(clan_id, item_id)
+    if stored <= 0:
+        rows = await get_clan_storage(clan_id)
+        rows = [r for r in rows if (r["qty"] or 0) > 0]
+        await _paint(cb, build_withdraw_text(clan, rows),
+                     build_withdraw_page_markup(clan_id, rows, 0))
+        return
+    inv = await get_inventory_item(cb.from_user.id, item_id)
+    have = inv["quantity"] if inv else 0
+    btns = [InlineKeyboardButton(text="+1",
+                                 callback_data=f"clanh:wdtake:{clan_id}:{item_id}:1")]
+    if stored >= 10:
+        btns.append(InlineKeyboardButton(
+            text="+10", callback_data=f"clanh:wdtake:{clan_id}:{item_id}:10"))
+    btns.append(InlineKeyboardButton(
+        text=f"Всё ({stored})", callback_data=f"clanh:wdtake:{clan_id}:{item_id}:all"))
+    kb_rows = [btns, [InlineKeyboardButton(text="🔙 К списку",
+                                           callback_data=f"clanh:wd:{clan_id}")]]
+    await _paint(cb, build_withdraw_item_text(item, stored, have),
+                 InlineKeyboardMarkup(inline_keyboard=kb_rows))
 
 
 @router.callback_query(F.data == "clanh:noop")
