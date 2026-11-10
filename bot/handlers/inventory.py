@@ -32,6 +32,7 @@ from utils.helpers import (
 )
 from keyboards.keyboards import cancel_keyboard, main_menu_kb
 from config import TOURIST_BOOKLET_NAME
+from utils.i18n import t
 
 router = Router()
 
@@ -91,7 +92,7 @@ def inv_categories_markup(items, catches):
         counts[FISH_ALL_KEY] = fish_total
 
     rows = []
-    rows.append([InlineKeyboardButton(text="🛡️ Снаряжение", callback_data="inventory:eq")])
+    rows.append([InlineKeyboardButton(text=f"🛡️ {t('inv.gear')}", callback_data="inventory:eq")])
     for cat in INV_CATEGORIES:
         if cat not in counts or counts[cat] <= 0:
             continue
@@ -106,7 +107,7 @@ def inv_categories_markup(items, catches):
             callback_data=f"inventory:cat:{cat}")])
     if FISH_ALL_KEY in counts:
         rows.append([InlineKeyboardButton(
-            text=f"🐟 Улов — {counts[FISH_ALL_KEY]}",
+            text=f"🐟 {t('inv.catch')} — {counts[FISH_ALL_KEY]}",
             callback_data=f"inventory:cat:{FISH_ALL_KEY}")])
     rows.append([InlineKeyboardButton(text="🔙 В меню", callback_data="back:main")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -621,7 +622,7 @@ async def inventory_cat_cb(callback: CallbackQuery):
         return
     header = "🎒 ИНВЕНТАРЬ"
     if cat == FISH_ALL_KEY:
-        header += "\nУлов:"
+        header += f"\n{t('inv.catch')}:"
         from config import FISH_TREASURY_DAILY_LIMIT
         sold = await fish_sold_today(user_id)
         if await fish_sale_daily_left(user_id):

@@ -421,9 +421,9 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `target` | `bot/handlers/inventory.py:1694` `inv_transfer_start` | `bot/handlers/inventory.py:1703` `inv_transfer_target` |
-| `amount` | `bot/handlers/inventory.py:1710` `inv_transfer_target` | `bot/handlers/inventory.py:1718` `inv_transfer_amount` |
-| `message` | `bot/handlers/inventory.py:1750` `inv_transfer_amount` | `bot/handlers/inventory.py:1759` `inv_transfer_message` |
+| `target` | `bot/handlers/inventory.py:1695` `inv_transfer_start` | `bot/handlers/inventory.py:1704` `inv_transfer_target` |
+| `amount` | `bot/handlers/inventory.py:1711` `inv_transfer_target` | `bot/handlers/inventory.py:1719` `inv_transfer_amount` |
+| `message` | `bot/handlers/inventory.py:1751` `inv_transfer_amount` | `bot/handlers/inventory.py:1760` `inv_transfer_message` |
 
 ### `KvpFSM` — `bot/handlers/kvp.py`
 
@@ -715,8 +715,8 @@
 - `hq:wingcmd`: `bot/handlers/hq.py:568`
 - `hq:wingcmd_send`: `bot/handlers/hq.py:706`
 - `hq:wings`: `bot/handlers/hq.py:1035`
-- `inventory:eq`: `bot/handlers/inventory.py:494`
-- `inventory:list`: `bot/handlers/inventory.py:588`
+- `inventory:eq`: `bot/handlers/inventory.py:495`
+- `inventory:list`: `bot/handlers/inventory.py:589`
 - `kvp:exit`: `bot/handlers/kvp.py:752`
 - `kvp:resume`: `bot/handlers/kvp.py:303`
 - `kvp:start`: `bot/handlers/kvp.py:263`
@@ -1001,11 +1001,11 @@
 - `enemy:tog:`: `bot/handlers/admin.py:9989`
 - `enemy_drops:`: `bot/handlers/admin.py:6452`
 - `enemy_field:`: `bot/handlers/admin.py:5967`
-- `eqequip:[a-z0-9_]+:\d+$`: `bot/handlers/inventory.py:512`
-- `eqlock:[a-z0-9_]+$`: `bot/handlers/inventory.py:500`
+- `eqequip:[a-z0-9_]+:\d+$`: `bot/handlers/inventory.py:513`
+- `eqlock:[a-z0-9_]+$`: `bot/handlers/inventory.py:501`
 - `eqpart:`: `bot/handlers/admin.py:1417`
-- `eqslot:[a-z0-9_]+$`: `bot/handlers/inventory.py:505`
-- `equnequip:[a-z0-9_]+$`: `bot/handlers/inventory.py:544`
+- `eqslot:[a-z0-9_]+$`: `bot/handlers/inventory.py:506`
+- `equnequip:[a-z0-9_]+$`: `bot/handlers/inventory.py:545`
 - `field:`: `bot/handlers/admin.py:2136`
 - `field:required_status`: `bot/handlers/admin.py:1864`
 - `field_req:`: `bot/handlers/admin.py:1897`
@@ -1037,8 +1037,8 @@
 - `fish:cast:\d+$`: `bot/handlers/fishing.py:573`
 - `fish:lake:\d+$`: `bot/handlers/fishing.py:500`
 - `fishbuy:`: `bot/handlers/shop.py:830`
-- `fishcatch:`: `bot/handlers/inventory.py:1325`
-- `fishgo:`: `bot/handlers/inventory.py:1576`
+- `fishcatch:`: `bot/handlers/inventory.py:1326`
+- `fishgo:`: `bot/handlers/inventory.py:1577`
 - `fishing:addfish:`: `bot/handlers/admin.py:7469`
 - `fishing:addlist:`: `bot/handlers/admin.py:7439`
 - `fishing:del:`: `bot/handlers/admin.py:7492`
@@ -1056,11 +1056,11 @@
 - `fishing_jx:new:`: `bot/handlers/admin.py:7222`
 - `fishing_jx:pick:`: `bot/handlers/admin.py:7174`
 - `fishing_jx:pool:`: `bot/handlers/admin.py:7145`
-- `fishmarket:`: `bot/handlers/inventory.py:1478`
+- `fishmarket:`: `bot/handlers/inventory.py:1479`
 - `fishoffer:`: `bot/handlers/shop.py:755`
-- `fishprice:`: `bot/handlers/inventory.py:1558`
-- `fishsell:`: `bot/handlers/inventory.py:1634`
-- `fishuse:`: `bot/handlers/inventory.py:1333`
+- `fishprice:`: `bot/handlers/inventory.py:1559`
+- `fishsell:`: `bot/handlers/inventory.py:1635`
+- `fishuse:`: `bot/handlers/inventory.py:1334`
 - `forest:add:`: `bot/handlers/admin.py:8222`
 - `forest:area:\d+:(glade|clearing)$`: `bot/handlers/forest.py:455`
 - `forest:battle:flee:\d+$`: `bot/handlers/forest.py:1236`
@@ -1109,25 +1109,25 @@
 - `hq:wingfarm:`: `bot/handlers/hq.py:448`
 - `hq:wingtake:`: `bot/handlers/hq.py:752`
 - `http`: `bot/handlers/library.py:360`
-- `inv_equip:`: `bot/handlers/inventory.py:806`
-- `inv_sell:`: `bot/handlers/inventory.py:941`
-- `inv_sell_ask:`: `bot/handlers/inventory.py:1039`
-- `inv_sell_keep1:`: `bot/handlers/inventory.py:961`
-- `inv_sell_ok:`: `bot/handlers/inventory.py:1061`
-- `inv_sellall:`: `bot/handlers/inventory.py:951`
-- `inv_sellmore:`: `bot/handlers/inventory.py:1171`
-- `inv_slot:`: `bot/handlers/inventory.py:860`
-- `inv_transfer:`: `bot/handlers/inventory.py:1666`
-- `inv_unequip:`: `bot/handlers/inventory.py:836`
-- `inv_unslot:`: `bot/handlers/inventory.py:895`
-- `inv_use:`: `bot/handlers/inventory.py:917`
-- `inventory:cat:[^:]+$`: `bot/handlers/inventory.py:607`
-- `invitem:`: `bot/handlers/inventory.py:799`
+- `inv_equip:`: `bot/handlers/inventory.py:807`
+- `inv_sell:`: `bot/handlers/inventory.py:942`
+- `inv_sell_ask:`: `bot/handlers/inventory.py:1040`
+- `inv_sell_keep1:`: `bot/handlers/inventory.py:962`
+- `inv_sell_ok:`: `bot/handlers/inventory.py:1062`
+- `inv_sellall:`: `bot/handlers/inventory.py:952`
+- `inv_sellmore:`: `bot/handlers/inventory.py:1172`
+- `inv_slot:`: `bot/handlers/inventory.py:861`
+- `inv_transfer:`: `bot/handlers/inventory.py:1667`
+- `inv_unequip:`: `bot/handlers/inventory.py:837`
+- `inv_unslot:`: `bot/handlers/inventory.py:896`
+- `inv_use:`: `bot/handlers/inventory.py:918`
+- `inventory:cat:[^:]+$`: `bot/handlers/inventory.py:608`
+- `invitem:`: `bot/handlers/inventory.py:800`
 - `itembuy:`: `bot/handlers/shop.py:959`
-- `itemgo:`: `bot/handlers/inventory.py:1269`
-- `itemmarket:`: `bot/handlers/inventory.py:1179`
+- `itemgo:`: `bot/handlers/inventory.py:1270`
+- `itemmarket:`: `bot/handlers/inventory.py:1180`
 - `itemoffer:`: `bot/handlers/shop.py:891`
-- `itemprice:`: `bot/handlers/inventory.py:1258`
+- `itemprice:`: `bot/handlers/inventory.py:1259`
 - `kvp:attack:`: `bot/handlers/kvp.py:531`
 - `kvp:attempt:`: `bot/handlers/kvp.py:456`
 - `kvp:continue:`: `bot/handlers/kvp.py:425`

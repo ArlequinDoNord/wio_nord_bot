@@ -109,6 +109,9 @@ def rarity_emoji(rarity: int) -> str:
 
 def category_label(category: str) -> str:
     from config import ITEM_CATEGORIES
+    from utils.i18n import STRINGS, t
+    if f"cat.{category}" in STRINGS:
+        return t(f"cat.{category}")
     return ITEM_CATEGORIES.get(category, category)
 
 

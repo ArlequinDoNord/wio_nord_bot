@@ -1,5 +1,7 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
+from utils.i18n import STRINGS, place_name, t
+
 
 def main_menu_keyboard(is_admin: bool = False, is_pilot: bool = True):
     from utils.i18n import t
@@ -116,19 +118,20 @@ def profile_keyboard(notify_enabled: bool = True, profile_public: bool = True, c
 
 
 def shop_keyboard():
+    from utils.i18n import t
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Каталог", callback_data="shop:catalog")],
-        [InlineKeyboardButton(text="Мои покупки", callback_data="shop:my_purchases")],
-        [InlineKeyboardButton(text="Продать товар", callback_data="shop:sell")],
+        [InlineKeyboardButton(text=t("shop.catalog"), callback_data="shop:catalog")],
+        [InlineKeyboardButton(text=t("shop.my_purchases"), callback_data="shop:my_purchases")],
+        [InlineKeyboardButton(text=t("shop.sell"), callback_data="shop:sell")],
     ])
 
 
 def shop_catalog_keyboard(available: dict):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from utils.helpers import category_label
     rows = []
     for key, count in available.items():
-        from config import ITEM_CATEGORIES
-        label = ITEM_CATEGORIES.get(key, key)
+        label = category_label(key)
         rows.append([InlineKeyboardButton(text=f"{label} ({count})", callback_data=f"shopcat:{key}")])
     rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="back:main")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -219,6 +222,11 @@ LOCATION_BUTTON_EMOJI = {
     "nii": "🔬",
 }
 
+# Русские надписи подменю берём из STRINGS (en — перевод в place_name).
+_LOC_RU = {key: STRINGS[f"loc.{key}"]["ru"]
+           for key in ("bank", "townhall", "hq", "mvd", "library", "park", "gossmi",
+                       "contracts", "duel_house", "nii", "storage", "forest", "mine")}
+
 # Здания, вынесенные из общего списка города в подменю «Административный квартал».
 ADMIN_QUARTER_KEYS = ("townhall", "bank", "hq", "mvd")
 ADMIN_QUARTER_TEXT = "🏢 Административный квартал"
@@ -255,8 +263,9 @@ def city_keyboard(is_pilot: bool = True, locations: list = None,
         if loc.get('key') in QUARTER_HIDDEN_KEYS:
             continue
         emoji = LOCATION_BUTTON_EMOJI.get(loc.get('key'), "📍")
+        name = place_name(loc.get('key'), loc['name'])
         buttons.append([InlineKeyboardButton(
-            text=f"{emoji} {loc['name']}",
+            text=f"{emoji} {name}",
             callback_data=f"location:preview:{loc['key']}"
         )])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -270,29 +279,31 @@ def business_quarter_keyboard():
     «Войти»), поэтому доступ по-прежнему решается в location_enter.
     """
     entries = (
-        ("library", "📚 Библиотека"),
-        ("park", "🌳 Городской парк"),
-        ("gossmi", "📰 ГосСМИ"),
-        ("contracts", "📜 Доска контрактов"),
-        ("duel_house", "🥊 Дом Дуэлей"),
-        ("nii", "🔬 НИИ Северной Кибернетики"),
-        ("storage", "📦 Городские склады"),
+        ("library", "📚"),
+        ("park", "🌳"),
+        ("gossmi", "📰"),
+        ("contracts", "📜"),
+        ("duel_house", "🥊"),
+        ("nii", "🔬"),
+        ("storage", "📦"),
     )
-    buttons = [[InlineKeyboardButton(text=text, callback_data=f"location:preview:{key}")]
-               for key, text in entries]
-    buttons.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
+    buttons = [[InlineKeyboardButton(text=f"{emoji} {place_name(key, _LOC_RU[key])}",
+                                     callback_data=f"location:preview:{key}")]
+               for key, emoji in entries]
+    buttons.append([InlineKeyboardButton(text=t("city.back"), callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def countryside_keyboard():
     """Подменю Загородных территорий: Лес на окраине и Железная копь."""
     entries = (
-        ("forest", "🌲 Лес на окраине"),
-        ("mine", "⛏️ Железная копи"),
+        ("forest", "🌲"),
+        ("mine", "⛏️"),
     )
-    buttons = [[InlineKeyboardButton(text=text, callback_data=f"location:preview:{key}")]
-               for key, text in entries]
-    buttons.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
+    buttons = [[InlineKeyboardButton(text=f"{emoji} {place_name(key, _LOC_RU[key])}",
+                                     callback_data=f"location:preview:{key}")]
+               for key, emoji in entries]
+    buttons.append([InlineKeyboardButton(text=t("city.back"), callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -304,14 +315,15 @@ def admin_quarter_keyboard():
     «Здание МВД» видна всем, но внутрь пускают только сотрудники.
     """
     entries = (
-        ("bank", "🏦 Банк"),
-        ("townhall", "🏛 Ратуша"),
-        ("hq", "🎖️ Штаб ВВС"),
-        ("mvd", "🚔 Здание МВД"),
+        ("bank", "🏦"),
+        ("townhall", "🏛"),
+        ("hq", "🎖️"),
+        ("mvd", "🚔"),
     )
-    buttons = [[InlineKeyboardButton(text=text, callback_data=f"location:preview:{key}")]
-               for key, text in entries]
-    buttons.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
+    buttons = [[InlineKeyboardButton(text=f"{emoji} {place_name(key, _LOC_RU[key])}",
+                                     callback_data=f"location:preview:{key}")]
+               for key, emoji in entries]
+    buttons.append([InlineKeyboardButton(text=t("city.back"), callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

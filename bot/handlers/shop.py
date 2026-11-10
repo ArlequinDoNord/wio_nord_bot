@@ -37,9 +37,9 @@ from bot.handlers.housing import (
 )
 from utils.helpers import (
     rarity_emoji, rarity_label, plural_nordmark, item_local_photo,
-    edit_or_replace, fish_weight_tier, fish_sell_price,
+    edit_or_replace, fish_weight_tier, fish_sell_price, category_label,
 )
-from config import ITEM_CATEGORIES, SPECIAL_DEPT_ATTEMPTS_LIMIT, TOURIST_BOOKLET_NAME
+from config import SPECIAL_DEPT_ATTEMPTS_LIMIT, TOURIST_BOOKLET_NAME
 
 router = Router()
 
@@ -321,7 +321,7 @@ async def items_page_markup(items, category, page: int, user_id: int = None):
 
 
 async def show_items_page(callback: CallbackQuery, category: str, items, page: int):
-    header = f"🛒 {ITEM_CATEGORIES.get(category, category)}:"
+    header = f"🛒 {category_label(category)}:"
     # Пометка о скидке от медали — только в магазинных категориях и только если
     # медаль реально даёт скидку (на рынке чужие цены, скидка там не действует).
     if category != "market":
@@ -365,7 +365,7 @@ async def _item_card_text(item, user_id: int) -> str:
     header = (
         f"{rarity_emoji(item['rarity'])} {item['name']} {rarity_emoji(item['rarity'])}\n"
         f"Редкость: {rarity_label(item['rarity'])}\n"
-        f"Категория: {ITEM_CATEGORIES.get(item['category'], item['category'])}"
+        f"Категория: {category_label(item['category'])}"
     )
     if item['damage'] > 0:
         header += f"\n⚔️ Урон: {item['damage']}"

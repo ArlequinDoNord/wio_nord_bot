@@ -177,7 +177,62 @@ STRINGS = {
         "en": ("\n\nThis number is for regional troop statistics — it does not affect payment."),
     },
     "report.prev_day": {"ru": "🗓 За прошлые сутки ты сдал: {n}.", "en": "🗓 Last game day you submitted: {n}."},
+    # Локации города: ru — название, как оно показано в боте (из БД для кнопки
+    # «Курс выживания», из кода для подменю); en — перевод.
+    "loc.townhall": {"ru": "Ратуша", "en": "Town Hall"},
+    "loc.library": {"ru": "Библиотека", "en": "Library"},
+    "loc.park": {"ru": "Городской парк", "en": "City Park"},
+    "loc.gossmi": {"ru": "ГосСМИ", "en": "State Media"},
+    "loc.bank": {"ru": "Банк", "en": "Bank"},
+    "loc.kvp": {"ru": "Курс выживания", "en": "Survival Course"},
+    "loc.hq": {"ru": "Штаб ВВС", "en": "Air Force HQ"},
+    "loc.contracts": {"ru": "Доска контрактов", "en": "Contract Board"},
+    "loc.nii": {"ru": "НИИ Северной Кибернетики", "en": "Northern Cybernetics Institute"},
+    "loc.forest": {"ru": "Лес на окраине", "en": "Outskirts Forest"},
+    "loc.duel_house": {"ru": "Дом Дуэлей", "en": "Duel House"},
+    "loc.mine": {"ru": "Железная копи", "en": "Iron Mine"},
+    "loc.storage": {"ru": "Городские склады", "en": "City Warehouses"},
+    "loc.mvd": {"ru": "Здание МВД", "en": "Interior Ministry"},
+    # Категории предметов (магазин и инвентарь): ru — как в config.ITEM_CATEGORIES.
+    "cat.weapon": {"ru": "Оружие", "en": "Weapons"},
+    "cat.consumable": {"ru": "Расходники", "en": "Consumables"},
+    "cat.building": {"ru": "Недвижимость", "en": "Real estate"},
+    "cat.housing": {"ru": "Жильё", "en": "Housing"},
+    "cat.furniture": {"ru": "Мебель и расширения", "en": "Furniture & extensions"},
+    "cat.seeds": {"ru": "Семена", "en": "Seeds"},
+    "cat.equipment": {"ru": "Одежда", "en": "Clothing"},
+    "cat.resource": {"ru": "Ресурсы", "en": "Resources"},
+    "cat.special": {"ru": "Особое", "en": "Special"},
+    "cat.special_dept": {"ru": "Спец-отдел", "en": "Special Department"},
+    "cat.souvenirs": {"ru": "Сувениры", "en": "Souvenirs"},
+    "cat.library_card": {"ru": "Читательские билеты", "en": "Library cards"},
+    "cat.fishing": {"ru": "Рыбалка", "en": "Fishing"},
+    "cat.mining": {"ru": "⛏ Добыча ресурсов", "en": "⛏ Resource mining"},
+    "cat.license": {"ru": "Торговые лицензии", "en": "Trade licenses"},
+    "cat.recipes": {"ru": "📜 Рецепты", "en": "📜 Recipes"},
+    "cat.market": {"ru": "🎪 Рынок", "en": "🎪 Market"},
+    "cat.duel_gear": {"ru": "🥊 Дуэльное снаряжение", "en": "🥊 Duel gear"},
+    "cat.duel_card": {"ru": "🎫 Клубные карты", "en": "🎫 Club cards"},
+    # Разделы магазина и инвентаря.
+    "shop.catalog": {"ru": "Каталог", "en": "Catalog"},
+    "shop.my_purchases": {"ru": "Мои покупки", "en": "My purchases"},
+    "shop.sell": {"ru": "Продать товар", "en": "Sell an item"},
+    "inv.gear": {"ru": "Снаряжение", "en": "Gear"},
+    "inv.catch": {"ru": "Улов", "en": "Catch"},
 }
+
+
+def place_name(key: str, ru_name: str) -> str:
+    """Название локации/квартала для кнопки.
+
+    В русском — ru_name как есть (он может прийти из БД и правиться админом);
+    в английском — перевод из STRINGS['loc.<key>'], если он есть.
+    """
+    if _current.get() == "en":
+        entry = STRINGS.get(f"loc.{key}")
+        if entry:
+            return entry["en"]
+    return ru_name
 
 
 def t(key: str, **fmt) -> str:
@@ -209,10 +264,17 @@ def btn_labels(key: str) -> tuple:
     return tuple(dict.fromkeys(entry.values()))
 
 
+# Надписи названий мест, категорий и разделов — не reply-кнопки, в фильтр меню не входят
+# (иначе «Банк» или «Каталог» в FSM-формах перехватывались бы как нажатие кнопки меню).
+_NOT_MENU_PREFIXES = ("loc.", "cat.", "shop.", "inv.")
+
+
 def all_button_labels() -> set:
     """Все надписи всех кнопок: их не должны перехватывать FSM-формы как ввод."""
     out = set()
     for key in STRINGS:
+        if key.startswith(_NOT_MENU_PREFIXES):
+            continue
         out.update(btn_labels(key))
     return out
 

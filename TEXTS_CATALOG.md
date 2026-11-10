@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=3e88b2d518766681 seeds=2aaa59f0a2cf2820 db=28bdcaa15d8bf339 -->
+<!-- texts-catalog: code=1f2c99b05656a5a7 seeds=560b34bc7b7f1751 db=28bdcaa15d8bf339 -->
 
 _Снимок: 2026-11-10 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-10 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **89** (ru + en).
+Всего строк: **127** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -273,6 +273,122 @@ _Снимок: 2026-11-10 · источник: прод-БД + сиды_
 - EN:
   > 🧱 Wall of sayings
 
+#### категории предметов · `cat.` (19)
+
+### UI-cat.building
+- RU:
+  > Недвижимость
+- EN:
+  > Real estate
+
+### UI-cat.consumable
+- RU:
+  > Расходники
+- EN:
+  > Consumables
+
+### UI-cat.duel_card
+- RU:
+  > 🎫 Клубные карты
+- EN:
+  > 🎫 Club cards
+
+### UI-cat.duel_gear
+- RU:
+  > 🥊 Дуэльное снаряжение
+- EN:
+  > 🥊 Duel gear
+
+### UI-cat.equipment
+- RU:
+  > Одежда
+- EN:
+  > Clothing
+
+### UI-cat.fishing
+- RU:
+  > Рыбалка
+- EN:
+  > Fishing
+
+### UI-cat.furniture
+- RU:
+  > Мебель и расширения
+- EN:
+  > Furniture & extensions
+
+### UI-cat.housing
+- RU:
+  > Жильё
+- EN:
+  > Housing
+
+### UI-cat.library_card
+- RU:
+  > Читательские билеты
+- EN:
+  > Library cards
+
+### UI-cat.license
+- RU:
+  > Торговые лицензии
+- EN:
+  > Trade licenses
+
+### UI-cat.market
+- RU:
+  > 🎪 Рынок
+- EN:
+  > 🎪 Market
+
+### UI-cat.mining
+- RU:
+  > ⛏ Добыча ресурсов
+- EN:
+  > ⛏ Resource mining
+
+### UI-cat.recipes
+- RU:
+  > 📜 Рецепты
+- EN:
+  > 📜 Recipes
+
+### UI-cat.resource
+- RU:
+  > Ресурсы
+- EN:
+  > Resources
+
+### UI-cat.seeds
+- RU:
+  > Семена
+- EN:
+  > Seeds
+
+### UI-cat.souvenirs
+- RU:
+  > Сувениры
+- EN:
+  > Souvenirs
+
+### UI-cat.special
+- RU:
+  > Особое
+- EN:
+  > Special
+
+### UI-cat.special_dept
+- RU:
+  > Спец-отдел
+- EN:
+  > Special Department
+
+### UI-cat.weapon
+- RU:
+  > Оружие
+- EN:
+  > Weapons
+
 #### город · `city.` (7)
 
 ### UI-city.admin
@@ -447,6 +563,20 @@ _Снимок: 2026-11-10 · источник: прод-БД + сиды_
 - EN:
   > ⚖️ Your fines
 
+#### инвентарь · `inv.` (2)
+
+### UI-inv.catch
+- RU:
+  > Улов
+- EN:
+  > Catch
+
+### UI-inv.gear
+- RU:
+  > Снаряжение
+- EN:
+  > Gear
+
 #### переключение языка · `lang.` (2)
 
 ### UI-lang.switched_en
@@ -460,6 +590,92 @@ _Снимок: 2026-11-10 · источник: прод-БД + сиды_
   > 🌐 Язык: Русский
 - EN:
   > 🌐 Language: Русский
+
+#### локации города · `loc.` (14)
+
+### UI-loc.bank
+- RU:
+  > Банк
+- EN:
+  > Bank
+
+### UI-loc.contracts
+- RU:
+  > Доска контрактов
+- EN:
+  > Contract Board
+
+### UI-loc.duel_house
+- RU:
+  > Дом Дуэлей
+- EN:
+  > Duel House
+
+### UI-loc.forest
+- RU:
+  > Лес на окраине
+- EN:
+  > Outskirts Forest
+
+### UI-loc.gossmi
+- RU:
+  > ГосСМИ
+- EN:
+  > State Media
+
+### UI-loc.hq
+- RU:
+  > Штаб ВВС
+- EN:
+  > Air Force HQ
+
+### UI-loc.kvp
+- RU:
+  > Курс выживания
+- EN:
+  > Survival Course
+
+### UI-loc.library
+- RU:
+  > Библиотека
+- EN:
+  > Library
+
+### UI-loc.mine
+- RU:
+  > Железная копи
+- EN:
+  > Iron Mine
+
+### UI-loc.mvd
+- RU:
+  > Здание МВД
+- EN:
+  > Interior Ministry
+
+### UI-loc.nii
+- RU:
+  > НИИ Северной Кибернетики
+- EN:
+  > Northern Cybernetics Institute
+
+### UI-loc.park
+- RU:
+  > Городской парк
+- EN:
+  > City Park
+
+### UI-loc.storage
+- RU:
+  > Городские склады
+- EN:
+  > City Warehouses
+
+### UI-loc.townhall
+- RU:
+  > Ратуша
+- EN:
+  > Town Hall
 
 #### общие экраны · `menu.` (1)
 
@@ -646,6 +862,26 @@ _Снимок: 2026-11-10 · источник: прод-БД + сиды_
   > ✅ Да, точно продать
 - EN:
   > ✅ Yes, sell for sure
+
+#### магазин · `shop.` (3)
+
+### UI-shop.catalog
+- RU:
+  > Каталог
+- EN:
+  > Catalog
+
+### UI-shop.my_purchases
+- RU:
+  > Мои покупки
+- EN:
+  > My purchases
+
+### UI-shop.sell
+- RU:
+  > Продать товар
+- EN:
+  > Sell an item
 
 
 <a id="боевые-тексты"></a>
@@ -3287,7 +3523,7 @@ _Снимок: 2026-11-10 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **5029** (уникальные вхождения по файлам и функциям).
+Всего текстов: **5007** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/i18n.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -10171,7 +10407,7 @@ _Снимок: 2026-11-10 · источник: прод-БД + сиды_
   👤 Пилотов — кто сейчас в регионе. Переезд меняет оба показателя.
   ℹ️ Это остаток сил на сейчас, а не заработок за сутки: окна времени тут нет.
 
-#### `bot/handlers/inventory.py` (226)
+#### `bot/handlers/inventory.py` (223)
 
 ##### `(модуль)`
 
@@ -10423,9 +10659,7 @@ _Снимок: 2026-11-10 · источник: прод-БД + сиды_
 
 ##### `inv_categories_markup`
 
-- 🐟 Улов — {…}
 - 🔙 В меню
-- 🛡️ Снаряжение
 
 ##### `inv_equip`
 
@@ -10537,7 +10771,6 @@ _Снимок: 2026-11-10 · источник: прод-БД + сиды_
 ##### `inventory_cat_cb`
 
 - В этой категории нет предметов.
-- Улов:
 - 🎒 ИНВЕНТАРЬ
 - 💵 Скупщик: {…}/{FISH_TREASURY_DAILY_LIMIT} НМ доступно сегодня
 - 🔙 К категориям
@@ -12834,7 +13067,7 @@ _Снимок: 2026-11-10 · источник: прод-БД + сиды_
   {…}
 - 🏙 В город
 
-#### `keyboards/keyboards.py` (93)
+#### `keyboards/keyboards.py` (74)
 
 ##### `(модуль)`
 
@@ -12879,28 +13112,9 @@ _Снимок: 2026-11-10 · источник: прод-БД + сиды_
 - 🪔 Картинки Круговорота
 - 🪽 Авиакрылья
 
-##### `admin_quarter_keyboard`
-
-- 🎖️ Штаб ВВС
-- 🏛 Ратуша
-- 🏦 Банк
-- 🔙 В город
-- 🚔 Здание МВД
-
 ##### `back_to_main`
 
 - Назад
-
-##### `business_quarter_keyboard`
-
-- 🌳 Городской парк
-- 📚 Библиотека
-- 📜 Доска контрактов
-- 📦 Городские склады
-- 📰 ГосСМИ
-- 🔙 В город
-- 🔬 НИИ Северной Кибернетики
-- 🥊 Дом Дуэлей
 
 ##### `cancel_keyboard`
 
@@ -12914,12 +13128,6 @@ _Снимок: 2026-11-10 · источник: прод-БД + сиды_
 
 - Да
 - Нет
-
-##### `countryside_keyboard`
-
-- ⛏️ Железная копи
-- 🌲 Лес на окраине
-- 🔙 В город
 
 ##### `dungeon_keyboard`
 
@@ -12976,12 +13184,6 @@ _Снимок: 2026-11-10 · источник: прод-БД + сиды_
 ##### `shop_catalog_keyboard`
 
 - 🔙 Назад
-
-##### `shop_keyboard`
-
-- Каталог
-- Мои покупки
-- Продать товар
 
 ##### `trade_keyboard`
 
