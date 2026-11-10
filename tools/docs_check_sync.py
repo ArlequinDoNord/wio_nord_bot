@@ -12,6 +12,7 @@ tools/docs_check_sync.py
 - SMOKE_INDEX.md      <- tools/export_smokes.py + smoke_*.py + tools/run_smokes.py
 - HANDLERS.md         <- tools/export_handlers.py + bot/handlers/*.py + main.py
 - CONFIG_REFERENCE.md <- tools/export_config.py + config.py
+- TEXTS_CATALOG.md    <- tools/export_texts.py (проверка --check, без --fix: нужен снимок прод-БД)
 
 Запуск:
     .venv\\Scripts\\python.exe tools/docs_check_sync.py [--fix]
@@ -130,6 +131,27 @@ def collect_sources(cfg: Dict[str, Any]) -> List[Path]:
     return src_list
 
 
+def check_texts_catalog() -> bool:
+    """TEXTS_CATALOG.md: тексты кода/сидов/БД должны совпадать с файлом (см. export_texts --check)."""
+    print("[TEXTS_CATALOG.md]")
+    env = dict(os.environ)
+    env["PYTHONIOENCODING"] = "utf-8"
+    result = subprocess.run(
+        [sys.executable, str(TOOLS / "export_texts.py"), "--check"],
+        cwd=str(ROOT), env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    for line in (result.stdout or "").splitlines():
+        print(f"  {line}")
+    if result.returncode != 0:
+        print("  STATUS: OUTDATED  <- нужно перегенерировать каталог")
+        print("  CMD:     .\\.venv\\Scripts\\python.exe tools\\export_texts.py --db <снимок прод-БД>")
+        print("")
+        return False
+    print("  STATUS: UP TO DATE")
+    print("")
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Проверка синхронизации автодоков.")
     parser.add_argument(
@@ -175,6 +197,9 @@ def main() -> int:
         else:
             print("  STATUS: UP TO DATE")
         print("")
+
+    if not check_texts_catalog():
+        issues += 1
 
     if issues == 0:
         print("OK: все автосгенерированные доки синхронизированы")

@@ -5,6 +5,7 @@
 ## 1) Предрелиз
 - [ ] **Синхронизация доков**: `.\.venv\Scripts\python.exe tools\docs_check_sync.py --fix` — все `UP TO DATE`
 - [ ] **Смоуки**: `.\.venv\Scripts\python.exe tools\run_smokes.py` (по умолчанию в 4 потока, либо точечно `tools\run_smokes.py --last 10` / `146 158-159`) → **0 failed**
+- [ ] **Каталог текстов актуален**: `.\.venv\Scripts\python.exe tools\export_texts.py --check --db <снимок прод-БД>` → «актуален». Если «устарел» — перегенерировать (`tools\export_texts.py --db <снимок>`), проверить правки глазами и закоммитить `TEXTS_CATALOG.md`. Снимок прод-БД — из контейнера (см. [SERVER_MAINTENANCE.md](SERVER_MAINTENANCE.md)). Гейт встроен в `tools/release_bump.py` (без `--skip-texts` релиз не пройдёт).
 - [ ] **Код компилируется** (быстрая проверка): `.\.venv\Scripts\python.exe -m py_compile config.py main.py database/db.py` (либо по затронутым модулям)
 - [ ] **Уточнить у владельца**: явный спойлер в анонсе или неявный намёк (см. [AGENTS.md](AGENTS.md) «Предрелизный вопрос»)
 
