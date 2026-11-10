@@ -287,7 +287,7 @@ def _enter_markup(token: str):
     """Меню входа: рубка деревьев и возврат в лес."""
     rows = [
         [InlineKeyboardButton(text="🪓 Рубить дерево", callback_data=f"logsite:chop:{token}")],
-        [InlineKeyboardButton(text="🔙 К лесу", callback_data="logsite:back")],
+        [InlineKeyboardButton(text="🔙 На прогалину", callback_data="logsite:back")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -299,7 +299,7 @@ def _result_markup(token: str, has_wood: bool = False):
     if has_wood:
         rows.append([InlineKeyboardButton(text="🪚 Переработка брёвен",
                                           callback_data=f"logsite:mill:{token}")])
-    rows.append([InlineKeyboardButton(text="🔙 К лесу", callback_data="logsite:back")])
+    rows.append([InlineKeyboardButton(text="🔙 На прогалину", callback_data="logsite:back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -311,7 +311,7 @@ def _enter_markup_extra(token: str, has_wood: bool):
     if has_wood:
         rows.append([InlineKeyboardButton(text="🪚 Переработка брёвен",
                                           callback_data=f"logsite:mill:{token}")])
-    rows.append([InlineKeyboardButton(text="🔙 К лесу", callback_data="logsite:back")])
+    rows.append([InlineKeyboardButton(text="🔙 На прогалину", callback_data="logsite:back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -459,10 +459,10 @@ async def logging_menu_again(callback: CallbackQuery):
 
 @router.callback_query(F.data == "logsite:back")
 async def logging_back(callback: CallbackQuery):
-    """Возврат из Лесозаготовки в лес (открываем опушку)."""
-    from bot.handlers.forest import forest_menu_cb
+    """Возврат из Лесозаготовки на прогалину — туда, откуда сюда входили."""
+    from bot.handlers.forest import forest_clearing_back
     await deactivate_logging_site(callback.from_user.id)
-    await forest_menu_cb(callback)
+    await forest_clearing_back(callback)
 
 
 @router.callback_query(F.data.regexp(r"^logsite:chop:\d+$"))

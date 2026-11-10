@@ -1062,12 +1062,12 @@
 - `fishsell:`: `bot/handlers/inventory.py:1635`
 - `fishuse:`: `bot/handlers/inventory.py:1334`
 - `forest:add:`: `bot/handlers/admin.py:8222`
-- `forest:area:\d+:(glade|clearing)$`: `bot/handlers/forest.py:455`
-- `forest:battle:flee:\d+$`: `bot/handlers/forest.py:1236`
-- `forest:battle:hit:\d+$`: `bot/handlers/forest.py:1028`
-- `forest:berry:\d+:(glade|clearing)$`: `bot/handlers/forest.py:745`
+- `forest:area:\d+:(glade|clearing)$`: `bot/handlers/forest.py:466`
+- `forest:battle:flee:\d+$`: `bot/handlers/forest.py:1238`
+- `forest:battle:hit:\d+$`: `bot/handlers/forest.py:1030`
+- `forest:berry:\d+:(glade|clearing)$`: `bot/handlers/forest.py:747`
 - `forest:card:`: `bot/handlers/admin.py:8136`
-- `forest:cast:\d+(?::(glade|clearing))?$`: `bot/handlers/forest.py:537`
+- `forest:cast:\d+(?::(glade|clearing))?$`: `bot/handlers/forest.py:550`
 - `forest:del:`: `bot/handlers/admin.py:8241`
 - `forest:kind:`: `bot/handlers/admin.py:8150`
 - `forest:market:`: `bot/handlers/admin.py:8175`

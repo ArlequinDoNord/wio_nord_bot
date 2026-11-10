@@ -337,20 +337,31 @@ def pick_forest_mushroom(pool_rows, r: float, rarity_bonus: float = 0, empty_cha
 
 # ───────── зоны леса: опушка и лесная поляна ─────────
 
-async def forest_menu_cb(callback: CallbackQuery):
-    """Вход из города в лес (location:enter:forest) — открываем опушку."""
+async def _open_zone_window(callback: CallbackQuery, area: str):
+    """Новое окно леса на зоне area (новый токен — старые кнопки устаревают)."""
     await callback.answer()
 
     if await get_active_run(callback.from_user.id):
+        where = "опушку" if area == FOREST_HOME_AREA else "прогалину"
         await callback.message.answer(
             "⛔ Ты сейчас проходишь подземелье — бродить по лесу нельзя.\n"
-            "Выйди из подземелья, а потом иди на опушку."
+            f"Выйди из подземелья, а потом иди на {where}."
         )
         return
 
     token = _new_token()
     FOREST_TOKEN[callback.from_user.id] = token
-    await _show_area(callback, FOREST_HOME_AREA)
+    await _show_area(callback, area)
+
+
+async def forest_menu_cb(callback: CallbackQuery):
+    """Вход из города в лес (location:enter:forest) — открываем опушку."""
+    await _open_zone_window(callback, FOREST_HOME_AREA)
+
+
+async def forest_clearing_back(callback: CallbackQuery):
+    """Возврат из Лесозаготовки — на прогалину, откуда туда входили."""
+    await _open_zone_window(callback, "clearing")
 
 
 async def _area_allowed(area: str, user_id: int) -> bool:
@@ -514,10 +525,12 @@ FOREST_ORIGIN: dict = {}  # user_id -> "berry" | "mushroom": с чего нач�
 
 
 async def _result_markup(token: str, area: str = "glade", user_id: int = None):
-    """Кнопки после находки/боя: искать ещё тем же способом (ягоды или грибы), или уйти."""
-    if user_id is not None and FOREST_ORIGIN.get(user_id) == "berry":
-        return await _berry_markup(token, area)
-    return _simple_markup(token, area)
+    """Кнопки после находки/боя: ягоды, грибы, другая зона, лесозаготовка, город.
+
+    Одинаковый набор после грибов и ягод: раньше после грибов не было ягод и
+    перехода в другую зону, и с прогалины кнопки вели только в город.
+    """
+    return await _area_markup(token, area)
 
 
 def _simple_markup(token: str, area: str = "glade"):
@@ -727,19 +740,8 @@ async def _forest_beast_fight(callback, user_id: int, area: str, beast: dict) ->
 
 
 async def _berry_markup(token: str, area: str):
-    """Кнопки после поиска ягод: ещё ягоды, грибы, на опушке — углубиться в лес, город."""
-    emoji = FOREST_AREA_EMOJI.get(area, "🌲")
-    rows = [
-        [InlineKeyboardButton(text="🫐 Искать ягоды ещё", callback_data=f"forest:berry:{token}:{area}")],
-        [InlineKeyboardButton(text=f"{emoji} Искать грибы", callback_data=f"forest:cast:{token}:{area}")],
-    ]
-    if area == "glade" and await _zone_open("clearing"):
-        rows.append([InlineKeyboardButton(text=f"{FOREST_AREA_EMOJI['clearing']} Углубиться в лес",
-                                          callback_data=f"forest:area:{token}:clearing")])
-    if area == "clearing":
-        rows.append([InlineKeyboardButton(text="🪓 Лесозаготовка", callback_data="logsite:enter")])
-    rows.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    """Кнопки после поиска ягод — тот же набор, что и после грибов (см. _result_markup)."""
+    return await _area_markup(token, area)
 
 
 @router.callback_query(F.data.regexp(r"^forest:berry:\d+:(glade|clearing)$"))
