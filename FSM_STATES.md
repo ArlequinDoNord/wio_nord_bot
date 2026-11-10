@@ -6,7 +6,7 @@
 > Назначение: единый обзор всех `StatesGroup`, где они ставятся и где ловятся,
 > а также реестр `callback_data` — чтобы не допускать конфликтов меню/хендлеров.
 
-Всего классов состояний: **55**; полей-состояний: **240**; уникальных `callback_data`: **277**.
+Всего классов состояний: **55**; полей-состояний: **240**; уникальных `callback_data`: **278**.
 
 ## 1. Классы состояний по модулям
 
@@ -496,7 +496,7 @@
 |---|---|---|
 | `waiting_photo` | `bot/handlers/profile.py:258` `set_photo` | `bot/handlers/profile.py:266` `process_photo` |
 | `waiting_about` | `bot/handlers/profile.py:279` `edit_about` | `bot/handlers/profile.py:287` `process_about` |
-| `waiting_callsign` | `bot/handlers/profile.py:614` `profile_callsign`<br>`bot/handlers/profile.py:625` `profile_callsign`<br>`bot/handlers/profile.py:722` `profile_callsign_buy` | `bot/handlers/profile.py:662` `profile_callsign_input` |
+| `waiting_callsign` | `bot/handlers/profile.py:734` `profile_callsign`<br>`bot/handlers/profile.py:745` `profile_callsign`<br>`bot/handlers/profile.py:842` `profile_callsign_buy` | `bot/handlers/profile.py:782` `profile_callsign_input` |
 
 ### `ReportSubmit` — `bot/handlers/reports.py`
 
@@ -582,7 +582,7 @@
 | `pollarch:` | 1 | `pollarch:list` |
 | `prod:` | 2 | `prod:player`, `prod:state` |
 | `prof:` | 1 | `prof:back` |
-| `profile:` | 5 | `profile`, `profile:awards`, `profile:callsign_buy`, `profile:callsign_cancel`, `profile:open` |
+| `profile:` | 6 | `profile`, `profile:awards`, `profile:callsign_buy`, `profile:callsign_cancel`, `profile:open`, `profile:recipes` |
 | `recadm:` | 17 | `recadm:book_done`, `recadm:bookpage:0`, `recadm:books`, `recadm:cancel`, `recadm:create`, `recadm:ing_done`, `recadm:ing_more`, `recadm:ingcats`, `recadm:kind:book`, `recadm:kind:scroll`, `recadm:list`, `recadm:menu`, `recadm:no_photo`, `recadm:noop`, `recadm:res_existing`, `recadm:res_new`, `recadm:save` |
 | `rep:` | 5 | `rep:auto_approve_edit`, `rep:pay_cap_edit`, `rep:speech`, `rep:speech:delete`, `rep:speech:write` |
 | `report:` | 1 | `report:menu` |
@@ -775,15 +775,16 @@
 - `profile`: `bot/handlers/profile.py:247`
 - `profile:achievements`: `bot/handlers/profile.py:510`
 - `profile:awards`: `bot/handlers/profile.py:472`
-- `profile:callsign`: `bot/handlers/profile.py:600`
-- `profile:callsign_buy`: `bot/handlers/profile.py:706`
-- `profile:callsign_cancel`: `bot/handlers/profile.py:654`
+- `profile:callsign`: `bot/handlers/profile.py:720`
+- `profile:callsign_buy`: `bot/handlers/profile.py:826`
+- `profile:callsign_cancel`: `bot/handlers/profile.py:774`
 - `profile:choose_status`: `bot/handlers/profile.py:305`
 - `profile:edit_about`: `bot/handlers/profile.py:276`
 - `profile:notify_toggle`: `bot/handlers/profile.py:352`
-- `profile:open`: `bot/handlers/profile.py:593`
+- `profile:open`: `bot/handlers/profile.py:713`
 - `profile:pilot_card`: `bot/handlers/profile.py:392`
 - `profile:public_toggle`: `bot/handlers/profile.py:372`
+- `profile:recipes`: `bot/handlers/profile.py:685`
 - `profile:set_photo`: `bot/handlers/profile.py:255`
 - `recadm:book_done`: `bot/handlers/admin_recipes.py:990`
 - `recadm:books`: `bot/handlers/admin_recipes.py:569`
@@ -1189,6 +1190,8 @@
 - `prod:`: `bot/handlers/admin.py:1497`
 - `prof_sel_status:`: `bot/handlers/profile.py:330`
 - `profile:award:`: `bot/handlers/profile.py:554`
+- `profile:recipe:\d+$`: `bot/handlers/profile.py:700`
+- `profile:recipes:\d+$`: `bot/handlers/profile.py:692`
 - `rank_pick:`: `bot/handlers/admin.py:5110`
 - `rank_promote:`: `bot/handlers/admin.py:5069`
 - `rar:`: `bot/handlers/admin.py:1297`

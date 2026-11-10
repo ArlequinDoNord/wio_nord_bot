@@ -9571,7 +9571,7 @@ FOREST_AREA_DEFAULTS = {
         "enabled": 1,
     },
     "clearing": {
-        "title": "Лесная поляна",
+        "title": "Прогалина",
         "ap_cost": 5,
         "allow_tourists": 0,
         "boar_enabled": 1,
@@ -9775,6 +9775,10 @@ async def ensure_forest_zones():
             (area, defaults['title'], defaults['ap_cost'], defaults['allow_tourists'],
              defaults['boar_enabled'], defaults['boar_chance'], defaults['boar_every'],
              defaults['enabled']))
+    # v0.43.13: «Лесная поляна» → «Прогалина» (одно название глубокой зоны).
+    # Меняем только старый заголовок по умолчанию, правки админа не трогаем.
+    await conn.execute(
+        "UPDATE forest_zones SET title = 'Прогалина' WHERE key = 'clearing' AND title = 'Лесная поляна'")
     limit = await (await conn.execute(
         "SELECT 1 FROM forest_settings WHERE key = 'sold_daily_limit'")).fetchone()
     if not limit:

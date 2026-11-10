@@ -590,6 +590,126 @@ async def profile_award_detail(callback: CallbackQuery):
     await callback.message.answer(text, reply_markup=markup)
 
 
+RECIPES_PER_PAGE = 8
+_RECIPE_GROUP_ORDER = ("kitchen", "workbench", "other")
+_RECIPE_GROUP_TITLE = {"kitchen": "recipes.group_kitchen",
+                       "workbench": "recipes.group_workbench",
+                       "other": "recipes.group_other"}
+_RECIPE_STATION = {"kitchen": "recipes.card_station_kitchen",
+                   "workbench": "recipes.card_station_workbench",
+                   "other": "recipes.card_station_other"}
+
+
+def _recipe_group(expansion) -> str:
+    return expansion if expansion in ("kitchen", "workbench") else "other"
+
+
+def _recipes_sorted(rows) -> list:
+    """Группы по станции (кухня, верстак, прочее), внутри — по уровню и редкости."""
+    return sorted(rows, key=lambda r: (
+        _RECIPE_GROUP_ORDER.index(_recipe_group(r['required_expansion'])),
+        r['required_level'] or 0, r['rarity'] or 0, r['id']))
+
+
+async def build_recipes_screen(user_id: int, page: int = 0):
+    """Список выученных рецептов пилота по станциям, с листанием. Возвращает (текст, клавиатура)."""
+    from utils.i18n import t
+    from database.db import get_learned_recipes
+    rows = _recipes_sorted(await get_learned_recipes(user_id))
+    if not rows:
+        return t("recipes.empty"), InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=t("profile.back"), callback_data="profile:open")],
+        ])
+
+    pages = max(1, -(-len(rows) // RECIPES_PER_PAGE))
+    page = min(max(0, page), pages - 1)
+    chunk = rows[page * RECIPES_PER_PAGE:(page + 1) * RECIPES_PER_PAGE]
+
+    lines = [t("recipes.title", n=len(rows)), ""]
+    current = None
+    for r in chunk:
+        group = _recipe_group(r['required_expansion'])
+        if group != current:
+            current = group
+            lines.append(t(_RECIPE_GROUP_TITLE[group]))
+        lines.append(f"  • {r['name']} ({t('recipes.list_level', lvl=r['required_level'] or 1)})")
+
+    buttons = [[InlineKeyboardButton(text=r['name'], callback_data=f"profile:recipe:{r['id']}")]
+               for r in chunk]
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"profile:recipes:{page - 1}"))
+    nav.append(InlineKeyboardButton(text=f"{page + 1}/{pages}",
+                                    callback_data=f"profile:recipes:{page}"))
+    if page < pages - 1:
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"profile:recipes:{page + 1}"))
+    buttons.append(nav)
+    buttons.append([InlineKeyboardButton(text=t("profile.back"), callback_data="profile:open")])
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+async def build_recipe_card(user_id: int, recipe_id: int):
+    """Карточка выученного рецепта: ингредиенты пилота, ОД со скидкой, станция. None — не выучен."""
+    from utils.i18n import t
+    from database.db import get_learned_recipes, get_ingredient_map
+    from utils.crafting import parse_ingredients, recipe_ap_cost
+    r = next((x for x in await get_learned_recipes(user_id) if x['id'] == recipe_id), None)
+    if r is None:
+        return None
+    inv = await get_ingredient_map(user_id)
+    group = _recipe_group(r['required_expansion'])
+    lines = [f"📋 {r['name']}"]
+    if r['description']:
+        lines += ["", r['description']]
+    lines.append("")
+    ingredients = parse_ingredients(r)
+    if ingredients:
+        lines.append(t("recipes.card_ingredients"))
+        for name, qty in ingredients:
+            have = inv.get(name, 0)
+            mark = "✅" if have >= qty else "❌"
+            lines.append(f"  {mark} {name}: {have}/{qty}")
+    else:
+        lines.append(t("recipes.card_no_ingredients"))
+    lines.append("")
+    lines.append(t("recipes.card_meta", ap=await recipe_ap_cost(user_id, r),
+                   time=r['production_time'] or 0, station=t(_RECIPE_STATION[group]),
+                   level=r['required_level'] or 1))
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t("recipes.back"), callback_data="profile:recipes")],
+        [InlineKeyboardButton(text=t("profile.back"), callback_data="profile:open")],
+    ])
+    return "\n".join(lines), kb
+
+
+@router.callback_query(F.data == "profile:recipes")
+async def profile_recipes(callback: CallbackQuery):
+    await callback.answer()
+    text, kb = await build_recipes_screen(callback.from_user.id, 0)
+    await callback.message.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data.regexp(r"^profile:recipes:\d+$"))
+async def profile_recipes_page(callback: CallbackQuery):
+    await callback.answer()
+    page = int(callback.data.split(":")[2])
+    text, kb = await build_recipes_screen(callback.from_user.id, page)
+    await callback.message.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data.regexp(r"^profile:recipe:\d+$"))
+async def profile_recipe_card_cb(callback: CallbackQuery):
+    from utils.i18n import t
+    rid = int(callback.data.split(":")[2])
+    card = await build_recipe_card(callback.from_user.id, rid)
+    if card is None:
+        await callback.answer(t("recipes.not_found"), show_alert=True)
+        return
+    await callback.answer()
+    text, kb = card
+    await callback.message.answer(text, reply_markup=kb)
+
+
 @router.callback_query(F.data == "profile:open")
 async def profile_open_cb(callback: CallbackQuery):
     """Возврат в профиль из вложенных меню."""

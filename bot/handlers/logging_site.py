@@ -100,7 +100,7 @@ async def _logging_ok(callback) -> bool:
             pass
         await callback.answer(
             "⏳ Это окно устарело — открой Лесозаготовку заново "
-            "(Лес → Поляна → 🪓 Лесозаготовка).",
+            "(Лес → Прогалина → 🪓 Лесозаготовка).",
             show_alert=True,
         )
         return False
