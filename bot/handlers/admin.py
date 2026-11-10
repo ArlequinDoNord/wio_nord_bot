@@ -189,6 +189,7 @@ class AdminAwards(StatesGroup):
     name = State()
     desc = State()
     emoji = State()
+    image = State()
     bonus = State()
     preview = State()
     target = State()
@@ -3883,7 +3884,7 @@ async def award_create_start(callback: CallbackQuery, state: FSMContext):
     if not await has_permission(callback.from_user.id, "can_manage_awards"):
         await callback.message.answer("❌ Нет прав.")
         return
-    await state.update_data(bonuses={})
+    await state.update_data(bonuses={}, image=None)
     await state.set_state(AdminAwards.name)
     await callback.message.answer(
         "🏅 Создание награды. Шаг 1 — название (например: «За отвагу», «Герой Нордхайма»).\n"
@@ -3893,11 +3894,12 @@ async def award_create_start(callback: CallbackQuery, state: FSMContext):
 
 
 def _award_bonus_total_steps() -> int:
-    return 1 + 1 + 1 + len(AWARD_CREATE_BONUS_STEPS) + 1
+    # название, описание, эмодзи, картинка + бонусы
+    return 4 + len(AWARD_CREATE_BONUS_STEPS)
 
 
-def _award_bonus_step_no(idx: int) -> str:
-    return f"Шаг {2 + idx} из {_award_bonus_total_steps()}"
+def _award_step_no(n: int) -> str:
+    return f"Шаг {n} из {_award_bonus_total_steps()}"
 
 
 async def _award_ask_bonus(message, state, idx: int):
@@ -3907,7 +3909,7 @@ async def _award_ask_bonus(message, state, idx: int):
         data = await state.get_data()
         draft = {
             "name": data["name"], "description": data.get("desc"), "emoji": data["emoji"],
-            "id": 0, "image": None,
+            "id": 0, "image": data.get("image"),
             **{"bonus_attack": 0, "bonus_defense": 0, "bonus_dodge": 0, "bonus_fishing": 0,
                "bonus_hp": 0, "bonus_crit": 0, "bonus_shop_discount": 0,
                "bonus_report_tax": 0,
@@ -3921,10 +3923,13 @@ async def _award_ask_bonus(message, state, idx: int):
             [InlineKeyboardButton(text="🔙 Отмена", callback_data="admin:awards")],
         ])
         await state.set_state(AdminAwards.preview)
+        if draft["image"]:
+            await message.answer_photo(draft["image"], caption="🖼 Картинка награды")
         await message.answer(
             "🏅 Превью награды — проверь и подтверди:\n\n" +
             "\n".join(_award_summary_lines(draft)) +
-            "\n\nЭмодзи: " + (draft["emoji"] or "🏅") + " · Название: " + draft["name"],
+            "\n\nЭмодзи: " + (draft["emoji"] or "🏅") + " · Название: " + draft["name"] +
+            f"\n🖼 Картинка: {'есть' if draft['image'] else 'нет'}",
             reply_markup=kb
         )
         return
@@ -3934,7 +3939,7 @@ async def _award_ask_bonus(message, state, idx: int):
     await state.update_data(create_bonus_idx=idx)
     await state.set_state(AdminAwards.bonus)
     await message.answer(
-        f"{_award_bonus_step_no(idx)} — {label}\n"
+        f"{_award_step_no(5 + idx)} — {label}\n"
         f"Введи целое число (текущее: {current}). 0 или «-» — пропустить.",
         reply_markup=cancel_keyboard()
     )
@@ -3949,7 +3954,7 @@ async def award_create_name(message: Message, state: FSMContext):
     await state.update_data(name=title)
     await state.set_state(AdminAwards.desc)
     await message.answer(
-        f"{_award_bonus_step_no(-1)} — Описание награды (или «-» если нет):",
+        f"{_award_step_no(2)} — Описание награды (или «-» если нет):",
         reply_markup=cancel_keyboard()
     )
 
@@ -3960,7 +3965,7 @@ async def award_create_desc(message: Message, state: FSMContext):
     await state.update_data(desc=None if text == "-" else text)
     await state.set_state(AdminAwards.emoji)
     await message.answer(
-        f"{_award_bonus_step_no(0)} — Эмодзи награды (один символ, например 🏅, ⭐, 🎖️). Или «-» для 🏅:",
+        f"{_award_step_no(3)} — Эмодзи награды (один символ, например 🏅, ⭐, 🎖️). Или «-» для 🏅:",
         reply_markup=cancel_keyboard()
     )
 
@@ -3970,6 +3975,23 @@ async def award_create_emoji(message: Message, state: FSMContext):
     text = message.text.strip()
     emoji = text if text and text != "-" else "🏅"
     await state.update_data(emoji=emoji[:1])
+    await state.set_state(AdminAwards.image)
+    await message.answer(
+        f"{_award_step_no(4)} — Картинка награды: пришли фото или «-», если без картинки.",
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminAwards.image)
+async def award_create_image(message: Message, state: FSMContext):
+    if message.photo:
+        await state.update_data(image=message.photo[-1].file_id)
+    elif (message.text or "").strip() in ("-", ""):
+        await state.update_data(image=None)
+    else:
+        await message.answer("❌ Пришли фото награды или «-», если картинки не будет.",
+                             reply_markup=cancel_keyboard())
+        return
     await _award_ask_bonus(message, state, 0)
 
 
@@ -4005,15 +4027,23 @@ async def award_create_confirm(callback: CallbackQuery, state: FSMContext):
     name, desc = data.get("name"), data.get("desc")
     emoji = data.get("emoji") or "🏅"
     bonuses = data.get("bonuses", {})
+    image = data.get("image")
     ok, res = await create_award(name, desc, emoji, callback.from_user.id, **bonuses)
     if ok:
+        if image:
+            await update_award(res, image=image)
         await log_action(callback.from_user.id, 'create_award', None,
-                         f"award={name} id={res} bonuses={bonuses}")
+                         f"award={name} id={res} bonuses={bonuses} image={'yes' if image else 'no'}")
         try:
             await callback.message.delete()
         except Exception:
             pass
-        await callback.message.answer(f"✅ Награда «{emoji} {name}» создана с бонусами.")
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="➕ Создать ещё одну награду", callback_data="aw:create")],
+            [InlineKeyboardButton(text="🔙 К меню наград", callback_data="admin:awards")],
+        ])
+        await callback.message.answer(f"✅ Награда «{emoji} {name}» создана.", reply_markup=kb)
     else:
         await callback.message.answer(f"❌ {res}")
 

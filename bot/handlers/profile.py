@@ -8,6 +8,7 @@ from database.db import (
     get_user, update_user, get_user_statuses, get_selected_status, set_selected_status,
     user_has_status_tag, user_is_tourist, get_equipment, get_item, get_equipment_slot_items, get_user_awards,
     set_callsign, set_callsign_free_used, get_callsign_free_used, get_db, get_user_clan,
+    get_user_medals,
 )
 from keyboards.keyboards import profile_keyboard, cancel_keyboard, main_menu_kb
 from config import get_rank, get_effective_rank, get_next_rank, get_rank_index, RANKS, CALLSIGN_PRICE
@@ -469,34 +470,106 @@ def _award_perks(a) -> list:
     return perks
 
 
+AWARD_TABS = ("ach", "awd")
+
+
+def _awards_tabs_row(active: str) -> list:
+    """Вкладки раздела «Награды»: достижения | награды, активная — в «•».
+
+    Достижения — прогресс по ачивкам без медалей. Награды — медали, нашивки и
+    значки (ВУСП, «Опытный турист» и т.п.).
+    """
+    from utils.i18n import t
+
+    def label(key: str, text: str) -> str:
+        return f"• {text} •" if key == active else text
+
+    return [
+        InlineKeyboardButton(text=label("ach", t("profile.achievements")),
+                             callback_data="profile:awards:ach"),
+        InlineKeyboardButton(text=label("awd", t("profile.awards")),
+                             callback_data="profile:awards:awd"),
+    ]
+
+
+async def _achievements_text(user_id: int) -> str:
+    """Текст вкладки «Достижения»: прогресс, открытый уровень и следующий порог."""
+    from database.db import (get_user_achievements, describe_achievement_bonus,
+                             get_achievement_level_award)
+    lst = await get_user_achievements(user_id)
+    if not lst:
+        return "Нет полученных достижений"
+    lines = ["🏅 ДОСТИЖЕНИЯ:\n"]
+    for item in lst:
+        levels = item['levels']
+        cur = item['level']
+        prog = item['progress']
+        status = _achievement_status(levels, cur, prog)
+        lines.append(
+            f"{item['emoji']} {item['title']} — уровень {cur}: {status}"
+        )
+        if cur >= 1:
+            # Открытый уровень: название и описание, как в карточке награды за уровень.
+            lvl_award = await get_achievement_level_award(item['akey'], cur)
+            if lvl_award:
+                lines.append(f"    ↳ «{lvl_award['name']}»: {lvl_award['description']}")
+        else:
+            # Ещё не открыт: что дадут за первый уровень.
+            shown = levels[0]
+            perks = []
+            bonus_txt = describe_achievement_bonus(shown.get('bonus', {}))
+            if bonus_txt:
+                perks.append(bonus_txt)
+            if shown.get('reward_nm'):
+                perks.append(f"{shown['reward_nm']} НМ")
+            if shown.get('reward_item'):
+                perks.append(f"предмет «{shown['reward_item']}»")
+            if perks:
+                lines.append(f"    ↳ За уровень 1: {'; '.join(perks)}")
+    lines.append("\nУровень растёт с набором действий; подробности — в карточке награды.")
+    return "\n".join(lines)
+
+
+async def build_awards_tab(user_id: int, tab: str):
+    """Раздел «Награды» в профиле: вкладка достижений или наград. Возвращает (текст, клавиатура)."""
+    from utils.i18n import t
+    rows = []
+    if tab == "awd":
+        awards = await get_user_medals(user_id)
+        if not awards:
+            text = ("🎖️ У тебя пока нет наград.\n\n"
+                    "Награды выдаются админами за особые заслуги.")
+        else:
+            lines = ["🎖️ ТВОИ НАГРАДЫ:\n"]
+            for a in awards:
+                emoji = a['emoji'] or '🏅'
+                lines.append(f"{emoji} {a['name']}")
+                rows.append([InlineKeyboardButton(
+                    text=f"{emoji} {a['name']}",
+                    callback_data=f"profile:award:{a['grant_id']}")])
+            lines.append("\nНажми на награду, чтобы открыть её.")
+            text = "\n".join(lines)
+    else:
+        text = await _achievements_text(user_id)
+    rows.append(_awards_tabs_row("awd" if tab == "awd" else "ach"))
+    rows.append([InlineKeyboardButton(text=t("profile.back"), callback_data="profile:open")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 @router.callback_query(F.data == "profile:awards")
 async def profile_awards(callback: CallbackQuery):
-    """Список наград пилота: по каждой — кнопка перехода к карточке награды."""
+    """Раздел «Награды»: открывается на первой вкладке — «Достижения»."""
     await callback.answer()
-    awards = await get_user_awards(callback.from_user.id)
-    if not awards:
-        await callback.message.answer(
-            "🎖️ У тебя пока нет наград.\n\n"
-            "Награды выдаются админами за особые заслуги.",
-            reply_markup=profile_keyboard()
-        )
-        return
+    text, kb = await build_awards_tab(callback.from_user.id, "ach")
+    await callback.message.answer(text, reply_markup=kb)
 
-    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    lines = ["🎖️ ТВОИ НАГРАДЫ:\n"]
-    rows = []
-    for a in awards:
-        emoji = a['emoji'] or '🏅'
-        lines.append(f"{emoji} {a['name']}")
-        rows.append([InlineKeyboardButton(
-            text=f"{emoji} {a['name']}",
-            callback_data=f"profile:award:{a['grant_id']}")])
-    lines.append("\nНажми на награду, чтобы открыть её.")
-    rows.append([InlineKeyboardButton(text="🏠 В профиль", callback_data="profile:open")])
-    await callback.message.answer(
-        "\n".join(lines),
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
-    )
+
+@router.callback_query(F.data.regexp(r"^profile:awards:(ach|awd)$"))
+async def profile_awards_tab(callback: CallbackQuery):
+    await callback.answer()
+    tab = callback.data.split(":")[2]
+    text, kb = await build_awards_tab(callback.from_user.id, tab)
+    await callback.message.answer(text, reply_markup=kb)
 
 
 def _achievement_status(levels: list, cur: int, prog: int) -> str:
@@ -509,46 +582,10 @@ def _achievement_status(levels: list, cur: int, prog: int) -> str:
 
 @router.callback_query(F.data == "profile:achievements")
 async def profile_achievements(callback: CallbackQuery):
-    """Достижения пилота: по всем группам — прогресс, открытый уровень и следующий порог."""
+    """Старая кнопка «Достижения»: теперь это вкладка раздела «Награды»."""
     await callback.answer()
-    from database.db import get_user_achievements, describe_achievement_bonus
-    lst = await get_user_achievements(callback.from_user.id)
-    if not lst:
-        await callback.message.answer(
-            "Нет полученных достижений",
-            reply_markup=profile_keyboard()
-        )
-        return
-
-    lines = ["🏅 ДОСТИЖЕНИЯ:\n"]
-    for item in lst:
-        levels = item['levels']
-        cur = item['level']
-        prog = item['progress']
-        status = _achievement_status(levels, cur, prog)
-        lines.append(
-            f"{item['emoji']} {item['title']} — уровень {cur}: {status}"
-        )
-        # Краткая суть бонуса/награды открытого уровня (или уровня 1, если ещё не открыт).
-        shown = levels[cur - 1] if cur >= 1 else levels[0]
-        perks = []
-        bonus_txt = describe_achievement_bonus(shown.get('bonus', {}))
-        if bonus_txt:
-            perks.append(bonus_txt)
-        if shown.get('reward_nm'):
-            perks.append(f"{shown['reward_nm']} НМ")
-        if shown.get('reward_item'):
-            perks.append(f"предмет «{shown['reward_item']}»")
-        if perks:
-            label = "Получено" if cur >= 1 else "За уровень 1"
-            lines.append(f"    ↳ {label}: {'; '.join(perks)}")
-    lines.append("\nУровень растёт с набором действий; подробности — в карточке награды.")
-    await callback.message.answer(
-        "\n".join(lines),
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🏠 В профиль", callback_data="profile:open")]
-        ])
-    )
+    text, kb = await build_awards_tab(callback.from_user.id, "ach")
+    await callback.message.answer(text, reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("profile:award:"))
@@ -578,7 +615,7 @@ async def profile_award_detail(callback: CallbackQuery):
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 К списку наград", callback_data="profile:awards")],
+        [InlineKeyboardButton(text="🔙 К списку наград", callback_data="profile:awards:awd")],
         [InlineKeyboardButton(text="🏠 В профиль", callback_data="profile:open")],
     ])
     if a['image']:

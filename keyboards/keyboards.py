@@ -95,7 +95,6 @@ def profile_keyboard(notify_enabled: bool = True, profile_public: bool = True, c
     callsign_text = "📡 Сменить позывной" if has_callsign else "📡 Установить позывной"
     rows.append([InlineKeyboardButton(text=callsign_text, callback_data="profile:callsign")])
     rows.append([InlineKeyboardButton(text=t("profile.awards"), callback_data="profile:awards")])
-    rows.append([InlineKeyboardButton(text=t("profile.achievements"), callback_data="profile:achievements")])
     rows.append([InlineKeyboardButton(text=t("profile.recipes"), callback_data="profile:recipes")])
     rows.append([InlineKeyboardButton(text=t("profile.pilot_card"), callback_data="profile:pilot_card")])
     if clan_id:

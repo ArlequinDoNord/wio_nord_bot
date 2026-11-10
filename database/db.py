@@ -7808,6 +7808,33 @@ async def get_user_awards(user_id: int):
     return await cursor.fetchall()
 
 
+async def get_achievement_level_award(akey: str, level: int):
+    """Строка награды за уровень достижения (название и описание уровня) или None."""
+    conn = await get_db()
+    return await (await conn.execute(
+        "SELECT id, name, description, emoji FROM awards "
+        "WHERE achievement_key = ? AND achievement_level = ?",
+        (akey, level))).fetchone()
+
+
+async def get_user_medals(user_id: int):
+    """Медали пилота: медали, нашивки, значки. Награды за уровни достижений сюда не входят —
+    они показываются на вкладке «Достижения» (см. get_user_achievements)."""
+    conn = await get_db()
+    cursor = await conn.execute("""
+        SELECT ua.id as grant_id, ua.comment, ua.created_at AS granted_at,
+               a.id AS award_id, a.name, a.description, a.emoji, a.image,
+               a.bonus_attack, a.bonus_defense, a.bonus_dodge, a.bonus_fishing,
+               a.bonus_hp, a.bonus_crit, a.bonus_shop_discount, a.bonus_report_tax,
+               a.reward_nm, a.monthly_nm
+        FROM user_awards ua
+        JOIN awards a ON ua.award_id = a.id
+        WHERE ua.user_id = ? AND a.achievement_key IS NULL
+        ORDER BY ua.created_at DESC
+    """, (user_id,))
+    return await cursor.fetchall()
+
+
 async def get_award_recipients(award_id: int):
     """Кому выдали конкретную награду."""
     conn = await get_db()
