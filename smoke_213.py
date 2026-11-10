@@ -123,6 +123,35 @@ async def main():
     third = await ensure_item_rarity_unified()
     check("третий запуск — 0 изменений", third == 0)
 
+    print("\n5. purge_retired_items чистит витрины и городской склад (регресс FK)")
+    from database.db import add_user, purge_retired_items
+
+    uid = 213001
+    await add_user(uid, "t", "Pilot 213", "")
+    await add_item(name="T-Меч", description="legacy", price=10, sell_price=5,
+                   rarity=1, category="equipment", stock=-1, added_by=0)
+    sword = await get_item_by_name("T-Меч")
+    await conn.execute("INSERT INTO city_storage (item_id, qty) VALUES (?, ?)",
+                       (sword["id"], 3))
+    await conn.execute(
+        "INSERT INTO market_items (seller_id, item_id, price) VALUES (?, ?, ?)",
+        (uid, sword["id"], 10))
+    await conn.execute(
+        "INSERT INTO market_fish (seller_id, item_id, weight, price, remaining_sec) "
+        "VALUES (?, ?, 1, 10, 60)", (uid, sword["id"]))
+    await conn.execute(
+        "INSERT OR IGNORE INTO inventory (user_id, item_id, quantity) VALUES (?, ?, 1)",
+        (uid, sword["id"]))
+    await conn.commit()
+
+    purged = await purge_retired_items()
+    check("purge выполнился без FK-ошибки", purged is True)
+    check("«T-Меч» удалён из items", await get_item_by_name("T-Меч") is None)
+    for table in ("city_storage", "market_items", "market_fish", "inventory"):
+        cur = await conn.execute(
+            f"SELECT COUNT(*) AS n FROM {table} WHERE item_id = ?", (sword["id"],))
+        check(f"{table}: ссылки очищены", (await cur.fetchone())["n"] == 0)
+
     await close_db()
     print(f"\nИТОГО: {passed} passed, {failed} failed")
     return failed

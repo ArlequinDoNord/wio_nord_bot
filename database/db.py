@@ -2010,7 +2010,13 @@ async def purge_retired_items():
                        ("dungeon_items", "item_id"),
                        ("resource_sources", "item_id"),
                        ("fish_catches", "item_id"),
-                       ("production_queue", "recipe_item_id")):
+                       ("production_queue", "recipe_item_id"),
+                       # v0.43.11: витрины игроков и городской склад тоже держат FK на
+                       # items — без чистки DELETE падал с FOREIGN KEY constraint failed
+                       # (бот уходил в crash-loop при выводе волчьего лута).
+                       ("market_items", "item_id"),
+                       ("market_fish", "item_id"),
+                       ("city_storage", "item_id")):
         await conn.execute(f"DELETE FROM {table} WHERE {col} IN ({id_ph})", ids)
     await conn.execute(f"UPDATE trades SET from_item_id = NULL WHERE from_item_id IN ({id_ph})", ids)
     await conn.execute(f"UPDATE trades SET to_item_id = NULL WHERE to_item_id IN ({id_ph})", ids)
