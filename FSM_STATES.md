@@ -14,7 +14,7 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `name` | `bot/handlers/admin.py:1241` `shop_admin_add`<br>`bot/handlers/admin.py:6580` `enemy_drop_new_item` | `bot/handlers/admin.py:1249` `add_item_name` |
+| `name` | `bot/handlers/admin.py:1241` `shop_admin_add`<br>`bot/handlers/admin.py:6610` `enemy_drop_new_item` | `bot/handlers/admin.py:1249` `add_item_name` |
 | `desc` | `bot/handlers/admin.py:1251` `add_item_name` | `bot/handlers/admin.py:1257` `add_item_desc` |
 | `price` | `bot/handlers/admin.py:1260` `add_item_desc` | `bot/handlers/admin.py:1266` `add_item_price` |
 | `sell_price` | `bot/handlers/admin.py:1276` `add_item_price` | `bot/handlers/admin.py:1282` `add_item_sell_price` |
@@ -93,20 +93,20 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `value` | `bot/handlers/admin.py:4601` `report_auto_approve_edit_cb` | `bot/handlers/admin.py:4614` `report_auto_approve_edit_value` |
+| `value` | `bot/handlers/admin.py:4631` `report_auto_approve_edit_cb` | `bot/handlers/admin.py:4644` `report_auto_approve_edit_value` |
 
 ### `AdminReportPayCap` — `bot/handlers/admin.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `value` | `bot/handlers/admin.py:4640` `report_pay_cap_edit_cb` | `bot/handlers/admin.py:4655` `report_pay_cap_edit_value` |
+| `value` | `bot/handlers/admin.py:4670` `report_pay_cap_edit_cb` | `bot/handlers/admin.py:4685` `report_pay_cap_edit_value` |
 
 ### `AdminReportFix` — `bot/handlers/admin.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `daily` | `bot/handlers/admin.py:4841` `report_fix_start` | `bot/handlers/admin.py:4854` `report_fix_daily` |
-| `total` | `bot/handlers/admin.py:4868` `report_fix_daily` | `bot/handlers/admin.py:4882` `report_fix_total` |
+| `daily` | `bot/handlers/admin.py:4871` `report_fix_start` | `bot/handlers/admin.py:4884` `report_fix_daily` |
+| `total` | `bot/handlers/admin.py:4898` `report_fix_daily` | `bot/handlers/admin.py:4912` `report_fix_total` |
 
 ### `AdminRoles` — `bot/handlers/admin.py`
 
@@ -140,10 +140,10 @@
 | `image` | `bot/handlers/admin.py:3978` `award_create_emoji` | `bot/handlers/admin.py:3986` `award_create_image` |
 | `bonus` | `bot/handlers/admin.py:3940` `_award_ask_bonus` | `bot/handlers/admin.py:3999` `award_create_bonus` |
 | `preview` | `bot/handlers/admin.py:3925` `_award_ask_bonus` | — |
-| `target` | `bot/handlers/admin.py:4396` `award_grant_target` | `bot/handlers/admin.py:4402` `award_grant_target_msg` |
-| `award_pick` | `bot/handlers/admin.py:4477` `award_revoke_pick_user` | — |
-| `comment` | `bot/handlers/admin.py:4420` `award_grant_pick` | `bot/handlers/admin.py:4437` `award_grant_comment` |
-| `edit_value` | `bot/handlers/admin.py:4276` `award_edit_field_pick` | `bot/handlers/admin.py:4300` `award_edit_value` |
+| `target` | `bot/handlers/admin.py:4426` `award_grant_target` | `bot/handlers/admin.py:4432` `award_grant_target_msg` |
+| `award_pick` | `bot/handlers/admin.py:4507` `award_revoke_pick_user` | — |
+| `comment` | `bot/handlers/admin.py:4450` `award_grant_pick` | `bot/handlers/admin.py:4467` `award_grant_comment` |
+| `edit_value` | `bot/handlers/admin.py:4288` `award_edit_field_pick` | `bot/handlers/admin.py:4312` `award_edit_value` |
 
 ### `AdminFishing` — `bot/handlers/admin.py`
 
@@ -151,18 +151,18 @@
 |---|---|---|
 | `water` | — | — |
 | `wf_id` | — | — |
-| `value` | `bot/handlers/admin.py:7148` `admin_fishing_junk_field_pick`<br>`bot/handlers/admin.py:7722` `admin_fishing_field_pick` | `bot/handlers/admin.py:7749` `admin_fishing_value` |
-| `c_name` | `bot/handlers/admin.py:7559` `admin_fishing_new` | `bot/handlers/admin.py:7568` `admin_fishing_new_name` |
-| `c_desc` | `bot/handlers/admin.py:7578` `admin_fishing_new_name` | `bot/handlers/admin.py:7584` `admin_fishing_new_desc` |
-| `c_sell_price` | `bot/handlers/admin.py:7587` `admin_fishing_new_desc` | `bot/handlers/admin.py:7593` `admin_fishing_new_sell_price` |
-| `c_day_weight` | `bot/handlers/admin.py:7601` `admin_fishing_new_sell_price` | `bot/handlers/admin.py:7609` `admin_fishing_new_day_weight` |
-| `c_night_weight` | `bot/handlers/admin.py:7617` `admin_fishing_new_day_weight` | `bot/handlers/admin.py:7625` `admin_fishing_new_night_weight` |
-| `c_photo` | `bot/handlers/admin.py:7657` `admin_fishing_new_super` | `bot/handlers/admin.py:7665` `admin_fishing_new_photo` |
-| `c_super_rare` | `bot/handlers/admin.py:7633` `admin_fishing_new_night_weight` | — |
-| `j_name` | `bot/handlers/admin.py:7263` `admin_fishing_junk_new` | `bot/handlers/admin.py:7271` `admin_fishing_junk_new_name` |
-| `j_sell` | `bot/handlers/admin.py:7277` `admin_fishing_junk_new_name` | `bot/handlers/admin.py:7283` `admin_fishing_junk_new_sell` |
-| `j_chance` | `bot/handlers/admin.py:7289` `admin_fishing_junk_new_sell` | `bot/handlers/admin.py:7295` `admin_fishing_junk_new_chance` |
-| `j_photo` | `bot/handlers/admin.py:7301` `admin_fishing_junk_new_chance` | `bot/handlers/admin.py:7308` `admin_fishing_junk_new_photo` |
+| `value` | `bot/handlers/admin.py:7178` `admin_fishing_junk_field_pick`<br>`bot/handlers/admin.py:7752` `admin_fishing_field_pick` | `bot/handlers/admin.py:7779` `admin_fishing_value` |
+| `c_name` | `bot/handlers/admin.py:7589` `admin_fishing_new` | `bot/handlers/admin.py:7598` `admin_fishing_new_name` |
+| `c_desc` | `bot/handlers/admin.py:7608` `admin_fishing_new_name` | `bot/handlers/admin.py:7614` `admin_fishing_new_desc` |
+| `c_sell_price` | `bot/handlers/admin.py:7617` `admin_fishing_new_desc` | `bot/handlers/admin.py:7623` `admin_fishing_new_sell_price` |
+| `c_day_weight` | `bot/handlers/admin.py:7631` `admin_fishing_new_sell_price` | `bot/handlers/admin.py:7639` `admin_fishing_new_day_weight` |
+| `c_night_weight` | `bot/handlers/admin.py:7647` `admin_fishing_new_day_weight` | `bot/handlers/admin.py:7655` `admin_fishing_new_night_weight` |
+| `c_photo` | `bot/handlers/admin.py:7687` `admin_fishing_new_super` | `bot/handlers/admin.py:7695` `admin_fishing_new_photo` |
+| `c_super_rare` | `bot/handlers/admin.py:7663` `admin_fishing_new_night_weight` | — |
+| `j_name` | `bot/handlers/admin.py:7293` `admin_fishing_junk_new` | `bot/handlers/admin.py:7301` `admin_fishing_junk_new_name` |
+| `j_sell` | `bot/handlers/admin.py:7307` `admin_fishing_junk_new_name` | `bot/handlers/admin.py:7313` `admin_fishing_junk_new_sell` |
+| `j_chance` | `bot/handlers/admin.py:7319` `admin_fishing_junk_new_sell` | `bot/handlers/admin.py:7325` `admin_fishing_junk_new_chance` |
+| `j_photo` | `bot/handlers/admin.py:7331` `admin_fishing_junk_new_chance` | `bot/handlers/admin.py:7338` `admin_fishing_junk_new_photo` |
 
 ### `AdminForest` — `bot/handlers/admin.py`
 
@@ -170,30 +170,30 @@
 |---|---|---|
 | `f_id` | — | — |
 | `field` | — | — |
-| `value` | `bot/handlers/admin.py:8306` `admin_forest_field_pick` | `bot/handlers/admin.py:8332` `admin_forest_value` |
-| `c_name` | `bot/handlers/admin.py:8388` `admin_forest_new` | `bot/handlers/admin.py:8397` `admin_forest_new_name` |
-| `c_desc` | `bot/handlers/admin.py:8407` `admin_forest_new_name` | `bot/handlers/admin.py:8413` `admin_forest_new_desc` |
-| `c_sell_price` | `bot/handlers/admin.py:8416` `admin_forest_new_desc` | `bot/handlers/admin.py:8422` `admin_forest_new_sell_price` |
-| `c_chance` | `bot/handlers/admin.py:8429` `admin_forest_new_sell_price` | `bot/handlers/admin.py:8438` `admin_forest_new_chance` |
-| `c_kind` | `bot/handlers/admin.py:8446` `admin_forest_new_chance` | — |
-| `c_photo` | `bot/handlers/admin.py:8469` `admin_forest_new_kind` | `bot/handlers/admin.py:8477` `admin_forest_new_photo` |
-| `zone_value` | `bot/handlers/admin.py:7986` `admin_forest_zone_chance`<br>`bot/handlers/admin.py:8061` `admin_forest_zone_set_pick`<br>`bot/handlers/admin.py:8074` `admin_forest_limit_set` | `bot/handlers/admin.py:8081` `admin_forest_zone_value` |
+| `value` | `bot/handlers/admin.py:8336` `admin_forest_field_pick` | `bot/handlers/admin.py:8362` `admin_forest_value` |
+| `c_name` | `bot/handlers/admin.py:8418` `admin_forest_new` | `bot/handlers/admin.py:8427` `admin_forest_new_name` |
+| `c_desc` | `bot/handlers/admin.py:8437` `admin_forest_new_name` | `bot/handlers/admin.py:8443` `admin_forest_new_desc` |
+| `c_sell_price` | `bot/handlers/admin.py:8446` `admin_forest_new_desc` | `bot/handlers/admin.py:8452` `admin_forest_new_sell_price` |
+| `c_chance` | `bot/handlers/admin.py:8459` `admin_forest_new_sell_price` | `bot/handlers/admin.py:8468` `admin_forest_new_chance` |
+| `c_kind` | `bot/handlers/admin.py:8476` `admin_forest_new_chance` | — |
+| `c_photo` | `bot/handlers/admin.py:8499` `admin_forest_new_kind` | `bot/handlers/admin.py:8507` `admin_forest_new_photo` |
+| `zone_value` | `bot/handlers/admin.py:8016` `admin_forest_zone_chance`<br>`bot/handlers/admin.py:8091` `admin_forest_zone_set_pick`<br>`bot/handlers/admin.py:8104` `admin_forest_limit_set` | `bot/handlers/admin.py:8111` `admin_forest_zone_value` |
 
 ### `AdminEnemy` — `bot/handlers/admin.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `field` | `bot/handlers/admin.py:9933` `admin_enemies_field_pick` | `bot/handlers/admin.py:9939` `admin_enemies_field_value` |
-| `photo` | `bot/handlers/admin.py:9990` `admin_enemies_photo_pick` | `bot/handlers/admin.py:9996` `admin_enemies_photo_value` |
-| `onhit_value` | `bot/handlers/admin.py:6377` `source_enemy_effect_toggle` | `bot/handlers/admin.py:6383` `source_enemy_onhit_value` |
-| `drop_chance` | `bot/handlers/admin.py:10150` `admin_enemies_drop_edit_chance`<br>`bot/handlers/admin.py:10224` `admin_enemies_drop_add_pick` | `bot/handlers/admin.py:10230` `admin_enemies_drop_chance_value` |
-| `drop_qty` | `bot/handlers/admin.py:10163` `admin_enemies_drop_edit_qty`<br>`bot/handlers/admin.py:10251` `admin_enemies_drop_chance_value` | `bot/handlers/admin.py:10257` `admin_enemies_drop_qty_value` |
-| `c_name` | `bot/handlers/admin.py:10296` `admin_enemies_new` | `bot/handlers/admin.py:10301` `admin_enemies_new_name` |
-| `c_hp` | `bot/handlers/admin.py:10307` `admin_enemies_new_name` | `bot/handlers/admin.py:10312` `admin_enemies_new_hp` |
-| `c_dmg` | `bot/handlers/admin.py:10318` `admin_enemies_new_hp` | `bot/handlers/admin.py:10323` `admin_enemies_new_dmg` |
-| `c_dodge` | `bot/handlers/admin.py:10336` `admin_enemies_new_dmg` | `bot/handlers/admin.py:10341` `admin_enemies_new_dodge` |
-| `c_chance` | `bot/handlers/admin.py:10347` `admin_enemies_new_dodge` | `bot/handlers/admin.py:10353` `admin_enemies_new_chance` |
-| `c_loss_ap` | `bot/handlers/admin.py:10359` `admin_enemies_new_chance` | `bot/handlers/admin.py:10365` `admin_enemies_new_done` |
+| `field` | `bot/handlers/admin.py:9963` `admin_enemies_field_pick` | `bot/handlers/admin.py:9969` `admin_enemies_field_value` |
+| `photo` | `bot/handlers/admin.py:10020` `admin_enemies_photo_pick` | `bot/handlers/admin.py:10026` `admin_enemies_photo_value` |
+| `onhit_value` | `bot/handlers/admin.py:6407` `source_enemy_effect_toggle` | `bot/handlers/admin.py:6413` `source_enemy_onhit_value` |
+| `drop_chance` | `bot/handlers/admin.py:10180` `admin_enemies_drop_edit_chance`<br>`bot/handlers/admin.py:10254` `admin_enemies_drop_add_pick` | `bot/handlers/admin.py:10260` `admin_enemies_drop_chance_value` |
+| `drop_qty` | `bot/handlers/admin.py:10193` `admin_enemies_drop_edit_qty`<br>`bot/handlers/admin.py:10281` `admin_enemies_drop_chance_value` | `bot/handlers/admin.py:10287` `admin_enemies_drop_qty_value` |
+| `c_name` | `bot/handlers/admin.py:10326` `admin_enemies_new` | `bot/handlers/admin.py:10331` `admin_enemies_new_name` |
+| `c_hp` | `bot/handlers/admin.py:10337` `admin_enemies_new_name` | `bot/handlers/admin.py:10342` `admin_enemies_new_hp` |
+| `c_dmg` | `bot/handlers/admin.py:10348` `admin_enemies_new_hp` | `bot/handlers/admin.py:10353` `admin_enemies_new_dmg` |
+| `c_dodge` | `bot/handlers/admin.py:10366` `admin_enemies_new_dmg` | `bot/handlers/admin.py:10371` `admin_enemies_new_dodge` |
+| `c_chance` | `bot/handlers/admin.py:10377` `admin_enemies_new_dodge` | `bot/handlers/admin.py:10383` `admin_enemies_new_chance` |
+| `c_loss_ap` | `bot/handlers/admin.py:10389` `admin_enemies_new_chance` | `bot/handlers/admin.py:10395` `admin_enemies_new_done` |
 
 ### `AdminCallsign` — `bot/handlers/admin.py`
 
@@ -213,10 +213,10 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `target` | `bot/handlers/admin.py:5377` `admin_states_menu` | `bot/handlers/admin.py:5386` `admin_states_target_text` |
-| `action` | `bot/handlers/admin.py:530` `pickuser_cb`<br>`bot/handlers/admin.py:5392` `admin_states_target_text` | — |
-| `state_key` | `bot/handlers/admin.py:5421` `admin_states_op` | — |
-| `minutes` | `bot/handlers/admin.py:5446` `admin_states_key` | `bot/handlers/admin.py:5455` `admin_states_minutes`<br>`bot/handlers/admin.py:5476` `admin_states_minutes_bad` |
+| `target` | `bot/handlers/admin.py:5407` `admin_states_menu` | `bot/handlers/admin.py:5416` `admin_states_target_text` |
+| `action` | `bot/handlers/admin.py:530` `pickuser_cb`<br>`bot/handlers/admin.py:5422` `admin_states_target_text` | — |
+| `state_key` | `bot/handlers/admin.py:5451` `admin_states_op` | — |
+| `minutes` | `bot/handlers/admin.py:5476` `admin_states_key` | `bot/handlers/admin.py:5485` `admin_states_minutes`<br>`bot/handlers/admin.py:5506` `admin_states_minutes_bad` |
 
 ### `AdminPlayerLog` — `bot/handlers/admin.py`
 
@@ -228,7 +228,7 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `amount` | `bot/handlers/admin.py:543` `pickuser_cb` | `bot/handlers/admin.py:5576` `admin_salary_amount` |
+| `amount` | `bot/handlers/admin.py:543` `pickuser_cb` | `bot/handlers/admin.py:5606` `admin_salary_amount` |
 
 ### `AdminLocation` — `bot/handlers/admin.py`
 
@@ -236,37 +236,37 @@
 |---|---|---|
 | `action` | — | — |
 | `target_id` | — | — |
-| `key` | `bot/handlers/admin.py:8532` `loc_create` | `bot/handlers/admin.py:8796` `loc_step_key` |
-| `name` | `bot/handlers/admin.py:8802` `loc_step_key` | `bot/handlers/admin.py:8807` `loc_step_name` |
-| `set_name` | `bot/handlers/admin.py:8823` `loc_set_name` | `bot/handlers/admin.py:8834` `loc_step_set_name` |
-| `description` | `bot/handlers/admin.py:8809` `loc_step_name`<br>`bot/handlers/admin.py:8848` `loc_step_set_name`<br>`bot/handlers/admin.py:8862` `loc_set_desc` | `bot/handlers/admin.py:9073` `loc_step_desc` |
-| `mode` | `bot/handlers/admin.py:8628` `loc_set_mode`<br>`bot/handlers/admin.py:9084` `loc_step_desc` | `bot/handlers/admin.py:8641` `loc_mode_chosen` |
-| `req_status` | `bot/handlers/admin.py:8654` `loc_mode_chosen`<br>`bot/handlers/admin.py:8663` `loc_mode_chosen`<br>`bot/handlers/admin.py:8672` `loc_set_status` | `bot/handlers/admin.py:8677` `loc_req_status_chosen` |
-| `blocking` | `bot/handlers/admin.py:8660` `loc_mode_chosen`<br>`bot/handlers/admin.py:8691` `loc_req_status_chosen`<br>`bot/handlers/admin.py:8707` `loc_set_blocking` | `bot/handlers/admin.py:8712` `loc_blocking_chosen` |
-| `preview` | `bot/handlers/admin.py:9110` `loc_glade_set`<br>`bot/handlers/admin.py:9196` `loc_fire_set`<br>`bot/handlers/admin.py:9244` `loc_clearing_set`<br>`bot/handlers/admin.py:9296` `loc_logging_set`<br>`bot/handlers/admin.py:9347` `loc_mine_set`<br>`bot/handlers/admin.py:9398` `loc_storage_set`<br>`bot/handlers/admin.py:9447` `loc_photo_set`<br>`bot/handlers/admin.py:9485` `loc_season_photo_set` | `bot/handlers/admin.py:9527` `loc_step_photo` |
+| `key` | `bot/handlers/admin.py:8562` `loc_create` | `bot/handlers/admin.py:8826` `loc_step_key` |
+| `name` | `bot/handlers/admin.py:8832` `loc_step_key` | `bot/handlers/admin.py:8837` `loc_step_name` |
+| `set_name` | `bot/handlers/admin.py:8853` `loc_set_name` | `bot/handlers/admin.py:8864` `loc_step_set_name` |
+| `description` | `bot/handlers/admin.py:8839` `loc_step_name`<br>`bot/handlers/admin.py:8878` `loc_step_set_name`<br>`bot/handlers/admin.py:8892` `loc_set_desc` | `bot/handlers/admin.py:9103` `loc_step_desc` |
+| `mode` | `bot/handlers/admin.py:8658` `loc_set_mode`<br>`bot/handlers/admin.py:9114` `loc_step_desc` | `bot/handlers/admin.py:8671` `loc_mode_chosen` |
+| `req_status` | `bot/handlers/admin.py:8684` `loc_mode_chosen`<br>`bot/handlers/admin.py:8693` `loc_mode_chosen`<br>`bot/handlers/admin.py:8702` `loc_set_status` | `bot/handlers/admin.py:8707` `loc_req_status_chosen` |
+| `blocking` | `bot/handlers/admin.py:8690` `loc_mode_chosen`<br>`bot/handlers/admin.py:8721` `loc_req_status_chosen`<br>`bot/handlers/admin.py:8737` `loc_set_blocking` | `bot/handlers/admin.py:8742` `loc_blocking_chosen` |
+| `preview` | `bot/handlers/admin.py:9140` `loc_glade_set`<br>`bot/handlers/admin.py:9226` `loc_fire_set`<br>`bot/handlers/admin.py:9274` `loc_clearing_set`<br>`bot/handlers/admin.py:9326` `loc_logging_set`<br>`bot/handlers/admin.py:9377` `loc_mine_set`<br>`bot/handlers/admin.py:9428` `loc_storage_set`<br>`bot/handlers/admin.py:9477` `loc_photo_set`<br>`bot/handlers/admin.py:9515` `loc_season_photo_set` | `bot/handlers/admin.py:9557` `loc_step_photo` |
 
 ### `AdminCityPhoto` — `bot/handlers/admin.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `photo` | `bot/handlers/admin.py:9142` `loc_city_fire` | `bot/handlers/admin.py:9161` `loc_city_fire_save` |
+| `photo` | `bot/handlers/admin.py:9172` `loc_city_fire` | `bot/handlers/admin.py:9191` `loc_city_fire_save` |
 
 ### `AdminDungeon` — `bot/handlers/admin.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
 | `target_id` | — | — |
-| `photo_tod` | `bot/handlers/admin.py:5738` `dungeon_photo_set` | `bot/handlers/admin.py:5774` `dungeon_step_photo` |
+| `photo_tod` | `bot/handlers/admin.py:5768` `dungeon_photo_set` | `bot/handlers/admin.py:5804` `dungeon_step_photo` |
 | `enemy_id` | — | — |
 | `enemy_field` | — | — |
-| `enemy_value` | `bot/handlers/admin.py:6010` `dungeon_enemy_field_pick` | `bot/handlers/admin.py:6036` `dungeon_enemy_value` |
-| `onhit_value` | `bot/handlers/admin.py:6301` `dungeon_enemy_effect_toggle` | `bot/handlers/admin.py:6307` `dungeon_enemy_onhit_value` |
-| `drop_chance` | `bot/handlers/admin.py:1647` `add_item_photo`<br>`bot/handlers/admin.py:6557` `enemy_drop_pick_item`<br>`bot/handlers/admin.py:6640` `enemy_drop_set_chance` | `bot/handlers/admin.py:6962` `enemy_drop_chance_value` |
-| `drop_qty` | `bot/handlers/admin.py:6663` `enemy_drop_set_qty`<br>`bot/handlers/admin.py:6971` `enemy_drop_chance_value` | `bot/handlers/admin.py:6977` `enemy_drop_qty_value` |
-| `drop_item_photo` | `bot/handlers/admin.py:6708` `enemy_drop_item_photo` | `bot/handlers/admin.py:6717` `enemy_drop_item_photo_value` |
-| `drop_item_desc` | `bot/handlers/admin.py:6762` `enemy_drop_item_desc` | `bot/handlers/admin.py:6771` `enemy_drop_item_desc_value` |
+| `enemy_value` | `bot/handlers/admin.py:6040` `dungeon_enemy_field_pick` | `bot/handlers/admin.py:6066` `dungeon_enemy_value` |
+| `onhit_value` | `bot/handlers/admin.py:6331` `dungeon_enemy_effect_toggle` | `bot/handlers/admin.py:6337` `dungeon_enemy_onhit_value` |
+| `drop_chance` | `bot/handlers/admin.py:1647` `add_item_photo`<br>`bot/handlers/admin.py:6587` `enemy_drop_pick_item`<br>`bot/handlers/admin.py:6670` `enemy_drop_set_chance` | `bot/handlers/admin.py:6992` `enemy_drop_chance_value` |
+| `drop_qty` | `bot/handlers/admin.py:6693` `enemy_drop_set_qty`<br>`bot/handlers/admin.py:7001` `enemy_drop_chance_value` | `bot/handlers/admin.py:7007` `enemy_drop_qty_value` |
+| `drop_item_photo` | `bot/handlers/admin.py:6738` `enemy_drop_item_photo` | `bot/handlers/admin.py:6747` `enemy_drop_item_photo_value` |
+| `drop_item_desc` | `bot/handlers/admin.py:6792` `enemy_drop_item_desc` | `bot/handlers/admin.py:6801` `enemy_drop_item_desc_value` |
 | `drop_item_field` | — | — |
-| `drop_item_value` | `bot/handlers/admin.py:6860` `enemy_drop_item_stat_pick` | `bot/handlers/admin.py:6871` `enemy_drop_item_stat_value` |
+| `drop_item_value` | `bot/handlers/admin.py:6890` `enemy_drop_item_stat_pick` | `bot/handlers/admin.py:6901` `enemy_drop_item_stat_value` |
 | `pending_enemy_id` | — | — |
 
 ### `AdminFine` — `bot/handlers/admin.py`
@@ -608,24 +608,24 @@
 - `admin:awards`: `bot/handlers/admin.py:3805`
 - `admin:callsign`: `bot/handlers/admin.py:775`
 - `admin:del_photo`: `bot/handlers/admin.py:749`
-- `admin:dungeons`: `bot/handlers/admin.py:5636`
-- `admin:enemies`: `bot/handlers/admin.py:9739`
+- `admin:dungeons`: `bot/handlers/admin.py:5666`
+- `admin:enemies`: `bot/handlers/admin.py:9769`
 - `admin:finance`: `bot/handlers/admin.py:2229`
-- `admin:fishing`: `bot/handlers/admin.py:7331`
-- `admin:forest`: `bot/handlers/admin.py:7894`
-- `admin:locations`: `bot/handlers/admin.py:5611`
-- `admin:logs`: `bot/handlers/admin.py:5173`
+- `admin:fishing`: `bot/handlers/admin.py:7361`
+- `admin:forest`: `bot/handlers/admin.py:7924`
+- `admin:locations`: `bot/handlers/admin.py:5641`
+- `admin:logs`: `bot/handlers/admin.py:5203`
 - `admin:menu`: `bot/handlers/admin.py:739`
 - `admin:player_log`: `bot/handlers/admin.py:761`
-- `admin:ranks`: `bot/handlers/admin.py:5063`
-- `admin:reports`: `bot/handlers/admin.py:4498`
-- `admin:reports_done`: `bot/handlers/admin.py:4550`
-- `admin:reports_pending`: `bot/handlers/admin.py:4507`
+- `admin:ranks`: `bot/handlers/admin.py:5093`
+- `admin:reports`: `bot/handlers/admin.py:4528`
+- `admin:reports_done`: `bot/handlers/admin.py:4580`
+- `admin:reports_pending`: `bot/handlers/admin.py:4537`
 - `admin:roles`: `bot/handlers/admin.py:3076`
-- `admin:salaries`: `bot/handlers/admin.py:5480`
+- `admin:salaries`: `bot/handlers/admin.py:5510`
 - `admin:saletax`: `bot/handlers/admin.py:2496`
 - `admin:shop`: `bot/handlers/admin.py:890`
-- `admin:states`: `bot/handlers/admin.py:5371`
+- `admin:states`: `bot/handlers/admin.py:5401`
 - `admin:statuses`: `bot/handlers/admin.py:3310`
 - `admin:storage`: `bot/handlers/admin.py:965`
 - `admin:tax`: `bot/handlers/admin.py:2459`
@@ -634,13 +634,13 @@
 - `aw:ach`: `bot/handlers/admin.py:3863`
 - `aw:create`: `bot/handlers/admin.py:3881`
 - `aw:delete`: `bot/handlers/admin.py:4051`
-- `aw:edit`: `bot/handlers/admin.py:4235`
-- `aw:grant`: `bot/handlers/admin.py:4393`
+- `aw:edit`: `bot/handlers/admin.py:4241`
+- `aw:grant`: `bot/handlers/admin.py:4423`
 - `aw:list`: `bot/handlers/admin.py:3842`
-- `aw:revoke`: `bot/handlers/admin.py:4474`
-- `aw_comment:skip`: `bot/handlers/admin.py:4431`
+- `aw:revoke`: `bot/handlers/admin.py:4504`
+- `aw_comment:skip`: `bot/handlers/admin.py:4461`
 - `aw_confirm`: `bot/handlers/admin.py:4019`
-- `back:main`: `bot/handlers/admin.py:5346`
+- `back:main`: `bot/handlers/admin.py:5376`
 - `bank:balance`: `bot/handlers/bank.py:74`
 - `bank:fines`: `bot/handlers/bank.py:435`
 - `bank:menu`: `bot/handlers/bank.py:193`
@@ -650,7 +650,7 @@
 - `bank:treasury`: `bot/handlers/bank.py:206`
 - `booklet:claim`: `bot/handlers/tourist_booklet.py:71`
 - `booklet:menu`: `bot/handlers/tourist_booklet.py:65`
-- `cancel`: `bot/handlers/admin.py:5354`
+- `cancel`: `bot/handlers/admin.py:5384`
 - `city:business`: `bot/handlers/locations.py:247`
 - `city:clans`: `bot/handlers/clans.py:92`
 - `city:countryside`: `bot/handlers/locations.py:267`
@@ -674,13 +674,13 @@
 - `duel:list`: `bot/handlers/duel.py:278`
 - `duel:menu`: `bot/handlers/duel.py:218`
 - `duel:top`: `bot/handlers/duel.py:298`
-- `dungeon:enemies`: `bot/handlers/admin.py:5952`
+- `dungeon:enemies`: `bot/handlers/admin.py:5982`
 - `dungeon:exit`: `bot/handlers/dungeon.py:2635`
 - `dungeon:exit:cancel`: `bot/handlers/dungeon.py:2720`
 - `dungeon:exit:confirm`: `bot/handlers/dungeon.py:2682`
-- `dungeon:photos`: `bot/handlers/admin.py:5719`
-- `dungeon:photos:clear`: `bot/handlers/admin.py:5763`
-- `enemy:fi`: `bot/handlers/admin.py:9777`
+- `dungeon:photos`: `bot/handlers/admin.py:5749`
+- `dungeon:photos:clear`: `bot/handlers/admin.py:5793`
+- `enemy:fi`: `bot/handlers/admin.py:9807`
 - `field:drink`: `bot/handlers/admin.py:2009`
 - `field:loot_only`: `bot/handlers/admin.py:2073`
 - `field:market_ok`: `bot/handlers/admin.py:2053`
@@ -698,9 +698,9 @@
 - `fireevent:souvenir`: `bot/handlers/fire_event.py:841`
 - `fireph:menu`: `bot/handlers/admin_firephotos.py:73`
 - `fish:recover`: `bot/handlers/fishing.py:507`
-- `forest:addlist`: `bot/handlers/admin.py:8227`
-- `forest:new`: `bot/handlers/admin.py:8380`
-- `forest:zset:sold_daily_limit`: `bot/handlers/admin.py:8066`
+- `forest:addlist`: `bot/handlers/admin.py:8257`
+- `forest:new`: `bot/handlers/admin.py:8410`
+- `forest:zset:sold_daily_limit`: `bot/handlers/admin.py:8096`
 - `housing:menu`: `bot/handlers/housing.py:292`
 - `housing:noop`: `bot/handlers/housing.py:865`
 - `housing:pay_debt`: `bot/handlers/housing.py:340`
@@ -726,29 +726,29 @@
 - `libadmin:add`: `bot/handlers/library.py:288`
 - `libadmin:list`: `bot/handlers/library.py:384`
 - `libadmin:menu`: `bot/handlers/library.py:271`
-- `loc:building_pick`: `bot/handlers/admin.py:8558`
-- `loc:city_fire`: `bot/handlers/admin.py:9134`
-- `loc:clearing_clear`: `bot/handlers/admin.py:9268`
-- `loc:clearing_set`: `bot/handlers/admin.py:9231`
-- `loc:create`: `bot/handlers/admin.py:8526`
-- `loc:edit_pick`: `bot/handlers/admin.py:8542`
-- `loc:fire_set`: `bot/handlers/admin.py:9181`
-- `loc:glade_clear`: `bot/handlers/admin.py:9218`
-- `loc:glade_set`: `bot/handlers/admin.py:9096`
-- `loc:logging_clear`: `bot/handlers/admin.py:9320`
-- `loc:logging_set`: `bot/handlers/admin.py:9281`
-- `loc:mine_clear`: `bot/handlers/admin.py:9371`
-- `loc:mine_set`: `bot/handlers/admin.py:9333`
-- `loc:photos`: `bot/handlers/admin.py:9022`
-- `loc:photos:clear`: `bot/handlers/admin.py:9513`
-- `loc:photos:clear_seasons`: `bot/handlers/admin.py:9045`
-- `loc:set_blocking`: `bot/handlers/admin.py:8695`
-- `loc:set_desc`: `bot/handlers/admin.py:8852`
-- `loc:set_mode`: `bot/handlers/admin.py:8624`
-- `loc:set_name`: `bot/handlers/admin.py:8813`
-- `loc:set_status`: `bot/handlers/admin.py:8667`
-- `loc:storage_clear`: `bot/handlers/admin.py:9422`
-- `loc:storage_set`: `bot/handlers/admin.py:9384`
+- `loc:building_pick`: `bot/handlers/admin.py:8588`
+- `loc:city_fire`: `bot/handlers/admin.py:9164`
+- `loc:clearing_clear`: `bot/handlers/admin.py:9298`
+- `loc:clearing_set`: `bot/handlers/admin.py:9261`
+- `loc:create`: `bot/handlers/admin.py:8556`
+- `loc:edit_pick`: `bot/handlers/admin.py:8572`
+- `loc:fire_set`: `bot/handlers/admin.py:9211`
+- `loc:glade_clear`: `bot/handlers/admin.py:9248`
+- `loc:glade_set`: `bot/handlers/admin.py:9126`
+- `loc:logging_clear`: `bot/handlers/admin.py:9350`
+- `loc:logging_set`: `bot/handlers/admin.py:9311`
+- `loc:mine_clear`: `bot/handlers/admin.py:9401`
+- `loc:mine_set`: `bot/handlers/admin.py:9363`
+- `loc:photos`: `bot/handlers/admin.py:9052`
+- `loc:photos:clear`: `bot/handlers/admin.py:9543`
+- `loc:photos:clear_seasons`: `bot/handlers/admin.py:9075`
+- `loc:set_blocking`: `bot/handlers/admin.py:8725`
+- `loc:set_desc`: `bot/handlers/admin.py:8882`
+- `loc:set_mode`: `bot/handlers/admin.py:8654`
+- `loc:set_name`: `bot/handlers/admin.py:8843`
+- `loc:set_status`: `bot/handlers/admin.py:8697`
+- `loc:storage_clear`: `bot/handlers/admin.py:9452`
+- `loc:storage_set`: `bot/handlers/admin.py:9414`
 - `logsite:back`: `bot/handlers/logging_site.py:460`
 - `logsite:enter`: `bot/handlers/logging_site.py:397`
 - `mvd:menu`: `bot/handlers/mvd.py:29`
@@ -761,7 +761,7 @@
 - `nii:mine`: `bot/handlers/nii.py:228`
 - `nii:no_photo`: `bot/handlers/nii.py:130`
 - `nii:write`: `bot/handlers/nii.py:77`
-- `noop`: `bot/handlers/admin.py:5341`
+- `noop`: `bot/handlers/admin.py:5371`
 - `park:admin`: `bot/handlers/park.py:274`
 - `park:admin:add`: `bot/handlers/park.py:289`
 - `park:admin:editlist`: `bot/handlers/park.py:463`
@@ -802,9 +802,9 @@
 - `recadm:res_new`: `bot/handlers/admin_recipes.py:1060`
 - `recadm:rescats`: `bot/handlers/admin_recipes.py:927`
 - `recadm:save`: `bot/handlers/admin_recipes.py:1420`
-- `rep:auto_approve_edit`: `bot/handlers/admin.py:4594`
-- `rep:next`: `bot/handlers/admin.py:5036`
-- `rep:pay_cap_edit`: `bot/handlers/admin.py:4633`
+- `rep:auto_approve_edit`: `bot/handlers/admin.py:4624`
+- `rep:next`: `bot/handlers/admin.py:5066`
+- `rep:pay_cap_edit`: `bot/handlers/admin.py:4663`
 - `rep:speech`: `bot/handlers/representative.py:77`
 - `rep:speech:delete`: `bot/handlers/representative.py:109`
 - `rep:speech:write`: `bot/handlers/representative.py:89`
@@ -812,8 +812,8 @@
 - `report:my_reports`: `bot/handlers/reports.py:393`
 - `report:submit`: `bot/handlers/reports.py:61`
 - `resv:recover`: `bot/handlers/dungeon.py:2438`
-- `salary:choose`: `bot/handlers/admin.py:5538`
-- `salary:pay`: `bot/handlers/admin.py:5550`
+- `salary:choose`: `bot/handlers/admin.py:5568`
+- `salary:pay`: `bot/handlers/admin.py:5580`
 - `shop:catalog`: `bot/handlers/shop.py:233`
 - `shop_admin:add`: `bot/handlers/admin.py:1234`
 - `shop_admin:delete`: `bot/handlers/admin.py:1694`
@@ -843,16 +843,16 @@
 
 ### По префиксу (`F.data.startswith("...")`)
 
-- `\d+$`: `bot/handlers/admin.py:1386`; `bot/handlers/admin.py:5454`; `bot/handlers/admin.py:8080`; `bot/handlers/reports.py:199`
+- `\d+$`: `bot/handlers/admin.py:1386`; `bot/handlers/admin.py:5484`; `bot/handlers/admin.py:8110`; `bot/handlers/reports.py:199`
 - `\d{1,7}$`: `bot/handlers/reports.py:134`; `bot/handlers/reports.py:163`
-- `act:`: `bot/handlers/admin.py:5248`
+- `act:`: `bot/handlers/admin.py:5278`
 - `addreq:`: `bot/handlers/admin.py:1585`
 - `aw_del:`: `bot/handlers/admin.py:4072`
-- `aw_edit:`: `bot/handlers/admin.py:4255`
-- `aw_ei:`: `bot/handlers/admin.py:4266`
-- `aw_kind:`: `bot/handlers/admin.py:4364`
-- `aw_pick:`: `bot/handlers/admin.py:4415`
-- `awr_grant:`: `bot/handlers/admin.py:4482`
+- `aw_edit:`: `bot/handlers/admin.py:4261`
+- `aw_ei:`: `bot/handlers/admin.py:4272`
+- `aw_kind:`: `bot/handlers/admin.py:4394`
+- `aw_pick:`: `bot/handlers/admin.py:4445`
+- `awr_grant:`: `bot/handlers/admin.py:4512`
 - `bait:set:`: `bot/handlers/fishing.py:183`
 - `bank:history`: `bot/handlers/bank.py:490`
 - `bank:pickrecipient:`: `bot/handlers/bank.py:179`
@@ -960,49 +960,49 @@
 - `duel:leave:`: `bot/handlers/duel.py:454`
 - `dungeon:attack:`: `bot/handlers/dungeon.py:1386`
 - `dungeon:continue:`: `bot/handlers/dungeon.py:1187`
-- `dungeon:edit:`: `bot/handlers/admin.py:5656`
-- `dungeon:enemy:`: `bot/handlers/admin.py:5984`
+- `dungeon:edit:`: `bot/handlers/admin.py:5686`
+- `dungeon:enemy:`: `bot/handlers/admin.py:6014`
 - `dungeon:escape:`: `bot/handlers/dungeon.py:2015`
-- `dungeon:photo_set:`: `bot/handlers/admin.py:5728`
+- `dungeon:photo_set:`: `bot/handlers/admin.py:5758`
 - `dungeon:use_slot:`: `bot/handlers/dungeon.py:1698`
-- `eddrop:`: `bot/handlers/admin.py:6588`
-- `eddrop_del:`: `bot/handlers/admin.py:6674`
-- `eddrop_desc:`: `bot/handlers/admin.py:6746`
-- `eddrop_photo:`: `bot/handlers/admin.py:6692`
-- `eddrop_set_ch:`: `bot/handlers/admin.py:6629`
-- `eddrop_set_q:`: `bot/handlers/admin.py:6652`
-- `eddrop_stat:`: `bot/handlers/admin.py:6841`
-- `eddrop_stats:`: `bot/handlers/admin.py:6802`
-- `eddrop_weff:`: `bot/handlers/admin.py:6904`
-- `eddrop_weff_set:`: `bot/handlers/admin.py:6926`
+- `eddrop:`: `bot/handlers/admin.py:6618`
+- `eddrop_del:`: `bot/handlers/admin.py:6704`
+- `eddrop_desc:`: `bot/handlers/admin.py:6776`
+- `eddrop_photo:`: `bot/handlers/admin.py:6722`
+- `eddrop_set_ch:`: `bot/handlers/admin.py:6659`
+- `eddrop_set_q:`: `bot/handlers/admin.py:6682`
+- `eddrop_stat:`: `bot/handlers/admin.py:6871`
+- `eddrop_stats:`: `bot/handlers/admin.py:6832`
+- `eddrop_weff:`: `bot/handlers/admin.py:6934`
+- `eddrop_weff_set:`: `bot/handlers/admin.py:6956`
 - `edit_item:`: `bot/handlers/admin.py:1826`
-- `editem_add:`: `bot/handlers/admin.py:6540`
-- `editem_new:`: `bot/handlers/admin.py:6565`
-- `editem_pick:`: `bot/handlers/admin.py:6495`
+- `editem_add:`: `bot/handlers/admin.py:6570`
+- `editem_new:`: `bot/handlers/admin.py:6595`
+- `editem_pick:`: `bot/handlers/admin.py:6525`
 - `editset:drink:`: `bot/handlers/admin.py:2032`
 - `editset:weff:`: `bot/handlers/admin.py:1951`
-- `enemy:card:`: `bot/handlers/admin.py:9912`
-- `enemy:dcard:`: `bot/handlers/admin.py:9839`
-- `enemy:del:`: `bot/handlers/admin.py:10038`
-- `enemy:dn:\d+$`: `bot/handlers/admin.py:9749`
-- `enemy:dropadd:`: `bot/handlers/admin.py:10215`
-- `enemy:dropch:`: `bot/handlers/admin.py:10142`
-- `enemy:dropdel:`: `bot/handlers/admin.py:10168`
-- `enemy:dropedit:`: `bot/handlers/admin.py:10104`
-- `enemy:dropitem:`: `bot/handlers/admin.py:10180`
-- `enemy:dropq:`: `bot/handlers/admin.py:10155`
-- `enemy:drops:`: `bot/handlers/admin.py:10094`
-- `enemy:effects:\d+$`: `bot/handlers/admin.py:6257`
-- `enemy:fld:`: `bot/handlers/admin.py:9922`
-- `enemy:fx:src:`: `bot/handlers/admin.py:6330`
-- `enemy:fx:tog:\d+:\d+$`: `bot/handlers/admin.py:6276`
-- `enemy:fxt:`: `bot/handlers/admin.py:6350`
-- `enemy:list:[a-z]+:[\w-]+$`: `bot/handlers/admin.py:9797`
-- `enemy:new:`: `bot/handlers/admin.py:10289`
-- `enemy:photo:`: `bot/handlers/admin.py:9982`
-- `enemy:tog:`: `bot/handlers/admin.py:10019`
-- `enemy_drops:`: `bot/handlers/admin.py:6482`
-- `enemy_field:`: `bot/handlers/admin.py:5997`
+- `enemy:card:`: `bot/handlers/admin.py:9942`
+- `enemy:dcard:`: `bot/handlers/admin.py:9869`
+- `enemy:del:`: `bot/handlers/admin.py:10068`
+- `enemy:dn:\d+$`: `bot/handlers/admin.py:9779`
+- `enemy:dropadd:`: `bot/handlers/admin.py:10245`
+- `enemy:dropch:`: `bot/handlers/admin.py:10172`
+- `enemy:dropdel:`: `bot/handlers/admin.py:10198`
+- `enemy:dropedit:`: `bot/handlers/admin.py:10134`
+- `enemy:dropitem:`: `bot/handlers/admin.py:10210`
+- `enemy:dropq:`: `bot/handlers/admin.py:10185`
+- `enemy:drops:`: `bot/handlers/admin.py:10124`
+- `enemy:effects:\d+$`: `bot/handlers/admin.py:6287`
+- `enemy:fld:`: `bot/handlers/admin.py:9952`
+- `enemy:fx:src:`: `bot/handlers/admin.py:6360`
+- `enemy:fx:tog:\d+:\d+$`: `bot/handlers/admin.py:6306`
+- `enemy:fxt:`: `bot/handlers/admin.py:6380`
+- `enemy:list:[a-z]+:[\w-]+$`: `bot/handlers/admin.py:9827`
+- `enemy:new:`: `bot/handlers/admin.py:10319`
+- `enemy:photo:`: `bot/handlers/admin.py:10012`
+- `enemy:tog:`: `bot/handlers/admin.py:10049`
+- `enemy_drops:`: `bot/handlers/admin.py:6512`
+- `enemy_field:`: `bot/handlers/admin.py:6027`
 - `eqequip:[a-z0-9_]+:\d+$`: `bot/handlers/inventory.py:513`
 - `eqlock:[a-z0-9_]+$`: `bot/handlers/inventory.py:501`
 - `eqpart:`: `bot/handlers/admin.py:1418`
@@ -1041,46 +1041,46 @@
 - `fishbuy:`: `bot/handlers/shop.py:830`
 - `fishcatch:`: `bot/handlers/inventory.py:1326`
 - `fishgo:`: `bot/handlers/inventory.py:1577`
-- `fishing:addfish:`: `bot/handlers/admin.py:7499`
-- `fishing:addlist:`: `bot/handlers/admin.py:7469`
-- `fishing:del:`: `bot/handlers/admin.py:7522`
-- `fishing:fish:`: `bot/handlers/admin.py:7389`
-- `fishing:junk:`: `bot/handlers/admin.py:7078`
-- `fishing:kind:`: `bot/handlers/admin.py:7403`
-- `fishing:market:`: `bot/handlers/admin.py:7425`
-- `fishing:new:`: `bot/handlers/admin.py:7547`
-- `fishing:new_super:`: `bot/handlers/admin.py:7650`
-- `fishing:super:`: `bot/handlers/admin.py:7447`
-- `fishing:water:`: `bot/handlers/admin.py:7351`
-- `fishing_field:`: `bot/handlers/admin.py:7709`
-- `fishing_j:`: `bot/handlers/admin.py:7135`
-- `fishing_jx:del:`: `bot/handlers/admin.py:7231`
-- `fishing_jx:new:`: `bot/handlers/admin.py:7252`
-- `fishing_jx:pick:`: `bot/handlers/admin.py:7204`
-- `fishing_jx:pool:`: `bot/handlers/admin.py:7175`
+- `fishing:addfish:`: `bot/handlers/admin.py:7529`
+- `fishing:addlist:`: `bot/handlers/admin.py:7499`
+- `fishing:del:`: `bot/handlers/admin.py:7552`
+- `fishing:fish:`: `bot/handlers/admin.py:7419`
+- `fishing:junk:`: `bot/handlers/admin.py:7108`
+- `fishing:kind:`: `bot/handlers/admin.py:7433`
+- `fishing:market:`: `bot/handlers/admin.py:7455`
+- `fishing:new:`: `bot/handlers/admin.py:7577`
+- `fishing:new_super:`: `bot/handlers/admin.py:7680`
+- `fishing:super:`: `bot/handlers/admin.py:7477`
+- `fishing:water:`: `bot/handlers/admin.py:7381`
+- `fishing_field:`: `bot/handlers/admin.py:7739`
+- `fishing_j:`: `bot/handlers/admin.py:7165`
+- `fishing_jx:del:`: `bot/handlers/admin.py:7261`
+- `fishing_jx:new:`: `bot/handlers/admin.py:7282`
+- `fishing_jx:pick:`: `bot/handlers/admin.py:7234`
+- `fishing_jx:pool:`: `bot/handlers/admin.py:7205`
 - `fishmarket:`: `bot/handlers/inventory.py:1479`
 - `fishoffer:`: `bot/handlers/shop.py:755`
 - `fishprice:`: `bot/handlers/inventory.py:1559`
 - `fishsell:`: `bot/handlers/inventory.py:1635`
 - `fishuse:`: `bot/handlers/inventory.py:1334`
-- `forest:add:`: `bot/handlers/admin.py:8252`
+- `forest:add:`: `bot/handlers/admin.py:8282`
 - `forest:area:\d+:(glade|clearing)$`: `bot/handlers/forest.py:466`
 - `forest:battle:flee:\d+$`: `bot/handlers/forest.py:1238`
 - `forest:battle:hit:\d+$`: `bot/handlers/forest.py:1030`
 - `forest:berry:\d+:(glade|clearing)$`: `bot/handlers/forest.py:747`
-- `forest:card:`: `bot/handlers/admin.py:8166`
+- `forest:card:`: `bot/handlers/admin.py:8196`
 - `forest:cast:\d+(?::(glade|clearing))?$`: `bot/handlers/forest.py:550`
-- `forest:del:`: `bot/handlers/admin.py:8271`
-- `forest:kind:`: `bot/handlers/admin.py:8180`
-- `forest:market:`: `bot/handlers/admin.py:8205`
-- `forest:new_kind:`: `bot/handlers/admin.py:8460`
-- `forest:zadd:(glade|clearing):\d+$`: `bot/handlers/admin.py:8032`
-- `forest:zaddlist:(glade|clearing)$`: `bot/handlers/admin.py:8005`
-- `forest:zchance:(glade|clearing):\d+$`: `bot/handlers/admin.py:7978`
-- `forest:zdel:(glade|clearing):\d+$`: `bot/handlers/admin.py:7993`
-- `forest:zone:(glade|clearing)$`: `bot/handlers/admin.py:7904`
-- `forest:zset:(glade|clearing):(\w+)$`: `bot/handlers/admin.py:8044`
-- `forest_field:`: `bot/handlers/admin.py:8292`
+- `forest:del:`: `bot/handlers/admin.py:8301`
+- `forest:kind:`: `bot/handlers/admin.py:8210`
+- `forest:market:`: `bot/handlers/admin.py:8235`
+- `forest:new_kind:`: `bot/handlers/admin.py:8490`
+- `forest:zadd:(glade|clearing):\d+$`: `bot/handlers/admin.py:8062`
+- `forest:zaddlist:(glade|clearing)$`: `bot/handlers/admin.py:8035`
+- `forest:zchance:(glade|clearing):\d+$`: `bot/handlers/admin.py:8008`
+- `forest:zdel:(glade|clearing):\d+$`: `bot/handlers/admin.py:8023`
+- `forest:zone:(glade|clearing)$`: `bot/handlers/admin.py:7934`
+- `forest:zset:(glade|clearing):(\w+)$`: `bot/handlers/admin.py:8074`
+- `forest_field:`: `bot/handlers/admin.py:8322`
 - `housing:craft:`: `bot/handlers/housing.py:806`
 - `housing:harvest:`: `bot/handlers/housing.py:1138`
 - `housing:install:`: `bot/handlers/housing.py:872`
@@ -1138,18 +1138,18 @@
 - `libbook:`: `bot/handlers/library.py:204`
 - `libdl:`: `bot/handlers/library.py:249`
 - `libsec:[a-z]+$`: `bot/handlers/library.py:178`
-- `loc:blocking:`: `bot/handlers/admin.py:8711`
-- `loc:building:`: `bot/handlers/admin.py:8600`
-- `loc:edit:`: `bot/handlers/admin.py:8574`
-- `loc:mode:`: `bot/handlers/admin.py:8640`
-- `loc:photo_set:`: `bot/handlers/admin.py:9435`
-- `loc:req_status:`: `bot/handlers/admin.py:8676`
-- `loc:season:(winter|spring|summer|autumn)$`: `bot/handlers/admin.py:9032`
-- `loc:season_clear:(winter|spring|summer|autumn)$`: `bot/handlers/admin.py:9058`
-- `loc:season_photo_set:(winter|spring|summer|autumn):(dawn|day|sunset|night)$`: `bot/handlers/admin.py:9472`
+- `loc:blocking:`: `bot/handlers/admin.py:8741`
+- `loc:building:`: `bot/handlers/admin.py:8630`
+- `loc:edit:`: `bot/handlers/admin.py:8604`
+- `loc:mode:`: `bot/handlers/admin.py:8670`
+- `loc:photo_set:`: `bot/handlers/admin.py:9465`
+- `loc:req_status:`: `bot/handlers/admin.py:8706`
+- `loc:season:(winter|spring|summer|autumn)$`: `bot/handlers/admin.py:9062`
+- `loc:season_clear:(winter|spring|summer|autumn)$`: `bot/handlers/admin.py:9088`
+- `loc:season_photo_set:(winter|spring|summer|autumn):(dawn|day|sunset|night)$`: `bot/handlers/admin.py:9502`
 - `location:enter:`: `bot/handlers/locations.py:111`
 - `location:preview:`: `bot/handlers/locations.py:40`
-- `locstat:`: `bot/handlers/admin.py:5307`
+- `locstat:`: `bot/handlers/admin.py:5337`
 - `logsite:battle:flee:\d+$`: `bot/handlers/logging_site.py:1097`
 - `logsite:battle:hit:\d+$`: `bot/handlers/logging_site.py:893`
 - `logsite:chop:\d+$`: `bot/handlers/logging_site.py:468`
@@ -1194,8 +1194,8 @@
 - `profile:awards:(ach|awd)$`: `bot/handlers/profile.py:567`
 - `profile:recipe:\d+$`: `bot/handlers/profile.py:737`
 - `profile:recipes:\d+$`: `bot/handlers/profile.py:729`
-- `rank_pick:`: `bot/handlers/admin.py:5140`
-- `rank_promote:`: `bot/handlers/admin.py:5099`
+- `rank_pick:`: `bot/handlers/admin.py:5170`
+- `rank_promote:`: `bot/handlers/admin.py:5129`
 - `rar:`: `bot/handlers/admin.py:1298`
 - `rathaus:`: `bot/handlers/pilots.py:174`
 - `rathaus_prof:`: `bot/handlers/pilots.py:214`
@@ -1228,10 +1228,10 @@
 - `recadm:rescat:`: `bot/handlers/admin_recipes.py:913`
 - `recadm:respick:`: `bot/handlers/admin_recipes.py:935`
 - `recadm:rxv:`: `bot/handlers/admin_recipes.py:1673`
-- `rep:nav:`: `bot/handlers/admin.py:5025`
-- `rep_fix:`: `bot/handlers/admin.py:4824`
-- `rep_no:`: `bot/handlers/admin.py:5010`
-- `rep_ok:`: `bot/handlers/admin.py:4941`
+- `rep:nav:`: `bot/handlers/admin.py:5055`
+- `rep_fix:`: `bot/handlers/admin.py:4854`
+- `rep_no:`: `bot/handlers/admin.py:5040`
+- `rep_ok:`: `bot/handlers/admin.py:4971`
 - `report:my:`: `bot/handlers/reports.py:388`
 - `report:view:`: `bot/handlers/reports.py:400`
 - `resv:bait:\d+$`: `bot/handlers/dungeon.py:2135`
@@ -1252,8 +1252,8 @@
 - `shopcat:[^:]+:\d+$`: `bot/handlers/shop.py:341`
 - `shopitem:`: `bot/handlers/shop.py:352`
 - `st_del:`: `bot/handlers/admin.py:3456`
-- `st_key:`: `bot/handlers/admin.py:5439`
-- `st_op:`: `bot/handlers/admin.py:5406`
+- `st_key:`: `bot/handlers/admin.py:5469`
+- `st_op:`: `bot/handlers/admin.py:5436`
 - `st_pick:`: `bot/handlers/admin.py:3741`
 - `st_rev:`: `bot/handlers/admin.py:3671`
 - `storage:cat:`: `bot/handlers/admin.py:997`
@@ -1261,7 +1261,7 @@
 - `storage:page:`: `bot/handlers/admin.py:1016`
 - `storage:purge:`: `bot/handlers/admin.py:1160`
 - `storage:restock:`: `bot/handlers/admin.py:1092`
-- `toggle:`: `bot/handlers/admin.py:8716`
+- `toggle:`: `bot/handlers/admin.py:8746`
 - `vote:cast:`: `bot/handlers/polls.py:163`
 - `vote:close:`: `bot/handlers/polls.py:287`
 - `vote:close_confirm:`: `bot/handlers/polls.py:310`

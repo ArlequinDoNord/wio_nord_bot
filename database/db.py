@@ -7154,6 +7154,45 @@ async def update_award(award_id: int, **fields) -> bool:
     return True
 
 
+AWARD_NAME_MAX = 60
+
+
+async def award_rename_blocked_reason(award) -> str | None:
+    """Почему награду нельзя переименовать (None — можно).
+
+    Системные награды код находит по имени и пересоздаёт при старте, поэтому
+    переименование породило бы дубль: уровни достижений и значки ВУСП/туриста.
+    """
+    if award is None:
+        return "Награда не найдена."
+    if award["achievement_key"]:
+        return "Это награда за уровень достижения: её название задаёт система."
+    if award["name"] in (KVP_BADGE_NAME, config.TOURIST_BOOKLET_AWARD):
+        return "Системную награду нельзя переименовать: код находит её по названию."
+    return None
+
+
+async def rename_award(award_id: int, new_name: str) -> tuple:
+    """Переименовать награду. Возвращает (True, None) или (False, причина)."""
+    award = await get_award(award_id)
+    reason = await award_rename_blocked_reason(award)
+    if reason:
+        return False, reason
+    name = (new_name or "").strip()
+    if not name:
+        return False, "Название не может быть пустым."
+    if len(name) > AWARD_NAME_MAX:
+        return False, f"Название длиннее {AWARD_NAME_MAX} символов."
+    conn = await get_db()
+    taken = await (await conn.execute(
+        "SELECT id FROM awards WHERE name = ? AND id != ?", (name, award_id))).fetchone()
+    if taken:
+        return False, "Награда с таким названием уже существует."
+    await conn.execute("UPDATE awards SET name = ? WHERE id = ?", (name, award_id))
+    await conn.commit()
+    return True, None
+
+
 async def get_award_bonus(user_id: int) -> dict:
     """Суммарные бонусы всех наград игрока (в %; hp — в единицах HP).
 

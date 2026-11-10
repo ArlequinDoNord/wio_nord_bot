@@ -4083,6 +4083,7 @@ async def award_delete_cb(callback: CallbackQuery):
 
 
 AWARD_EDIT_FIELDS = {
+    "name": "✏️ Название",
     "description": "📝 Описание",
     "image": "🖼 Картинка",
     "bonus_attack": "⚔️ Атака, %",
@@ -4098,6 +4099,7 @@ AWARD_EDIT_FIELDS = {
 }
 
 AWARD_EDIT_PROMPTS = {
+    "name": "Введи новое название награды (до 60 символов):",
     "description": "Введи новое описание награды (или «-» чтобы очистить):",
     "image": "Пришли фото награды (или «-» чтобы убрать картинку):",
     "bonus_attack": "Введи бонус атаки в % (целое число, например 5 или 0):",
@@ -4206,7 +4208,11 @@ async def _award_edit_menu(message, award):
     rows = [
         [InlineKeyboardButton(text="🔁 Обновить", callback_data=f"aw_edit:{aid}")],
     ]
+    from database.db import award_rename_blocked_reason
+    can_rename = await award_rename_blocked_reason(award) is None
     for field, label in AWARD_EDIT_FIELDS.items():
+        if field == "name" and not can_rename:
+            continue
         rows.append([InlineKeyboardButton(text=label, callback_data=f"aw_ei:{aid}:{field}")])
     rows.append([InlineKeyboardButton(text="🔙 К списку", callback_data="aw:edit")])
     rows.append([InlineKeyboardButton(text="🔙 В меню", callback_data="admin:awards")])
@@ -4272,6 +4278,12 @@ async def award_edit_field_pick(callback: CallbackQuery, state: FSMContext):
     _, award_id, field = callback.data.split(":", 2)
     if field not in AWARD_EDIT_FIELDS:
         return
+    if field == "name":
+        from database.db import award_rename_blocked_reason
+        reason = await award_rename_blocked_reason(await get_award(int(award_id)))
+        if reason:
+            await callback.message.answer(f"❌ {reason}")
+            return
     await state.update_data(edit_award_id=int(award_id), edit_field=field)
     await state.set_state(AdminAwards.edit_value)
     award = await get_award(int(award_id))
@@ -4310,6 +4322,24 @@ async def award_edit_value(message: Message, state: FSMContext):
         await message.answer("❌ Сессия устарела, начни заново.")
         return
     text = (message.text or "").strip()
+    if field == "name":
+        from database.db import rename_award
+        ok, reason = await rename_award(award_id, text)
+        if not ok:
+            await message.answer(f"❌ {reason}\nПопробуй ещё раз или отмени редактирование.")
+            return
+        await log_action(message.from_user.id, 'edit_award', None,
+                         f"award_id={award_id} field=name value={text}")
+        await state.clear()
+        award = await get_award(award_id)
+        await message.answer(
+            f"✅ {AWARD_EDIT_FIELDS[field]} награды обновлено.\n\n{_award_edit_card(award)}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="🔁 Продолжить редактировать",
+                                     callback_data=f"aw_edit:{award_id}")
+            ]])
+        )
+        return
     value = None
     if field == "image":
         if message.photo:
