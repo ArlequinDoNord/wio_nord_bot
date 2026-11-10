@@ -503,26 +503,26 @@ async def bank_history(callback: CallbackQuery):
         return
 
     text = t("bank.history_title", page=page + 1)
-    for t in txns:
+    for tx in txns:
         me = callback.from_user.id
-        incoming = t['to_user'] == me and t['from_user'] != me
+        incoming = tx['to_user'] == me and tx['from_user'] != me
         sign = "+" if incoming else "-"
 
         # «Покупка» — только когда покупаешь товары/вещи; всё остальное движение
         # средств подписывается как «Списание» или «Зачисление».
-        if t['tx_type'] == "shop_purchase":
+        if tx['tx_type'] == "shop_purchase":
             label = "🛒 Покупка"
-        elif t['tx_type'] == "shop_sale":
+        elif tx['tx_type'] == "shop_sale":
             label = "💵 Продажа товара"
         elif incoming:
             label = "📥 Зачисление средств"
         else:
             label = "📤 Списание средств"
 
-        date_str = t['created_at'][:16] if t['created_at'] else ""
-        text += f"{date_str} {label}: {sign}{abs(t['amount'])} НМ\n"
-        if t['description']:
-            text += f"  {t['description']}\n"
+        date_str = tx['created_at'][:16] if tx['created_at'] else ""
+        text += f"{date_str} {label}: {sign}{abs(tx['amount'])} НМ\n"
+        if tx['description']:
+            text += f"  {tx['description']}\n"
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     rows = []

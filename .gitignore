@@ -4,6 +4,8 @@ __pycache__/
 .idea/
 .pytest_cache/
 database/nordmark.db
+# Снимок прод-БД для TEXTS_CATALOG.md (tools/fetch_prod_db.py): персональные данные, не коммитить
+data/
 database/nordmark.db-shm
 database/nordmark.db-wal
 database/fsm/
