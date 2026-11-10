@@ -23,6 +23,7 @@ from database.db import (
     pay_award_monthly, pay_role_salaries, get_lantern_owners, grant_lantern_amber_if_due,
     run_housing_tax, seed_kvp, ensure_kvp_items, ensure_kvp_award, ensure_duel_items,
     cleanup_mojibake_duel_items, expire_stale_duels, repair_mojibake_entities,
+    ensure_item_rarity_unified,
     ensure_achievements,
     ensure_tourist_booklet,
     ensure_water_fish, migrate_legacy_junk,
@@ -577,6 +578,11 @@ async def main():
     fixed = await repair_mojibake_entities()
     if any(fixed.values()):
         logger.info("Кодировка: починены записи с битой кодировкой — %s", fixed)
+
+    rarity_fixed = await ensure_item_rarity_unified()
+    if rarity_fixed:
+        logger.info("Редкость: приведена к единой шкале — обновлено предметов: %s",
+                    rarity_fixed)
 
     bot = Bot(token=BOT_TOKEN)
     # FSM — на диске, рядом с БД (/app/data в контейнере, docker volume): состояния

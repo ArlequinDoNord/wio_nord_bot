@@ -152,12 +152,11 @@ async def main():
     boar = await get_source_enemy_by_key("forest", "boar")
     check("кабан на месте вместе с волком", bool(boar))
 
-    print("\n3. Предметы волка — только лут")
+    print("\n3. Волчьи предметы выведены из игры (v0.43.10)")
+    from database.db import RETIRED_ITEMS
     for name in ("Мясо волка", "Шкура волка", "Клык волка"):
-        full = await get_item((await get_item_by_name(name))['id'])
-        check(f"«{name}» loot-only (market_ok=0, loot_only=1, is_available=0)",
-              full['market_ok'] == 0 and (full['loot_only'] or 0) == 1
-              and (full['is_available'] or 0) == 0)
+        check(f"«{name}» в RETIRED_ITEMS", name in RETIRED_ITEMS)
+        check(f"«{name}» удалён из items", await get_item_by_name(name) is None)
 
     print("\n4. Спавн и эмодзи")
     check("эмодзи кабана", _beast_emoji({"key": "boar"}) == "🐗")
