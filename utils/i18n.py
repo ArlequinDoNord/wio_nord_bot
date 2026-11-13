@@ -196,6 +196,104 @@ STRINGS = {
         "en": ("\n\nThis number is for regional troop statistics — it does not affect payment."),
     },
     "report.prev_day": {"ru": "🗓 За прошлые сутки ты сдал: {n}.", "en": "🗓 Last game day you submitted: {n}."},
+    # Проверка отчётов МВД: причина отклонения обязательна, в карточке — имя
+    # проверяющего в боте (позывной/@username), а не Telegram ID.
+    "report.reject_ask": {
+        "ru": ("❌ ОТКЛОНЕНИЕ ОТЧЁТА #{id}\n\n"
+               "Напиши причину отклонения: её увидит пилот в карточке отчёта и в "
+               "личном сообщении. Причина обязательна.\n"
+               "Отмена — вернуться к очереди."),
+        "en": ("❌ REJECTING REPORT #{id}\n\n"
+               "Write the reason for rejection: the pilot will see it in the report "
+               "card and in a private message. The reason is required.\n"
+               "Cancel to go back to the queue."),
+    },
+    "report.reject_reason_short": {
+        "ru": "❌ Слишком коротко. Опиши причину хотя бы в {min} символов:",
+        "en": "❌ Too short. Describe the reason in at least {min} characters:",
+    },
+    "report.reject_done": {
+        "ru": "❌ Отчёт #{id} отклонён.\n📝 Причина: {reason}\n👮 Проверил: {name}",
+        "en": "❌ Report #{id} rejected.\n📝 Reason: {reason}\n👮 Reviewed by: {name}",
+    },
+    "report.reject_dm": {
+        "ru": ("❌ ТВОЙ ОТЧЁТ ОТКЛОНЁН\n\n"
+               "Отчёт #{id} отклонён при проверке.\n"
+               "📝 Причина: {reason}\n"
+               "👮 Проверил: {name}\n\n"
+               "Если считаешь отклонение ошибкой — напиши в МВД."),
+        "en": ("❌ YOUR REPORT WAS REJECTED\n\n"
+               "Report #{id} was rejected during review.\n"
+               "📝 Reason: {reason}\n"
+               "👮 Reviewed by: {name}\n\n"
+               "If you think this was a mistake, contact the Interior Ministry."),
+    },
+    "report.card_reviewed_by": {"ru": "👮 Проверил: {name}", "en": "👮 Reviewed by: {name}"},
+    "report.card_reject_reason": {"ru": "📝 Причина отклонения: {reason}",
+                                  "en": "📝 Rejection reason: {reason}"},
+    "report.reviewer_system": {"ru": "автоматически (система)", "en": "automatically (system)"},
+    "report.reviewer_unknown": {"ru": "—", "en": "—"},
+    "report.reject_reason_required": {
+        "ru": "❌ Причину отклонения нельзя оставить пустой. Напиши её текстом:",
+        "en": "❌ The rejection reason cannot be empty. Write it as text:",
+    },
+    # Вкладка админки «Отклонённые отчёты»: только свежие (неделя), с именем
+    # проверяющего и причиной; супер-админ может убрать запись из списка.
+    "report.rejected_menu_line": {
+        "ru": "• ❌ Отклонённые ({days} дн.): {n}",
+        "en": "• ❌ Rejected (last {days} days): {n}",
+    },
+    "report.rejected_menu_btn": {
+        "ru": "❌ Отклонённые отчёты · {n}",
+        "en": "❌ Rejected reports · {n}",
+    },
+    "report.rejected_title": {
+        "ru": "❌ ОТКЛОНЁННЫЕ ОТЧЁТЫ\n\nПоказаны только отчёты, отклонённые за последние "
+              "{days} дней. Старые записи из списка уходят сами.\n",
+        "en": "❌ REJECTED REPORTS\n\nOnly reports rejected within the last {days} days "
+              "are shown. Older entries leave the list automatically.\n",
+    },
+    "report.rejected_none": {
+        "ru": "\nЗа последние {days} дней отклонённых отчётов нет.",
+        "en": "\nNo rejected reports in the last {days} days.",
+    },
+    "report.rejected_line": {
+        "ru": "#{id} · {author} · {troops} ⚔️ · регион {region} · {when}\n"
+              "   👮 {reviewer} · 📝 {reason}",
+        "en": "#{id} · {author} · {troops} ⚔️ · region {region} · {when}\n"
+              "   👮 {reviewer} · 📝 {reason}",
+    },
+    "report.rejected_page": {"ru": "Страница {page} из {total}", "en": "Page {page} of {total}"},
+    "report.rejected_view_btn": {"ru": "🔍 Отчёт #{id}", "en": "🔍 Report #{id}"},
+    "report.rejected_back_btn": {"ru": "🔙 К отклонённым", "en": "🔙 Back to rejected"},
+    "report.rejected_back_reports": {"ru": "🔙 К отчётам", "en": "🔙 Back to reports"},
+    "report.rejected_details": {
+        "ru": "\n🗑 Отклонён: {when}",
+        "en": "\n🗑 Rejected: {when}",
+    },
+    "report.rejected_delete_btn": {"ru": "🗑 Удалить из списка", "en": "🗑 Remove from list"},
+    "report.rejected_delete_ask": {
+        "ru": ("🗑 УДАЛИТЬ ОТЧЁТ #{id}?\n\n"
+               "Запись исчезнет из БД: её не будет ни в списке отклонённых, ни в "
+               "«Моих отчётах» пилота. Действие необратимо."),
+        "en": ("🗑 DELETE REPORT #{id}?\n\n"
+               "The record will be removed from the database: it disappears from the "
+               "rejected list and from the pilot's «My reports». This cannot be undone."),
+    },
+    "report.rejected_delete_yes": {"ru": "✅ Да, удалить", "en": "✅ Yes, delete"},
+    "report.rejected_delete_cancel": {"ru": "🔙 Отмена", "en": "🔙 Cancel"},
+    "report.rejected_delete_done": {
+        "ru": "🗑 Отчёт #{id} удалён из списка отклонённых.",
+        "en": "🗑 Report #{id} removed from the rejected list.",
+    },
+    "report.rejected_delete_missing": {
+        "ru": "❌ Отчёт #{id} не найден среди отклонённых (возможно, уже удалён).",
+        "en": "❌ Report #{id} is not among rejected ones (maybe already deleted).",
+    },
+    "report.rejected_delete_super_only": {
+        "ru": "❌ Удалять отклонённые отчёты может только супер-админ.",
+        "en": "❌ Only a super admin can delete rejected reports.",
+    },
     # Локации города: ru — название, как оно показано в боте (из БД для кнопки
     # «Курс выживания», из кода для подменю); en — перевод.
     "loc.townhall": {"ru": "Ратуша", "en": "Town Hall"},

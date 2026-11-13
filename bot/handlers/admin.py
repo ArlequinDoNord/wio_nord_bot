@@ -15,8 +15,10 @@ from database.db import (
     add_item, delete_item, delete_item_completely, update_item, get_available_items, get_all_items,
     get_items_by_category, count_items_by_category,
     get_item, get_all_users, get_pending_reports, approve_report, correct_report_numbers,
-    reject_report, add_nordmarks, remove_nordmarks,
+    reject_report, add_nordmarks, remove_nordmarks, get_user_display_name,
     get_approved_reports, count_approved_reports, report_day_value_of, report_tax_percent_for,
+    get_rejected_reports_fresh, count_rejected_reports_fresh, delete_rejected_report,
+    get_report_with_user,
     report_day_label_for, created_at_msk,
     create_status, delete_status, get_all_statuses, get_status,
     grant_status, revoke_status, get_user_statuses, citizen_user_ids,
@@ -78,10 +80,11 @@ from utils.permissions import (
     add_role, remove_role, ROLES, role_label, log_action, DELEGABLE_ROLES,
     can_grant_status, can_view_status_panel, is_citizen_gate_status,
 )
-from utils.helpers import plural_nordmark
+from utils.helpers import plural_nordmark, is_main_menu_text
 from config import (RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES, get_effective_rank,
                     VERSION, DRINK_EFFECT_LABELS, AWARD_MAX_SHOP_DISCOUNT, AWARD_MIN_REPORT_TAX,
-                    ON_HIT_EFFECTS, ON_HIT_STATE_ROUNDS)
+                    ON_HIT_EFFECTS, ON_HIT_STATE_ROUNDS,
+                    REJECTED_REPORTS_FRESH_DAYS, REJECTED_REPORTS_PAGE)
 from utils.states import STATE_CONF, enemy_appliable_states
 from utils.notify import notify, player_display, notify_award, notify_report_praise, notify_user
 
@@ -165,6 +168,11 @@ class AdminReportFix(StatesGroup):
     # Правка цифр отчёта (только супер-админ): сутки → всего → применение
     daily = State()
     total = State()
+
+
+class AdminReportReject(StatesGroup):
+    # Отклонение отчёта: причина обязательна, её видит пилот в карточке и в личке
+    reason = State()
 
 
 class AdminRoles(StatesGroup):
@@ -721,7 +729,7 @@ async def show_admin_panel(user_id: int, to_edit: CallbackQuery = None, to_msg: 
         await to_msg.answer(text, reply_markup=markup)
 
 
-from utils.i18n import btn_labels
+from utils.i18n import btn_labels, t, t_user
 
 
 @router.message(F.text.in_(btn_labels("btn.admin")))
@@ -4544,16 +4552,18 @@ async def admin_reports_pending(callback: CallbackQuery):
 
 
 async def show_reports_menu(message):
-    """Вкладка «Отчёты»: пункты «на проверку» и «принятые»."""
+    """Вкладка «Отчёты»: на проверку, принятые и отклонённые (свежие)."""
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     pending = await get_pending_reports()
     approved_total = await count_approved_reports()
     unpaid = await count_approved_reports(unpaid_only=True)
+    rejected = await count_rejected_reports_fresh()
     text = (
         "📋 ОТЧЁТЫ\n\n"
         f"• 🕵️ На проверке: {len(pending)}\n"
-        f"• ✅ Принятые: {approved_total} (не оплачено: {unpaid})\n\n"
-        "Выбери пункт:"
+        f"• ✅ Принятые: {approved_total} (не оплачено: {unpaid})\n"
+        + t("report.rejected_menu_line", days=REJECTED_REPORTS_FRESH_DAYS, n=rejected)
+        + "\n\nВыбери пункт:"
     )
     buttons = [
         [InlineKeyboardButton(
@@ -4562,6 +4572,9 @@ async def show_reports_menu(message):
         [InlineKeyboardButton(
             text=f"✅ Принятые отчёты · {approved_total}",
             callback_data="admin:reports_done")],
+        [InlineKeyboardButton(
+            text=t("report.rejected_menu_btn", n=rejected),
+            callback_data="admin:reports_rejected")],
     ]
     if 'super_admin' in await get_user_role(message.chat.id):
         buttons.append([
@@ -4619,6 +4632,188 @@ async def show_approved_reports(message):
         text,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
+
+
+@router.callback_query(F.data == "admin:reports_rejected")
+async def admin_reports_rejected(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_view_reports"):
+        await callback.message.answer("❌ Нет прав для просмотра отчётов.")
+        return
+    await show_rejected_reports(callback.message, 0)
+
+
+def _rejected_author(r) -> str:
+    """Имя автора отчёта для списка: позывной → @username → имя → «Пилот»."""
+    return (r.get('callsign') or
+            (f"@{r['username']}" if r.get('username') else None) or
+            r.get('first_name') or "Пилот")
+
+
+def _rejected_when(r) -> str:
+    """Время решения (МСК); у старых записей без reviewed_at — время сдачи."""
+    stamp = r.get('reviewed_at') or r.get('created_at')
+    return created_at_msk(stamp) or str(stamp or "")[:16]
+
+
+async def show_rejected_reports(message, page: int = 0):
+    """Вкладка «Отклонённые отчёты»: только свежие (REJECTED_REPORTS_FRESH_DAYS).
+
+    Показываем, что за отчёт, кто и за что отклонил. Сами записи не удаляем —
+    список сам «худеет», когда решению больше N дней.
+    """
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+    days = REJECTED_REPORTS_FRESH_DAYS
+    reports = await get_rejected_reports_fresh()
+    text = t("report.rejected_title", days=days)
+
+    if not reports:
+        text += t("report.rejected_none", days=days)
+        await message.answer(
+            text,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=t("report.rejected_back_reports"),
+                                      callback_data="admin:reports")]
+            ])
+        )
+        return
+
+    per_page = REJECTED_REPORTS_PAGE
+    total = len(reports)
+    total_pages = max(1, (total + per_page - 1) // per_page)
+    page = max(0, min(page, total_pages - 1))
+    chunk = reports[page * per_page:(page + 1) * per_page]
+
+    lines = []
+    for r in chunk:
+        reviewer = r.get('reviewed_by_name')
+        if not reviewer:
+            reviewer = (t("report.reviewer_system")
+                        if int(r.get('reviewed_by') or 0) == 0
+                        else t("report.reviewer_unknown"))
+        reason = r.get('reject_reason') or "—"
+        region = r.get('region') if r.get('region') is not None else "—"
+        lines.append(t("report.rejected_line",
+                       id=r['id'], author=_rejected_author(r),
+                       troops=r.get('troops_reported') or 0, region=region,
+                       when=_rejected_when(r), reviewer=reviewer, reason=reason))
+    text += "\n" + "\n\n".join(lines)
+    if total_pages > 1:
+        text += "\n\n" + t("report.rejected_page", page=page + 1, total=total_pages)
+
+    buttons = []
+    for r in chunk:
+        buttons.append([InlineKeyboardButton(
+            text=t("report.rejected_view_btn", id=r['id']),
+            callback_data=f"rep_rej_view:{r['id']}:{page}")])
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"rep_rej_list:{page - 1}"))
+    if total_pages > 1:
+        nav.append(InlineKeyboardButton(text=f"{page + 1}/{total_pages}", callback_data="noop"))
+    if page < total_pages - 1:
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"rep_rej_list:{page + 1}"))
+    if nav:
+        buttons.append(nav)
+    buttons.append([InlineKeyboardButton(text=t("report.rejected_back_reports"),
+                                         callback_data="admin:reports")])
+
+    await message.answer(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+
+
+@router.callback_query(F.data.startswith("rep_rej_list:"))
+async def rejected_reports_page(callback: CallbackQuery):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_view_reports"):
+        await callback.message.answer("❌ Нет прав для просмотра отчётов.")
+        return
+    try:
+        page = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        page = 0
+    await show_rejected_reports(callback.message, page)
+
+
+@router.callback_query(F.data.startswith("rep_rej_view:"))
+async def rejected_report_view(callback: CallbackQuery):
+    """Карточка отклонённого отчёта: причина, имя проверяющего, кнопка удаления."""
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_view_reports"):
+        await callback.message.answer("❌ Нет прав для просмотра отчётов.")
+        return
+    parts = callback.data.split(":")
+    try:
+        report_id = int(parts[1])
+        page = int(parts[2])
+    except (ValueError, IndexError):
+        report_id, page = 0, 0
+    report = await get_report_with_user(report_id)
+    if not report or report.get('status') != 'rejected':
+        await callback.message.answer(t("report.rejected_delete_missing", id=report_id))
+        return
+    from bot.handlers.reports import report_card_text
+    text = report_card_text(report) + t("report.rejected_details", when=_rejected_when(report))
+    buttons = []
+    if 'super_admin' in await get_user_role(callback.from_user.id):
+        buttons.append([InlineKeyboardButton(text=t("report.rejected_delete_btn"),
+                                             callback_data=f"rep_rej_del:{report_id}:{page}")])
+    buttons.append([InlineKeyboardButton(text=t("report.rejected_back_btn"),
+                                         callback_data=f"rep_rej_list:{page}")])
+    await callback.message.answer(
+        text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+
+
+@router.callback_query(F.data.startswith("rep_rej_del:"))
+async def rejected_report_delete_ask(callback: CallbackQuery):
+    """Подтверждение удаления: удаляет только супер-админ."""
+    await callback.answer()
+    if 'super_admin' not in await get_user_role(callback.from_user.id):
+        await callback.message.answer(t("report.rejected_delete_super_only"))
+        return
+    parts = callback.data.split(":")
+    try:
+        report_id = int(parts[1])
+        page = int(parts[2])
+    except (ValueError, IndexError):
+        report_id, page = 0, 0
+    report = await get_report_with_user(report_id)
+    if not report or report.get('status') != 'rejected':
+        await callback.message.answer(t("report.rejected_delete_missing", id=report_id))
+        return
+    await callback.message.answer(
+        t("report.rejected_delete_ask", id=report_id),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=t("report.rejected_delete_yes"),
+                                  callback_data=f"rep_rej_del_ok:{report_id}")],
+            [InlineKeyboardButton(text=t("report.rejected_delete_cancel"),
+                                  callback_data=f"rep_rej_view:{report_id}:{page}")],
+        ])
+    )
+
+
+@router.callback_query(F.data.startswith("rep_rej_del_ok:"))
+async def rejected_report_delete(callback: CallbackQuery):
+    """Удаление отклонённого отчёта из БД (только супер-админ)."""
+    await callback.answer()
+    if 'super_admin' not in await get_user_role(callback.from_user.id):
+        await callback.message.answer(t("report.rejected_delete_super_only"))
+        return
+    try:
+        report_id = int(callback.data.split(":")[1])
+    except (ValueError, IndexError):
+        report_id = 0
+    # Автор нужен только для журнала: после удаления связи с users уже нет.
+    report = await get_report_with_user(report_id)
+    author_id = report.get('user_id') if report else None
+    deleted = await delete_rejected_report(report_id)
+    if not deleted:
+        await callback.message.answer(t("report.rejected_delete_missing", id=report_id))
+        return
+    await log_action(callback.from_user.id, 'delete_rejected_report',
+                     author_id, f"report={report_id}")
+    await callback.message.answer(t("report.rejected_delete_done", id=report_id))
+    await show_rejected_reports(callback.message, 0)
 
 
 @router.callback_query(F.data == "rep:auto_approve_edit")
@@ -4843,11 +5038,11 @@ _KEEP_VALUES = ("-", "—", "без", "безизменений", "остави�
 
 def _report_fix_parse(text: str):
     """Разбор числа от супер-админа. None — «оставить как есть»."""
-    t = text.strip().replace(" ", "").replace("\u00a0", "").lower()
-    if t in _KEEP_VALUES:
+    clean = text.strip().replace(" ", "").replace("\u00a0", "").lower()
+    if clean in _KEEP_VALUES:
         return None
-    if t.isdigit():
-        return int(t)
+    if clean.isdigit():
+        return int(clean)
     return False  # мусор
 
 
@@ -5038,18 +5233,76 @@ async def report_approve(callback: CallbackQuery, bot: Bot):
 
 
 @router.callback_query(F.data.startswith("rep_no:"))
-async def report_reject(callback: CallbackQuery):
+async def report_reject(callback: CallbackQuery, state: FSMContext):
+    """Отклонение отчёта: сначала спрашиваем причину — без неё отклонить нельзя."""
     await callback.answer()
     report_id = int(callback.data.split(":")[1])
     if not await has_permission(callback.from_user.id, "can_approve_reports"):
         await callback.message.answer("❌ Нет прав.")
         return
     report = await get_report_safe(report_id)
+    if not report or report.get('user_id') == 0:
+        await callback.message.answer("❌ Отчёт не найден в очереди.")
+        return
     queue_pos = await _queue_index_of(report_id)
-    await reject_report(report_id, callback.from_user.id)
-    await log_action(callback.from_user.id, 'reject_report', report['user_id'], f"report={report_id}")
-    await callback.message.answer("❌ Отчёт отклонён.")
-    await show_pending_reports(callback.message, start=queue_pos)
+    await state.update_data(reject_report_id=report_id, reject_queue_pos=queue_pos)
+    await state.set_state(AdminReportReject.reason)
+    await callback.message.answer(
+        t("report.reject_ask", id=report_id),
+        reply_markup=cancel_keyboard()
+    )
+
+
+@router.message(AdminReportReject.reason)
+async def report_reject_reason(message: Message, state: FSMContext, bot: Bot):
+    """Причина отклонения пришла текстом: сохраняем её и уведомляем пилота."""
+    data = await state.get_data()
+    report_id = data.get("reject_report_id")
+    queue_pos = data.get("reject_queue_pos") or 0
+    if not report_id:
+        await state.clear()
+        await message.answer("❌ Сессия отклонения сброшена, начни заново.")
+        return
+    if not await has_permission(message.from_user.id, "can_approve_reports"):
+        await state.clear()
+        await message.answer("❌ Нет прав.")
+        return
+    reason = (message.text or "").strip()
+    # Причина обязательна: пустое сообщение или нажатие кнопки меню — не причина.
+    # Состояние НЕ сбрасываем: админ может ввести текст или нажать «Отмена».
+    if not reason or is_main_menu_text(reason):
+        await message.answer(t("report.reject_reason_required"))
+        return
+    if len(reason) < 3:
+        await message.answer(t("report.reject_reason_short", min=3))
+        return
+    if len(reason) > 500:
+        reason = reason[:500].rstrip() + "…"
+
+    report = await get_report_safe(report_id)
+    pilot_id = report.get('user_id') if report else 0
+    reviewer = await get_user_display_name(message.from_user.id)
+    if not reviewer:
+        reviewer = (message.from_user.username and f"@{message.from_user.username}") \
+            or message.from_user.full_name
+    await reject_report(report_id, message.from_user.id, reason=reason,
+                        reviewer_name=reviewer)
+    await log_action(message.from_user.id, 'reject_report',
+                     pilot_id or None,
+                     f"report={report_id} причина: {reason}")
+    await state.clear()
+    await message.answer(
+        t("report.reject_done", id=report_id, reason=reason, name=reviewer))
+    # Пилот должен узнать причину сразу, а не только из карточки отчёта.
+    if pilot_id:
+        try:
+            await bot.send_message(
+                pilot_id,
+                await t_user(pilot_id, "report.reject_dm",
+                             id=report_id, reason=reason, name=reviewer))
+        except Exception:
+            pass
+    await show_pending_reports(message, start=queue_pos)
 
 
 @router.callback_query(F.data.startswith("rep:nav:"))

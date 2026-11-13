@@ -7,6 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 from config import REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT, REPORT_ARCHIVE_PAGE
 from database.db import add_report, approve_report, get_user, get_user_reports, get_report_with_user, report_tax_percent_for, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist, report_payout_context, report_prev_day_total, created_at_msk, report_day_value_of
 from utils.helpers import is_main_menu_text
+from utils.i18n import t
 from utils.notify import notify_report_praise
 from keyboards.keyboards import report_keyboard, cancel_keyboard
 
@@ -323,8 +324,18 @@ def report_card_text(r, include_author: bool = True) -> str:
     if r["status"] == "approved":
         lines.append("💰 Оплачен: Да" if _row_get(r, "paid") else "💰 Ожидает оплаты")
     lines.append(f"🏷 Статус: {r['status']}")
-    if _row_get(r, "reviewed_by"):
-        lines.append(f"👮 Проверил: ID {r['reviewed_by']}")
+    # Кто проверил: имя в боте (позывной/@username), а не Telegram ID. Снимок имени
+    # пишется при решении; у старых отчётов без имени показываем прочерк.
+    reviewer = _row_get(r, "reviewed_by_name")
+    reviewed_by = _row_get(r, "reviewed_by")
+    if reviewer or reviewed_by is not None:
+        if not reviewer:
+            reviewer = (t("report.reviewer_system") if int(reviewed_by or 0) == 0
+                        else t("report.reviewer_unknown"))
+        lines.append(t("report.card_reviewed_by", name=reviewer))
+    reason = _row_get(r, "reject_reason")
+    if reason:
+        lines.append(t("report.card_reject_reason", reason=reason))
     return "\n".join(lines)
 
 

@@ -1196,6 +1196,14 @@ async def init_db():
     paid_created = await _ensure_column(conn, "reports", "paid", "INTEGER DEFAULT 0")
     if paid_created:
         await conn.execute("UPDATE reports SET paid = 1 WHERE status = 'approved'")
+    # v0.43.17: причина отклонения (пилот обязан её увидеть) и имя проверяющего —
+    # в карточке отчёта показываем имя в боте, а не Telegram ID. reviewed_by_name —
+    # снимок на момент решения: позывной проверяющего может измениться позже.
+    await _ensure_column(conn, "reports", "reject_reason", "TEXT")
+    await _ensure_column(conn, "reports", "reviewed_by_name", "TEXT")
+    # reviewed_at — когда проверяющий принял решение (UTC). Нужно списку «Отклонённые»:
+    # он показывает только свежие отклонения (неделя), а не весь архив.
+    await _ensure_column(conn, "reports", "reviewed_at", "TEXT")
     # v0.17.0: отчётные сутки идут от выплаты до выплаты, оплата — по заявке «за сутки»
     # (раньше она упиралась в прирост «всего», из-за чего честные заявки обнулялись).
     # Висящие отчёты, посчитанные по старому правилу в ноль, пересчитываем — иначе
@@ -1376,6 +1384,18 @@ async def init_db():
     await _ensure_column(conn, "users", "fishing_bait", "TEXT DEFAULT ''")
     # Позывной пилота (игровой ник, выставляется админом; показывается в карточке)
     await _ensure_column(conn, "users", "callsign", "TEXT")
+    # v0.43.17: старым отчётам (решения до миграции) подставляем имя проверяющего из
+    # users по ID — в карточке и в архиве вместо номера должно быть имя в боте.
+    # reviewed_by = 0 — автоодобрение, имени нет. Только NULL — повторный старт безвреден.
+    await conn.execute(
+        """UPDATE reports SET reviewed_by_name = (
+               SELECT COALESCE(NULLIF(TRIM(u.callsign), ''),
+                               CASE WHEN COALESCE(TRIM(u.username), '') <> ''
+                                    THEN '@' || TRIM(u.username) END,
+                               NULLIF(TRIM(u.first_name), ''))
+               FROM users u WHERE u.user_id = reports.reviewed_by)
+           WHERE COALESCE(reviewed_by, 0) <> 0 AND reviewed_by_name IS NULL"""
+    )
     # Награды: картинка и процентные бонусы (в % к атаке/защите/уклонению/рыбалке и +HP)
     await _ensure_column(conn, "awards", "image", "TEXT")
     await _ensure_column(conn, "awards", "bonus_attack", "INTEGER DEFAULT 0")
@@ -2229,6 +2249,29 @@ async def get_user(user_id: int):
     if 'истощён' in effects:
         user['ap_max'] = AP_EXHAUSTED_MAX_AP
     return user
+
+
+async def get_user_display_name(user_id: int) -> str:
+    """Имя пилота как его видно в боте: позывной → @username → имя.
+
+    Нужно для карточек и логов: игрок должен видеть, КТО принял или отклонил
+    отчёт, а не Telegram ID. Пустая строка — пользователя нет в базе.
+    """
+    conn = await get_db()
+    row = await (await conn.execute(
+        "SELECT callsign, username, first_name, last_name FROM users WHERE user_id = ?",
+        (user_id,))).fetchone()
+    if not row:
+        return ""
+    callsign = (row['callsign'] or '').strip()
+    if callsign:
+        return callsign
+    username = (row['username'] or '').strip()
+    if username:
+        return f"@{username}"
+    first = (row['first_name'] or '').strip()
+    last = (row['last_name'] or '').strip()
+    return f"{first} {last}".strip()
 
 
 async def update_user(user_id: int, **kwargs):
@@ -5387,6 +5430,11 @@ def today_report_day() -> str:
     return report_day_value_of(datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"))
 
 
+def _utc_now_str() -> str:
+    """Текущее время UTC строкой, как created_at: 'YYYY-MM-DD HH:MM:SS'."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _today_msk() -> str:
     """Текущие отчётные сутки 'YYYY-MM-DD' — ЕДИНЫЙ источник «сейчас» для денег.
 
@@ -5802,7 +5850,8 @@ async def add_report(user_id: int, screenshot_file_id: str, troops_reported: int
     return cursor.lastrowid, ctx["payable"]
 
 
-async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
+async def approve_report(report_id: int, reviewed_by: int, troops: int = None,
+                         reviewer_name: str = None):
     """Одобрить отчёт. Возвращает сумму к начислению (войск) или False, если отчёт не найден.
 
     Сумма к начислению = «за сутки» из ПОСЛЕДНЕГО по времени отчёта отчётных суток,
@@ -5843,6 +5892,12 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
         logger.warning("approve_report: отчёт %s не найден", report_id)
         return 0
 
+    # Имя проверяющего фиксируем снимком: в карточке отчёта пилот видит имя в боте,
+    # а не Telegram ID. reviewed_by = 0 — автоодобрение, имени нет.
+    if reviewer_name is None and reviewed_by:
+        reviewer_name = await get_user_display_name(reviewed_by) or None
+    reviewed_at = _utc_now_str()
+
     # Лимит считаем по суткам САМОГО отчёта: одобрение часто приходит на следующие
     # сутки, и по текущим суткам лимит уже съеден другими отчётами пилота.
     ctx = await report_payout_context(row['user_id'], row['troops_reported'],
@@ -5859,9 +5914,10 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
     report_day = report_day_value_of(row['created_at'])
     if report_day is not None and report_day < today_report_day():
         cur = await conn.execute(
-            "UPDATE reports SET status = 'approved', reviewed_by = ?, credited_troops = ?, "
-            "paid = 1 WHERE id = ? AND status = 'pending'",
-            (reviewed_by, amount, report_id)
+            "UPDATE reports SET status = 'approved', reviewed_by = ?, reviewed_by_name = ?, "
+            "reviewed_at = ?, credited_troops = ?, paid = 1 "
+            "WHERE id = ? AND status = 'pending'",
+            (reviewed_by, reviewer_name, reviewed_at, amount, report_id)
         )
         claimed = cur.rowcount
         if claimed:
@@ -5883,9 +5939,10 @@ async def approve_report(report_id: int, reviewed_by: int, troops: int = None):
         return amount if claimed else 0
 
     cur = await conn.execute(
-        "UPDATE reports SET status = 'approved', reviewed_by = ?, credited_troops = ?, paid = 0 "
+        "UPDATE reports SET status = 'approved', reviewed_by = ?, reviewed_by_name = ?, "
+        "reviewed_at = ?, credited_troops = ?, paid = 0 "
         "WHERE id = ? AND status = 'pending'",
-        (reviewed_by, amount, report_id)
+        (reviewed_by, reviewer_name, reviewed_at, amount, report_id)
     )
     await conn.commit()
     return amount if cur.rowcount else 0
@@ -6087,13 +6144,24 @@ async def _reopen_report_day(conn, user_id: int, cycle_day: str) -> dict:
     return {'report_id': last_id, 'amount': amount, 'instant': instant}
 
 
-async def reject_report(report_id: int, reviewed_by: int):
+async def reject_report(report_id: int, reviewed_by: int, reason: str = None,
+                        reviewer_name: str = None):
+    """Отклонить отчёт.
+
+    reason — причина отклонения: её видит пилот в карточке отчёта (обязательна
+    в интерфейсе проверки, здесь не проверяется — бывают системные вызовы).
+    reviewer_name — имя проверяющего на момент решения (снимок, не ID).
+    """
     conn = await get_db()
     row = await (await conn.execute(
         "SELECT user_id, created_at FROM reports WHERE id = ?", (report_id,))).fetchone()
+    if reviewer_name is None and reviewed_by:
+        reviewer_name = await get_user_display_name(reviewed_by) or None
+    reason = (reason or "").strip() or None
     await conn.execute(
-        "UPDATE reports SET status = 'rejected', reviewed_by = ? WHERE id = ?",
-        (reviewed_by, report_id)
+        "UPDATE reports SET status = 'rejected', reviewed_by = ?, reviewed_by_name = ?, "
+        "reviewed_at = ?, reject_reason = ? WHERE id = ?",
+        (reviewed_by, reviewer_name, _utc_now_str(), reason, report_id)
     )
     await conn.commit()
     # Отклонение могло отдать сутки предыдущему отчёту — пересчитываем его долю.
@@ -6137,6 +6205,56 @@ async def count_approved_reports(unpaid_only: bool = False) -> int:
         + ("AND paid = 0" if unpaid_only else ""))
     row = await cur.fetchone()
     return row['n'] if row else 0
+
+
+async def get_rejected_reports_fresh(days: int = None) -> list:
+    """Свежие (за последние N дней) отклонённые отчёты — вкладка админки «Отклонённые».
+
+    Свежесть считаем по времени РЕШЕНИЯ (reviewed_at); у старых записей колонки нет —
+    тогда по времени сдачи (created_at). Заодно подтягиваем автора (для карточки) и
+    храним имя проверяющего (reviewed_by_name) — ID в интерфейс не показываем.
+    """
+    if not days:
+        from config import REJECTED_REPORTS_FRESH_DAYS
+        days = REJECTED_REPORTS_FRESH_DAYS
+    conn = await get_db()
+    cutoff = (datetime.now(timezone.utc)
+              - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    cur = await conn.execute(
+        """SELECT r.*, u.first_name, u.username, u.callsign FROM reports r
+           JOIN users u ON r.user_id = u.user_id
+           WHERE r.status = 'rejected'
+             AND COALESCE(r.reviewed_at, r.created_at) >= ?
+           ORDER BY COALESCE(r.reviewed_at, r.created_at) DESC, r.id DESC""",
+        (cutoff,))
+    return await cur.fetchall()
+
+
+async def count_rejected_reports_fresh(days: int = None) -> int:
+    """Сколько отклонённых отчётов попадает в список «свежих» (за N дней)."""
+    if not days:
+        from config import REJECTED_REPORTS_FRESH_DAYS
+        days = REJECTED_REPORTS_FRESH_DAYS
+    conn = await get_db()
+    cutoff = (datetime.now(timezone.utc)
+              - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+    row = await (await conn.execute(
+        "SELECT COUNT(*) AS n FROM reports WHERE status = 'rejected' "
+        "AND COALESCE(reviewed_at, created_at) >= ?", (cutoff,))).fetchone()
+    return row['n'] if row else 0
+
+
+async def delete_rejected_report(report_id: int) -> bool:
+    """Удалить отклонённый отчёт навсегда (только супер-админ, только rejected).
+
+    Принятые и висящие отчёты не трогаем: по ним считаются выплаты и статистика.
+    Возвращает True, если запись действительно удалена.
+    """
+    conn = await get_db()
+    cur = await conn.execute(
+        "DELETE FROM reports WHERE id = ? AND status = 'rejected'", (report_id,))
+    await conn.commit()
+    return cur.rowcount > 0
 
 
 async def get_user_reports(user_id: int):

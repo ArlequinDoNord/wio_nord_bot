@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=01a9a3eb1d04cc2f seeds=560b34bc7b7f1751 db=3add464f056eacfa -->
+<!-- texts-catalog: code=68d96b6074edbb7f seeds=560b34bc7b7f1751 db=3add464f056eacfa -->
 
 _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **143** (ru + en).
+Всего строк: **169** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -853,7 +853,7 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 - EN:
   > 📜 LEARNED RECIPES ({n}):
 
-#### отчёты · `report.` (11)
+#### отчёты · `report.` (37)
 
 ### UI-report.btn_my
 - RU:
@@ -866,6 +866,18 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
   > Сдать отчёт
 - EN:
   > Submit report
+
+### UI-report.card_reject_reason
+- RU:
+  > 📝 Причина отклонения: {reason}
+- EN:
+  > 📝 Rejection reason: {reason}
+
+### UI-report.card_reviewed_by
+- RU:
+  > 👮 Проверил: {name}
+- EN:
+  > 👮 Reviewed by: {name}
 
 ### UI-report.daily_prompt
 - RU:
@@ -911,11 +923,191 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 - EN:
   > 🗓 Last game day you submitted: {n}.
 
+### UI-report.reject_ask
+- RU:
+  > ❌ ОТКЛОНЕНИЕ ОТЧЁТА #{id}
+  >
+  > Напиши причину отклонения: её увидит пилот в карточке отчёта и в личном сообщении. Причина обязательна.
+  > Отмена — вернуться к очереди.
+- EN:
+  > ❌ REJECTING REPORT #{id}
+  >
+  > Write the reason for rejection: the pilot will see it in the report card and in a private message. The reason is required.
+  > Cancel to go back to the queue.
+
+### UI-report.reject_dm
+- RU:
+  > ❌ ТВОЙ ОТЧЁТ ОТКЛОНЁН
+  >
+  > Отчёт #{id} отклонён при проверке.
+  > 📝 Причина: {reason}
+  > 👮 Проверил: {name}
+  >
+  > Если считаешь отклонение ошибкой — напиши в МВД.
+- EN:
+  > ❌ YOUR REPORT WAS REJECTED
+  >
+  > Report #{id} was rejected during review.
+  > 📝 Reason: {reason}
+  > 👮 Reviewed by: {name}
+  >
+  > If you think this was a mistake, contact the Interior Ministry.
+
+### UI-report.reject_done
+- RU:
+  > ❌ Отчёт #{id} отклонён.
+  > 📝 Причина: {reason}
+  > 👮 Проверил: {name}
+- EN:
+  > ❌ Report #{id} rejected.
+  > 📝 Reason: {reason}
+  > 👮 Reviewed by: {name}
+
+### UI-report.reject_reason_required
+- RU:
+  > ❌ Причину отклонения нельзя оставить пустой. Напиши её текстом:
+- EN:
+  > ❌ The rejection reason cannot be empty. Write it as text:
+
+### UI-report.reject_reason_short
+- RU:
+  > ❌ Слишком коротко. Опиши причину хотя бы в {min} символов:
+- EN:
+  > ❌ Too short. Describe the reason in at least {min} characters:
+
+### UI-report.rejected_back_btn
+- RU:
+  > 🔙 К отклонённым
+- EN:
+  > 🔙 Back to rejected
+
+### UI-report.rejected_back_reports
+- RU:
+  > 🔙 К отчётам
+- EN:
+  > 🔙 Back to reports
+
+### UI-report.rejected_delete_ask
+- RU:
+  > 🗑 УДАЛИТЬ ОТЧЁТ #{id}?
+  >
+  > Запись исчезнет из БД: её не будет ни в списке отклонённых, ни в «Моих отчётах» пилота. Действие необратимо.
+- EN:
+  > 🗑 DELETE REPORT #{id}?
+  >
+  > The record will be removed from the database: it disappears from the rejected list and from the pilot's «My reports». This cannot be undone.
+
+### UI-report.rejected_delete_btn
+- RU:
+  > 🗑 Удалить из списка
+- EN:
+  > 🗑 Remove from list
+
+### UI-report.rejected_delete_cancel
+- RU:
+  > 🔙 Отмена
+- EN:
+  > 🔙 Cancel
+
+### UI-report.rejected_delete_done
+- RU:
+  > 🗑 Отчёт #{id} удалён из списка отклонённых.
+- EN:
+  > 🗑 Report #{id} removed from the rejected list.
+
+### UI-report.rejected_delete_missing
+- RU:
+  > ❌ Отчёт #{id} не найден среди отклонённых (возможно, уже удалён).
+- EN:
+  > ❌ Report #{id} is not among rejected ones (maybe already deleted).
+
+### UI-report.rejected_delete_super_only
+- RU:
+  > ❌ Удалять отклонённые отчёты может только супер-админ.
+- EN:
+  > ❌ Only a super admin can delete rejected reports.
+
+### UI-report.rejected_delete_yes
+- RU:
+  > ✅ Да, удалить
+- EN:
+  > ✅ Yes, delete
+
+### UI-report.rejected_details
+- RU:
+  >
+  > 🗑 Отклонён: {when}
+- EN:
+  >
+  > 🗑 Rejected: {when}
+
+### UI-report.rejected_line
+- RU:
+  > #{id} · {author} · {troops} ⚔️ · регион {region} · {when}
+  >    👮 {reviewer} · 📝 {reason}
+- EN:
+  > #{id} · {author} · {troops} ⚔️ · region {region} · {when}
+  >    👮 {reviewer} · 📝 {reason}
+
+### UI-report.rejected_menu_btn
+- RU:
+  > ❌ Отклонённые отчёты · {n}
+- EN:
+  > ❌ Rejected reports · {n}
+
+### UI-report.rejected_menu_line
+- RU:
+  > • ❌ Отклонённые ({days} дн.): {n}
+- EN:
+  > • ❌ Rejected (last {days} days): {n}
+
+### UI-report.rejected_none
+- RU:
+  >
+  > За последние {days} дней отклонённых отчётов нет.
+- EN:
+  >
+  > No rejected reports in the last {days} days.
+
+### UI-report.rejected_page
+- RU:
+  > Страница {page} из {total}
+- EN:
+  > Page {page} of {total}
+
+### UI-report.rejected_title
+- RU:
+  > ❌ ОТКЛОНЁННЫЕ ОТЧЁТЫ
+  >
+  > Показаны только отчёты, отклонённые за последние {days} дней. Старые записи из списка уходят сами.
+- EN:
+  > ❌ REJECTED REPORTS
+  >
+  > Only reports rejected within the last {days} days are shown. Older entries leave the list automatically.
+
+### UI-report.rejected_view_btn
+- RU:
+  > 🔍 Отчёт #{id}
+- EN:
+  > 🔍 Report #{id}
+
 ### UI-report.remaining
 - RU:
   > Осталось отчётов сегодня: {n}
 - EN:
   > Reports left today: {n}
+
+### UI-report.reviewer_system
+- RU:
+  > автоматически (система)
+- EN:
+  > automatically (system)
+
+### UI-report.reviewer_unknown
+- RU:
+  > —
+- EN:
+  > —
 
 ### UI-report.start
 - RU:
@@ -3631,7 +3823,7 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **5012** (уникальные вхождения по файлам и функциям).
+Всего текстов: **5019** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/i18n.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -3639,7 +3831,7 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 > «Интерфейс и кнопки» с переводом. Здесь правки переносятся по тексту в
 > указанной функции соответствующего файла.
 
-#### `bot/handlers/admin.py` (1506)
+#### `bot/handlers/admin.py` (1514)
 
 ##### `(модуль)`
 
@@ -4240,6 +4432,10 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
   Нажми эффект, чтобы включить (задать шанс) или выключить.
 - — эффектов нет (враг бьёт просто).
 - ✨ ЭФФЕКТЫ ПРИ УДАРЕ — {name}
+
+##### `_rejected_author`
+
+- Пилот
 
 ##### `_report_payout_block`
 
@@ -5111,6 +5307,10 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 - ❌ Нет прав для просмотра отчётов.
 
 ##### `admin_reports_pending`
+
+- ❌ Нет прав для просмотра отчётов.
+
+##### `admin_reports_rejected`
 
 - ❌ Нет прав для просмотра отчётов.
 
@@ -6129,6 +6329,14 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 
 - ❌ Нет прав.
 
+##### `rejected_report_view`
+
+- ❌ Нет прав для просмотра отчётов.
+
+##### `rejected_reports_page`
+
+- ❌ Нет прав для просмотра отчётов.
+
 ##### `report_approve`
 
 - ℹ️ К выдаче 0: этот отчёт перекрыт более свежим снимком за эти же сутки — оплату получит последний отчёт.
@@ -6235,7 +6443,13 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 ##### `report_reject`
 
 - ❌ Нет прав.
-- ❌ Отчёт отклонён.
+- ❌ Отчёт не найден в очереди.
+
+##### `report_reject_reason`
+
+- report={report_id} причина: {reason}
+- ❌ Нет прав.
+- ❌ Сессия отклонения сброшена, начни заново.
 
 ##### `roles_action`
 
@@ -6349,14 +6563,13 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 
 ##### `show_reports_menu`
 
+- Выбери пункт:
 - ⚙️ Порог автопроверки
 - ✅ Принятые отчёты · {approved_total}
 - 📋 ОТЧЁТЫ
   
   • 🕵️ На проверке: {…}
   • ✅ Принятые: {approved_total} (не оплачено: {unpaid})
-  
-  Выбери пункт:
 - 🔙 В меню
 - 🕵️ Отчёты на проверку · {…}
 - 🚦 Потолок за сутки
@@ -12621,7 +12834,7 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 
 - 📸 Отправь новое фото. Нажми «Отмена» если передумаешь:
 
-#### `bot/handlers/reports.py` (50)
+#### `bot/handlers/reports.py` (49)
 
 ##### `report_card_text`
 
@@ -12632,7 +12845,6 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 - 🌍 Регион: {…}
 - 🏷 Статус: {…}
 - 👤 Автор: {name}
-- 👮 Проверил: ID {…}
 - 💰 Ожидает оплаты
 - 💰 Оплачен: Да
 - 📅 Сдан: {when}{day_hint}
