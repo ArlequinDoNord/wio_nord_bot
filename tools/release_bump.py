@@ -11,8 +11,8 @@ tools/release_bump.py
 
 Выполняет:
 - Проверку git status
-- Определение текущей версии из config.py
-- Обновление config.py: VERSION, VERSION_NOTES, PREV_VERSION, PREV_VERSION_NOTES
+- Определение текущей версии из version.py
+- Обновление version.py: VERSION, VERSION_NOTES, PREV_VERSION, PREV_VERSION_NOTES
 - Перегенерацию CONFIG_REFERENCE.md (через tools/export_config.py)
 - Обновление CHANGELOG.md в формате `## vX.Y.Z (YYYY-MM-DD)`
 - git add, git commit
@@ -33,7 +33,7 @@ if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 ROOT = Path(__file__).resolve().parent.parent
-CONFIG = ROOT / "config.py"
+VERSION_FILE = ROOT / "version.py"
 CHANGELOG = ROOT / "CHANGELOG.md"
 EXPORT_CONFIG = ROOT / "tools" / "export_config.py"
 EXPORT_TEXTS = ROOT / "tools" / "export_texts.py"
@@ -159,7 +159,7 @@ def ask(prompt: str, choices: list[str] | None = None) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Бамп версии config.py + CHANGELOG.md + git tag.")
+    parser = argparse.ArgumentParser(description="Бамп версии version.py + CHANGELOG.md + git tag.")
     parser.add_argument("--bump", choices=["patch", "minor", "major"], help="Тип бампа SemVer")
     parser.add_argument("--version", help="Явная версия X.Y.Z")
     parser.add_argument("--notes", help="Текст VERSION_NOTES (для явного анонса или своего намёка)")
@@ -187,7 +187,7 @@ def main() -> int:
         print("Рабочее дерево чистое")
     print("")
 
-    cfg = read_text(CONFIG)
+    cfg = read_text(VERSION_FILE)
     cur_ver, cur_prev, cur_vn, _cur_pvn = extract_config_vars(cfg)
     print(f"Текущая: VERSION={cur_ver}, PREV={cur_prev}\n")
 
@@ -240,7 +240,7 @@ def main() -> int:
     commit_summary = ch_notes.splitlines()[0].lstrip("- ").strip()
 
     print("\n=== План ===")
-    print(f"config.py: {cur_ver} -> {new_ver}, PREV={cur_ver}")
+    print(f"version.py: {cur_ver} -> {new_ver}, PREV={cur_ver}")
     print(f"VERSION_NOTES -> {vn}")
     print(f"PREV_VERSION_NOTES <- {cur_vn.strip()[:60]}...")
     print(f"CHANGELOG.md: добавить секцию ## v{new_ver}")
@@ -254,8 +254,8 @@ def main() -> int:
             return 0
 
     new_cfg = update_config(cfg, new_ver, vn, cur_ver, cur_vn)
-    write_text(CONFIG, new_cfg)
-    print("config.py обновлён")
+    write_text(VERSION_FILE, new_cfg)
+    print("version.py обновлён")
 
     if EXPORT_CONFIG.exists():
         run([sys.executable, str(EXPORT_CONFIG)])
@@ -267,7 +267,7 @@ def main() -> int:
         write_text(CHANGELOG, new_ch)
         print("CHANGELOG.md обновлён")
 
-    files_to_stage = ["config.py", "CHANGELOG.md"]
+    files_to_stage = ["version.py", "CHANGELOG.md"]
     if (ROOT / "CONFIG_REFERENCE.md").exists():
         files_to_stage.append("CONFIG_REFERENCE.md")
     run(["git", "add", *files_to_stage])

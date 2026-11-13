@@ -24,7 +24,7 @@ HTTPS — авторизация через Windows Credential Manager (учёт
 уже сохранена, работает без интерактива). SSH-ключ нужен только для `server`.
 
 ## Правила релиза (обязательно при каждом деплое)
-- `config.VERSION_NOTES` ОБЯЗАН содержать краткое описание изменений **текущей**
+- `VERSION_NOTES` (файл `version.py`, реэкспорт в `config`) ОБЯЗАН содержать краткое описание изменений **текущей**
   сборки: оно показывается в `/start` после строки `>> Что нового:` (тизер,
   `bot/handlers/start.py`, `_version_teaser`) и уходит в общий чат при смене версии.
   При бампе старую заметку сдвигаем в `PREV_VERSION`/`PREV_VERSION_NOTES`
@@ -36,7 +36,9 @@ HTTPS — авторизация через Windows Credential Manager (учёт
 - Каждый релиз — запись в `CHANGELOG.md` с тем же текстом сути.
 
 ## Деплой
-- py_compile + smoke → бамп `VERSION`/`VERSION_NOTES`/`PREV_VERSION`/`PREV_VERSION_NOTES` в `config.py`, `CHANGELOG.md` → commit → tag `vX.Y.Z` → два пуша:
+- **Версия живёт в `version.py`** (`VERSION`, `VERSION_NOTES`, `PREV_VERSION`, `PREV_VERSION_NOTES`); `config.py` её реэкспортирует. Бамп не трогает `config.py`, поэтому `--related` не тянет все смоуки.
+- **Малый фикс** (один хендлер/функция, поведение уже покрыто смоуком): `py_compile` изменённых файлов → точечный смоук этой фичи → `tools\run_smokes.py --related` → бамп → деплой. Полный прогон нужен, если меняется `config.py` или `database/db.py` (фильтр тогда берёт все смоуки) или правка затрагивает несколько подсистем. Анонс по умолчанию неявный.
+- py_compile + smoke → бамп `VERSION`/`VERSION_NOTES`/`PREV_VERSION`/`PREV_VERSION_NOTES` в `version.py`, `CHANGELOG.md` → commit → tag `vX.Y.Z` → два пуша:
   1. `git push server main --tags` — деплой на прод (хук пересобирает контейнер; git-клиент не проходит проверку host key — перед пушем `$env:GIT_SSH_COMMAND = "C:/Windows/System32/OpenSSH/ssh.exe"`);
   2. `git push origin main --tags` — синхронизация GitHub-зеркала (HTTPS, без ключа; НЕ забывать — зеркало стояло на месте ещё c v0.18.8 именно из-за пропуска этого шага). Недостающие старые теги (`v0.18.9` и т.д.) пуш снимет сам.
 - После деплоя проверить прод: VERSION в контейнере (`docker exec -i wio_nord_bot-wio_nord_bot-1 python -u -` → `import config`) и `git ls-remote https://github.com/ArlequinDoNord/wio_nord_bot.git refs/heads/main refs/tags/vX.Y.Z` для зеркала.
@@ -116,7 +118,7 @@ HTTPS — авторизация через Windows Credential Manager (учёт
 - Если выбран явный вариант — VERSION_NOTES может содержать суть новинки (как и раньше).
 
 
-- При любом деплое на прод **обязательно повышать версию** в config.py (минимум +0.0.1), обновлять PREV_VERSION, указывать изменение в коммите и проверять версию на сервере после пуша.
+- При любом деплое на прод **обязательно повышать версию** в version.py (минимум +0.0.1), обновлять PREV_VERSION, указывать изменение в коммите и проверять версию на сервере после пуша.
 
 ## Локализация (английский интерфейс, с v0.42.0) — обязательно
 - Язык пилота — `users.lang` (`ru` по умолчанию, `en`). Внутри обработчика текущий язык
