@@ -267,6 +267,44 @@ STRINGS = {
     "report.rejected_view_btn": {"ru": "🔍 Отчёт #{id}", "en": "🔍 Report #{id}"},
     "report.rejected_back_btn": {"ru": "🔙 К отклонённым", "en": "🔙 Back to rejected"},
     "report.rejected_back_reports": {"ru": "🔙 К отчётам", "en": "🔙 Back to reports"},
+    # Авто-выкладка товара «как госпоставка» (карточка в Хранилище, раз в неделю).
+    "restock.btn": {"ru": "🔁 Авто-выкладка раз в неделю", "en": "🔁 Weekly auto-restock"},
+    "restock.screen": {
+        "ru": ("🔁 АВТО-ВЫКЛАДКА «{name}»\n\n"
+               "Раз в неделю (первый суточный цикл недели, понедельник 10:00 МСК) "
+               "остаток доводится до заданного числа. Если остаток выше — не трогаем. "
+               "Безлимит не выкладываем.\n\n"
+               "Сейчас: {state}\nОстаток на складе: {stock}"),
+        "en": ("🔁 AUTO-RESTOCK «{name}»\n\n"
+               "Once a week (the first daily cycle of the week, Monday 10:00 MSK) "
+               "the stock is topped up to the set number. If stock is already higher, "
+               "nothing changes. Unlimited items are not restocked.\n\n"
+               "Now: {state}\nStock on hand: {stock}"),
+    },
+    "restock.state_on": {"ru": "включена, до {n} шт. в неделю", "en": "on, up to {n} per week"},
+    "restock.state_off": {"ru": "выключена", "en": "off"},
+    "restock.toggle_on": {"ru": "✅ Включить", "en": "✅ Turn on"},
+    "restock.toggle_off": {"ru": "⏸ Выключить", "en": "⏸ Turn off"},
+    "restock.set_target": {"ru": "🔢 Сколько выкладывать", "en": "🔢 Set weekly amount"},
+    "restock.back": {"ru": "🔙 К товару", "en": "🔙 Back to item"},
+    "restock.ask_target": {
+        "ru": ("🔢 Сколько штук «{name}» выкладывать каждую неделю?\n"
+               "Введи число от 1 до 100000. Включение выкладки включит и её."),
+        "en": ("🔢 How many «{name}» to restock every week?\n"
+               "Enter a number from 1 to 100000. Setting it also turns restock on."),
+    },
+    "restock.bad_target": {
+        "ru": "❌ Введи целое число от 1 до 100000.",
+        "en": "❌ Enter a whole number from 1 to 100000.",
+    },
+    "restock.saved": {
+        "ru": "✅ «{name}»: авто-выкладка включена, до {n} шт. в неделю.",
+        "en": "✅ «{name}»: weekly auto-restock is on, up to {n} per week.",
+    },
+    "restock.unlimited": {
+        "ru": "ℹ️ Безлимитный или лут-товар — авто-выкладка не нужна.",
+        "en": "ℹ️ Unlimited or loot-only item — auto-restock is not needed.",
+    },
     "report.rejected_details": {
         "ru": "\n🗑 Отклонён: {when}",
         "en": "\n🗑 Rejected: {when}",

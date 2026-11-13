@@ -11,7 +11,7 @@
 
 ## 1. Колоночные миграции `_ensure_column`
 
-Всего вызовов: **197**; таблиц: **29**.
+Всего вызовов: **199**; таблиц: **29**.
 
 | Таблица | Колонка | Тип / значение по умолчанию | db.py |
 |---|---|---|---|
@@ -30,7 +30,7 @@
 | `awards` | `monthly_nm` | `INTEGER DEFAULT 0` | :1416 |
 | `awards` | `reward_nm` | `INTEGER DEFAULT 0` | :1415 |
 | `buildings` | `required_status` | `TEXT` | :1145 |
-| `clan_buildings` | `building_photo_file_id` | `TEXT` | :1797 |
+| `clan_buildings` | `building_photo_file_id` | `TEXT` | :1801 |
 | `clan_members` | `role` | `TEXT NOT NULL DEFAULT 'member'` | :1147 |
 | `clans` | `tree_amber_at` | `TEXT DEFAULT NULL` | :1471 |
 | `dungeon_enemies` | `abilities` | `TEXT DEFAULT '[]'` | :1324 |
@@ -58,15 +58,15 @@
 | `dungeons` | `photo_sunset` | `TEXT` | :1375 |
 | `dungeons` | `photo_water` | `TEXT` | :1378 |
 | `dungeons` | `rooms_map` | `TEXT` | :1609 |
-| `fire_lab_sessions` | `boss_encounters` | `INTEGER DEFAULT 0` | :1804 |
-| `fire_lab_sessions` | `effects_json` | `TEXT DEFAULT NULL` | :1803 |
-| `fire_lab_sessions` | `enemy_json` | `TEXT DEFAULT NULL` | :1802 |
-| `fire_lab_sessions` | `fish_used` | `INTEGER DEFAULT 0` | :1805 |
-| `fire_lab_sessions` | `last_active_at` | `TIMESTAMP` | :1811 |
-| `fire_lab_sessions` | `tree_open` | `INTEGER DEFAULT 0` | :1809 |
-| `fire_lab_sessions` | `well_open` | `INTEGER DEFAULT 0` | :1807 |
-| `firelab_enemies` | `armor` | `INTEGER DEFAULT 0` | :1801 |
-| `firelab_enemies` | `on_hit_effects` | `TEXT DEFAULT NULL` | :1800 |
+| `fire_lab_sessions` | `boss_encounters` | `INTEGER DEFAULT 0` | :1808 |
+| `fire_lab_sessions` | `effects_json` | `TEXT DEFAULT NULL` | :1807 |
+| `fire_lab_sessions` | `enemy_json` | `TEXT DEFAULT NULL` | :1806 |
+| `fire_lab_sessions` | `fish_used` | `INTEGER DEFAULT 0` | :1809 |
+| `fire_lab_sessions` | `last_active_at` | `TIMESTAMP` | :1815 |
+| `fire_lab_sessions` | `tree_open` | `INTEGER DEFAULT 0` | :1813 |
+| `fire_lab_sessions` | `well_open` | `INTEGER DEFAULT 0` | :1811 |
+| `firelab_enemies` | `armor` | `INTEGER DEFAULT 0` | :1805 |
+| `firelab_enemies` | `on_hit_effects` | `TEXT DEFAULT NULL` | :1804 |
 | `fish_catches` | `expires_at` | `TIMESTAMP` | :1461 |
 | `fish_catches` | `kind` | `TEXT DEFAULT 'fish'` | :1615 |
 | `fishing_enemies` | `armor` | `INTEGER DEFAULT 0` | :1335 |
@@ -95,14 +95,16 @@
 | `items` | `equip_slot` | `TEXT` | :1184 |
 | `items` | `heal` | `INTEGER DEFAULT 0` | :1311 |
 | `items` | `heal_bonus_pct` | `INTEGER DEFAULT 0` | :1638 |
-| `items` | `housing_slots` | `INTEGER` | :1749 |
-| `items` | `housing_type` | `TEXT` | :1748 |
-| `items` | `loot_only` | `INTEGER DEFAULT 0` | :1754 |
+| `items` | `housing_slots` | `INTEGER` | :1753 |
+| `items` | `housing_type` | `TEXT` | :1752 |
+| `items` | `loot_only` | `INTEGER DEFAULT 0` | :1758 |
 | `items` | `market_ok` | `INTEGER DEFAULT 0` | :1612 |
 | `items` | `plant_name` | `TEXT` | :1622 |
 | `items` | `regen` | `INTEGER DEFAULT 0` | :1371 |
 | `items` | `regen_turns` | `INTEGER DEFAULT 0` | :1642 |
 | `items` | `required_status` | `TEXT` | :1144 |
+| `items` | `restock_enabled` | `INTEGER DEFAULT 0` | :1646 |
+| `items` | `restock_target` | `INTEGER DEFAULT 0` | :1647 |
 | `items` | `weapon_effect` | `TEXT` | :1633 |
 | `items` | `weapon_effect_chance` | `INTEGER DEFAULT 0` | :1634 |
 | `items` | `weapon_effect_dmg` | `INTEGER DEFAULT 0` | :1635 |
@@ -136,8 +138,8 @@
 | `player_dungeon_run` | `loot_nm` | `INTEGER DEFAULT 0` | :1297 |
 | `player_dungeon_run` | `started_at` | `TIMESTAMP DEFAULT CURRENT_TIMESTAMP` | :1298 |
 | `player_housing` | `expansions_installed` | `INTEGER DEFAULT 0` | :1546 |
-| `player_housing` | `housing_label` | `TEXT` | :1750 |
-| `player_housing` | `housing_slots` | `INTEGER` | :1751 |
+| `player_housing` | `housing_label` | `TEXT` | :1754 |
+| `player_housing` | `housing_slots` | `INTEGER` | :1755 |
 | `player_housing` | `tax_last_check` | `TEXT DEFAULT NULL` | :1597 |
 | `player_housing` | `tax_unpaid_months` | `INTEGER DEFAULT 0` | :1598 |
 | `polls` | `archived_day` | `TEXT DEFAULT ''` | :1562 |
@@ -164,8 +166,8 @@
 | `users` | `beer_used_today` | `INTEGER DEFAULT 0` | :1442 |
 | `users` | `callsign` | `TEXT` | :1386 |
 | `users` | `callsign_free_used` | `INTEGER DEFAULT 0` | :1595 |
-| `users` | `dodge_buff_pct` | `INTEGER DEFAULT 0` | :1645 |
-| `users` | `dodge_buff_until` | `TEXT DEFAULT NULL` | :1644 |
+| `users` | `dodge_buff_pct` | `INTEGER DEFAULT 0` | :1649 |
+| `users` | `dodge_buff_until` | `TEXT DEFAULT NULL` | :1648 |
 | `users` | `duel_losses` | `INTEGER DEFAULT 0` | :1306 |
 | `users` | `duel_rating` | `INTEGER DEFAULT 0` | :1304 |
 | `users` | `duel_wins` | `INTEGER DEFAULT 0` | :1305 |
@@ -184,7 +186,7 @@
 | `users` | `lantern_medit_day` | `TEXT DEFAULT NULL` | :1468 |
 | `users` | `last_active` | `REAL DEFAULT 0` | :1309 |
 | `users` | `last_salary_date` | `TIMESTAMP` | :1176 |
-| `users` | `legioner` | `INTEGER DEFAULT 0` | :1691 |
+| `users` | `legioner` | `INTEGER DEFAULT 0` | :1695 |
 | `users` | `logging_attempts_since_owl` | `INTEGER DEFAULT 0` | :1487 |
 | `users` | `logging_attempts_since_snake` | `INTEGER DEFAULT 0` | :1486 |
 | `users` | `market_license_expires` | `TEXT DEFAULT NULL` | :1594 |
@@ -201,7 +203,7 @@
 | `users` | `shower_used_today` | `INTEGER DEFAULT 0` | :1473 |
 | `users` | `special_blocked_until` | `TEXT DEFAULT NULL` | :1451 |
 | `users` | `special_fails_today` | `INTEGER DEFAULT 0` | :1450 |
-| `users` | `wing` | `TEXT` | :1688 |
+| `users` | `wing` | `TEXT` | :1692 |
 | `users` | `xp_balance` | `INTEGER DEFAULT 0` | :1154 |
 | `water_fish` | `excluded` | `INTEGER DEFAULT 0` | :1382 |
 | `water_fish` | `kind` | `TEXT DEFAULT 'fish'` | :1616 |
@@ -217,52 +219,52 @@
 
 | Функция | Вызывается из main.py | Назначение (первая строка docstring) | db.py |
 |---|---|---|---|
-| `backfill_rank_statuses` | — | Разово выдать статусы по текущим званиям всех пилотов (войска и админ-звания). | :6575 |
-| `ensure_achievements` | ✅ | Идемпотентно засевает награды-уровни достижений и синхронизирует их. | :14411 |
-| `ensure_base_status` | — | Базовый статус «Турист» для каждого нового игрока. | :6958 |
-| `ensure_base_statuses` | — | Создаёт базовые статусы иерархии, если их нет. | :6913 |
-| `ensure_berry_candy_recipe` | — | Рецепт «Леденец из ягод»: черника + малина + сахар. Создаётся скрытым: | :10489 |
-| `ensure_clan_building` | — | — | :16510 |
-| `ensure_clan_cape_item` | — | Клановая накидка: экипировка слота «Клановая накидка». Продаётся в клановой | :10471 |
-| `ensure_duel_items` | ✅ | Товары Дома Дуэлей: дуэльные перчатки (отдельный слот) и клубная карта. | :11956 |
-| `ensure_dungeon_enemy_drops` | ✅ | Синхронизирует врагов существующего данжа с DEFAULT_DUNGEON (дропы, HP, награды, | :13863 |
-| `ensure_dungeon_reservoir_items` | ✅ | Идемпотентно добавляет предметы водохранилища подземелья (v0.12.0). | :13786 |
-| `ensure_dungeon_shop_items` | ✅ | Идемпотентно добавляет предметы данжа (зелье в магазин, трофеи) — для существующих БД. | :13394 |
-| `ensure_fire_mushroom_pool` | — | Огненный гриб — на прогалину с весом 15; по 1 снимаем с пяти самых редких грибов. Один раз. | :10347 |
-| `ensure_fire_tree_items` | — | Предметы пожертвования и талисмана: скрыты, без цены продажи, не на рынке. | :10280 |
-| `ensure_firelab_enemies` | ✅ | Идемпотентно засевает врагов Огненного Лабиринта (4 обычных + босс). | :10594 |
-| `ensure_firelab_items` | ✅ | Идемпотентно создаёт предметы Фазы 3 «Дней Пламенного Круговорота». | :10642 |
-| `ensure_fishing_enemies` | ✅ | Идемпотентно засевает врагов рыбалки (мутировавший моллюск) из MOLLUSK_SEED. | :10916 |
-| `ensure_forest_berry_items` | — | Ягоды (горсть) и шкура медведя: предметы-ресурсы вне магазина. Идемпотентно. | :10451 |
-| `ensure_forest_berry_pool` | — | Таблица ягод поиска по зонам (как у грибов): шансы правит админ. Засев — один раз. | :10318 |
-| `ensure_forest_enemies` | ✅ | Идемпотентно засевает врагов леса (кабан и Белый Волк Севера). | :10562 |
-| `ensure_forest_items` | ✅ | Идемпотентно создаёт предметы леса (грибы, добыча кабана, жареные блюда, яд). | :9508 |
-| `ensure_forest_mushrooms` | ✅ | Идемпотентно засевает пул грибов леса из FOREST_DEFAULTS. | :9680 |
-| `ensure_forest_zones` | ✅ | Разовый перенос старого пула леса в зону поляны и засев пула опушки. | :9923 |
-| `ensure_item_rarity_unified` | ✅ | Идемпотентно применяет единую градацию редкости (v0.43.10). | :2106 |
-| `ensure_kvp_award` | ✅ | — | :12215 |
-| `ensure_kvp_items` | ✅ | Обеспечивает эксклюзивный предмет К.В.П. — «Сержантскую трость». | :11929 |
-| `ensure_kvp_user` | — | Гарантирует наличие строки прогресса К.В.П. для игрока. | :12402 |
-| `ensure_life_items` | ✅ | Идемпотентно добавляет предметы жилья, мебели, семян, ресурсов и продовольствия. | :13610 |
-| `ensure_logging_enemies` | ✅ | Идемпотентно засевает врагов Лесозаготовки (Змея и Неясыть). | :9669 |
-| `ensure_logging_items` | ✅ | Идемпотентно создаёт предметы Лесозаготовки (топор, бревна, дропы). | :9626 |
-| `ensure_market_license_item` | ✅ | Идемпотентно добавляет «Торговую лицензию» в магазин. | :11479 |
-| `ensure_mine_enemies` | ✅ | Идемпотентно засевает врагов копи (Летучая мышь) из MINE_BAT_SEED. | :9617 |
-| `ensure_mine_items` | ✅ | Идемпотентно создаёт предметы Железной копи (кирка, руда, самоцветы). | :9586 |
-| `ensure_mollusk_items` | ✅ | Идемпотентно создаёт предметы моллюска (из его добычи и готового блюда). | :10922 |
-| `ensure_player_housing` | — | Возвращает жильё игрока, создавая муниципальную квартиру для пилота при первом обращении. | :14008 |
-| `ensure_rank_statuses_for_troops` | — | Выдать статус по текущему званию игрока (по войскам или админ-назначению). | :6563 |
-| `ensure_recipe_shop_item` | — | Синхронизирует товар-рецепт «Рецепт: <name>» с рецептом (менеджер). | :14836 |
-| `ensure_recipe_shop_items` | ✅ | Создаёт в магазине предметы-рецепты категории 'recipes'. | :16186 |
-| `ensure_recipes` | ✅ | Идемпотентно засевает рецепты и синхронизирует уже существующие. | :14686 |
-| `ensure_tourist_booklet` | ✅ | Создаёт предмет «Буклет туриста» и награду «Опытный турист», если их нет. | :12251 |
-| `ensure_user_recipes_backfill` | ✅ | Разово открывает все рецепты существующим игрокам. | :16336 |
-| `ensure_water_fish` | ✅ | Идемпотентно засевает water_fish из дефолтов. Правившие админом строки | :9018 |
-| `migrate_legacy_junk` | ✅ | Переносит старые копии мусора (сапог, водоросли) из инвентаря в улов. | :8863 |
-| `seed_default_items` | ✅ | Заполняет магазин базовым набором товаров, если он пуст и не было своих товаров. | :11652 |
-| `seed_dungeon` | ✅ | — | :11807 |
-| `seed_kvp` | ✅ | Создаёт тренировочный данж К.В.П. с врагами (Ефрейтор, Старший сержант), если его нет. | :11878 |
-| `seed_locations` | — | Засеивает базовые локации города (Ратуша, Библиотека) как пример управляемого доступа. | :1901 |
+| `backfill_rank_statuses` | — | Разово выдать статусы по текущим званиям всех пилотов (войска и админ-звания). | :6620 |
+| `ensure_achievements` | ✅ | Идемпотентно засевает награды-уровни достижений и синхронизирует их. | :14456 |
+| `ensure_base_status` | — | Базовый статус «Турист» для каждого нового игрока. | :7003 |
+| `ensure_base_statuses` | — | Создаёт базовые статусы иерархии, если их нет. | :6958 |
+| `ensure_berry_candy_recipe` | — | Рецепт «Леденец из ягод»: черника + малина + сахар. Создаётся скрытым: | :10534 |
+| `ensure_clan_building` | — | — | :16555 |
+| `ensure_clan_cape_item` | — | Клановая накидка: экипировка слота «Клановая накидка». Продаётся в клановой | :10516 |
+| `ensure_duel_items` | ✅ | Товары Дома Дуэлей: дуэльные перчатки (отдельный слот) и клубная карта. | :12001 |
+| `ensure_dungeon_enemy_drops` | ✅ | Синхронизирует врагов существующего данжа с DEFAULT_DUNGEON (дропы, HP, награды, | :13908 |
+| `ensure_dungeon_reservoir_items` | ✅ | Идемпотентно добавляет предметы водохранилища подземелья (v0.12.0). | :13831 |
+| `ensure_dungeon_shop_items` | ✅ | Идемпотентно добавляет предметы данжа (зелье в магазин, трофеи) — для существующих БД. | :13439 |
+| `ensure_fire_mushroom_pool` | — | Огненный гриб — на прогалину с весом 15; по 1 снимаем с пяти самых редких грибов. Один раз. | :10392 |
+| `ensure_fire_tree_items` | — | Предметы пожертвования и талисмана: скрыты, без цены продажи, не на рынке. | :10325 |
+| `ensure_firelab_enemies` | ✅ | Идемпотентно засевает врагов Огненного Лабиринта (4 обычных + босс). | :10639 |
+| `ensure_firelab_items` | ✅ | Идемпотентно создаёт предметы Фазы 3 «Дней Пламенного Круговорота». | :10687 |
+| `ensure_fishing_enemies` | ✅ | Идемпотентно засевает врагов рыбалки (мутировавший моллюск) из MOLLUSK_SEED. | :10961 |
+| `ensure_forest_berry_items` | — | Ягоды (горсть) и шкура медведя: предметы-ресурсы вне магазина. Идемпотентно. | :10496 |
+| `ensure_forest_berry_pool` | — | Таблица ягод поиска по зонам (как у грибов): шансы правит админ. Засев — один раз. | :10363 |
+| `ensure_forest_enemies` | ✅ | Идемпотентно засевает врагов леса (кабан и Белый Волк Севера). | :10607 |
+| `ensure_forest_items` | ✅ | Идемпотентно создаёт предметы леса (грибы, добыча кабана, жареные блюда, яд). | :9553 |
+| `ensure_forest_mushrooms` | ✅ | Идемпотентно засевает пул грибов леса из FOREST_DEFAULTS. | :9725 |
+| `ensure_forest_zones` | ✅ | Разовый перенос старого пула леса в зону поляны и засев пула опушки. | :9968 |
+| `ensure_item_rarity_unified` | ✅ | Идемпотентно применяет единую градацию редкости (v0.43.10). | :2110 |
+| `ensure_kvp_award` | ✅ | — | :12260 |
+| `ensure_kvp_items` | ✅ | Обеспечивает эксклюзивный предмет К.В.П. — «Сержантскую трость». | :11974 |
+| `ensure_kvp_user` | — | Гарантирует наличие строки прогресса К.В.П. для игрока. | :12447 |
+| `ensure_life_items` | ✅ | Идемпотентно добавляет предметы жилья, мебели, семян, ресурсов и продовольствия. | :13655 |
+| `ensure_logging_enemies` | ✅ | Идемпотентно засевает врагов Лесозаготовки (Змея и Неясыть). | :9714 |
+| `ensure_logging_items` | ✅ | Идемпотентно создаёт предметы Лесозаготовки (топор, бревна, дропы). | :9671 |
+| `ensure_market_license_item` | ✅ | Идемпотентно добавляет «Торговую лицензию» в магазин. | :11524 |
+| `ensure_mine_enemies` | ✅ | Идемпотентно засевает врагов копи (Летучая мышь) из MINE_BAT_SEED. | :9662 |
+| `ensure_mine_items` | ✅ | Идемпотентно создаёт предметы Железной копи (кирка, руда, самоцветы). | :9631 |
+| `ensure_mollusk_items` | ✅ | Идемпотентно создаёт предметы моллюска (из его добычи и готового блюда). | :10967 |
+| `ensure_player_housing` | — | Возвращает жильё игрока, создавая муниципальную квартиру для пилота при первом обращении. | :14053 |
+| `ensure_rank_statuses_for_troops` | — | Выдать статус по текущему званию игрока (по войскам или админ-назначению). | :6608 |
+| `ensure_recipe_shop_item` | — | Синхронизирует товар-рецепт «Рецепт: <name>» с рецептом (менеджер). | :14881 |
+| `ensure_recipe_shop_items` | ✅ | Создаёт в магазине предметы-рецепты категории 'recipes'. | :16231 |
+| `ensure_recipes` | ✅ | Идемпотентно засевает рецепты и синхронизирует уже существующие. | :14731 |
+| `ensure_tourist_booklet` | ✅ | Создаёт предмет «Буклет туриста» и награду «Опытный турист», если их нет. | :12296 |
+| `ensure_user_recipes_backfill` | ✅ | Разово открывает все рецепты существующим игрокам. | :16381 |
+| `ensure_water_fish` | ✅ | Идемпотентно засевает water_fish из дефолтов. Правившие админом строки | :9063 |
+| `migrate_legacy_junk` | ✅ | Переносит старые копии мусора (сапог, водоросли) из инвентаря в улов. | :8908 |
+| `seed_default_items` | ✅ | Заполняет магазин базовым набором товаров, если он пуст и не было своих товаров. | :11697 |
+| `seed_dungeon` | ✅ | — | :11852 |
+| `seed_kvp` | ✅ | Создаёт тренировочный данж К.В.П. с врагами (Ефрейтор, Старший сержант), если его нет. | :11923 |
+| `seed_locations` | — | Засеивает базовые локации города (Ратуша, Библиотека) как пример управляемого доступа. | :1905 |
 
 ## 3. Отдельные скрипты миграций
 

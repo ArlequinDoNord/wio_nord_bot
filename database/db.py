@@ -1641,6 +1641,10 @@ async def init_db():
     # и суточный баф уворота от расходника.
     await _ensure_column(conn, "items", "regen_turns", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "dodge_buff_pct", "INTEGER DEFAULT 0")
+    # Авто-выкладка «как госпоставка»: раз в неделю конечный остаток доводится до
+    # restock_target. Безлимитные товары (stock = -1) не трогаются.
+    await _ensure_column(conn, "items", "restock_enabled", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "items", "restock_target", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "users", "dodge_buff_until", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "users", "dodge_buff_pct", "INTEGER DEFAULT 0")
     # v0.41.3: переименование трёх праздничных рыб (скрытые лут-предметы, а не
@@ -2558,6 +2562,47 @@ async def count_items_by_category():
     cursor = await conn.execute("SELECT category, COUNT(*) AS c FROM items GROUP BY category")
     rows = await cursor.fetchall()
     return {r['category']: r['c'] for r in rows}
+
+
+RESTOCK_SETTING_KEY = "restock_last_week"
+
+
+def _restock_week_key(now_msk=None) -> str:
+    """Ключ недели по МСК (ISO), например '2026-W46' — выкладка идёт раз в неделю."""
+    from utils.helpers import MOSCOW_TZ
+    d = now_msk or datetime.now(MOSCOW_TZ)
+    year, week, _ = d.isocalendar()
+    return f"{year}-W{week:02d}"
+
+
+async def run_weekly_restock(now_msk=None) -> list:
+    """Авто-выкладка товаров «как госпоставка».
+
+    Вызывается в каждом суточном цикле (10:00 МСК). Выполняется один раз за ISO-неделю:
+    ключ недели пишется в settings, поэтому рестарт бота не даёт двойной выкладки.
+    Если понедельник пропущен (бот был выключен), выкладка уйдёт в первый суточный
+    цикл недели. Конечный остаток доводится до restock_target, если он ниже цели;
+    остаток выше цели не трогаем. Безлимит (stock = -1) не пополняем.
+    Возвращает список (название, было, стало) по выложенным товарам.
+    """
+    week = _restock_week_key(now_msk)
+    if await get_setting(RESTOCK_SETTING_KEY) == week:
+        return []
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT id, name, stock, restock_target FROM items "
+        "WHERE IFNULL(restock_enabled, 0) = 1 AND IFNULL(restock_target, 0) > 0 "
+        "AND stock >= 0 AND stock < restock_target")
+    rows = await cursor.fetchall()
+    done = []
+    for r in rows:
+        await conn.execute(
+            "UPDATE items SET stock = ?, is_available = 1 WHERE id = ?",
+            (r['restock_target'], r['id']))
+        done.append((r['name'], r['stock'], r['restock_target']))
+    await conn.commit()
+    await set_setting(RESTOCK_SETTING_KEY, week)
+    return done
 
 
 async def update_item(item_id: int, **kwargs):

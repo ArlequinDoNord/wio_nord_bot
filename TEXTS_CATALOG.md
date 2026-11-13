@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=68d96b6074edbb7f seeds=560b34bc7b7f1751 db=3add464f056eacfa -->
+<!-- texts-catalog: code=c8b7e62d2a06d32a seeds=560b34bc7b7f1751 db=3add464f056eacfa -->
 
 _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **169** (ru + en).
+Всего строк: **181** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -1130,6 +1130,92 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
   > 🗺 Сколько у тебя сейчас войск на карте в регионе? (цифрами, до {max})
 - EN:
   > 🗺 How many troops do you have on the map in your region now? (in digits, up to {max})
+
+#### restock · `restock.` (12)
+
+### UI-restock.ask_target
+- RU:
+  > 🔢 Сколько штук «{name}» выкладывать каждую неделю?
+  > Введи число от 1 до 100000. Включение выкладки включит и её.
+- EN:
+  > 🔢 How many «{name}» to restock every week?
+  > Enter a number from 1 to 100000. Setting it also turns restock on.
+
+### UI-restock.back
+- RU:
+  > 🔙 К товару
+- EN:
+  > 🔙 Back to item
+
+### UI-restock.bad_target
+- RU:
+  > ❌ Введи целое число от 1 до 100000.
+- EN:
+  > ❌ Enter a whole number from 1 to 100000.
+
+### UI-restock.btn
+- RU:
+  > 🔁 Авто-выкладка раз в неделю
+- EN:
+  > 🔁 Weekly auto-restock
+
+### UI-restock.saved
+- RU:
+  > ✅ «{name}»: авто-выкладка включена, до {n} шт. в неделю.
+- EN:
+  > ✅ «{name}»: weekly auto-restock is on, up to {n} per week.
+
+### UI-restock.screen
+- RU:
+  > 🔁 АВТО-ВЫКЛАДКА «{name}»
+  >
+  > Раз в неделю (первый суточный цикл недели, понедельник 10:00 МСК) остаток доводится до заданного числа. Если остаток выше — не трогаем. Безлимит не выкладываем.
+  >
+  > Сейчас: {state}
+  > Остаток на складе: {stock}
+- EN:
+  > 🔁 AUTO-RESTOCK «{name}»
+  >
+  > Once a week (the first daily cycle of the week, Monday 10:00 MSK) the stock is topped up to the set number. If stock is already higher, nothing changes. Unlimited items are not restocked.
+  >
+  > Now: {state}
+  > Stock on hand: {stock}
+
+### UI-restock.set_target
+- RU:
+  > 🔢 Сколько выкладывать
+- EN:
+  > 🔢 Set weekly amount
+
+### UI-restock.state_off
+- RU:
+  > выключена
+- EN:
+  > off
+
+### UI-restock.state_on
+- RU:
+  > включена, до {n} шт. в неделю
+- EN:
+  > on, up to {n} per week
+
+### UI-restock.toggle_off
+- RU:
+  > ⏸ Выключить
+- EN:
+  > ⏸ Turn off
+
+### UI-restock.toggle_on
+- RU:
+  > ✅ Включить
+- EN:
+  > ✅ Turn on
+
+### UI-restock.unlimited
+- RU:
+  > ℹ️ Безлимитный или лут-товар — авто-выкладка не нужна.
+- EN:
+  > ℹ️ Unlimited or loot-only item — auto-restock is not needed.
 
 #### продажа · `sell.` (3)
 
@@ -3823,7 +3909,7 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **5019** (уникальные вхождения по файлам и функциям).
+Всего текстов: **5020** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/i18n.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -3831,7 +3917,7 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 > «Интерфейс и кнопки» с переводом. Здесь правки переносятся по тексту в
 > указанной функции соответствующего файла.
 
-#### `bot/handlers/admin.py` (1514)
+#### `bot/handlers/admin.py` (1515)
 
 ##### `(модуль)`
 
@@ -6696,6 +6782,10 @@ _Снимок: 2026-11-13 · источник: прод-БД + сиды_
 - Статусы пока не созданы.
 - • {…}{tag} — уровень {…}
 - 🎖️ ВСЕ СТАТУСЫ:
+
+##### `storage_auto_target_value`
+
+- ❌ Нет прав.
 
 ##### `storage_category`
 

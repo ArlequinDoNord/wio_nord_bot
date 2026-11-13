@@ -255,6 +255,13 @@ async def scheduled_jobs(bot: Bot):
         except Exception as e:
             logger.error(f"Ошибка восстановления AP: {e}", exc_info=True)
         try:
+            from database.db import run_weekly_restock
+            restocked = await run_weekly_restock()
+            if restocked:
+                logger.info(f"Авто-выкладка: пополнено {len(restocked)} товаров")
+        except Exception as e:
+            logger.error(f"Ошибка авто-выкладки: {e}", exc_info=True)
+        try:
             forfeited = await run_housing_tax()
             if forfeited:
                 for uid in forfeited:

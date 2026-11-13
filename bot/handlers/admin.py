@@ -147,6 +147,11 @@ class AdminStorageRestock(StatesGroup):
     amount = State()
 
 
+class AdminRestockAuto(StatesGroup):
+    # Сколько выкладывать раз в неделю (авто-выкладка товара)
+    target = State()
+
+
 class AdminStorageDelete(StatesGroup):
     # Удаление предмета из игры насовсем: подтверждение вводом названия
     confirm = State()
@@ -1087,6 +1092,9 @@ async def storage_item(callback: CallbackQuery, state: FSMContext):
         else:
             text += "\n⚠️ Предмет скрыт. Верни его в магазин, указав количество."
         rows.append([InlineKeyboardButton(text="➕ Вернуть в магазин", callback_data=f"storage:restock:{item_id}")])
+    if item['stock'] != -1 and not item.get('loot_only'):
+        rows.append([InlineKeyboardButton(text=t("restock.btn"),
+                                          callback_data=f"storage:auto:{item_id}")])
     rows.append([InlineKeyboardButton(text="✏️ Редактировать (покупка: цена/фото/описание)",
                                       callback_data=f"edit_item:{item_id}")])
     rows.append([InlineKeyboardButton(text="🗑 Удалить из игры насовсем",
@@ -1095,6 +1103,118 @@ async def storage_item(callback: CallbackQuery, state: FSMContext):
     rows.append([InlineKeyboardButton(text="📦 Хранилище", callback_data="admin:storage")])
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await callback.message.edit_text(text, reply_markup=kb)
+
+
+def _restock_auto_markup(item_id: int, on: bool) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t("restock.toggle_off") if on else t("restock.toggle_on"),
+                              callback_data=f"storage:auto_toggle:{item_id}")],
+        [InlineKeyboardButton(text=t("restock.set_target"),
+                              callback_data=f"storage:auto_target:{item_id}")],
+        [InlineKeyboardButton(text=t("restock.back"), callback_data=f"storage:item:{item_id}")],
+    ])
+
+
+async def _render_restock_auto(message, item) -> None:
+    """Экран авто-выкладки одного товара (редактирование текущего сообщения)."""
+    on = bool(item.get('restock_enabled'))
+    target = item.get('restock_target') or 0
+    state_line = t("restock.state_on", n=target) if on else t("restock.state_off")
+    text = t("restock.screen", name=item['name'], state=state_line, stock=item['stock'])
+    await message.edit_text(text, reply_markup=_restock_auto_markup(item['id'], on))
+
+
+def _restock_limited(item) -> bool:
+    """Авто-выкладка только для конечных товаров из продажи (не безлимит и не лут)."""
+    return bool(item) and item['stock'] != -1 and not item.get('loot_only')
+
+
+@router.callback_query(F.data.startswith("storage:auto:"))
+async def storage_auto_screen(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_storage"):
+        return
+    item_id = int(callback.data.split(":")[2])
+    item = await get_item(item_id)
+    if not _restock_limited(item):
+        await callback.message.edit_text(
+            t("restock.unlimited"),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                text=t("restock.back"), callback_data=f"storage:item:{item_id}")]]))
+        return
+    await _render_restock_auto(callback.message, item)
+
+
+@router.callback_query(F.data.startswith("storage:auto_toggle:"))
+async def storage_auto_toggle(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_storage"):
+        return
+    item_id = int(callback.data.split(":")[2])
+    item = await get_item(item_id)
+    if not _restock_limited(item):
+        return
+    if not item.get('restock_enabled') and not (item.get('restock_target') or 0):
+        # Сначала число: без цели включать выкладку нечего.
+        await state.update_data(restock_item_id=item_id)
+        await state.set_state(AdminRestockAuto.target)
+        await callback.message.edit_text(
+            t("restock.ask_target", name=item['name']),
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+                text=t("restock.back"), callback_data=f"storage:auto:{item_id}")]]))
+        return
+    new_on = 0 if item.get('restock_enabled') else 1
+    await update_item(item_id, restock_enabled=new_on)
+    await log_action(callback.from_user.id, 'restock_auto_toggle', None,
+                     f"item={item_id} on={new_on}")
+    await _render_restock_auto(callback.message, await get_item(item_id))
+
+
+@router.callback_query(F.data.startswith("storage:auto_target:"))
+async def storage_auto_target(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_storage"):
+        return
+    item_id = int(callback.data.split(":")[2])
+    item = await get_item(item_id)
+    if not _restock_limited(item):
+        return
+    await state.update_data(restock_item_id=item_id)
+    await state.set_state(AdminRestockAuto.target)
+    await callback.message.edit_text(
+        t("restock.ask_target", name=item['name']),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text=t("restock.back"), callback_data=f"storage:auto:{item_id}")]]))
+
+
+@router.message(AdminRestockAuto.target)
+async def storage_auto_target_value(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_storage"):
+        await state.clear()
+        await message.answer("❌ Нет прав.")
+        return
+    data = await state.get_data()
+    item_id = data.get("restock_item_id")
+    item = await get_item(item_id) if item_id else None
+    if not _restock_limited(item):
+        await state.clear()
+        await message.answer(t("restock.unlimited"))
+        return
+    try:
+        n = int((message.text or "").strip())
+    except ValueError:
+        n = 0
+    if not 1 <= n <= 100000:
+        await message.answer(t("restock.bad_target"))
+        return
+    await update_item(item_id, restock_target=n, restock_enabled=1)
+    await log_action(message.from_user.id, 'restock_auto_set', None,
+                     f"item={item_id} target={n}")
+    await state.clear()
+    await message.answer(
+        t("restock.saved", name=item['name'], n=n),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text=t("restock.back"), callback_data=f"storage:item:{item_id}")]]))
 
 
 @router.callback_query(F.data.startswith("storage:restock:"))
