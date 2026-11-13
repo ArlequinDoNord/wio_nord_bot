@@ -10,14 +10,14 @@
 - [ ] **Уточнить у владельца**: явный спойлер в анонсе или неявный намёк (см. [AGENTS.md](AGENTS.md) «Предрелизный вопрос»)
 
 ## 2) Бамп версии
-- [ ] **Обновить `config.py`**: `VERSION`, `VERSION_NOTES` (с учётом выбора), сдвинуть старый `VERSION_NOTES` в `PREV_VERSION`/`PREV_VERSION_NOTES`. Держим только **текущий + предыдущий**.
+- [ ] **Обновить `version.py`** (или `tools\release_bump.py`, он правит только этот файл): `VERSION`, `VERSION_NOTES` (с учётом выбора), сдвинуть старый `VERSION_NOTES` в `PREV_VERSION`/`PREV_VERSION_NOTES`. Держим только **текущий + предыдущий**. `config.py` лишь реэкспортирует версию, его трогать не нужно.
 - [ ] **Обновить `CHANGELOG.md`**: добавить секцию `[X.Y.Z] - YYYY-MM-DD` с полным описанием изменений.
 - [ ] **Сверить HEAD**: `git log -1 --oneline` — понять на каком коммите сейчас.
 
 ## 3) Коммит и тег (ОБЯЗАТЕЛЬНО в таком порядке)
 - [ ] **Стейджим всё релизное**: `git add -A` (убедиться что нет лишних temp-файлов)
 - [ ] **Коммитим**: `git commit -m "release: vX.Y.Z — короткое описание"`
-- [ ] **Проверяем HEAD**: `git log -1 --oneline` — в нём должны быть `config.py`, `CHANGELOG.md` и релизные правки
+- [ ] **Проверяем HEAD**: `git log -1 --oneline` — в нём должны быть `version.py`, `CHANGELOG.md` и релизные правки
 - [ ] **Вешаем тег ТОЛЬКО на HEAD**: `git tag vX.Y.Z $(git rev-parse HEAD)` (или просто `git tag vX.Y.Z`)
 - [ ] **Финальная сверка**: `git rev-parse vX.Y.Z` == `git rev-parse HEAD`
 
