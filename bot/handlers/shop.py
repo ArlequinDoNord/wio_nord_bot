@@ -632,6 +632,13 @@ async def _buy_item_impl(callback: CallbackQuery, item_id: int, qty: int, specia
         await callback.answer(f"❌ В магазине осталось меньше {qty} шт.", show_alert=True)
         return
 
+    from database.db import shop_limit_status
+    from utils.i18n import t
+    held, limit = await shop_limit_status(callback.from_user.id, item_id)
+    if limit and held + qty > limit:
+        await callback.answer(t("shop.limit_reached", held=held, limit=limit), show_alert=True)
+        return
+
     # Расширения жилья нельзя купить, если их некуда ставить
     block_reason = await furniture_block_reason(user_id, item)
     if block_reason:
@@ -685,7 +692,7 @@ async def _buy_item_impl(callback: CallbackQuery, item_id: int, qty: int, specia
             await db.execute("UPDATE items SET stock = stock + ? WHERE id = ?", (qty, item_id))
             await db.commit()
         raise
-    await add_inventory_item(user_id, item_id, qty)
+    await add_inventory_item(user_id, item_id, qty, from_shop=True)
 
     if item['stock'] != -1:
         refreshed = await get_item(item_id)

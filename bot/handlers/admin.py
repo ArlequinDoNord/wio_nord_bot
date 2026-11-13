@@ -152,6 +152,11 @@ class AdminRestockAuto(StatesGroup):
     target = State()
 
 
+class AdminShopLimit(StatesGroup):
+    # Лимит на руках на аккаунт: сколько купленных в магазине штук можно держать
+    value = State()
+
+
 class AdminStorageDelete(StatesGroup):
     # Удаление предмета из игры насовсем: подтверждение вводом названия
     confirm = State()
@@ -1095,6 +1100,9 @@ async def storage_item(callback: CallbackQuery, state: FSMContext):
     if item['stock'] != -1 and not item.get('loot_only'):
         rows.append([InlineKeyboardButton(text=t("restock.btn"),
                                           callback_data=f"storage:auto:{item_id}")])
+    if not item.get('loot_only'):
+        rows.append([InlineKeyboardButton(text=t("shop_limit.btn"),
+                                          callback_data=f"storage:shoplim:{item_id}")])
     rows.append([InlineKeyboardButton(text="✏️ Редактировать (покупка: цена/фото/описание)",
                                       callback_data=f"edit_item:{item_id}")])
     rows.append([InlineKeyboardButton(text="🗑 Удалить из игры насовсем",
@@ -1127,6 +1135,52 @@ async def _render_restock_auto(message, item) -> None:
 def _restock_limited(item) -> bool:
     """Авто-выкладка только для конечных товаров из продажи (не безлимит и не лут)."""
     return bool(item) and item['stock'] != -1 and not item.get('loot_only')
+
+
+@router.callback_query(F.data.startswith("storage:shoplim:"))
+async def storage_shop_limit_ask(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_storage"):
+        return
+    item_id = int(callback.data.split(":")[2])
+    item = await get_item(item_id)
+    if not item or item.get('loot_only'):
+        return
+    await state.update_data(shoplim_item_id=item_id)
+    await state.set_state(AdminShopLimit.value)
+    cur = item['shop_limit'] or 0
+    await callback.message.edit_text(
+        t("shop_limit.ask", name=item['name'], cur=("без лимита" if not cur else cur)),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text=t("restock.back"), callback_data=f"storage:item:{item_id}")]]))
+
+
+@router.message(AdminShopLimit.value)
+async def storage_shop_limit_value(message: Message, state: FSMContext):
+    if not await has_permission(message.from_user.id, "can_manage_storage"):
+        await state.clear()
+        await message.answer("❌ Нет прав.")
+        return
+    data = await state.get_data()
+    item_id = data.get("shoplim_item_id")
+    item = await get_item(item_id) if item_id else None
+    if not item:
+        await state.clear()
+        return
+    try:
+        n = int((message.text or "").strip())
+    except ValueError:
+        n = -1
+    if not 0 <= n <= 1000:
+        await message.answer(t("shop_limit.bad"))
+        return
+    await update_item(item_id, shop_limit=n)
+    await log_action(message.from_user.id, 'shop_limit_set', None, f"item={item_id} limit={n}")
+    await state.clear()
+    await message.answer(
+        t("shop_limit.saved", name=item['name'], n=n),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
+            text=t("restock.back"), callback_data=f"storage:item:{item_id}")]]))
 
 
 @router.callback_query(F.data.startswith("storage:auto:"))

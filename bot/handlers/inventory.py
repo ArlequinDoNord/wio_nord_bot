@@ -113,13 +113,33 @@ def inv_categories_markup(items, catches):
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def inv_stock_label(qty, shop_qty=0, limit=0) -> str:
+    """«×4» или «×4 · 🛠2 / 🛒2 · лим. 2/2»: 🛠 добытое/скрафченное, 🛒 купленное в магазине.
+
+    Разбивку показываем, если есть купленное или задан лимит на руках."""
+    qty = int(qty or 0)
+    shop = min(int(shop_qty or 0), qty)
+    limit = int(limit or 0)
+    if not shop and not limit:
+        return f"×{qty}"
+    label = f"×{qty} · 🛠{qty - shop} / 🛒{shop}"
+    if limit:
+        label += f" · лим. {shop}/{limit}"
+    return label
+
+
+def _inv_val(row, key, default=0):
+    return row[key] if key in row.keys() and row[key] is not None else default
+
+
 def inv_list_markup(items, catches=None, back_cb: str = "back:main", back_label: str = "🔙 В меню"):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = []
     for it in items:
         emoji = rarity_emoji(it['rarity'])
+        label = inv_stock_label(it['quantity'], _inv_val(it, 'shop_qty'), _inv_val(it, 'shop_limit'))
         buttons.append([InlineKeyboardButton(
-            text=f"{emoji} {it['name']} x{it['quantity']}",
+            text=f"{emoji} {it['name']} {label}",
             callback_data=f"invitem:{it['id']}"
         )])
     for key, g in _fish_groups(catches or []).items():
@@ -658,7 +678,13 @@ async def _render_item_card(message, user_id: int, item_id: int, note: str = "")
     text = (
         f"{rarity_emoji(item['rarity'])} {item['name']} {rarity_emoji(item['rarity'])}\n"
         f"Редкость: {rarity_label(item['rarity'])}\n"
-        f"В наличии: {inv['quantity']} шт.\n\n"
+        f"В наличии: {inv['quantity']} шт.\n"
+        + (f"🛠 добытых/скрафченных: {inv['quantity'] - min(_inv_val(inv, 'shop_qty'), inv['quantity'])}"
+           f" · 🛒 купленных: {min(_inv_val(inv, 'shop_qty'), inv['quantity'])}"
+           + (f" · лимит на руках: {min(_inv_val(inv, 'shop_qty'), inv['quantity'])}/{item['shop_limit']}"
+              if _inv_val(item, 'shop_limit') else "") + "\n"
+           if _inv_val(inv, 'shop_qty') or _inv_val(item, 'shop_limit') else "")
+        + "\n"
     )
     dots = []
     if item['category'] == 'weapon':

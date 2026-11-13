@@ -1645,6 +1645,17 @@ async def init_db():
     # restock_target. Безлимитные товары (stock = -1) не трогаются.
     await _ensure_column(conn, "items", "restock_enabled", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "items", "restock_target", "INTEGER DEFAULT 0")
+    # Лимит на руках на аккаунт: сколько купленных в магазине штук можно держать (0 = без лимита).
+    # inventory.shop_qty — сколько из quantity куплено в магазине; добытое/скрафченное не считается.
+    await _ensure_column(conn, "items", "shop_limit", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "inventory", "shop_qty", "INTEGER DEFAULT 0")
+    # Порядок расхода «сначала добытое, потом купленное»: если количество упало ниже числа
+    # купленных, то ушли купленные и счётчик подтягивается к остатку. Срабатывает на любой
+    # UPDATE количества, поэтому пропустить путь расхода нельзя.
+    await conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS trg_inventory_shop_clamp "
+        "AFTER UPDATE OF quantity ON inventory WHEN NEW.quantity < OLD.quantity "
+        "BEGIN UPDATE inventory SET shop_qty = MIN(shop_qty, NEW.quantity) WHERE id = NEW.id; END")
     await _ensure_column(conn, "users", "dodge_buff_until", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "users", "dodge_buff_pct", "INTEGER DEFAULT 0")
     # v0.41.3: переименование трёх праздничных рыб (скрытые лут-предметы, а не
@@ -2806,26 +2817,30 @@ async def delete_item_completely(item_id: int):
     return report
 
 
-async def add_inventory_item(user_id: int, item_id: int, quantity: int = 1, expires_at: str = None):
+async def add_inventory_item(user_id: int, item_id: int, quantity: int = 1, expires_at: str = None,
+                             from_shop: bool = False):
     conn = await get_db()
     cursor = await conn.execute(
         "SELECT quantity, expires_at FROM inventory WHERE user_id = ? AND item_id = ?",
         (user_id, item_id)
     )
     row = await cursor.fetchone()
+    shop_add = quantity if from_shop else 0
     if row:
         # У одной стопки — ранний срок истечения (минимальный из добавленных).
         new_exp = row['expires_at']
         if expires_at:
             new_exp = min(str(row['expires_at']), str(expires_at)) if row['expires_at'] else str(expires_at)
         await conn.execute(
-            "UPDATE inventory SET quantity = quantity + ?, expires_at = ? WHERE user_id = ? AND item_id = ?",
-            (quantity, new_exp, user_id, item_id)
+            "UPDATE inventory SET quantity = quantity + ?, shop_qty = shop_qty + ?, expires_at = ? "
+            "WHERE user_id = ? AND item_id = ?",
+            (quantity, shop_add, new_exp, user_id, item_id)
         )
     else:
         await conn.execute(
-            "INSERT INTO inventory (user_id, item_id, quantity, expires_at) VALUES (?, ?, ?, ?)",
-            (user_id, item_id, quantity, expires_at)
+            "INSERT INTO inventory (user_id, item_id, quantity, expires_at, shop_qty) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (user_id, item_id, quantity, expires_at, shop_add)
         )
     await conn.commit()
     # Хук «Чтящий Предков» (Фаза 4): любой путь получения компонента проверяется.
@@ -2870,12 +2885,25 @@ async def remove_inventory_item(user_id: int, item_id: int, quantity: int = 1) -
 async def get_inventory(user_id: int):
     conn = await get_db()
     cursor = await conn.execute("""
-        SELECT i.*, inv.quantity FROM inventory inv
+        SELECT i.*, inv.quantity, inv.shop_qty FROM inventory inv
         JOIN items i ON inv.item_id = i.id
         WHERE inv.user_id = ? AND inv.quantity > 0
         ORDER BY i.category, i.rarity DESC
     """, (user_id,))
     return await cursor.fetchall()
+
+
+async def shop_limit_status(user_id: int, item_id: int) -> tuple:
+    """(купленных на руках, лимит) для покупки в магазине. Лимит 0 — без ограничения."""
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT i.shop_limit, IFNULL(inv.shop_qty, 0) AS shop_qty FROM items i "
+        "LEFT JOIN inventory inv ON inv.item_id = i.id AND inv.user_id = ? "
+        "WHERE i.id = ?", (user_id, item_id))
+    row = await cur.fetchone()
+    if not row:
+        return 0, 0
+    return int(row['shop_qty'] or 0), int(row['shop_limit'] or 0)
 
 
 async def get_inventory_item(user_id: int, item_id: int):

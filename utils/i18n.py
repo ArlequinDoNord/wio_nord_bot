@@ -301,6 +301,25 @@ STRINGS = {
         "ru": "✅ «{name}»: авто-выкладка включена, до {n} шт. в неделю.",
         "en": "✅ «{name}»: weekly auto-restock is on, up to {n} per week.",
     },
+    "shop.limit_reached": {
+        "ru": "❌ Лимит на руках: у тебя уже {held} шт. купленных в магазине, максимум {limit}. Потрать хотя бы одну, чтобы докупить.",
+        "en": "❌ Hand limit reached: you already hold {held} shop-bought, the maximum is {limit}. Use some to buy more.",
+    },
+    "shop_limit.btn": {"ru": "🛒 Лимит на руках на аккаунт", "en": "🛒 Hand limit per account"},
+    "shop_limit.ask": {
+        "ru": ("🛒 «{name}» — сколько штук можно держать на руках, купленных в магазине?\n"
+               "Сейчас: {cur}. Введи число от 0 до 1000 (0 — без лимита)."),
+        "en": ("🛒 «{name}» — how many shop-bought units can one account hold?\n"
+               "Now: {cur}. Enter a number from 0 to 1000 (0 — no limit)."),
+    },
+    "shop_limit.bad": {
+        "ru": "❌ Введи целое число от 0 до 1000.",
+        "en": "❌ Enter a whole number from 0 to 1000.",
+    },
+    "shop_limit.saved": {
+        "ru": "✅ «{name}»: лимит на руках {n} шт. (0 — без лимита).",
+        "en": "✅ «{name}»: hand limit is {n} (0 — no limit).",
+    },
     "restock.unlimited": {
         "ru": "ℹ️ Безлимитный или лут-товар — авто-выкладка не нужна.",
         "en": "ℹ️ Unlimited or loot-only item — auto-restock is not needed.",
