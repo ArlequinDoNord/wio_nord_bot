@@ -66,8 +66,10 @@ def main():
     # ── 5. Платная смена требует состояния ввода ──
     check("оплата выставляет waiting_callsign",
           "await state.set_state(ProfileStates.waiting_callsign)" in prof)
-    check("после оплаты позывной сбрасывается для замены",
-          "await set_callsign(user_id, None)" in prof)
+    check("после оплаты позывной не сбрасывается до ввода",
+          "await set_callsign(user_id, None)" not in prof)
+    check("списание после ввода помечено (callsign_pay_pending)",
+          "callsign_pay_pending" in prof)
     check("цена берётся из конфига", "CALLSIGN_PRICE" in prof)
 
     # ── 6. Правила бесплатной установки ──

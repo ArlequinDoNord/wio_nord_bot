@@ -768,6 +768,7 @@ async def profile_callsign(callback: CallbackQuery, state: FSMContext):
 
     # Позывной ещё не установлен и бесплатная установка не использована.
     if not has_callsign and not free_used:
+        await state.clear()
         await state.set_state(ProfileStates.waiting_callsign)
         await callback.message.answer(
             "Установить позывной\n\n"
@@ -779,6 +780,7 @@ async def profile_callsign(callback: CallbackQuery, state: FSMContext):
 
     # Позывной есть, но игрок — суперадмин: смена бесплатная.
     if has_callsign and super_admin:
+        await state.clear()
         await state.set_state(ProfileStates.waiting_callsign)
         await callback.message.answer(
             "Смена позывного\n\n"
@@ -810,7 +812,7 @@ async def profile_callsign(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "profile:callsign_cancel")
 async def profile_callsign_cancel(callback: CallbackQuery, state: FSMContext):
-    await state.set_state(None)
+    await state.clear()
     await callback.answer("Отменено")
     await render_profile(callback.message, callback.from_user.id)
 
@@ -832,6 +834,30 @@ async def profile_callsign_input(message: Message, state: FSMContext):
     has_callsign = bool(user and user.get('callsign') and str(user.get('callsign')).strip())
     free_used = await get_callsign_free_used(user_id)
     super_admin = await user_has_status_tag(user_id, "super_admin")
+
+    # Платная смена: деньги списываем только здесь, после ввода нового позывного.
+    # Раньше оплата снималась на шаге «Оплатить», позывной при этом стирался, а
+    # ввод попадал в ветку «бесплатная установка использована» — игрок терял и
+    # деньги, и позывной (v0.43.16).
+    data = await state.get_data()
+    pending_price = int(data.get('callsign_pay_pending') or 0)
+    if pending_price:
+        if (user['nordmarks'] or 0) < pending_price:
+            await state.clear()
+            await message.answer(
+                f"❌ Недостаточно НМ: нужно {pending_price}. Позывной не изменён.\n\n"
+                "Пополни счёт и попробуй смену снова."
+            )
+            await render_profile(message, user_id)
+            return
+        from database.db import transfer_to_treasury
+        await transfer_to_treasury(user_id, pending_price, "Смена позывного")
+        await set_callsign(user_id, callsign)
+        await state.clear()
+        await message.answer(
+            f"Позывной изменён на «{callsign}». Списано {pending_price} НМ.")
+        await render_profile(message, user_id)
+        return
 
     if not has_callsign and not free_used:
         await set_callsign(user_id, callsign)
@@ -871,15 +897,15 @@ async def profile_callsign_buy(callback: CallbackQuery, state: FSMContext):
         await callback.answer(f"❌ Недостаточно. Нужно {CALLSIGN_PRICE} НМ", show_alert=True)
         return
 
-    from database.db import transfer_to_treasury
-    await transfer_to_treasury(user_id, CALLSIGN_PRICE, "Смена позывного")
-
-    # Позывной сбрасываем, чтобы ввод нового прошёл как первая установка.
-    await set_callsign(user_id, None)
+    # Оплату не берём авансом: списание — в profile_callsign_input, после того
+    # как игрок введёт новый позывной. Так отмена или неудачный ввод не стоят денег.
+    await state.update_data(callsign_pay_pending=CALLSIGN_PRICE)
     await state.set_state(ProfileStates.waiting_callsign)
-    await callback.answer(f"✅ Списано {CALLSIGN_PRICE} НМ")
+    await callback.answer()
     await callback.message.answer(
-        f"Оплачено {CALLSIGN_PRICE} НМ.\nВведи новый позывной:",
+        f"Смена позывного: {CALLSIGN_PRICE} НМ спишем после ввода нового.\n"
+        "Текущий позывной заменится новым.\n\n"
+        "Введи новый позывной:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="Отмена", callback_data="profile:callsign_cancel")],
         ]))

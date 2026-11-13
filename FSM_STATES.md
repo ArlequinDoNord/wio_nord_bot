@@ -497,7 +497,7 @@
 |---|---|---|
 | `waiting_photo` | `bot/handlers/profile.py:259` `set_photo` | `bot/handlers/profile.py:267` `process_photo` |
 | `waiting_about` | `bot/handlers/profile.py:280` `edit_about` | `bot/handlers/profile.py:288` `process_about` |
-| `waiting_callsign` | `bot/handlers/profile.py:771` `profile_callsign`<br>`bot/handlers/profile.py:782` `profile_callsign`<br>`bot/handlers/profile.py:879` `profile_callsign_buy` | `bot/handlers/profile.py:819` `profile_callsign_input` |
+| `waiting_callsign` | `bot/handlers/profile.py:772` `profile_callsign`<br>`bot/handlers/profile.py:784` `profile_callsign`<br>`bot/handlers/profile.py:903` `profile_callsign_buy` | `bot/handlers/profile.py:821` `profile_callsign_input` |
 
 ### `ReportSubmit` — `bot/handlers/reports.py`
 
@@ -777,8 +777,8 @@
 - `profile:achievements`: `bot/handlers/profile.py:583`
 - `profile:awards`: `bot/handlers/profile.py:559`
 - `profile:callsign`: `bot/handlers/profile.py:757`
-- `profile:callsign_buy`: `bot/handlers/profile.py:863`
-- `profile:callsign_cancel`: `bot/handlers/profile.py:811`
+- `profile:callsign_buy`: `bot/handlers/profile.py:889`
+- `profile:callsign_cancel`: `bot/handlers/profile.py:813`
 - `profile:choose_status`: `bot/handlers/profile.py:306`
 - `profile:edit_about`: `bot/handlers/profile.py:277`
 - `profile:notify_toggle`: `bot/handlers/profile.py:353`
