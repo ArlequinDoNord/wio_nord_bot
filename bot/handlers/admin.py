@@ -4760,8 +4760,15 @@ async def rejected_report_view(callback: CallbackQuery):
                                              callback_data=f"rep_rej_del:{report_id}:{page}")])
     buttons.append([InlineKeyboardButton(text=t("report.rejected_back_btn"),
                                          callback_data=f"rep_rej_list:{page}")])
-    await callback.message.answer(
-        text, reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons))
+    markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+    photo = report.get('screenshot_file_id')
+    if photo:
+        try:
+            await callback.message.answer_photo(photo=photo, caption=text, reply_markup=markup)
+            return
+        except Exception:
+            pass
+    await callback.message.answer(text, reply_markup=markup)
 
 
 @router.callback_query(F.data.startswith("rep_rej_del:"))

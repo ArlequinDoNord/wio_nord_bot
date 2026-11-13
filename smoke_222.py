@@ -90,6 +90,11 @@ def _texts(msg):
     return " ".join(str(a[0]) for a in msg.sent if a)
 
 
+def _all_texts(msg):
+    """Текст сообщений включая подписи к фото (caption)."""
+    return _texts(msg) + " " + " ".join(str(kw.get("caption", "")) for _a, kw in msg.sent)
+
+
 def _kb_texts(msg):
     """Тексты кнопок из всех отправленных сообщений."""
     out = []
@@ -260,13 +265,15 @@ async def run():
     print("\n11. Карточка отклонённого отчёта")
     cb = FakeCallback(ADMIN, f"rep_rej_view:{rid}:0")
     await adm.rejected_report_view(cb)
-    card_text = _texts(cb.message)
+    card_text = _all_texts(cb.message)
     check("карточка: статус rejected", "rejected" in card_text)
     check("карточка: причина", "Скриншот нечитаемый" in card_text)
     check("карточка: имя проверяющего", "Проверил: Инспектор" in card_text)
     check("карточка: время решения", "Отклонён:" in card_text)
     check("модератор не видит кнопку удаления",
           "Удалить" not in _kb_texts(cb.message))
+    check("скриншот уходит фото-карточкой",
+          any("photo" in kw for _a, kw in cb.message.sent))
 
     print("\n12. Удаление: только супер-админ")
     cb = FakeCallback(ADMIN, f"rep_rej_del:{rid}:0")
