@@ -471,16 +471,18 @@ async def run():
     async def _no_owl():
         return None
     ls._snake, ls._owl = _no_snake, _no_owl
-    saved_random = ls.random.random
-    # Броски идут по порядку: 1) топор не проскользнул, 2) находка бревна.
-    _seq = [0.99, 0.0]
-    ls.random.random = lambda: _seq.pop(0) if _seq else 0.99
+    # Исход попытки — карточка мешка: форсим бревно.
+    import database.db as _dbm
+    saved_draw = _dbm.draw_gather_card
+    async def _draw_wood(*_a, **_k):
+        return "wood"
+    _dbm.draw_gather_card = _draw_wood
     try:
         bot_c = FakeSender()
         cb_c = FakeCallback(uid2, data=f"logsite:chop:{tok2}", bot=bot_c)
         await ls.logging_chop(cb_c)
     finally:
-        ls.random.random = saved_random
+        _dbm.draw_gather_card = saved_draw
         ls._snake, ls._owl = saved_snake, saved_owl
         ls.LOGGING_RESULT_DELAY = ls.LOGGING_RESULT_DELAY_SAVED
     txt_c, kb_c = last_send(bot_c)

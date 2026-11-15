@@ -7,7 +7,7 @@
 > (комментариям-разделителям `# ── … ──`). Длинные значения усечены `…`;
 > точное значение — в `config.py` по строке из первой колонки.
 
-Всего констант: **358**; разделов: **11**.
+Всего констант: **359**; разделов: **11**.
 
 ## Буклет туриста
 
@@ -315,58 +315,59 @@
 | `LOGGING_BASE_CHANCE` | `35` | базовый шанс успеха без бонуса топора | :1116 |
 | `LOGGING_AXE_BONUS_PER_RANK` | `15` | надбавка к шансу за ступень топора | :1117 |
 | `LOGGING_CHANCE_CAP` | `90` | потолок шанса успеха | :1118 |
-| `LOGGING_AXE_SLIP_CHANCE` | `2.5` | шанс, что топор отскочит пилоту в плечо, % | :1119 |
-| `LOGGING_RESULT_DELAY` | `(7, 15)` | результат рубки через 7–15 секунд | :1120 |
-| `LOGGING_AXE_NAME` | `'Топор'` |  | :1121 |
-| `LOGGING_WOOD_NAME` | `'Бревна'` |  | :1122 |
-| `LOGGING_PLANK_NAME` | `'Доска'` |  | :1128 |
-| `LOGGING_FIREWOOD_NAME` | `'Пак дров'` |  | :1129 |
-| `LOGGING_PLANK_YIELD` | `3` | досок из одного бревна | :1130 |
-| `LOGGING_PLANK_FEE` | `15` | НМ за распил одного бревна (в казну) | :1131 |
-| `LOGGING_FIREWOOD_YIELD` | `3` | паков дров из одного бревна | :1132 |
-| `LOGGING_FIREWOOD_AP_COST` | `4` | ОД за рубку дров из одного бревна | :1133 |
-| `LOGGING_SNAKE_KEY` | `'snake'` |  | :1137 |
-| `LOGGING_OWL_KEY` | `'owl'` |  | :1138 |
-| `LOGGING_SPOT` | `'logging'` |  | :1139 |
-| `LOGGING_SNAKE_CHANCE` | `8.0` |  | :1140 |
-| `LOGGING_SNAKE_PITY_TARGET` | `10` |  | :1141 |
-| `LOGGING_OWL_CHANCE` | `3.0` |  | :1142 |
-| `LOGGING_OWL_PITY_TARGET` | `24` |  | :1143 |
-| `LOGGING_SNAKE_POISON_CHANCE` | `30` |  | :1145 |
-| `LOGGING_SNAKE_POISON_DMG` | `2` |  | :1146 |
-| `LOGGING_OWL_FLEE_HP` | `20` |  | :1150 |
-| `LOGGING_OWL_BLIND_CHANCE` | `30` |  | :1151 |
-| `LOGGING_OWL_BLIND_ROUNDS` | `4` |  | :1152 |
-| `LOGGING_SNAKE_SEED` | `{'key': LOGGING_SNAKE_KEY, 'spot': LOGGING_SPOT, 'name': 'Лесная змея', 'hp': 30, 'dmg_min': 4, 'dmg_max': 8, 'dodge': 25, 'loss_ap': 10, 'chance': LOGGING_SNAKE_CHANCE, 'pity_target': LOGGING_SNAK…` |  | :1156 |
-| `LOGGING_OWL_SEED` | `{'key': LOGGING_OWL_KEY, 'spot': LOGGING_SPOT, 'name': 'Неясыть', 'hp': 90, 'dmg_min': 7, 'dmg_max': 12, 'dodge': 30, 'loss_ap': 15, 'chance': LOGGING_OWL_CHANCE, 'pity_target': LOGGING_OWL_PITY_TA…` |  | :1186 |
-| `LOGGING_ITEM_SEEDS` | `[(LOGGING_AXE_NAME, 'Крепкий лесорубский топор: без него к срубам не подпустят. Повышает шанс успешной рубки деревьев.', 300, 150, 1, 'mining', 0), (LOGGING_WOOD_NAME, 'Свежие срубленные брёвна из …` |  | :1218 |
-| `LOGGING_SHOP_ITEMS` | `(LOGGING_AXE_NAME,)` |  | :1252 |
-| `LOGGING_ENEMY_DROPS` | `('Змеиная кожа', 'Змеиный яд', 'Совиное перо')` |  | :1255 |
-| `LOGGING_MARKET_RESOURCES` | `(LOGGING_PLANK_NAME, LOGGING_FIREWOOD_NAME)` |  | :1258 |
-| `REPORT_DAILY_LIMIT` | `3` |  | :1260 |
-| `REPORT_AUTO_APPROVE_TROOPS` | `100` |  | :1261 |
-| `NEWS_PUBLISH_BONUS` | `10` |  | :1265 |
-| `NEWS_PUBLISH_CAP` | `28` |  | :1266 |
-| `ROLE_SALARY_PAY_DAY` | `28` |  | :1269 |
-| `REPORT_DAILY_PAY_CAP` | `4000` |  | :1274 |
-| `REPORT_MAX_TROOPS` | `1000000` |  | :1275 |
-| `REPORT_MAX_REGION` | `38` | 0 = Столица, 1..38 регионы | :1276 |
-| `REJECTED_REPORTS_FRESH_DAYS` | `7` |  | :1280 |
-| `REJECTED_REPORTS_PAGE` | `8` |  | :1281 |
-| `WALL_TEXT_MAX_LEN` | `40` | лимит символов на одно изречение | :1284 |
-| `WALL_FREE_PER_DAY` | `2` | бесплатных сообщений в сутки | :1285 |
-| `WALL_PAID_STEPS` | `[(3, 30), (3, 90), (3, 200)]` | далее платные ступени: (кол-во, цена НМ) | :1286 |
-| `WALL_REVIEW_TOTAL` | `11` | максимум сообщений в сутки (2 + 3+3+3) | :1291 |
-| `WALL_PAGE_SIZE` | `5` | постов на страницу стены | :1292 |
-| `WALL_ARCHIVE_PAGE_SIZE` | `8` | записей архива стены на страницу списка | :1293 |
-| `REPORT_ARCHIVE_PAGE` | `8` | отчётов на страницу архива МВД и в «Моих отчётах» | :1296 |
-| `POLL_MAX_DAYS` | `10` | максимум дней, сколько живёт опрос. Не закрыл | :1299 |
-| `POLL_VISIBLE` | `4` | сколько новейших опросов висит в меню голосования. | :1302 |
-| `POLL_ARCHIVE_DAYS_PER_PAGE` | `5` | дней (дат) архива опросов на страницу списка | :1305 |
-| `POLL_ARCHIVE_PER_DAY` | `6` | опросов под одним заголовком-днём | :1306 |
-| `REP_SPEECH_MAX_LEN` | `100` | лимит символов одного обращения | :1309 |
-| `REP_SPEECH_PER_DAY` | `2` | обращений в сутки от представителя | :1310 |
-| `AUTO_PROMOTE_MAX_TROOPS` | `4040` |  | :1315 |
+| `GATHER_BAG_SIZE` | `100` |  | :1121 |
+| `LOGGING_AXE_SLIP_CHANCE` | `2` | шанс, что топор отскочит пилоту в плечо, % (целое — карточка мешка) | :1122 |
+| `LOGGING_RESULT_DELAY` | `(7, 15)` | результат рубки через 7–15 секунд | :1123 |
+| `LOGGING_AXE_NAME` | `'Топор'` |  | :1124 |
+| `LOGGING_WOOD_NAME` | `'Бревна'` |  | :1125 |
+| `LOGGING_PLANK_NAME` | `'Доска'` |  | :1131 |
+| `LOGGING_FIREWOOD_NAME` | `'Пак дров'` |  | :1132 |
+| `LOGGING_PLANK_YIELD` | `3` | досок из одного бревна | :1133 |
+| `LOGGING_PLANK_FEE` | `15` | НМ за распил одного бревна (в казну) | :1134 |
+| `LOGGING_FIREWOOD_YIELD` | `3` | паков дров из одного бревна | :1135 |
+| `LOGGING_FIREWOOD_AP_COST` | `4` | ОД за рубку дров из одного бревна | :1136 |
+| `LOGGING_SNAKE_KEY` | `'snake'` |  | :1140 |
+| `LOGGING_OWL_KEY` | `'owl'` |  | :1141 |
+| `LOGGING_SPOT` | `'logging'` |  | :1142 |
+| `LOGGING_SNAKE_CHANCE` | `8.0` |  | :1143 |
+| `LOGGING_SNAKE_PITY_TARGET` | `10` |  | :1144 |
+| `LOGGING_OWL_CHANCE` | `3.0` |  | :1145 |
+| `LOGGING_OWL_PITY_TARGET` | `24` |  | :1146 |
+| `LOGGING_SNAKE_POISON_CHANCE` | `30` |  | :1148 |
+| `LOGGING_SNAKE_POISON_DMG` | `2` |  | :1149 |
+| `LOGGING_OWL_FLEE_HP` | `20` |  | :1153 |
+| `LOGGING_OWL_BLIND_CHANCE` | `30` |  | :1154 |
+| `LOGGING_OWL_BLIND_ROUNDS` | `4` |  | :1155 |
+| `LOGGING_SNAKE_SEED` | `{'key': LOGGING_SNAKE_KEY, 'spot': LOGGING_SPOT, 'name': 'Лесная змея', 'hp': 30, 'dmg_min': 4, 'dmg_max': 8, 'dodge': 25, 'loss_ap': 10, 'chance': LOGGING_SNAKE_CHANCE, 'pity_target': LOGGING_SNAK…` |  | :1159 |
+| `LOGGING_OWL_SEED` | `{'key': LOGGING_OWL_KEY, 'spot': LOGGING_SPOT, 'name': 'Неясыть', 'hp': 90, 'dmg_min': 7, 'dmg_max': 12, 'dodge': 30, 'loss_ap': 15, 'chance': LOGGING_OWL_CHANCE, 'pity_target': LOGGING_OWL_PITY_TA…` |  | :1189 |
+| `LOGGING_ITEM_SEEDS` | `[(LOGGING_AXE_NAME, 'Крепкий лесорубский топор: без него к срубам не подпустят. Повышает шанс успешной рубки деревьев.', 300, 150, 1, 'mining', 0), (LOGGING_WOOD_NAME, 'Свежие срубленные брёвна из …` |  | :1221 |
+| `LOGGING_SHOP_ITEMS` | `(LOGGING_AXE_NAME,)` |  | :1255 |
+| `LOGGING_ENEMY_DROPS` | `('Змеиная кожа', 'Змеиный яд', 'Совиное перо')` |  | :1258 |
+| `LOGGING_MARKET_RESOURCES` | `(LOGGING_PLANK_NAME, LOGGING_FIREWOOD_NAME)` |  | :1261 |
+| `REPORT_DAILY_LIMIT` | `3` |  | :1263 |
+| `REPORT_AUTO_APPROVE_TROOPS` | `100` |  | :1264 |
+| `NEWS_PUBLISH_BONUS` | `10` |  | :1268 |
+| `NEWS_PUBLISH_CAP` | `28` |  | :1269 |
+| `ROLE_SALARY_PAY_DAY` | `28` |  | :1272 |
+| `REPORT_DAILY_PAY_CAP` | `4000` |  | :1277 |
+| `REPORT_MAX_TROOPS` | `1000000` |  | :1278 |
+| `REPORT_MAX_REGION` | `38` | 0 = Столица, 1..38 регионы | :1279 |
+| `REJECTED_REPORTS_FRESH_DAYS` | `7` |  | :1283 |
+| `REJECTED_REPORTS_PAGE` | `8` |  | :1284 |
+| `WALL_TEXT_MAX_LEN` | `40` | лимит символов на одно изречение | :1287 |
+| `WALL_FREE_PER_DAY` | `2` | бесплатных сообщений в сутки | :1288 |
+| `WALL_PAID_STEPS` | `[(3, 30), (3, 90), (3, 200)]` | далее платные ступени: (кол-во, цена НМ) | :1289 |
+| `WALL_REVIEW_TOTAL` | `11` | максимум сообщений в сутки (2 + 3+3+3) | :1294 |
+| `WALL_PAGE_SIZE` | `5` | постов на страницу стены | :1295 |
+| `WALL_ARCHIVE_PAGE_SIZE` | `8` | записей архива стены на страницу списка | :1296 |
+| `REPORT_ARCHIVE_PAGE` | `8` | отчётов на страницу архива МВД и в «Моих отчётах» | :1299 |
+| `POLL_MAX_DAYS` | `10` | максимум дней, сколько живёт опрос. Не закрыл | :1302 |
+| `POLL_VISIBLE` | `4` | сколько новейших опросов висит в меню голосования. | :1305 |
+| `POLL_ARCHIVE_DAYS_PER_PAGE` | `5` | дней (дат) архива опросов на страницу списка | :1308 |
+| `POLL_ARCHIVE_PER_DAY` | `6` | опросов под одним заголовком-днём | :1309 |
+| `REP_SPEECH_MAX_LEN` | `100` | лимит символов одного обращения | :1312 |
+| `REP_SPEECH_PER_DAY` | `2` | обращений в сутки от представителя | :1313 |
+| `AUTO_PROMOTE_MAX_TROOPS` | `4040` |  | :1318 |
 
 ## Древо Пламенного Круговорота (клановое расширение 'tree')
 

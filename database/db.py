@@ -1649,6 +1649,12 @@ async def init_db():
     # inventory.shop_qty — сколько из quantity куплено в магазине; добытое/скрафченное не считается.
     await _ensure_column(conn, "items", "shop_limit", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "inventory", "shop_qty", "INTEGER DEFAULT 0")
+    # Мешок добычи: остаток карточек пилота по активности (рубка, руда). comp_key — состав,
+    # на котором собран мешок: если шансы изменились (инструмент, бонус), мешок пересобирается.
+    await conn.execute(
+        "CREATE TABLE IF NOT EXISTS gather_bags (user_id INTEGER NOT NULL, "
+        "activity TEXT NOT NULL, cards TEXT NOT NULL, comp_key TEXT NOT NULL, "
+        "PRIMARY KEY (user_id, activity))")
     # Порядок расхода «сначала добытое, потом купленное»: если количество упало ниже числа
     # купленных, то ушли купленные и счётчик подтягивается к остатку. Срабатывает на любой
     # UPDATE количества, поэтому пропустить путь расхода нельзя.
@@ -2891,6 +2897,35 @@ async def get_inventory(user_id: int):
         ORDER BY i.category, i.rarity DESC
     """, (user_id,))
     return await cursor.fetchall()
+
+
+async def draw_gather_card(user_id: int, activity: str, comp: dict) -> str:
+    """Тянет исход следующей попытки из персонального мешка добычи.
+
+    comp — состав мешка {исход: число карточек}, сумма = GATHER_BAG_SIZE (шансы в процентах).
+    Мешок перемешан. Пересобирается, когда карточки кончились или состав изменился
+    (новый инструмент, бонус наград). Сброса по суткам нет: остаток переживает рестарт.
+    """
+    from config import GATHER_BAG_SIZE
+    if sum(comp.values()) != GATHER_BAG_SIZE:
+        raise ValueError(f"состав мешка {activity} не равен {GATHER_BAG_SIZE}: {comp}")
+    key = json.dumps(sorted(comp.items()), ensure_ascii=False)
+    conn = await get_db()
+    row = await (await conn.execute(
+        "SELECT cards, comp_key FROM gather_bags WHERE user_id = ? AND activity = ?",
+        (user_id, activity))).fetchone()
+    cards = json.loads(row['cards']) if row and row['comp_key'] == key else []
+    if not cards:
+        cards = [name for name, n in comp.items() for _ in range(n)]
+        random.shuffle(cards)
+    card = cards.pop()
+    await conn.execute(
+        "INSERT INTO gather_bags (user_id, activity, cards, comp_key) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(user_id, activity) DO UPDATE SET cards = excluded.cards, "
+        "comp_key = excluded.comp_key",
+        (user_id, activity, json.dumps(cards, ensure_ascii=False), key))
+    await conn.commit()
+    return card
 
 
 async def shop_limit_status(user_id: int, item_id: int) -> tuple:

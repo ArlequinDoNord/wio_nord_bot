@@ -205,6 +205,14 @@ async def _enemy_paint(callback, *, text: str, kb=None, image=None):
 
 # ───────── чистые функции (тестируются в smoke) ─────────
 
+async def _mine_card(user_id: int, chance: int) -> str:
+    """Исход обычной попытки копи из персонального мешка (руда или пусто)."""
+    from config import GATHER_BAG_SIZE
+    from database.db import draw_gather_card
+    return await draw_gather_card(user_id, "mine",
+                                  {"ore": chance, "none": GATHER_BAG_SIZE - chance})
+
+
 def mine_ore_chance(pickaxe_rank: int, mining_bonus: int = 0) -> int:
     """Шанс успешной добычи руды, % : база + надбавка кирки + бонус наград.
 
@@ -494,7 +502,7 @@ async def mine_dig(callback: CallbackQuery):
                 "В породе блеснул жар — из камня выкололся тёплый кусок "
                 f"пламенной руды!\n\n🎒 Добыча: «{flame['name']}» — в инвентарь."
             ) + ap_block
-        elif random.random() * 100 < chance:
+        elif await _mine_card(user_id, chance) == "ore":
             ore = await get_item_by_name(MINE_ORE_NAME)
             if ore:
                 await add_inventory_item(user_id, ore['id'], 1)

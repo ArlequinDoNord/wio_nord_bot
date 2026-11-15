@@ -347,6 +347,11 @@ async def run():
         return None
     mm._bat = _no_bat
     mm.random.random = lambda: 0.0
+    import database.db as _dbm
+    saved_draw = _dbm.draw_gather_card
+    async def _draw_ore(*_a, **_k):
+        return "ore"
+    _dbm.draw_gather_card = _draw_ore
     try:
         cb_dig = FakeCallback(uid, data=f"mine:dig:{token}", bot=FakeSender())
         await mm.mine_dig(cb_dig)
@@ -354,6 +359,7 @@ async def run():
         mm.MINE_RESULT_DELAY = saved_delay
         mm._bat = saved_bat
         mm.random.random = saved_rand
+        _dbm.draw_gather_card = saved_draw
 
     _, mine_prog = await get_achievement_progress(uid, "mining")
     check("добыча руды двигает прогресс mining", mine_prog >= 1)

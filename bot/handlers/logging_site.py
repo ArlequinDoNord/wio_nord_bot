@@ -552,10 +552,16 @@ async def logging_chop(callback: CallbackQuery):
         chance = logging_wood_chance(rank, logging_bonus=logging_bonus)
         head = "🪓 ЛЕСОЗАГОТОВКА"
         ap_block = f"\n\n{await _ap_line(user_id)}"
-        # Малый шанс: топор от усталости/невнимательности отскакивает от
-        # мощного ствола и бьёт пилота в плечо. Ресурса нет, попытка (ОД) уже
-        # потрачена — вторая неудача того же вида, что и «сучковатое дерево».
-        if random.random() * 100 < LOGGING_AXE_SLIP_CHANCE:
+        # Исход попытки — карточка мешка. Скользящий удар (топор отскакивает пилоту
+        # в плечо, ресурса нет) — одна из карточек, как бревно и пак дров.
+        from config import GATHER_BAG_SIZE
+        from database.db import draw_gather_card
+        card = await draw_gather_card(user_id, "logging", {
+            "slip": LOGGING_AXE_SLIP_CHANCE,
+            "wood": chance,
+            "firewood": GATHER_BAG_SIZE - LOGGING_AXE_SLIP_CHANCE - chance,
+        })
+        if card == "slip":
             text = (
                 f"{head}\n\n"
                 "Топор от усталости неудачно отскакивает от мощного ствола "
@@ -570,7 +576,7 @@ async def logging_chop(callback: CallbackQuery):
         # ── находка бревен ──
         found_wood = False
         item_meta = None
-        if random.random() * 100 < chance:
+        if card == "wood":
             wood = await get_item_by_name(LOGGING_WOOD_NAME)
             if wood:
                 await add_inventory_item(user_id, wood['id'], 1)
