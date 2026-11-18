@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=56725fcee135c706 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=f7f318dabab7711d seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **337** (ru + en).
+Всего строк: **361** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -1057,13 +1057,79 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - EN:
   > Town Hall
 
-#### logging · `logging.` (45)
+#### logging · `logging.` (69)
 
 ### UI-logging.alert.busy
 - RU:
   > Ты уже замахнулся топором — дождись результата!
 - EN:
   > You're already swinging — wait for the result!
+
+### UI-logging.alert.fire_ap
+- RU:
+  > ❌ Не хватает ОД: на одно бревно нужно {cost} ОД, а у тебя {ap}.
+- EN:
+  > ❌ Not enough AP: one log needs {cost} AP, you have {ap}.
+
+### UI-logging.alert.fire_dungeon
+- RU:
+  > ⛔ Ты в подземелье — тут не до дров.
+- EN:
+  > ⛔ You're in a dungeon — no time for firewood.
+
+### UI-logging.alert.fire_no_logs
+- RU:
+  > ❌ Нет брёвен для рубки на дрова.
+- EN:
+  > ❌ No logs for firewood.
+
+### UI-logging.alert.in_dungeon
+- RU:
+  > ⛔ Ты в подземелье — рубить деревья нельзя!
+- EN:
+  > ⛔ You're in a dungeon — no chopping!
+
+### UI-logging.alert.no_ap
+- RU:
+  > ❌ Не хватает ОД.
+- EN:
+  > ❌ Not enough AP.
+
+### UI-logging.alert.no_logs
+- RU:
+  > ❌ Нет брёвен для распила.
+- EN:
+  > ❌ No logs to saw.
+
+### UI-logging.alert.no_start
+- RU:
+  > Сначала нажми /start
+- EN:
+  > Press /start first
+
+### UI-logging.alert.plank_dungeon
+- RU:
+  > ⛔ Ты в подземелье — тут не до распила.
+- EN:
+  > ⛔ You're in a dungeon — no time for sawing.
+
+### UI-logging.alert.plank_money
+- RU:
+  > ❌ Не хватает денег: распил одного бревна стоит {fee} НМ, а у тебя {nm}.
+- EN:
+  > ❌ Not enough money: sawing one log costs {fee} NM, you have {nm}.
+
+### UI-logging.alert.tourist
+- RU:
+  > ⛔ На лесозаготовку туристов не пускают.
+- EN:
+  > ⛔ Tourists aren't allowed at the logging camp.
+
+### UI-logging.alert.wood_short
+- RU:
+  > ❌ Брёвен уже не хватает.
+- EN:
+  > ❌ Not enough logs anymore.
 
 ### UI-logging.bat.armor.owl
 - RU:
@@ -1269,6 +1335,72 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - EN:
   > {emoji} SNAKE FIGHT
 
+### UI-logging.btn.back
+- RU:
+  > 🔙 На прогалину
+- EN:
+  > 🔙 Back to the clearing
+
+### UI-logging.btn.back_plain
+- RU:
+  > 🔙 Назад
+- EN:
+  > 🔙 Back
+
+### UI-logging.btn.chop
+- RU:
+  > 🪓 Рубить дерево
+- EN:
+  > 🪓 Chop a tree
+
+### UI-logging.btn.chop_again
+- RU:
+  > 🪓 Рубить ещё
+- EN:
+  > 🪓 Chop again
+
+### UI-logging.btn.fire_all
+- RU:
+  > 🪓 Всё ({cnt} дров)
+- EN:
+  > 🪓 All ({cnt} firewood)
+
+### UI-logging.btn.fire_one
+- RU:
+  > 🪓 1 бревно ({cnt} дров)
+- EN:
+  > 🪓 1 log ({cnt} firewood)
+
+### UI-logging.btn.flee
+- RU:
+  > 🏃 Сбежать
+- EN:
+  > 🏃 Run away
+
+### UI-logging.btn.hit
+- RU:
+  > ⚔️ Ударить
+- EN:
+  > ⚔️ Strike
+
+### UI-logging.btn.mill
+- RU:
+  > 🪚 Переработка брёвен
+- EN:
+  > 🪚 Log processing
+
+### UI-logging.btn.plank_all
+- RU:
+  > 🪚 Всё ({cnt})
+- EN:
+  > 🪚 All ({cnt})
+
+### UI-logging.btn.plank_one
+- RU:
+  > 🪚 1 бревно ({cnt})
+- EN:
+  > 🪚 1 log ({cnt})
+
 ### UI-logging.entrance
 - RU:
   > 🪓 ЛЕСОЗАГОТОВКА
@@ -1290,6 +1422,12 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   > A tree chop costs {cost} AP, result in {lo}–{hi} seconds.{mill_hint}
   >
   > {ap_line}
+
+### UI-logging.fire.no_axe
+- RU:
+  > ❌ Чтобы наколоть дров, нужен топор. Купи «Топор» в магазине (категория «Добыча ресурсов»).
+- EN:
+  > ❌ You need an axe to split firewood. Buy one in the shop (Resource Mining).
 
 ### UI-logging.firewood.result
 - RU:
@@ -1332,6 +1470,16 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - EN:
   > ⛔ You're in a dungeon right now — no chopping.
   > Leave the dungeon and come back.
+
+### UI-logging.mill.empty
+- RU:
+  > 🪚 Переработка
+  >
+  > У тебя нет брёвен — сначала наруби деревьев.
+- EN:
+  > 🪚 Log processing
+  >
+  > You have no logs — chop some trees first.
 
 ### UI-logging.mill.screen
 - RU:
@@ -5117,7 +5265,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4901** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4872** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -12856,7 +13004,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - 🔑 Войти
 - 🔙 В город
 
-#### `bot/handlers/logging_site.py` (75)
+#### `bot/handlers/logging_site.py` (46)
 
 ##### `_ap_line`
 
@@ -12869,40 +13017,10 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - Проиграл Лесной змее (−{removed} ОД)
 - Проиграл Неясыти (−{removed} ОД)
 
-##### `_battle_markup`
-
-- ⚔️ Ударить
-- 🏃 Сбежать
-
-##### `_enter_markup`
-
-- 🔙 На прогалину
-- 🪓 Рубить дерево
-
-##### `_enter_markup_extra`
-
-- 🔙 На прогалину
-- 🪓 Рубить дерево
-- 🪚 Переработка брёвен
-
 ##### `_logging_ok`
 
 - лесозаготовка: устаревшее окно
 - ⏳ Это окно устарело — открой Лесозаготовку заново (Лес → Прогалина → 🪓 Лесозаготовка).
-
-##### `_mill_markup`
-
-- 🔙 Назад
-- 🪓 1 бревно ({firewood_one} {…} дров)
-- 🪓 Всё ({firewood} {…} дров)
-- 🪚 1 бревно ({planks_one} {…})
-- 🪚 Всё ({planks} {…})
-
-##### `_result_markup`
-
-- 🔙 На прогалину
-- 🪓 Рубить ещё
-- 🪚 Переработка брёвен
 
 ##### `_show_battle`
 
@@ -12927,12 +13045,9 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 ##### `logging_chop`
 
 - Рубка деревьев ({ap_cost} ОД)
-- Сначала нажми /start
 - Срубил «{…}»
 - Срубил «{…}» (суковатое дерево)
 - рубка деревьев
-- ⛔ На лесозаготовку туристов не пускают.
-- ⛔ Ты в подземелье — рубить деревья нельзя!
 - 🪓 ЛЕСОЗАГОТОВКА
 
 ##### `logging_firewood`
@@ -12944,12 +13059,6 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - рубка дров
 - сложен
 - сложены
-- ⛔ Ты в подземелье — тут не до дров.
-- ❌ Брёвен уже не хватает.
-- ❌ Не хватает ОД.
-- ❌ Не хватает ОД: на одно бревно нужно {LOGGING_FIREWOOD_AP_COST} ОД, а у тебя {ap}.
-- ❌ Нет брёвен для рубки на дрова.
-- ❌ Чтобы наколоть дров, нужен топор. Купи «Топор» в магазине (категория «Добыча ресурсов»).
 
 ##### `logging_mill`
 
@@ -12962,9 +13071,6 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - пак
 - пака
 - паков
-- 🪚 Переработка
-  
-  У тебя нет брёвен — сначала наруби деревьев.
 
 ##### `logging_plank`
 
@@ -12978,10 +13084,6 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - досок
 - превращается
 - превращаются
-- ⛔ Ты в подземелье — тут не до распила.
-- ❌ Брёвен уже не хватает.
-- ❌ Не хватает денег: распил одного бревна стоит {LOGGING_PLANK_FEE} НМ, а у тебя {nordmarks}.
-- ❌ Нет брёвен для распила.
 
 #### `bot/handlers/mine.py` (14)
 

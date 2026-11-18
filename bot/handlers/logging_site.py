@@ -18,6 +18,7 @@ import asyncio
 import os
 import random
 
+from utils.localization import t as _LT
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -286,32 +287,32 @@ def _hp_bar(hp: int, hp_max: int) -> str:
 def _enter_markup(token: str):
     """Меню входа: рубка деревьев и возврат в лес."""
     rows = [
-        [InlineKeyboardButton(text="🪓 Рубить дерево", callback_data=f"logsite:chop:{token}")],
-        [InlineKeyboardButton(text="🔙 На прогалину", callback_data="logsite:back")],
+        [InlineKeyboardButton(text=_LT("logging.btn.chop"), callback_data=f"logsite:chop:{token}")],
+        [InlineKeyboardButton(text=_LT("logging.btn.back"), callback_data="logsite:back")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _result_markup(token: str, has_wood: bool = False):
     rows = [
-        [InlineKeyboardButton(text="🪓 Рубить ещё", callback_data=f"logsite:chop:{token}")],
+        [InlineKeyboardButton(text=_LT("logging.btn.chop_again"), callback_data=f"logsite:chop:{token}")],
     ]
     if has_wood:
-        rows.append([InlineKeyboardButton(text="🪚 Переработка брёвен",
+        rows.append([InlineKeyboardButton(text=_LT("logging.btn.mill"),
                                           callback_data=f"logsite:mill:{token}")])
-    rows.append([InlineKeyboardButton(text="🔙 На прогалину", callback_data="logsite:back")])
+    rows.append([InlineKeyboardButton(text=_LT("logging.btn.back"), callback_data="logsite:back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _enter_markup_extra(token: str, has_wood: bool):
     """Меню входа: рубка деревьев, переработка (если есть брёвна) и возврат."""
     rows = [
-        [InlineKeyboardButton(text="🪓 Рубить дерево", callback_data=f"logsite:chop:{token}")],
+        [InlineKeyboardButton(text=_LT("logging.btn.chop"), callback_data=f"logsite:chop:{token}")],
     ]
     if has_wood:
-        rows.append([InlineKeyboardButton(text="🪚 Переработка брёвен",
+        rows.append([InlineKeyboardButton(text=_LT("logging.btn.mill"),
                                           callback_data=f"logsite:mill:{token}")])
-    rows.append([InlineKeyboardButton(text="🔙 На прогалину", callback_data="logsite:back")])
+    rows.append([InlineKeyboardButton(text=_LT("logging.btn.back"), callback_data="logsite:back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -347,36 +348,35 @@ def _mill_markup(token: str, planks: int, firewood: int, planks_one: int,
         row = []
         if planks_one > 0:
             row.append(InlineKeyboardButton(
-                text=f"🪚 1 бревно ({planks_one} "
-                     f"{plural_choose(planks_one, ('доска', 'доски', 'досок'))})",
+                text=_LT("logging.btn.plank_one", cnt=f"{planks_one} "
+                         f"{plural_choose(planks_one, ('доска', 'доски', 'досок'))}"),
                 callback_data=f"logsite:plank:1:{token}"))
         row.append(InlineKeyboardButton(
-            text=f"🪚 Всё ({planks} "
-                 f"{plural_choose(planks, ('доска', 'доски', 'досок'))})",
+            text=_LT("logging.btn.plank_all", cnt=f"{planks} "
+                     f"{plural_choose(planks, ('доска', 'доски', 'досок'))}"),
             callback_data=f"logsite:plank:all:{token}"))
         rows.append(row)
     if firewood > 0:
         row = []
         if firewood_one > 0:
             row.append(InlineKeyboardButton(
-                text=f"🪓 1 бревно ({firewood_one} "
-                     f"{plural_choose(firewood_one, ('пак', 'пака', 'паков'))} дров)",
+                text=_LT("logging.btn.fire_one", cnt=f"{firewood_one} "
+                         f"{plural_choose(firewood_one, ('пак', 'пака', 'паков'))}"),
                 callback_data=f"logsite:fire:1:{token}"))
         row.append(InlineKeyboardButton(
-            text=f"🪓 Всё ({firewood} "
-                 f"{plural_choose(firewood, ('пак', 'пака', 'паков'))} дров)",
+            text=_LT("logging.btn.fire_all", cnt=f"{firewood} "
+                     f"{plural_choose(firewood, ('пак', 'пака', 'паков'))}"),
             callback_data=f"logsite:fire:all:{token}"))
         rows.append(row)
-    rows.append([InlineKeyboardButton(text="🔙 Назад",
+    rows.append([InlineKeyboardButton(text=_LT("logging.btn.back_plain"),
                                       callback_data=f"logsite:menu:{token}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-
 def _battle_markup(token: str):
     rows = [
-        [InlineKeyboardButton(text="⚔️ Ударить", callback_data=f"logsite:battle:hit:{token}")],
-        [InlineKeyboardButton(text="🏃 Сбежать", callback_data=f"logsite:battle:flee:{token}")],
+        [InlineKeyboardButton(text=_LT("logging.btn.hit"), callback_data=f"logsite:battle:hit:{token}")],
+        [InlineKeyboardButton(text=_LT("logging.btn.flee"), callback_data=f"logsite:battle:flee:{token}")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -460,7 +460,7 @@ async def logging_chop(callback: CallbackQuery):
     user_id = callback.from_user.id
 
     if await user_is_tourist(user_id):
-        await callback.answer("⛔ На лесозаготовку туристов не пускают.", show_alert=True)
+        await callback.answer(_LT("logging.alert.tourist"), show_alert=True)
         return
     if user_id in LOGGING_CASTING:
         from utils.localization import t as _tla
@@ -471,13 +471,12 @@ async def logging_chop(callback: CallbackQuery):
     LOGGING_CASTING.add(user_id)
     try:
         if await get_active_run(user_id):
-            await callback.answer("⛔ Ты в подземелье — рубить деревья нельзя!",
-                                  show_alert=True)
+            await callback.answer(_LT("logging.alert.in_dungeon"), show_alert=True)
             return
 
         user = await get_user(user_id)
         if not user:
-            await callback.answer("Сначала нажми /start", show_alert=True)
+            await callback.answer(_LT("logging.alert.no_start"), show_alert=True)
             return
 
         from utils.localization import t as _tl
@@ -605,7 +604,7 @@ async def logging_mill(callback: CallbackQuery):
     if wood_qty <= 0:
         await _logging_paint(
             callback,
-            text="🪚 Переработка\n\nУ тебя нет брёвен — сначала наруби деревьев.",
+            text=_LT("logging.mill.empty"),
             kb=_enter_markup_extra(token, False),
         )
         return
@@ -655,14 +654,14 @@ async def logging_plank(callback: CallbackQuery):
     mode = callback.data.split(":")[2]
 
     if await get_active_run(user_id):
-        await callback.answer("⛔ Ты в подземелье — тут не до распила.", show_alert=True)
+        await callback.answer(_LT("logging.alert.plank_dungeon"), show_alert=True)
         return
 
     wood_item = await get_item_by_name(LOGGING_WOOD_NAME)
     plank_item = await get_item_by_name(LOGGING_PLANK_NAME)
     wood_qty = await _wood_count(user_id)
     if not wood_item or not plank_item or wood_qty <= 0:
-        await callback.answer("❌ Нет брёвен для распила.", show_alert=True)
+        await callback.answer(_LT("logging.alert.no_logs"), show_alert=True)
         await logging_mill(callback)
         return
 
@@ -673,15 +672,14 @@ async def logging_plank(callback: CallbackQuery):
     n = min(wood_qty, afford, want)
     if n <= 0:
         await callback.answer(
-            f"❌ Не хватает денег: распил одного бревна стоит "
-            f"{LOGGING_PLANK_FEE} НМ, а у тебя {nordmarks}.",
+            _LT("logging.alert.plank_money", fee=LOGGING_PLANK_FEE, nm=nordmarks),
             show_alert=True)
         return
 
     total_fee = n * LOGGING_PLANK_FEE
     planks = n * LOGGING_PLANK_YIELD
     if not await remove_inventory_item(user_id, wood_item['id'], n):
-        await callback.answer("❌ Брёвен уже не хватает.", show_alert=True)
+        await callback.answer(_LT("logging.alert.wood_short"), show_alert=True)
         return
     await transfer_to_treasury(user_id, total_fee, "Распил брёвен на доски")
     await add_inventory_item(user_id, plank_item['id'], planks)
@@ -717,14 +715,13 @@ async def logging_firewood(callback: CallbackQuery):
     await callback.answer()
 
     if await get_active_run(user_id):
-        await callback.answer("⛔ Ты в подземелье — тут не до дров.", show_alert=True)
+        await callback.answer(_LT("logging.alert.fire_dungeon"), show_alert=True)
         return
 
     if not await _axe_for(user_id):
         await _logging_paint(
             callback,
-            text="❌ Чтобы наколоть дров, нужен топор. Купи «Топор» в магазине "
-                 "(категория «Добыча ресурсов»).",
+            text=_LT("logging.fire.no_axe"),
             kb=_enter_markup_extra(token, True),
         )
         return
@@ -733,7 +730,7 @@ async def logging_firewood(callback: CallbackQuery):
     fw_item = await get_item_by_name(LOGGING_FIREWOOD_NAME)
     wood_qty = await _wood_count(user_id)
     if not wood_item or not fw_item or wood_qty <= 0:
-        await callback.answer("❌ Нет брёвен для рубки на дрова.", show_alert=True)
+        await callback.answer(_LT("logging.alert.fire_no_logs"), show_alert=True)
         await logging_mill(callback)
         return
 
@@ -744,17 +741,16 @@ async def logging_firewood(callback: CallbackQuery):
     n = min(wood_qty, afford, want)
     if n <= 0:
         await callback.answer(
-            f"❌ Не хватает ОД: на одно бревно нужно "
-            f"{LOGGING_FIREWOOD_AP_COST} ОД, а у тебя {ap}.",
+            _LT("logging.alert.fire_ap", cost=LOGGING_FIREWOOD_AP_COST, ap=ap),
             show_alert=True)
         return
 
     if not await remove_ap(user_id, n * LOGGING_FIREWOOD_AP_COST,
                            reason="рубка дров"):
-        await callback.answer("❌ Не хватает ОД.", show_alert=True)
+        await callback.answer(_LT("logging.alert.no_ap"), show_alert=True)
         return
     if not await remove_inventory_item(user_id, wood_item['id'], n):
-        await callback.answer("❌ Брёвен уже не хватает.", show_alert=True)
+        await callback.answer(_LT("logging.alert.wood_short"), show_alert=True)
         return
     firewood = n * LOGGING_FIREWOOD_YIELD
     await add_inventory_item(user_id, fw_item['id'], firewood)
