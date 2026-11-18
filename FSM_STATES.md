@@ -1180,7 +1180,7 @@
 - `logsite:plank:(1|all):\d+$`: `bot/handlers/logging_site.py:691`
 - `lootonly:`: `bot/handlers/admin.py:1742`
 - `marketok:`: `bot/handlers/admin.py:1720`
-- `mine:battle:flee:\d+$`: `bot/handlers/mine.py:755`
+- `mine:battle:flee:\d+$`: `bot/handlers/mine.py:754`
 - `mine:battle:hit:\d+$`: `bot/handlers/mine.py:603`
 - `mine:deeper:\d+$`: `bot/handlers/mine.py:403`
 - `mine:dig:\d+$`: `bot/handlers/mine.py:414`

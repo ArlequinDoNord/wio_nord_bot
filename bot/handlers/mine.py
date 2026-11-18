@@ -648,15 +648,16 @@ async def mine_battle_hit(callback: CallbackQuery):
     })
     player_hit = res['damage']
     battle['bat_hp'] -= player_hit
+    from utils.localization import t as _tm
     if res['dodged']:
-        hit_line = "Ты бьёшь — но мышь уходит в сторону с писком.\n\n"
+        hit_line = _tm("battle.mine.bat.miss")
     else:
         extra = ""
         if res['armor_blocked']:
-            extra += f"🛡️ {res['armor_blocked']} урона поглотила шкура. "
+            extra += _tm("battle.mine.bat.armor", amount=res['armor_blocked'])
         if res['crit']:
-            extra += "💥 crit! "
-        hit_line = f"Ты бьёшь наотмашь: −{player_hit} HP по мыши! {extra}\n\n"
+            extra += _tm("battle.crit_short")
+        hit_line = _tm("battle.mine.bat.hit", dmg=player_hit, extra=extra)
 
     if battle['bat_hp'] <= 0:
         MINE_BATTLE.pop(user_id, None)
@@ -674,14 +675,14 @@ async def mine_battle_hit(callback: CallbackQuery):
             got.append(item['name'])
         if got:
             loot_list = "\n".join(f"• «{name}»" for name in got)
-            result_line = f"Ты выхватил из-под писка мыши:\n{loot_list}\n\nПоложено в инвентарь."
+            result_line = _tm("battle.mine.bat.loot", loot=loot_list)
         else:
-            result_line = "Мышь повержена, но ничего ценного в ней не нашлось."
+            result_line = _tm("battle.mine.bat.loot_none")
         text = (
-            f"{emoji} БОЙ С МЫШЬЮ\n\n"
+            _tm("battle.mine.bat.title", emoji=emoji) + "\n\n"
             f"{dot_note}{hit_line}"
-            "Мышь с писком падает на каменный пол — в штольне снова тихо.\n\n"
-            f"{result_line}"
+            + _tm("battle.mine.bat.down")
+            + f"{result_line}"
         )
         await _enemy_paint(callback, text=text,
                            kb=_result_markup(MINE_TOKEN.get(user_id, "")),
@@ -696,15 +697,15 @@ async def mine_battle_hit(callback: CallbackQuery):
     })
     bat_hit = eres['damage']
     if eres['dodged']:
-        counter_line = "💨 Ты уклоняешься от когтей! (−0 HP)\n\n"
+        counter_line = _tm("battle.mine.bat.dodged")
         bat_hit = 0
     else:
         extra = ""
         if eres['armor_blocked']:
-            extra += f"🛡️ Броня поглотила {eres['armor_blocked']}. "
+            extra += _tm("battle.armor_absorbed_short", amount=eres['armor_blocked'])
         if eres['crit']:
-            extra += "💥 crit! "
-        counter_line = f"Мышь вцепляется и бьёт: −{bat_hit} HP. {extra}\n\n"
+            extra += _tm("battle.crit_short")
+        counter_line = _tm("battle.mine.bat.counter", dmg=bat_hit, extra=extra)
     battle['player_hp'] -= bat_hit
     lifesteal_line = ""
     if not eres['dodged'] and bat_hit > 0 and battle.get('bat_hp', 0) > 0:
@@ -725,11 +726,9 @@ async def mine_battle_hit(callback: CallbackQuery):
         removed = await remove_ap_or_floor(user_id, int(battle.get('loss_ap') or MINE_BAT_SEED['loss_ap']))
         await log_activity(user_id, "mine", f"Проиграл Летучей мыши (−{removed} ОД)")
         text = (
-            f"{emoji} БОЙ С МЫШЬЮ\n\n"
+            _tm("battle.mine.bat.title", emoji=emoji) + "\n\n"
             f"{dot_note}{hit_line}{counter_line}"
-            "В глазах темнеет, писк крыльев всё дальше...\n\n"
-            f"Ты приходишь в себя на полу штольни. Мышь улетела — но добычу "
-            f"придётся начать заново (−{removed} ОД)."
+            + _tm("battle.mine.bat.defeat", removed=removed)
         )
         await _enemy_paint(callback, text=text,
                            kb=_result_markup(MINE_TOKEN.get(user_id, "")),
@@ -762,9 +761,9 @@ async def mine_battle_flee(callback: CallbackQuery):
     await callback.answer()
     if battle:
         await log_activity(user_id, "mine", "Сбежал из боя с Летучей мышью")
+    from utils.localization import t as _tf
     await _level_paint(
         callback,
-        text=("🏃 Ты отступаешь к выходу из штольни, отмахиваясь от писка крыльев.\n\n"
-              "Мышь не преследует — но и добычи не будет. Попробуй ещё раз!"),
+        text=_tf("battle.mine.bat.flee"),
         kb=_result_markup(MINE_TOKEN.get(user_id, "")),
     )

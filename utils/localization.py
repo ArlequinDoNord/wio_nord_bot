@@ -311,6 +311,54 @@ STRINGS = {
     "battle.crit": {"ru": "💥 crit!", "en": "💥 crit!"},
     "battle.crit_mark": {"ru": " 💥 crit!", "en": " 💥 crit!"},
     "battle.crit_short": {"ru": "💥 crit! ", "en": "💥 crit! "},
+    # Бой с летучей мышью в копи (bot/handlers/mine.py).
+    "battle.mine.bat.title": {"ru": "{emoji} БОЙ С МЫШЬЮ", "en": "{emoji} BATTLE WITH THE BAT"},
+    "battle.mine.bat.miss": {
+        "ru": "Ты бьёшь — но мышь уходит в сторону с писком.\n\n",
+        "en": "You swing — but the bat darts aside with a squeak.\n\n",
+    },
+    "battle.mine.bat.hit": {
+        "ru": "Ты бьёшь наотмашь: −{dmg} HP по мыши! {extra}\n\n",
+        "en": "You strike hard: −{dmg} HP to the bat! {extra}\n\n",
+    },
+    "battle.mine.bat.armor": {
+        "ru": "🛡️ {amount} урона поглотила шкура. ",
+        "en": "🛡️ {amount} damage absorbed by its hide. ",
+    },
+    "battle.mine.bat.dodged": {
+        "ru": "💨 Ты уклоняешься от когтей! (−0 HP)\n\n",
+        "en": "💨 You dodge the claws! (−0 HP)\n\n",
+    },
+    "battle.mine.bat.counter": {
+        "ru": "Мышь вцепляется и бьёт: −{dmg} HP. {extra}\n\n",
+        "en": "The bat clings on and bites: −{dmg} HP. {extra}\n\n",
+    },
+    "battle.mine.bat.down": {
+        "ru": "Мышь с писком падает на каменный пол — в штольне снова тихо.\n\n",
+        "en": "The bat drops to the stone floor with a squeak — the mine goes quiet again.\n\n",
+    },
+    "battle.mine.bat.loot": {
+        "ru": "Ты выхватил из-под писка мыши:\n{loot}\n\nПоложено в инвентарь.",
+        "en": "You snatch from under the bat's squeaks:\n{loot}\n\nAdded to your inventory.",
+    },
+    "battle.mine.bat.loot_none": {
+        "ru": "Мышь повержена, но ничего ценного в ней не нашлось.",
+        "en": "The bat is down, but there was nothing valuable in it.",
+    },
+    "battle.mine.bat.defeat": {
+        "ru": ("В глазах темнеет, писк крыльев всё дальше...\n\n"
+               "Ты приходишь в себя на полу штольни. Мышь улетела — но добычу "
+               "придётся начать заново (−{removed} ОД)."),
+        "en": ("Darkness closes in, the squeaking wings fade away...\n\n"
+               "You come to on the mine floor. The bat has flown off — you'll have to "
+               "start the haul over (−{removed} AP)."),
+    },
+    "battle.mine.bat.flee": {
+        "ru": ("🏃 Ты отступаешь к выходу из штольни, отмахиваясь от писка крыльев.\n\n"
+               "Мышь не преследует — но и добычи не будет. Попробуй ещё раз!"),
+        "en": ("🏃 You back out of the mine, swatting at the squeaking wings.\n\n"
+               "The bat doesn't follow — but there'll be no haul. Try again!"),
+    },
     "battle.armor_absorbed_short": {"ru": "🛡️ Броня поглотила {amount}. ",
                                     "en": "🛡️ Armor absorbed {amount}. "},
     "battle.enemy_dodged": {

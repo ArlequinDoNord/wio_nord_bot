@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=ad3a3d7eda521793 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=9a29a7122082ebc1 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **243** (ru + en).
+Всего строк: **254** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -211,7 +211,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - EN:
   > Transfer
 
-#### battle · `battle.` (41)
+#### battle · `battle.` (52)
 
 ### UI-battle.armor_absorbed_short
 - RU:
@@ -316,6 +316,96 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   > 🩸 Кровопийца: +{healed} HP
 - EN:
   > 🩸 Lifesteal: +{healed} HP
+
+### UI-battle.mine.bat.armor
+- RU:
+  > 🛡️ {amount} урона поглотила шкура. 
+- EN:
+  > 🛡️ {amount} damage absorbed by its hide. 
+
+### UI-battle.mine.bat.counter
+- RU:
+  > Мышь вцепляется и бьёт: −{dmg} HP. {extra}
+  >
+- EN:
+  > The bat clings on and bites: −{dmg} HP. {extra}
+  >
+
+### UI-battle.mine.bat.defeat
+- RU:
+  > В глазах темнеет, писк крыльев всё дальше...
+  >
+  > Ты приходишь в себя на полу штольни. Мышь улетела — но добычу придётся начать заново (−{removed} ОД).
+- EN:
+  > Darkness closes in, the squeaking wings fade away...
+  >
+  > You come to on the mine floor. The bat has flown off — you'll have to start the haul over (−{removed} AP).
+
+### UI-battle.mine.bat.dodged
+- RU:
+  > 💨 Ты уклоняешься от когтей! (−0 HP)
+  >
+- EN:
+  > 💨 You dodge the claws! (−0 HP)
+  >
+
+### UI-battle.mine.bat.down
+- RU:
+  > Мышь с писком падает на каменный пол — в штольне снова тихо.
+  >
+- EN:
+  > The bat drops to the stone floor with a squeak — the mine goes quiet again.
+  >
+
+### UI-battle.mine.bat.flee
+- RU:
+  > 🏃 Ты отступаешь к выходу из штольни, отмахиваясь от писка крыльев.
+  >
+  > Мышь не преследует — но и добычи не будет. Попробуй ещё раз!
+- EN:
+  > 🏃 You back out of the mine, swatting at the squeaking wings.
+  >
+  > The bat doesn't follow — but there'll be no haul. Try again!
+
+### UI-battle.mine.bat.hit
+- RU:
+  > Ты бьёшь наотмашь: −{dmg} HP по мыши! {extra}
+  >
+- EN:
+  > You strike hard: −{dmg} HP to the bat! {extra}
+  >
+
+### UI-battle.mine.bat.loot
+- RU:
+  > Ты выхватил из-под писка мыши:
+  > {loot}
+  >
+  > Положено в инвентарь.
+- EN:
+  > You snatch from under the bat's squeaks:
+  > {loot}
+  >
+  > Added to your inventory.
+
+### UI-battle.mine.bat.loot_none
+- RU:
+  > Мышь повержена, но ничего ценного в ней не нашлось.
+- EN:
+  > The bat is down, but there was nothing valuable in it.
+
+### UI-battle.mine.bat.miss
+- RU:
+  > Ты бьёшь — но мышь уходит в сторону с писком.
+  >
+- EN:
+  > You swing — but the bat darts aside with a squeak.
+  >
+
+### UI-battle.mine.bat.title
+- RU:
+  > {emoji} БОЙ С МЫШЬЮ
+- EN:
+  > {emoji} BATTLE WITH THE BAT
 
 ### UI-battle.on_hit.bleed
 - RU:
@@ -4307,7 +4397,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4982** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4971** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -12281,7 +12371,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   🎒 Получено: «{…}» x{planks}.
   📦 Осталось: {left_wood} {left_word}.
 
-#### `bot/handlers/mine.py` (62)
+#### `bot/handlers/mine.py` (51)
 
 ##### `_ap_line`
 
@@ -12334,22 +12424,9 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 ##### `mine_battle_flee`
 
 - Сбежал из боя с Летучей мышью
-- 🏃 Ты отступаешь к выходу из штольни, отмахиваясь от писка крыльев.
-  
-  Мышь не преследует — но и добычи не будет. Попробуй ещё раз!
 
 ##### `mine_battle_hit`
 
-- {emoji} БОЙ С МЫШЬЮ
-  
-  {dot_note}{hit_line}{counter_line}В глазах темнеет, писк крыльев всё дальше...
-  
-  Ты приходишь в себя на полу штольни. Мышь улетела — но добычу придётся начать заново (−{removed} ОД).
-- {emoji} БОЙ С МЫШЬЮ
-  
-  {dot_note}{hit_line}Мышь с писком падает на каменный пол — в штольне снова тихо.
-  
-  {result_line}
 - {emoji} БОЙ С МЫШЬЮ
   
   {dot_note}В глазах темнеет, писк крыльев всё дальше...
@@ -12357,20 +12434,9 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   Ты приходишь в себя на полу штольни. Мышь улетела — но добычу придётся начать заново (−{removed} ОД).
 - Добыча: {…}
 - Мышь
-- Мышь вцепляется и бьёт: −{bat_hit} HP. {extra}
-- Мышь повержена, но ничего ценного в ней не нашлось.
 - Победил Летучую мышь в копи
 - Проиграл Летучей мыши (−{removed} ОД)
-- Ты бьёшь наотмашь: −{player_hit} HP по мыши! {extra}
-- Ты бьёшь — но мышь уходит в сторону с писком.
-- Ты выхватил из-под писка мыши:
-  {loot_list}
-  
-  Положено в инвентарь.
 - ⏳ Бой с мышью устарел.
-- 💨 Ты уклоняешься от когтей! (−0 HP)
-- 🛡️ {…} урона поглотила шкура.
-- 🛡️ Броня поглотила {…}.
 
 ##### `mine_deeper`
 
