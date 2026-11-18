@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=304d95a3c85d53f1 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=dd2cafeb85e9eda6 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **263** (ru + en).
+Всего строк: **291** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -211,7 +211,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - EN:
   > Transfer
 
-#### battle · `battle.` (52)
+#### battle · `battle.` (55)
 
 ### UI-battle.armor_absorbed_short
 - RU:
@@ -310,6 +310,18 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   > 💨 {enemy} уклонился от удара! (−0 HP врагу)
 - EN:
   > 💨 {enemy} dodged the blow! (−0 HP to the enemy)
+
+### UI-battle.hp.bat
+- RU:
+  > Мышь   HP
+- EN:
+  > Bat    HP
+
+### UI-battle.hp.you
+- RU:
+  > Ты     HP
+- EN:
+  > You    HP
 
 ### UI-battle.lifesteal
 - RU:
@@ -444,6 +456,12 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - EN:
   > 🗡️ You strike! −{dmg} HP
   > {bar}
+
+### UI-battle.round_note
+- RU:
+  > Ход {round}. Бей — или уходи подобру-поздорову.
+- EN:
+  > Turn {round}. Strike — or slip away while you can.
 
 ### UI-battle.status.bleed
 - RU:
@@ -1041,7 +1059,117 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - EN:
   > Choose an action:
 
-#### шахта · `mine.` (9)
+#### шахта · `mine.` (34)
+
+### UI-mine.alert.busy
+- RU:
+  > Ты уже замахнулся киркой — дождись результата!
+- EN:
+  > You're already swinging — wait for the result!
+
+### UI-mine.alert.in_dungeon
+- RU:
+  > ⛔ Ты в подземелье — в копи нельзя!
+- EN:
+  > ⛔ You're in a dungeon — no mine!
+
+### UI-mine.alert.tourist
+- RU:
+  > ⛔ В копи не пускают туристов.
+- EN:
+  > ⛔ Tourists aren't allowed in the mine.
+
+### UI-mine.ap_line
+- RU:
+  > ⚡ ОД: {ap}/{ap_max}
+- EN:
+  > ⚡ AP: {ap}/{ap_max}
+
+### UI-mine.ap_ok
+- RU:
+  >  — можно копать ещё
+- EN:
+  >  — you can keep digging
+
+### UI-mine.ap_short
+- RU:
+  >  — на следующий удар не хватит ({cost} ОД)
+- EN:
+  >  — not enough for the next strike ({cost} AP)
+
+### UI-mine.bat_appears
+- RU:
+  > Из темноты штольни с писком выныривает крылатая тень — Летучая мышь!
+  >
+- EN:
+  > A winged shadow darts out of the dark shaft with a squeak — a Cave Bat!
+  >
+
+### UI-mine.bat_expired
+- RU:
+  > ⏳ Бой с мышью устарел.
+- EN:
+  > ⏳ The bat fight is out of date.
+
+### UI-mine.btn.deeper
+- RU:
+  > 🪜 Спуститься глубже
+- EN:
+  > 🪜 Go deeper
+
+### UI-mine.btn.dig
+- RU:
+  > ⛏ Добыть руду
+- EN:
+  > ⛏ Mine ore
+
+### UI-mine.btn.dig_again
+- RU:
+  > ⛏ Добыть ещё
+- EN:
+  > ⛏ Mine again
+
+### UI-mine.btn.exit
+- RU:
+  > 🚪 Выйти из шахты
+- EN:
+  > 🚪 Leave the mine
+
+### UI-mine.btn.flee
+- RU:
+  > 🏃 Сбежать
+- EN:
+  > 🏃 Flee
+
+### UI-mine.btn.hit
+- RU:
+  > ⚔️ Ударить
+- EN:
+  > ⚔️ Strike
+
+### UI-mine.btn.level1
+- RU:
+  > ⛏ Уровень 1 шахт
+- EN:
+  > ⛏ Mine level 1
+
+### UI-mine.deeper_stub
+- RU:
+  > 🪜 Спуск на второй уровень ещё не обустроен — работы идут.
+- EN:
+  > 🪜 The second level isn't ready yet — work is in progress.
+
+### UI-mine.empty
+- RU:
+  > {head}
+  >
+  > Удар за ударом — только каменная крошка да серый блеск.
+  > Порода сегодня пуста. Пробуй ещё!
+- EN:
+  > {head}
+  >
+  > Strike after strike — only grit and grey glints.
+  > The rock is empty today. Keep trying!
 
 ### UI-mine.entrance
 - RU:
@@ -1060,6 +1188,20 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   > {hint}
   >
   > Go down to the first mine level or head back to town.
+
+### UI-mine.flame_found
+- RU:
+  > {head}
+  >
+  > В породе блеснул жар — из камня выкололся тёплый кусок пламенной руды!
+  >
+  > 🎒 Добыча: «{name}» — в инвентарь.
+- EN:
+  > {head}
+  >
+  > Heat flashed in the rock — a warm chunk of flame ore broke free!
+  >
+  > 🎒 Loot: «{name}» — added to your inventory.
 
 ### UI-mine.hint.has_pickaxe
 - RU:
@@ -1081,6 +1223,64 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   > ⛔ You're in a dungeon right now — no mine.
   > Leave the dungeon and come back.
 
+### UI-mine.item_lost
+- RU:
+  > {head}
+  >
+  > 🔨 Что-то добыл, но предмет потерялся. Сообщи хранителю.
+- EN:
+  > {head}
+  >
+  > 🔨 You dug something up, but the item got lost. Tell the keeper.
+
+### UI-mine.level.dig_hint
+- RU:
+  > Бей породу — авось блеснёт руда. А может, что и пострашнее.
+- EN:
+  > Strike the rock — maybe ore will glint. Or something worse.
+
+### UI-mine.level.no_pickaxe_hint
+- RU:
+  > Без кирки в штольню не сунешься: сначала разживись киркой.
+- EN:
+  > You can't go down without a pickaxe: get one first.
+
+### UI-mine.level.pickaxe_has
+- RU:
+  > ⛏ Кирка: {name} (ступень {rank}, шанс добычи {chance}%)
+- EN:
+  > ⛏ Pickaxe: {name} (tier {rank}, mining chance {chance}%)
+
+### UI-mine.level.pickaxe_none
+- RU:
+  > ⛏ Кирка: нет — купи «Кирка» (магазин → Добыча ресурсов)
+- EN:
+  > ⛏ Pickaxe: none — buy one (Shop → Resource Mining)
+
+### UI-mine.level.screen
+- RU:
+  > ⛏ УРОВЕНЬ 1 ШАХТ
+  >
+  > Крепь из подгнивших балок уходит вглубь, под ногами хрустит щебень, фонарь выхватывает жилы руды в тёмной породе.
+  >
+  > {pickaxe_line}
+  > {dig_line}
+  >
+  > Удар киркой стоит {cost} ОД, результат через {lo}–{hi} секунд.
+  >
+  > {ap_line}
+- EN:
+  > ⛏ MINE LEVEL 1
+  >
+  > Rotten beams run deep into the dark, gravel crunches underfoot, the lamp catches veins of ore in the black rock.
+  >
+  > {pickaxe_line}
+  > {dig_line}
+  >
+  > A pickaxe strike costs {cost} AP, result in {lo}–{hi} seconds.
+  >
+  > {ap_line}
+
 ### UI-mine.no_ap
 - RU:
   > ❌ Не хватает ОД: нужно {cost}, доступно меньше. Восстановление — в новые сутки.
@@ -1092,6 +1292,20 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   > ❌ У тебя нет кирки. Купи «Кирка» в магазине (категория «Добыча ресурсов»).
 - EN:
   > ❌ You have no pickaxe. Buy one in the shop (Resource Mining category).
+
+### UI-mine.ore_found
+- RU:
+  > {head}
+  >
+  > Кирка звонко высекает искру — из породы выкалывается кусок руды!
+  >
+  > 🎒 Добыча: «{name}» — в инвентарь.{sell_line}
+- EN:
+  > {head}
+  >
+  > The pick strikes a spark — a lump of ore breaks out of the rock!
+  >
+  > 🎒 Loot: «{name}» — added to your inventory.{sell_line}
 
 ### UI-mine.stale
 - RU:
@@ -4469,7 +4683,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4962** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4934** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -12443,49 +12657,14 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   🎒 Получено: «{…}» x{planks}.
   📦 Осталось: {left_wood} {left_word}.
 
-#### `bot/handlers/mine.py` (42)
-
-##### `_ap_line`
-
-- — можно копать ещё
-- — на следующий удар не хватит ({ap_cost} ОД)
-- ⚡ ОД: {ap}/{ap_max}
-
-##### `_battle_markup`
-
-- ⚔️ Ударить
-- 🏃 Сбежать
-
-##### `_enter_markup`
-
-- ⛏ Уровень 1 шахт
-- 🔙 В город
-
-##### `_level_markup`
-
-- ⛏ Добыть руду
-- 🚪 Выйти из шахты
-- 🪜 Спуститься глубже
+#### `bot/handlers/mine.py` (14)
 
 ##### `_mine_ok`
 
 - копи: устаревшее окно
 
-##### `_result_markup`
-
-- ⛏ Добыть ещё
-- 🚪 Выйти из шахты
-
 ##### `_show_battle`
 
-- {prefix}{emoji} {…}
-  
-  Из темноты штольни с писком выныривает крылатая тень — Летучая мышь!
-  
-  {emoji} Мышь   HP {…} {…}/{bat_hp_max}
-  🧑 Ты     HP {…} {…}/{…}{effects_line}
-  
-  Ход {…}. Бей — или уходи подобру-поздорову.
 - Летучая мышь
 
 ##### `_start_battle`
@@ -12498,66 +12677,19 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ##### `mine_battle_hit`
 
-- {emoji} БОЙ С МЫШЬЮ
-  
-  {dot_note}В глазах темнеет, писк крыльев всё дальше...
-  
-  Ты приходишь в себя на полу штольни. Мышь улетела — но добычу придётся начать заново (−{removed} ОД).
 - Добыча: {…}
 - Мышь
 - Победил Летучую мышь в копи
 - Проиграл Летучей мыши (−{removed} ОД)
-- ⏳ Бой с мышью устарел.
-
-##### `mine_deeper`
-
-- 🪜 Спуск на второй уровень ещё не обустроен — работы идут.
 
 ##### `mine_dig`
 
-- {head}
-  
-  В породе блеснул жар — из камня выкололся тёплый кусок пламенной руды!
-  
-  🎒 Добыча: «{…}» — в инвентарь.
-- {head}
-  
-  Кирка звонко высекает искру — из породы выкалывается кусок руды!
-  
-  🎒 Добыча: «{…}» — в инвентарь.{sell_line}
-- {head}
-  
-  Удар за ударом — только каменная крошка да серый блеск.
-  Порода сегодня пуста. Пробуй ещё!
-- {head}
-  
-  🔨 Что-то добыл, но предмет потерялся. Сообщи хранителю.
 - Добыл «{…}»
 - Добыча руды: удар киркой ({ap_cost} ОД)
 - Казна выкупает руду по {…} {…} за кусок.
 - Сначала нажми /start
-- Ты уже замахнулся киркой — дождись результата!
 - добыча руды
 - ⛏ ЖЕЛЕЗНАЯ КОПЬ
-- ⛔ В копи не пускают туристов.
-- ⛔ Ты в подземелье — в копи нельзя!
-
-##### `mine_level_cb`
-
-- Без кирки в штольню не сунешься: сначала разживись киркой.
-- Бей породу — авось блеснёт руда. А может, что и пострашнее.
-- ⛏ Кирка: {…} (ступень {rank}, шанс добычи {chance}%)
-- ⛏ Кирка: нет — купи «Кирка» (магазин → Добыча ресурсов)
-- ⛏ УРОВЕНЬ 1 ШАХТ
-  
-  Крепь из подгнивших балок уходит вглубь, под ногами хрустит щебень, фонарь выхватывает жилы руды в тёмной породе.
-  
-  {pickaxe_line}
-  {dig_line}
-  
-  Удар киркой стоит {ap_cost} ОД, результат через {…}–{…} секунд.
-  
-  {…}
 
 #### `bot/handlers/mvd.py` (18)
 

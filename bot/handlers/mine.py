@@ -270,35 +270,39 @@ def _hp_bar(hp: int, hp_max: int) -> str:
 
 def _enter_markup(token: str):
     """Меню входа в копь: спуск на 1-й уровень и выход в город."""
+    from utils.localization import t as _tb
     rows = [
-        [InlineKeyboardButton(text="⛏ Уровень 1 шахт", callback_data=f"mine:level:{token}")],
-        [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
+        [InlineKeyboardButton(text=_tb("mine.btn.level1"), callback_data=f"mine:level:{token}")],
+        [InlineKeyboardButton(text=_tb("city.back"), callback_data="city:menu")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _level_markup(token: str):
     """Меню 1-го уровня шахт: добыча, спуск глубже, выход из шахты."""
+    from utils.localization import t as _tb
     rows = [
-        [InlineKeyboardButton(text="⛏ Добыть руду", callback_data=f"mine:dig:{token}")],
-        [InlineKeyboardButton(text="🪜 Спуститься глубже", callback_data=f"mine:deeper:{token}")],
-        [InlineKeyboardButton(text="🚪 Выйти из шахты", callback_data=f"mine:menu:{token}")],
+        [InlineKeyboardButton(text=_tb("mine.btn.dig"), callback_data=f"mine:dig:{token}")],
+        [InlineKeyboardButton(text=_tb("mine.btn.deeper"), callback_data=f"mine:deeper:{token}")],
+        [InlineKeyboardButton(text=_tb("mine.btn.exit"), callback_data=f"mine:menu:{token}")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _result_markup(token: str):
+    from utils.localization import t as _tb
     rows = [
-        [InlineKeyboardButton(text="⛏ Добыть ещё", callback_data=f"mine:dig:{token}")],
-        [InlineKeyboardButton(text="🚪 Выйти из шахты", callback_data=f"mine:menu:{token}")],
+        [InlineKeyboardButton(text=_tb("mine.btn.dig_again"), callback_data=f"mine:dig:{token}")],
+        [InlineKeyboardButton(text=_tb("mine.btn.exit"), callback_data=f"mine:menu:{token}")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _battle_markup(token: str):
+    from utils.localization import t as _tb
     rows = [
-        [InlineKeyboardButton(text="⚔️ Ударить", callback_data=f"mine:battle:hit:{token}")],
-        [InlineKeyboardButton(text="🏃 Сбежать", callback_data=f"mine:battle:flee:{token}")],
+        [InlineKeyboardButton(text=_tb("mine.btn.hit"), callback_data=f"mine:battle:hit:{token}")],
+        [InlineKeyboardButton(text=_tb("mine.btn.flee"), callback_data=f"mine:battle:flee:{token}")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -308,13 +312,14 @@ async def _ap_line(user_id: int) -> str:
     fresh = await get_user(user_id) or {}
     ap = fresh.get('ap', 0) or 0
     ap_max = fresh.get('ap_max', ap) or ap
-    line = f"⚡ ОД: {ap}/{ap_max}"
+    from utils.localization import t as _tp
+    line = _tp("mine.ap_line", ap=ap, ap_max=ap_max)
     from database.db import gather_ap_cost
     ap_cost = await gather_ap_cost(user_id, "mining", MINE_AP_COST)
     if ap < ap_cost:
-        line += f" — на следующий удар не хватит ({ap_cost} ОД)"
+        line += _tp("mine.ap_short", cost=ap_cost)
     else:
-        line += " — можно копать ещё"
+        line += _tp("mine.ap_ok")
     return line
 
 
@@ -359,29 +364,23 @@ async def mine_level_cb(callback: CallbackQuery):
     await callback.answer()
     user_id = callback.from_user.id
 
+    from utils.localization import t as _tl1
     pickaxe = await _pickaxe_for(user_id)
     if pickaxe:
         rank = pickaxe['rarity'] or 1
         mining_bonus = await get_achievement_bonus(user_id, "mining", "mining_pct")
         chance = mine_ore_chance(rank, mining_bonus=mining_bonus)
-        pickaxe_line = f"⛏ Кирка: {pickaxe['name']} (ступень {rank}, шанс добычи {chance}%)"
-        dig_line = "Бей породу — авось блеснёт руда. А может, что и пострашнее."
+        pickaxe_line = _tl1("mine.level.pickaxe_has", name=pickaxe['name'], rank=rank, chance=chance)
+        dig_line = _tl1("mine.level.dig_hint")
     else:
-        pickaxe_line = "⛏ Кирка: нет — купи «Кирка» (магазин → Добыча ресурсов)"
-        dig_line = "Без кирки в штольню не сунешься: сначала разживись киркой."
+        pickaxe_line = _tl1("mine.level.pickaxe_none")
+        dig_line = _tl1("mine.level.no_pickaxe_hint")
 
     from database.db import gather_ap_cost
     ap_cost = await gather_ap_cost(user_id, "mining", MINE_AP_COST)
-    caption = (
-        "⛏ УРОВЕНЬ 1 ШАХТ\n\n"
-        "Крепь из подгнивших балок уходит вглубь, под ногами хрустит щебень, "
-        "фонарь выхватывает жилы руды в тёмной породе.\n\n"
-        f"{pickaxe_line}\n"
-        f"{dig_line}\n\n"
-        f"Удар киркой стоит {ap_cost} ОД, результат через "
-        f"{MINE_RESULT_DELAY[0]}–{MINE_RESULT_DELAY[1]} секунд.\n\n"
-        f"{await _ap_line(user_id)}"
-    )
+    caption = _tl1("mine.level.screen", pickaxe_line=pickaxe_line, dig_line=dig_line,
+                   cost=ap_cost, lo=MINE_RESULT_DELAY[0], hi=MINE_RESULT_DELAY[1],
+                   ap_line=await _ap_line(user_id))
     await _level_paint(callback, text=caption,
                        kb=_level_markup(MINE_TOKEN.get(user_id, "")))
 
@@ -391,10 +390,8 @@ async def mine_deeper(callback: CallbackQuery):
     """Спуск на 2-й уровень шахт — пока не обустроен (заглушка)."""
     if not await _mine_ok(callback):
         return
-    await callback.answer(
-        "🪜 Спуск на второй уровень ещё не обустроен — работы идут.",
-        show_alert=True,
-    )
+    from utils.localization import t as _tdeep
+    await callback.answer(_tdeep("mine.deeper_stub"), show_alert=True)
 
 
 @router.callback_query(F.data.regexp(r"^mine:dig:\d+$"))
@@ -404,17 +401,20 @@ async def mine_dig(callback: CallbackQuery):
     user_id = callback.from_user.id
 
     if await user_is_tourist(user_id):
-        await callback.answer("⛔ В копи не пускают туристов.", show_alert=True)
+        from utils.localization import t as _ta
+        await callback.answer(_ta("mine.alert.tourist"), show_alert=True)
         return
     if user_id in MINE_CASTING:
-        await callback.answer("Ты уже замахнулся киркой — дождись результата!", show_alert=True)
+        from utils.localization import t as _ta
+        await callback.answer(_ta("mine.alert.busy"), show_alert=True)
         return
 
     # Лок ставим сразу, до первого await: иначе двойной тап проходит дважды.
     MINE_CASTING.add(user_id)
     try:
         if await get_active_run(user_id):
-            await callback.answer("⛔ Ты в подземелье — в копи нельзя!", show_alert=True)
+            from utils.localization import t as _ta
+            await callback.answer(_ta("mine.alert.in_dungeon"), show_alert=True)
             return
 
         user = await get_user(user_id)
@@ -484,15 +484,12 @@ async def mine_dig(callback: CallbackQuery):
         if (await tree_collect_allowed(user_id, FIRE_ORE_NAME)
                 and random.random() * 100 < FIRE_ORE_CHANCE):
             flame = await get_item_by_name(FIRE_ORE_NAME)
+        from utils.localization import t as _tmd
         if flame:
             await add_inventory_item(user_id, flame['id'], 1)
             await tree_record_collect(user_id, FIRE_ORE_NAME)
             await log_activity(user_id, "mine", f"Добыл «{flame['name']}»")
-            text = (
-                f"{head}\n\n"
-                "В породе блеснул жар — из камня выкололся тёплый кусок "
-                f"пламенной руды!\n\n🎒 Добыча: «{flame['name']}» — в инвентарь."
-            ) + ap_block
+            text = _tmd("mine.flame_found", head=head, name=flame['name']) + ap_block
         elif await _mine_card(user_id, chance) == "ore":
             ore = await get_item_by_name(MINE_ORE_NAME)
             if ore:
@@ -503,21 +500,12 @@ async def mine_dig(callback: CallbackQuery):
                 if ore['sell_price'] > 0:
                     sell_line = (f"\nКазна выкупает руду по {ore['sell_price']} "
                                  f"{plural_nordmark(ore['sell_price'])} за кусок.")
-                text = (
-                    f"{head}\n\n"
-                    "Кирка звонко высекает искру — из породы выкалывается кусок "
-                    "руды!\n\n"
-                    f"🎒 Добыча: «{ore['name']}» — в инвентарь.{sell_line}"
-                ) + ap_block
+                text = _tmd("mine.ore_found", head=head, name=ore['name'],
+                            sell_line=sell_line) + ap_block
             else:
-                text = (f"{head}\n\n🔨 Что-то добыл, но предмет потерялся. "
-                        "Сообщи хранителю.") + ap_block
+                text = _tmd("mine.item_lost", head=head) + ap_block
         else:
-            text = (
-                f"{head}\n\n"
-                "Удар за ударом — только каменная крошка да серый блеск.\n"
-                "Порода сегодня пуста. Пробуй ещё!"
-            ) + ap_block
+            text = _tmd("mine.empty", head=head) + ap_block
         await _level_paint(callback, text=text, kb=result_kb)
     finally:
         MINE_CASTING.discard(user_id)
@@ -564,13 +552,14 @@ async def _show_battle(callback: CallbackQuery, prefix: str = ""):
     emoji = battle.get('emoji') or MINE_BAT_EMOJI
     effects_line = onhit.active_line(battle)
     effects_line = f"\n{effects_line}" if effects_line else ""
+    from utils.localization import t as _ts
     text = (
         f"{prefix}{emoji} {bat_name.upper()}\n\n"
-        "Из темноты штольни с писком выныривает крылатая тень — Летучая мышь!\n\n"
-        f"{emoji} Мышь   HP {_hp_bar(bat_hp, bat_hp_max)} {max(0, bat_hp)}/{bat_hp_max}\n"
-        f"🧑 Ты     HP {_hp_bar(player_hp, battle['player_hp_max'])} "
-        f"{max(0, player_hp)}/{battle['player_hp_max']}{effects_line}\n\n"
-        f"Ход {battle['round']}. Бей — или уходи подобру-поздорову."
+        + _ts("mine.bat_appears")
+        + f"{emoji} {_ts('battle.hp.bat')} {_hp_bar(bat_hp, bat_hp_max)} {max(0, bat_hp)}/{bat_hp_max}\n"
+        + f"🧑 {_ts('battle.hp.you')} {_hp_bar(player_hp, battle['player_hp_max'])} "
+        + f"{max(0, player_hp)}/{battle['player_hp_max']}{effects_line}\n\n"
+        + _ts("battle.round_note", round=battle['round'])
     )
     await _enemy_paint(callback, text=text, kb=_battle_markup(battle['token']),
                        image=(battle.get('bat') or {}).get('image'))
@@ -592,9 +581,10 @@ async def mine_battle_hit(callback: CallbackQuery):
     user_id = callback.from_user.id
     battle = MINE_BATTLE.get(user_id)
     if not battle:
+        from utils.localization import t as _tx
         await _level_paint(
             callback,
-            text="⏳ Бой с мышью устарел.",
+            text=_tx("mine.bat_expired"),
             kb=_level_markup(MINE_TOKEN.get(user_id, "")),
         )
         return
@@ -612,12 +602,11 @@ async def mine_battle_hit(callback: CallbackQuery):
             onhit.unregister(user_id)
             removed = await remove_ap_or_floor(user_id, int(battle.get('loss_ap') or MINE_BAT_SEED['loss_ap']))
             await log_activity(user_id, "mine", f"Проиграл Летучей мыши (−{removed} ОД)")
+            from utils.localization import t as _td
             text = (
-                f"{emoji} БОЙ С МЫШЬЮ\n\n"
-                f"{dot_note}"
-                "В глазах темнеет, писк крыльев всё дальше...\n\n"
-                f"Ты приходишь в себя на полу штольни. Мышь улетела — но добычу "
-                f"придётся начать заново (−{removed} ОД)."
+                _td("battle.mine.bat.title", emoji=emoji) + "\n\n"
+                + f"{dot_note}"
+                + _td("battle.mine.bat.defeat", removed=removed)
             )
             await _enemy_paint(callback, text=text,
                                kb=_result_markup(MINE_TOKEN.get(user_id, "")),

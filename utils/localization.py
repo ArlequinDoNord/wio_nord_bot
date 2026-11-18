@@ -344,6 +344,89 @@ STRINGS = {
                "{hint}\n\n"
                "Go down to the first mine level or head back to town."),
     },
+    "mine.ap_line": {"ru": "⚡ ОД: {ap}/{ap_max}", "en": "⚡ AP: {ap}/{ap_max}"},
+    "mine.ap_short": {
+        "ru": " — на следующий удар не хватит ({cost} ОД)",
+        "en": " — not enough for the next strike ({cost} AP)",
+    },
+    "mine.ap_ok": {"ru": " — можно копать ещё", "en": " — you can keep digging"},
+    "mine.level.pickaxe_has": {
+        "ru": "⛏ Кирка: {name} (ступень {rank}, шанс добычи {chance}%)",
+        "en": "⛏ Pickaxe: {name} (tier {rank}, mining chance {chance}%)",
+    },
+    "mine.level.pickaxe_none": {
+        "ru": "⛏ Кирка: нет — купи «Кирка» (магазин → Добыча ресурсов)",
+        "en": "⛏ Pickaxe: none — buy one (Shop → Resource Mining)",
+    },
+    "mine.level.dig_hint": {
+        "ru": "Бей породу — авось блеснёт руда. А может, что и пострашнее.",
+        "en": "Strike the rock — maybe ore will glint. Or something worse.",
+    },
+    "mine.level.no_pickaxe_hint": {
+        "ru": "Без кирки в штольню не сунешься: сначала разживись киркой.",
+        "en": "You can't go down without a pickaxe: get one first.",
+    },
+    "mine.level.screen": {
+        "ru": ("⛏ УРОВЕНЬ 1 ШАХТ\n\n"
+               "Крепь из подгнивших балок уходит вглубь, под ногами хрустит щебень, "
+               "фонарь выхватывает жилы руды в тёмной породе.\n\n"
+               "{pickaxe_line}\n{dig_line}\n\n"
+               "Удар киркой стоит {cost} ОД, результат через {lo}–{hi} секунд.\n\n"
+               "{ap_line}"),
+        "en": ("⛏ MINE LEVEL 1\n\n"
+               "Rotten beams run deep into the dark, gravel crunches underfoot, "
+               "the lamp catches veins of ore in the black rock.\n\n"
+               "{pickaxe_line}\n{dig_line}\n\n"
+               "A pickaxe strike costs {cost} AP, result in {lo}–{hi} seconds.\n\n"
+               "{ap_line}"),
+    },
+    "mine.deeper_stub": {
+        "ru": "🪜 Спуск на второй уровень ещё не обустроен — работы идут.",
+        "en": "🪜 The second level isn't ready yet — work is in progress.",
+    },
+    "mine.alert.tourist": {"ru": "⛔ В копи не пускают туристов.", "en": "⛔ Tourists aren't allowed in the mine."},
+    "mine.alert.busy": {
+        "ru": "Ты уже замахнулся киркой — дождись результата!",
+        "en": "You're already swinging — wait for the result!",
+    },
+    "mine.alert.in_dungeon": {"ru": "⛔ Ты в подземелье — в копи нельзя!", "en": "⛔ You're in a dungeon — no mine!"},
+    "mine.btn.level1": {"ru": "⛏ Уровень 1 шахт", "en": "⛏ Mine level 1"},
+    "mine.btn.dig": {"ru": "⛏ Добыть руду", "en": "⛏ Mine ore"},
+    "mine.btn.deeper": {"ru": "🪜 Спуститься глубже", "en": "🪜 Go deeper"},
+    "mine.btn.exit": {"ru": "🚪 Выйти из шахты", "en": "🚪 Leave the mine"},
+    "mine.btn.dig_again": {"ru": "⛏ Добыть ещё", "en": "⛏ Mine again"},
+    "mine.btn.hit": {"ru": "⚔️ Ударить", "en": "⚔️ Strike"},
+    "mine.btn.flee": {"ru": "🏃 Сбежать", "en": "🏃 Flee"},
+    "mine.bat_appears": {
+        "ru": "Из темноты штольни с писком выныривает крылатая тень — Летучая мышь!\n\n",
+        "en": "A winged shadow darts out of the dark shaft with a squeak — a Cave Bat!\n\n",
+    },
+    "battle.hp.bat": {"ru": "Мышь   HP", "en": "Bat    HP"},
+    "battle.hp.you": {"ru": "Ты     HP", "en": "You    HP"},
+    "battle.round_note": {
+        "ru": "Ход {round}. Бей — или уходи подобру-поздорову.",
+        "en": "Turn {round}. Strike — or slip away while you can.",
+    },
+    "mine.bat_expired": {
+        "ru": "⏳ Бой с мышью устарел.",
+        "en": "⏳ The bat fight is out of date.",
+    },
+    "mine.flame_found": {
+        "ru": "{head}\n\nВ породе блеснул жар — из камня выкололся тёплый кусок пламенной руды!\n\n🎒 Добыча: «{name}» — в инвентарь.",
+        "en": "{head}\n\nHeat flashed in the rock — a warm chunk of flame ore broke free!\n\n🎒 Loot: «{name}» — added to your inventory.",
+    },
+    "mine.ore_found": {
+        "ru": "{head}\n\nКирка звонко высекает искру — из породы выкалывается кусок руды!\n\n🎒 Добыча: «{name}» — в инвентарь.{sell_line}",
+        "en": "{head}\n\nThe pick strikes a spark — a lump of ore breaks out of the rock!\n\n🎒 Loot: «{name}» — added to your inventory.{sell_line}",
+    },
+    "mine.item_lost": {
+        "ru": "{head}\n\n🔨 Что-то добыл, но предмет потерялся. Сообщи хранителю.",
+        "en": "{head}\n\n🔨 You dug something up, but the item got lost. Tell the keeper.",
+    },
+    "mine.empty": {
+        "ru": "{head}\n\nУдар за ударом — только каменная крошка да серый блеск.\nПорода сегодня пуста. Пробуй ещё!",
+        "en": "{head}\n\nStrike after strike — only grit and grey glints.\nThe rock is empty today. Keep trying!",
+    },
     "mine.no_pickaxe": {
         "ru": "❌ У тебя нет кирки. Купи «Кирка» в магазине (категория «Добыча ресурсов»).",
         "en": "❌ You have no pickaxe. Buy one in the shop (Resource Mining category).",
