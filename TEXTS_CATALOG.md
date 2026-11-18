@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=dd2cafeb85e9eda6 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=baf42126ace28c91 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **291** (ru + en).
+Всего строк: **307** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -1050,6 +1050,160 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   > Ратуша
 - EN:
   > Town Hall
+
+#### logging · `logging.` (16)
+
+### UI-logging.alert.busy
+- RU:
+  > Ты уже замахнулся топором — дождись результата!
+- EN:
+  > You're already swinging — wait for the result!
+
+### UI-logging.entrance
+- RU:
+  > 🪓 ЛЕСОЗАГОТОВКА
+  >
+  > За дальнейшей опушкой, там, где тропа уходит в самый глухой подлесок, стоит сторожка лесорубов. Здесь пахнет свежими стружками и хвоей — и отсюда редко кто возвращается с пустыми руками. Или вообще не возвращается.
+  >
+  > {hint}
+  >
+  > Рубка дерева стоит {cost} ОД, результат через {lo}–{hi} секунд.{mill_hint}
+  >
+  > {ap_line}
+- EN:
+  > 🪓 LOGGING CAMP
+  >
+  > Past the last clearing, where the path disappears into the thickest undergrowth, stands the loggers' lodge. It smells of fresh shavings and pine — and few come back from here empty-handed. Or not at all.
+  >
+  > {hint}
+  >
+  > A tree chop costs {cost} AP, result in {lo}–{hi} seconds.{mill_hint}
+  >
+  > {ap_line}
+
+### UI-logging.hint.has_axe
+- RU:
+  > 🪓 Топор: {name} (ступень {rank}, шанс рубки {chance}%) — за работу!
+- EN:
+  > 🪓 Axe: {name} (tier {rank}, chop chance {chance}%) — get to work!
+
+### UI-logging.hint.no_axe
+- RU:
+  > 🪓 Без топора сюда не пускают: купи «Топор» (магазин → Добыча ресурсов).
+- EN:
+  > 🪓 No axe, no entry: buy an axe (Shop → Resource Mining).
+
+### UI-logging.in_dungeon
+- RU:
+  > ⛔ Ты сейчас проходишь подземелье — рубить деревья нельзя.
+  > Выйди из подземелья, а потом возвращайся.
+- EN:
+  > ⛔ You're in a dungeon right now — no chopping.
+  > Leave the dungeon and come back.
+
+### UI-logging.mill_hint
+- RU:
+  >
+  >
+  > 🪚 В сарае {qty} — можно распилить их на доски в артели или наколоть дров.
+- EN:
+  >
+  >
+  > 🪚 {qty} in the shed — you can saw them into planks at the mill or split them for firewood.
+
+### UI-logging.no_ap
+- RU:
+  > ❌ Не хватает ОД: нужно {cost}, доступно меньше. Восстановление — в новые сутки.
+- EN:
+  > ❌ Not enough AP: you need {cost}. AP comes back with the new day.
+
+### UI-logging.no_axe
+- RU:
+  > ❌ У тебя нет топора. Купи «Топор» в магазине (категория «Добыча ресурсов»).
+- EN:
+  > ❌ You have no axe. Buy one in the shop (Resource Mining category).
+
+### UI-logging.res.firewood
+- RU:
+  > {head}
+  >
+  > Удар за ударом — стружка летит, но сук топор не берёт: сучковатое дерево уходит на дрова.
+  > Пробуй ещё!
+- EN:
+  > {head}
+  >
+  > Strike after strike — chips fly, but the knot won't give to the axe: the knotty tree goes to firewood.
+  > Keep trying!
+
+### UI-logging.res.firewood_loot
+- RU:
+  >
+  >
+  > 🎒 Добыча: «{name}» — в инвентарь.
+- EN:
+  >
+  >
+  > 🎒 Loot: «{name}» — added to your inventory.
+
+### UI-logging.res.lost
+- RU:
+  > {head}
+  >
+  > 🌲 Срубил что-то, но предмет потерялся. Сообщи хранителю.
+- EN:
+  > {head}
+  >
+  > 🌲 You felled something, but the item got lost. Tell the keeper.
+
+### UI-logging.res.slip
+- RU:
+  > {head}
+  >
+  > Топор от усталости неудачно отскакивает от мощного ствола и отлетает пилоту в плечо.
+  >
+  > Ресурса не получено, попытка потрачена.
+- EN:
+  > {head}
+  >
+  > The axe glances off the thick trunk out of fatigue and bounces back at your shoulder.
+  >
+  > No resource gained, the attempt is spent.
+
+### UI-logging.res.wood
+- RU:
+  > {head}
+  >
+  > Топор звонко вгрызается в древесину — с ровным треском падает свежесрубленное бревно!
+  >
+  > 🎒 Добыча: «{name}» — в инвентарь.{sell_line}
+- EN:
+  > {head}
+  >
+  > The axe bites into the wood with a clean crack — a freshly felled log drops!
+  >
+  > 🎒 Loot: «{name}» — added to your inventory.{sell_line}
+
+### UI-logging.res.wood_sell
+- RU:
+  >
+  > Казна выкупает бревна по {price} {money} за штуку.
+- EN:
+  >
+  > The treasury buys logs at {price} {money} each.
+
+### UI-logging.swing
+- RU:
+  > 🪓 Ты размахиваешься топором и рубишь дерево...
+  > Результат через {delay} секунд. Не поранься — и не дремли: в подлеске что-то шевелится!
+- EN:
+  > 🪓 You swing the axe at the tree...
+  > Result in {delay} seconds. Don't cut yourself — and don't doze: something moves in the undergrowth!
+
+### UI-logging.tourist
+- RU:
+  > ⛔ На лесозаготовку не пускают туристов — это работа настоящих пилотов.
+- EN:
+  > ⛔ Tourists aren't allowed at the logging camp — this is real pilots' work.
 
 #### общие экраны · `menu.` (1)
 
@@ -4683,7 +4837,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4934** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4918** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -12422,7 +12576,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - 🔑 Войти
 - 🔙 В город
 
-#### `bot/handlers/logging_site.py` (108)
+#### `bot/handlers/logging_site.py` (92)
 
 ##### `_ap_line`
 
@@ -12547,38 +12701,14 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ##### `logging_chop`
 
-- {head}
-  
-  Топор звонко вгрызается в древесину — с ровным треском падает свежесрубленное бревно!
-  
-  🎒 Добыча: «{…}» — в инвентарь.{sell_line}
-- {head}
-  
-  Топор от усталости неудачно отскакивает от мощного ствола и отлетает пилоту в плечо.
-  
-  Ресурса не получено, попытка потрачена.
-- {head}
-  
-  Удар за ударом — стружка летит, но сук топор не берёт: сучковатое дерево уходит на дрова.
-  Пробуй ещё!
-- {head}
-  
-  🌲 Срубил что-то, но предмет потерялся. Сообщи хранителю.
-- Казна выкупает бревна по {…} {…} за штуку.
 - Рубка деревьев ({ap_cost} ОД)
 - Сначала нажми /start
 - Срубил «{…}»
 - Срубил «{…}» (суковатое дерево)
-- Ты уже замахнулся топором — дождись результата!
 - рубка деревьев
 - ⛔ На лесозаготовку туристов не пускают.
 - ⛔ Ты в подземелье — рубить деревья нельзя!
-- ❌ Не хватает ОД: нужно {ap_cost}, доступно меньше. Восстановление — в новые сутки.
-- ❌ У тебя нет топора. Купи «Топор» в магазине (категория «Добыча ресурсов»).
-- 🎒 Добыча: «{…}» — в инвентарь.
 - 🪓 ЛЕСОЗАГОТОВКА
-- 🪓 Ты размахиваешься топором и рубишь дерево...
-  Результат через {delay} секунд. Не поранься — и не дремли: в подлеске что-то шевелится!
 
 ##### `logging_firewood`
 
@@ -12601,24 +12731,6 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   📦 Осталось: {left_wood} {…}.
   
   {…}
-
-##### `logging_menu_cb`
-
-- ⛔ На лесозаготовку не пускают туристов — это работа настоящих пилотов.
-- ⛔ Ты сейчас проходишь подземелье — рубить деревья нельзя.
-  Выйди из подземелья, а потом возвращайся.
-- 🪓 Без топора сюда не пускают: купи «Топор» (магазин → Добыча ресурсов).
-- 🪓 ЛЕСОЗАГОТОВКА
-  
-  За дальнейшей опушкой, там, где тропа уходит в самый глухой подлесок, стоит сторожка лесорубов. Здесь пахнет свежими стружками и хвоей — и отсюда редко кто возвращается с пустыми руками. Или вообще не возвращается.
-  
-  {hint}
-  
-  Рубка дерева стоит {ap_cost} ОД, результат через {…}–{…} секунд.{mill_hint}
-  
-  {…}
-- 🪓 Топор: {…} (ступень {rank}, шанс рубки {chance}%) — за работу!
-- 🪚 В сарае {wood_qty} {…} — можно распилить их на доски в артели или наколоть дров.
 
 ##### `logging_mill`
 

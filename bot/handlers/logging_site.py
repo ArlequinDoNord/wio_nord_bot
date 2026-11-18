@@ -401,17 +401,13 @@ async def logging_menu_cb(callback: CallbackQuery):
     """Вход в Лесозаготовку (кнопка с Лесной поляны)."""
     await callback.answer()
 
+    from utils.localization import t as _tl
     if await user_is_tourist(callback.from_user.id):
-        await callback.message.answer(
-            "⛔ На лесозаготовку не пускают туристов — это работа настоящих пилотов."
-        )
+        await callback.message.answer(_tl("logging.tourist"))
         return
 
     if await get_active_run(callback.from_user.id):
-        await callback.message.answer(
-            "⛔ Ты сейчас проходишь подземелье — рубить деревья нельзя.\n"
-            "Выйди из подземелья, а потом возвращайся."
-        )
+        await callback.message.answer(_tl("logging.in_dungeon"))
         return
 
     token = _new_token()
@@ -423,33 +419,21 @@ async def logging_menu_cb(callback: CallbackQuery):
         logging_bonus = await get_achievement_bonus(
             callback.from_user.id, "logging", "logging_pct")
         chance = logging_wood_chance(rank, logging_bonus=logging_bonus)
-        hint = (f"🪓 Топор: {axe['name']} (ступень {rank}, шанс рубки {chance}%) — "
-                "за работу!")
+        hint = _tl("logging.hint.has_axe", name=axe['name'], rank=rank, chance=chance)
     else:
-        hint = ("🪓 Без топора сюда не пускают: купи «Топор» "
-                "(магазин → Добыча ресурсов).")
+        hint = _tl("logging.hint.no_axe")
 
     wood_qty = await _wood_count(callback.from_user.id)
     mill_hint = ""
     if wood_qty > 0:
-        mill_hint = (f"\n\n🪚 В сарае {wood_qty} "
-                     f"{plural_choose(wood_qty, ('бревно', 'бревна', 'брёвен'))} — "
-                     "можно распилить их на доски в артели или наколоть дров.")
+        mill_hint = _tl("logging.mill_hint",
+                        qty=f"{wood_qty} {plural_choose(wood_qty, ('бревно', 'бревна', 'брёвен'))}")
 
     from database.db import gather_ap_cost
     ap_cost = await gather_ap_cost(callback.from_user.id, "logging", LOGGING_AP_COST)
-    caption = (
-        "🪓 ЛЕСОЗАГОТОВКА\n\n"
-        "За дальнейшей опушкой, там, где тропа уходит в самый глухой подлесок, "
-        "стоит сторожка лесорубов. Здесь пахнет свежими стружками и хвоей — "
-        "и отсюда редко кто возвращается с пустыми руками. Или вообще "
-        "не возвращается.\n\n"
-        f"{hint}\n\n"
-        f"Рубка дерева стоит {ap_cost} ОД, результат через "
-        f"{LOGGING_RESULT_DELAY[0]}–{LOGGING_RESULT_DELAY[1]} секунд."
-        f"{mill_hint}\n\n"
-        f"{await _ap_line(callback.from_user.id)}"
-    )
+    caption = _tl("logging.entrance", hint=hint, cost=ap_cost,
+                  lo=LOGGING_RESULT_DELAY[0], hi=LOGGING_RESULT_DELAY[1],
+                  mill_hint=mill_hint, ap_line=await _ap_line(callback.from_user.id))
     await _logging_paint(callback, text=caption,
                          kb=_enter_markup_extra(token, wood_qty > 0))
 
@@ -479,8 +463,8 @@ async def logging_chop(callback: CallbackQuery):
         await callback.answer("⛔ На лесозаготовку туристов не пускают.", show_alert=True)
         return
     if user_id in LOGGING_CASTING:
-        await callback.answer("Ты уже замахнулся топором — дождись результата!",
-                              show_alert=True)
+        from utils.localization import t as _tla
+        await callback.answer(_tla("logging.alert.busy"), show_alert=True)
         return
 
     # Лок ставим сразу, до первого await: иначе двойной тап проходит дважды.
@@ -496,12 +480,12 @@ async def logging_chop(callback: CallbackQuery):
             await callback.answer("Сначала нажми /start", show_alert=True)
             return
 
+        from utils.localization import t as _tl
         axe = await _axe_for(user_id)
         if not axe:
             await _logging_paint(
                 callback,
-                text="❌ У тебя нет топора. Купи «Топор» в магазине "
-                     "(категория «Добыча ресурсов»).",
+                text=_tl("logging.no_axe"),
                 kb=_enter_markup(LOGGING_TOKEN.get(user_id, "")),
             )
             return
@@ -511,8 +495,7 @@ async def logging_chop(callback: CallbackQuery):
         if not await remove_ap(user_id, ap_cost, reason="рубка деревьев"):
             await _logging_paint(
                 callback,
-                text=f"❌ Не хватает ОД: нужно {ap_cost}, доступно меньше. "
-                     "Восстановление — в новые сутки.",
+                text=_tl("logging.no_ap", cost=ap_cost),
                 kb=_enter_markup(LOGGING_TOKEN.get(user_id, "")),
             )
             return
@@ -520,9 +503,7 @@ async def logging_chop(callback: CallbackQuery):
         delay = random.randint(*LOGGING_RESULT_DELAY)
         await _logging_paint(
             callback,
-            text=(f"🪓 Ты размахиваешься топором и рубишь дерево...\n"
-                  f"Результат через {delay} секунд. Не поранься — и не дремли: "
-                  "в подлеске что-то шевелится!"),
+            text=_tl("logging.swing", delay=delay),
             kb=None,
         )
         await log_activity(user_id, "logging", f"Рубка деревьев ({ap_cost} ОД)")
@@ -567,13 +548,9 @@ async def logging_chop(callback: CallbackQuery):
             "wood": chance,
             "firewood": GATHER_BAG_SIZE - LOGGING_AXE_SLIP_CHANCE - chance,
         })
+        from utils.localization import t as _tr2
         if card == "slip":
-            text = (
-                f"{head}\n\n"
-                "Топор от усталости неудачно отскакивает от мощного ствола "
-                "и отлетает пилоту в плечо.\n\n"
-                "Ресурса не получено, попытка потрачена."
-            ) + ap_block
+            text = _tr2("logging.res.slip", head=head) + ap_block
             left_wood = await _wood_count(user_id)
             result_kb = _result_markup(LOGGING_TOKEN.get(user_id, ""), left_wood > 0)
             await _logging_paint(callback, text=text, kb=result_kb)
@@ -592,17 +569,12 @@ async def logging_chop(callback: CallbackQuery):
                 item_meta = wood
                 sell_line = ""
                 if wood['sell_price'] > 0:
-                    sell_line = (f"\nКазна выкупает бревна по {wood['sell_price']} "
-                                 f"{plural_nordmark(wood['sell_price'])} за штуку.")
-                text = (
-                    f"{head}\n\n"
-                    "Топор звонко вгрызается в древесину — с ровным треском "
-                    "падает свежесрубленное бревно!\n\n"
-                    f"🎒 Добыча: «{wood['name']}» — в инвентарь.{sell_line}"
-                ) + ap_block
+                    sell_line = _tr2("logging.res.wood_sell", price=wood['sell_price'],
+                                     money=plural_nordmark(wood['sell_price']))
+                text = _tr2("logging.res.wood", head=head, name=wood['name'],
+                            sell_line=sell_line) + ap_block
             else:
-                text = (f"{head}\n\n🌲 Срубил что-то, но предмет потерялся. "
-                        "Сообщи хранителю.") + ap_block
+                text = _tr2("logging.res.lost", head=head) + ap_block
         else:
             firewood = await get_item_by_name(LOGGING_FIREWOOD_NAME)
             loot_line = ""
@@ -611,13 +583,8 @@ async def logging_chop(callback: CallbackQuery):
                 await bump_achievement(user_id, "logging", 1)
                 await log_activity(user_id, "logging", f"Срубил «{firewood['name']}» (суковатое дерево)")
                 item_meta = firewood
-                loot_line = f"\n\n🎒 Добыча: «{firewood['name']}» — в инвентарь."
-            text = (
-                f"{head}\n\n"
-                "Удар за ударом — стружка летит, но сук топор не берёт: сучковатое "
-                "дерево уходит на дрова.\n"
-                "Пробуй ещё!"
-            ) + loot_line + ap_block
+                loot_line = _tr2("logging.res.firewood_loot", name=firewood['name'])
+            text = _tr2("logging.res.firewood", head=head) + loot_line + ap_block
         left_wood = await _wood_count(user_id)
         result_kb = _result_markup(LOGGING_TOKEN.get(user_id, ""), left_wood > 0)
         await _item_paint(callback, item_meta, text=text, kb=result_kb)

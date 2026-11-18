@@ -311,6 +311,83 @@ STRINGS = {
     "battle.crit": {"ru": "💥 crit!", "en": "💥 crit!"},
     "battle.crit_mark": {"ru": " 💥 crit!", "en": " 💥 crit!"},
     "battle.crit_short": {"ru": "💥 crit! ", "en": "💥 crit! "},
+    # Лесозаготовка: вход и запреты (bot/handlers/logging_site.py).
+    "logging.no_axe": {
+        "ru": "❌ У тебя нет топора. Купи «Топор» в магазине (категория «Добыча ресурсов»).",
+        "en": "❌ You have no axe. Buy one in the shop (Resource Mining category).",
+    },
+    "logging.no_ap": {
+        "ru": "❌ Не хватает ОД: нужно {cost}, доступно меньше. Восстановление — в новые сутки.",
+        "en": "❌ Not enough AP: you need {cost}. AP comes back with the new day.",
+    },
+    "logging.swing": {
+        "ru": "🪓 Ты размахиваешься топором и рубишь дерево...\nРезультат через {delay} секунд. Не поранься — и не дремли: в подлеске что-то шевелится!",
+        "en": "🪓 You swing the axe at the tree...\nResult in {delay} seconds. Don't cut yourself — and don't doze: something moves in the undergrowth!",
+    },
+    "logging.alert.busy": {
+        "ru": "Ты уже замахнулся топором — дождись результата!",
+        "en": "You're already swinging — wait for the result!",
+    },
+    "logging.res.slip": {
+        "ru": "{head}\n\nТопор от усталости неудачно отскакивает от мощного ствола и отлетает пилоту в плечо.\n\nРесурса не получено, попытка потрачена.",
+        "en": "{head}\n\nThe axe glances off the thick trunk out of fatigue and bounces back at your shoulder.\n\nNo resource gained, the attempt is spent.",
+    },
+    "logging.res.wood_sell": {
+        "ru": "\nКазна выкупает бревна по {price} {money} за штуку.",
+        "en": "\nThe treasury buys logs at {price} {money} each.",
+    },
+    "logging.res.wood": {
+        "ru": "{head}\n\nТопор звонко вгрызается в древесину — с ровным треском падает свежесрубленное бревно!\n\n🎒 Добыча: «{name}» — в инвентарь.{sell_line}",
+        "en": "{head}\n\nThe axe bites into the wood with a clean crack — a freshly felled log drops!\n\n🎒 Loot: «{name}» — added to your inventory.{sell_line}",
+    },
+    "logging.res.lost": {
+        "ru": "{head}\n\n🌲 Срубил что-то, но предмет потерялся. Сообщи хранителю.",
+        "en": "{head}\n\n🌲 You felled something, but the item got lost. Tell the keeper.",
+    },
+    "logging.res.firewood_loot": {
+        "ru": "\n\n🎒 Добыча: «{name}» — в инвентарь.",
+        "en": "\n\n🎒 Loot: «{name}» — added to your inventory.",
+    },
+    "logging.res.firewood": {
+        "ru": "{head}\n\nУдар за ударом — стружка летит, но сук топор не берёт: сучковатое дерево уходит на дрова.\nПробуй ещё!",
+        "en": "{head}\n\nStrike after strike — chips fly, but the knot won't give to the axe: the knotty tree goes to firewood.\nKeep trying!",
+    },
+    "logging.tourist": {
+        "ru": "⛔ На лесозаготовку не пускают туристов — это работа настоящих пилотов.",
+        "en": "⛔ Tourists aren't allowed at the logging camp — this is real pilots' work.",
+    },
+    "logging.in_dungeon": {
+        "ru": "⛔ Ты сейчас проходишь подземелье — рубить деревья нельзя.\nВыйди из подземелья, а потом возвращайся.",
+        "en": "⛔ You're in a dungeon right now — no chopping.\nLeave the dungeon and come back.",
+    },
+    "logging.hint.has_axe": {
+        "ru": "🪓 Топор: {name} (ступень {rank}, шанс рубки {chance}%) — за работу!",
+        "en": "🪓 Axe: {name} (tier {rank}, chop chance {chance}%) — get to work!",
+    },
+    "logging.hint.no_axe": {
+        "ru": "🪓 Без топора сюда не пускают: купи «Топор» (магазин → Добыча ресурсов).",
+        "en": "🪓 No axe, no entry: buy an axe (Shop → Resource Mining).",
+    },
+    "logging.mill_hint": {
+        "ru": "\n\n🪚 В сарае {qty} — можно распилить их на доски в артели или наколоть дров.",
+        "en": "\n\n🪚 {qty} in the shed — you can saw them into planks at the mill or split them for firewood.",
+    },
+    "logging.entrance": {
+        "ru": ("🪓 ЛЕСОЗАГОТОВКА\n\n"
+               "За дальнейшей опушкой, там, где тропа уходит в самый глухой подлесок, "
+               "стоит сторожка лесорубов. Здесь пахнет свежими стружками и хвоей — "
+               "и отсюда редко кто возвращается с пустыми руками. Или вообще не возвращается.\n\n"
+               "{hint}\n\n"
+               "Рубка дерева стоит {cost} ОД, результат через {lo}–{hi} секунд.{mill_hint}\n\n"
+               "{ap_line}"),
+        "en": ("🪓 LOGGING CAMP\n\n"
+               "Past the last clearing, where the path disappears into the thickest undergrowth, "
+               "stands the loggers' lodge. It smells of fresh shavings and pine — "
+               "and few come back from here empty-handed. Or not at all.\n\n"
+               "{hint}\n\n"
+               "A tree chop costs {cost} AP, result in {lo}–{hi} seconds.{mill_hint}\n\n"
+               "{ap_line}"),
+    },
     # Железная копь: вход, запреты, подсказки (bot/handlers/mine.py).
     "mine.stale": {
         "ru": "⏳ Это окно копи устарело — открой её заново (Город → Железная копи).",
