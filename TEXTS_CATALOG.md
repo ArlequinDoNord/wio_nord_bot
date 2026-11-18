@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=a2ecb491db5cf8f9 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=f57d4e15ce90de3c seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **206** (ru + en).
+Всего строк: **220** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -211,7 +211,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - EN:
   > Transfer
 
-#### battle · `battle.` (20)
+#### battle · `battle.` (34)
 
 ### UI-battle.armor_blocked
 - RU:
@@ -219,11 +219,35 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - EN:
   > 🛡️ Armor absorbed {amount} damage!
 
+### UI-battle.consumables_blocked
+- RU:
+  > {emoji} {title}: в бою сейчас нельзя применять расходники и зелья.
+- EN:
+  > {emoji} {title}: consumables and potions can't be used in battle right now.
+
 ### UI-battle.crit
 - RU:
   > 💥 crit!
 - EN:
   > 💥 crit!
+
+### UI-battle.dot_tick.bleed
+- RU:
+  > 🩸 Кровотечение: −{dmg} HP.
+- EN:
+  > 🩸 Bleeding: −{dmg} HP.
+
+### UI-battle.dot_tick.poison
+- RU:
+  > ☠️ Яд: −{dmg} HP.
+- EN:
+  > ☠️ Poison: −{dmg} HP.
+
+### UI-battle.effect.expired
+- RU:
+  > {emoji} {title} прошло.
+- EN:
+  > {emoji} {title} is over.
 
 ### UI-battle.enemy.dot_status
 - RU:
@@ -247,11 +271,71 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - EN:
   > 💫 {enemy} is stunned and misses! (−0 HP)
 
+### UI-battle.lifesteal
+- RU:
+  > 🩸 Кровопийца: +{healed} HP
+- EN:
+  > 🩸 Lifesteal: +{healed} HP
+
+### UI-battle.on_hit.bleed
+- RU:
+  > 🩸 {enemy} ранил тебя! Кровотечение: −{dmg} HP каждый ход до конца боя.
+- EN:
+  > 🩸 {enemy} cut you! Bleeding: −{dmg} HP each turn until the battle ends.
+
+### UI-battle.on_hit.frostbite
+- RU:
+  > 💧 {enemy} окутал тебя морозом! Обморожение: лечение −50%, {rounds} ход(ов).
+- EN:
+  > 💧 {enemy} wrapped you in frost! Frostbite: healing −50%, {rounds} turn(s).
+
+### UI-battle.on_hit.poison
+- RU:
+  > ☠️ {enemy} отравил тебя! Яд: −{dmg} HP каждый ход до конца боя.
+- EN:
+  > ☠️ {enemy} poisoned you! Poison: −{dmg} HP each turn until the battle ends.
+
+### UI-battle.on_hit.state
+- RU:
+  > {emoji} {enemy} накладывает «{title}» ({rounds} ход(ов)): {hint}
+- EN:
+  > {emoji} {enemy} applies «{title}» ({rounds} turn(s)): {hint}
+
 ### UI-battle.player.dodged
 - RU:
   > 💨 Ты уклонился от атаки {enemy}! (−0 HP)
 - EN:
   > 💨 You dodged the attack of {enemy}! (−0 HP)
+
+### UI-battle.status.bleed
+- RU:
+  > 🩸 Кровотечение −{dmg} HP/ход
+- EN:
+  > 🩸 Bleeding −{dmg} HP/turn
+
+### UI-battle.status.frostbite
+- RU:
+  > 💧 Обморожение (лечение −50%)
+- EN:
+  > 💧 Frostbite (healing −50%)
+
+### UI-battle.status.poison
+- RU:
+  > ☠️ Яд −{dmg} HP/ход
+- EN:
+  > ☠️ Poison −{dmg} HP/turn
+
+### UI-battle.status.state
+- RU:
+  > {emoji} {title}
+- EN:
+  > {emoji} {title}
+
+### UI-battle.status.state_rounds
+- RU:
+  > {emoji} {title} ({rounds} х.)
+- EN:
+  > {emoji} {title} ({rounds} t.)
 
 ### UI-battle.weapon.attack.bleed
 - RU:
@@ -4077,7 +4161,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **5019** (уникальные вхождения по файлам и функциям).
+Всего текстов: **5006** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -14032,39 +14116,11 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   📝 {…}
   📄 Подробности смотри в боте.
 
-#### `utils/onhit.py` (14)
-
-##### `active_line`
-
-- ({rounds} х.)
-- ☠️ Яд −{…} HP/ход
-- 💧 Обморожение (лечение −50%)
-- 🩸 Кровотечение −{…} HP/ход
-
-##### `apply_lifesteal_to_attacker`
-
-- 🩸 Кровопийца: +{healed} HP
+#### `utils/onhit.py` (1)
 
 ##### `apply_procs`
 
-- {…} {enemy_name} накладывает «{…}» ({…} ход(ов)): {…}
 - Враг
-- ☠️ {enemy_name} отравил тебя! Яд: −{…} HP каждый ход до конца боя.
-- 💧 {enemy_name} окутал тебя морозом! Обморожение: лечение −50%, {…} ход(ов).
-- 🩸 {enemy_name} ранил тебя! Кровотечение: −{…} HP каждый ход до конца боя.
-
-##### `consumables_blocked_by_battle`
-
-- {…} {…}: в бою сейчас нельзя применять расходники и зелья.
-
-##### `end_round`
-
-- {…} {…} прошло.
-
-##### `tick_dots`
-
-- ☠️ Яд: −{d} HP.
-- 🩸 Кровотечение: −{d} HP.
 
 #### `utils/permissions.py` (23)
 

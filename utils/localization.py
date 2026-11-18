@@ -309,6 +309,44 @@ STRINGS = {
         "en": "🛡️ Armor absorbed {amount} damage!",
     },
     "battle.crit": {"ru": "💥 crit!", "en": "💥 crit!"},
+    "battle.on_hit.bleed": {
+        "ru": "🩸 {enemy} ранил тебя! Кровотечение: −{dmg} HP каждый ход до конца боя.",
+        "en": "🩸 {enemy} cut you! Bleeding: −{dmg} HP each turn until the battle ends.",
+    },
+    "battle.on_hit.poison": {
+        "ru": "☠️ {enemy} отравил тебя! Яд: −{dmg} HP каждый ход до конца боя.",
+        "en": "☠️ {enemy} poisoned you! Poison: −{dmg} HP each turn until the battle ends.",
+    },
+    "battle.on_hit.frostbite": {
+        "ru": "💧 {enemy} окутал тебя морозом! Обморожение: лечение −50%, {rounds} ход(ов).",
+        "en": "💧 {enemy} wrapped you in frost! Frostbite: healing −50%, {rounds} turn(s).",
+    },
+    "battle.on_hit.state": {
+        "ru": "{emoji} {enemy} накладывает «{title}» ({rounds} ход(ов)): {hint}",
+        "en": "{emoji} {enemy} applies «{title}» ({rounds} turn(s)): {hint}",
+    },
+    "battle.dot_tick.bleed": {"ru": "🩸 Кровотечение: −{dmg} HP.", "en": "🩸 Bleeding: −{dmg} HP."},
+    "battle.dot_tick.poison": {"ru": "☠️ Яд: −{dmg} HP.", "en": "☠️ Poison: −{dmg} HP."},
+    "battle.effect.expired": {
+        "ru": "{emoji} {title} прошло.",
+        "en": "{emoji} {title} is over.",
+    },
+    "battle.status.bleed": {"ru": "🩸 Кровотечение −{dmg} HP/ход", "en": "🩸 Bleeding −{dmg} HP/turn"},
+    "battle.status.poison": {"ru": "☠️ Яд −{dmg} HP/ход", "en": "☠️ Poison −{dmg} HP/turn"},
+    "battle.status.frostbite": {
+        "ru": "💧 Обморожение (лечение −50%)",
+        "en": "💧 Frostbite (healing −50%)",
+    },
+    "battle.status.state_rounds": {
+        "ru": "{emoji} {title} ({rounds} х.)",
+        "en": "{emoji} {title} ({rounds} t.)",
+    },
+    "battle.status.state": {"ru": "{emoji} {title}", "en": "{emoji} {title}"},
+    "battle.consumables_blocked": {
+        "ru": "{emoji} {title}: в бою сейчас нельзя применять расходники и зелья.",
+        "en": "{emoji} {title}: consumables and potions can't be used in battle right now.",
+    },
+    "battle.lifesteal": {"ru": "🩸 Кровопийца: +{healed} HP", "en": "🩸 Lifesteal: +{healed} HP"},
     "battle.weapon.stun_applied": {
         "ru": "\n{emoji} {attack}! Шанс {enemy} промахнуться: +{dmg}% ({ticks} хода).",
         "en": "\n{emoji} {attack}! {enemy} now has a +{dmg}% chance to miss ({ticks} turns).",

@@ -23,6 +23,7 @@ import random
 
 from config import ON_HIT_EFFECTS, ON_HIT_STATE_ROUNDS
 from utils.states import STATE_CONF
+from utils.localization import t
 
 # Пользователи с активными боевыми эффектами: user_id -> store.
 ACTIVE = {}
@@ -77,8 +78,7 @@ def consumables_blocked_by_battle(user_id: int):
     for key in on_hit:
         conf = STATE_CONF.get(key)
         if conf and conf.get('blocks_consumables'):
-            return (f"{conf['emoji']} {conf['title']}: в бою сейчас нельзя "
-                    f"применять расходники и зелья.")
+            return t("battle.consumables_blocked", emoji=conf['emoji'], title=conf['title'])
     return None
 
 
@@ -166,7 +166,7 @@ def apply_lifesteal_to_attacker(hp: int, hp_max: int, damage_dealt: int,
     healed = max(0, new_hp - int(hp))
     if healed <= 0:
         return int(hp), 0, None
-    return new_hp, healed, f"🩸 Кровопийца: +{healed} HP"
+    return new_hp, healed, t("battle.lifesteal", healed=healed)
 
 
 def apply_procs(user_id: int, store: dict, procs: list, enemy_name: str = "Враг") -> list:
@@ -180,23 +180,19 @@ def apply_procs(user_id: int, store: dict, procs: list, enemy_name: str = "Вр�
             continue
         if kind == "bleed":
             on_hit['bleed'] = {"dmg": proc['dmg']}
-            lines.append(f"🩸 {enemy_name} ранил тебя! Кровотечение: "
-                         f"−{proc['dmg']} HP каждый ход до конца боя.")
+            lines.append(t("battle.on_hit.bleed", enemy=enemy_name, dmg=proc['dmg']))
         elif kind == "poison":
             on_hit['poison'] = {"dmg": proc['dmg']}
-            lines.append(f"☠️ {enemy_name} отравил тебя! Яд: "
-                         f"−{proc['dmg']} HP каждый ход до конца боя.")
+            lines.append(t("battle.on_hit.poison", enemy=enemy_name, dmg=proc['dmg']))
         elif kind == "frostbite":
             on_hit['frostbite'] = {"rounds_left": proc['rounds']}
-            lines.append(f"💧 {enemy_name} окутал тебя морозом! Обморожение: "
-                         f"лечение −50%, {proc['rounds']} ход(ов).")
+            lines.append(t("battle.on_hit.frostbite", enemy=enemy_name, rounds=proc['rounds']))
         elif kind == "state":
             key = proc['key']
             sconf = STATE_CONF[key]
             on_hit[key] = {"rounds_left": proc['rounds']}
-            lines.append(f"{sconf['emoji']} {enemy_name} накладывает "
-                         f"«{sconf['title']}» ({proc['rounds']} ход(ов)): "
-                         f"{sconf['hint']}")
+            lines.append(t("battle.on_hit.state", emoji=sconf['emoji'], enemy=enemy_name,
+                           title=sconf['title'], rounds=proc['rounds'], hint=sconf['hint']))
     return lines
 
 
@@ -209,12 +205,12 @@ def tick_dots(store: dict) -> tuple:
     if isinstance(bleed, dict):
         d = int(bleed.get('dmg') or 0)
         dmg += d
-        lines.append(f"🩸 Кровотечение: −{d} HP.")
+        lines.append(t("battle.dot_tick.bleed", dmg=d))
     poison = on_hit.get('poison')
     if isinstance(poison, dict):
         d = int(poison.get('dmg') or 0)
         dmg += d
-        lines.append(f"☠️ Яд: −{d} HP.")
+        lines.append(t("battle.dot_tick.poison", dmg=d))
     return dmg, lines
 
 
@@ -231,11 +227,11 @@ def end_round(store: dict) -> list:
             del on_hit[key]
             if key in STATE_CONF:
                 conf = STATE_CONF[key]
-                lines.append(f"{conf['emoji']} {conf['title']} прошло.")
+                lines.append(t("battle.effect.expired", emoji=conf['emoji'], title=conf['title']))
             else:
                 kconf = ON_HIT_EFFECTS.get(key, {})
-                lines.append(f"{kconf.get('emoji', '')} "
-                             f"{kconf.get('title', key)} прошло.")
+                lines.append(t("battle.effect.expired", emoji=kconf.get('emoji', ''),
+                               title=kconf.get('title', key)))
     return lines
 
 
@@ -259,18 +255,21 @@ def active_line(store: dict) -> str:
     parts = []
     bleed = on_hit.get('bleed')
     if isinstance(bleed, dict):
-        parts.append(f"🩸 Кровотечение −{int(bleed.get('dmg') or 0)} HP/ход")
+        parts.append(t("battle.status.bleed", dmg=int(bleed.get('dmg') or 0)))
     poison = on_hit.get('poison')
     if isinstance(poison, dict):
-        parts.append(f"☠️ Яд −{int(poison.get('dmg') or 0)} HP/ход")
+        parts.append(t("battle.status.poison", dmg=int(poison.get('dmg') or 0)))
     if frostbite_active(store):
-        parts.append("💧 Обморожение (лечение −50%)")
+        parts.append(t("battle.status.frostbite"))
     for key in on_hit:
         conf = STATE_CONF.get(key)
         if not conf:
             continue
         eff = on_hit[key]
         rounds = eff.get('rounds_left') if isinstance(eff, dict) else None
-        suffix = f" ({rounds} х.)" if rounds is not None else ""
-        parts.append(f"{conf['emoji']} {conf['title']}{suffix}")
+        if rounds is not None:
+            parts.append(t("battle.status.state_rounds", emoji=conf['emoji'],
+                           title=conf['title'], rounds=rounds))
+        else:
+            parts.append(t("battle.status.state", emoji=conf['emoji'], title=conf['title']))
     return "; ".join(parts)
