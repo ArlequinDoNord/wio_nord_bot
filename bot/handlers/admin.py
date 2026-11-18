@@ -6397,7 +6397,8 @@ async def _enemy_card_send(source, enemy_id: int, edit: bool = False):
         [InlineKeyboardButton(text="📝 Описание", callback_data="enemy_field:description")],
         [InlineKeyboardButton(text="🖼 Картинка", callback_data="enemy_field:image")],
         [InlineKeyboardButton(text="💼 Дропы", callback_data=f"enemy_drops:{enemy_id}")],
-        [InlineKeyboardButton(text="🔙 К списку врагов", callback_data="dungeon:enemies")],
+        [InlineKeyboardButton(text="🔙 К списку врагов",
+                              callback_data=f"dungeon:enemies:{enemy['dungeon_id']}")],
     ]
     kb = InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -6413,14 +6414,18 @@ async def _enemy_card_send(source, enemy_id: int, edit: bool = False):
         await source.answer(text, reply_markup=kb)
 
 
-@router.callback_query(F.data == "dungeon:enemies")
+@router.callback_query(F.data.startswith("dungeon:enemies"))
 async def dungeon_enemies_list(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
     if not await has_permission(callback.from_user.id, "can_manage_locations"):
         return
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    data = await state.get_data()
-    dungeon_id = data.get('target_id')
+    parts = callback.data.split(":")
+    if len(parts) == 3 and parts[2].isdigit():
+        dungeon_id = int(parts[2])
+        await state.update_data(target_id=dungeon_id)
+    else:
+        dungeon_id = (await state.get_data()).get('target_id')
     dng = await get_dungeon(dungeon_id) if dungeon_id else None
     if not dng:
         await callback.message.answer("❌ Подземелье не найдено.")
