@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=3b4beb79042d0ddc seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=bea77302a6b69052 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **309** (ru + en).
+Всего строк: **316** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -211,7 +211,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - EN:
   > Transfer
 
-#### battle · `battle.` (55)
+#### battle · `battle.` (56)
 
 ### UI-battle.armor_absorbed_short
 - RU:
@@ -316,6 +316,12 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   > Мышь   HP
 - EN:
   > Bat    HP
+
+### UI-battle.hp.enemy
+- RU:
+  > Враг   HP
+- EN:
+  > Enemy  HP
 
 ### UI-battle.hp.you
 - RU:
@@ -1051,13 +1057,47 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - EN:
   > Town Hall
 
-#### logging · `logging.` (18)
+#### logging · `logging.` (24)
 
 ### UI-logging.alert.busy
 - RU:
   > Ты уже замахнулся топором — дождись результата!
 - EN:
   > You're already swinging — wait for the result!
+
+### UI-logging.bat.owl_appears
+- RU:
+  > Из чащи вылетает тяжёлый силуэт — Неясыть! Совиный глаз прикован к тебе.
+  >
+- EN:
+  > A heavy shape bursts out of the thicket — an Owl! Its eye is fixed on you.
+  >
+
+### UI-logging.bat.owl_tail
+- RU:
+  > Сову нельзя убить — она сама решит, когда отступить.
+- EN:
+  > You can't kill the owl — it will decide for itself when to back off.
+
+### UI-logging.bat.round_tail
+- RU:
+  > Ход {round}. {tail}
+- EN:
+  > Turn {round}. {tail}
+
+### UI-logging.bat.snake_appears
+- RU:
+  > Из-под валуна с шипением выползает длинная тень — Лесная змея!
+  >
+- EN:
+  > A long shadow hisses out from under a boulder — a Forest Snake!
+  >
+
+### UI-logging.bat.snake_tail
+- RU:
+  > Ударь змею — или уноси ноги.
+- EN:
+  > Strike the snake — or run for it.
 
 ### UI-logging.entrance
 - RU:
@@ -1078,6 +1118,28 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   > {hint}
   >
   > A tree chop costs {cost} AP, result in {lo}–{hi} seconds.{mill_hint}
+  >
+  > {ap_line}
+
+### UI-logging.firewood.result
+- RU:
+  > 🪓 РУБКА ДРОВ
+  >
+  > Ты ставишь бревно на плаху и работаешь топором: щепки веером, из {n} {n_w} вышло {firewood} «{name}» — {pack_verb} у сторожки.
+  >
+  > ⚡ Потрачено ОД: {spent}.
+  > 🎒 Получено: «{name}» x{firewood}.
+  > 📦 Осталось: {left} {left_w}.
+  >
+  > {ap_line}
+- EN:
+  > 🪓 FIREWOOD CHOPPING
+  >
+  > You set the log on the block and work the axe: chips fly everywhere — {n} log(s) gave {firewood} «{name}», stacked by the lodge.
+  >
+  > ⚡ AP spent: {spent}.
+  > 🎒 Received: «{name}» x{firewood}.
+  > 📦 Left: {left} {left_w}.
   >
   > {ap_line}
 
@@ -4885,7 +4947,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4923** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4920** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -12624,7 +12686,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - 🔑 Войти
 - 🔙 В город
 
-#### `bot/handlers/logging_site.py` (97)
+#### `bot/handlers/logging_site.py` (94)
 
 ##### `_ap_line`
 
@@ -12684,17 +12746,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ##### `_show_battle`
 
-- {prefix}{emoji} {…}
-  
-  {flavor}{emoji} Враг   HP {…} {…}/{enemy_hp_max}
-  🧑 Ты     HP {…} {…}/{…}{effects_line}
-  
-  Ход {…}. {tail}
 - Враг
-- Из чащи вылетает тяжёлый силуэт — Неясыть! Совиный глаз прикован к тебе.
-- Из-под валуна с шипением выползает длинная тень — Лесная змея!
-- Сову нельзя убить — она сама решит, когда отступить.
-- Ударь змею — или уноси ноги.
 
 ##### `_start_battle`
 
@@ -12761,6 +12813,9 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 ##### `logging_firewood`
 
 - Нарубил дров: {n} {…} → {firewood} «{…}» (−{…} ОД)
+- бревна
+- бревно
+- брёвен
 - рубка дров
 - сложен
 - сложены
@@ -12770,15 +12825,6 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - ❌ Не хватает ОД: на одно бревно нужно {LOGGING_FIREWOOD_AP_COST} ОД, а у тебя {ap}.
 - ❌ Нет брёвен для рубки на дрова.
 - ❌ Чтобы наколоть дров, нужен топор. Купи «Топор» в магазине (категория «Добыча ресурсов»).
-- 🪓 РУБКА ДРОВ
-  
-  Ты ставишь бревно на плаху и работаешь топором: щепки веером, из {n} {…} вышло {firewood} «{…}» — {pack_verb} у сторожки.
-  
-  ⚡ Потрачено ОД: {…}.
-  🎒 Получено: «{…}» x{firewood}.
-  📦 Осталось: {left_wood} {…}.
-  
-  {…}
 
 ##### `logging_mill`
 

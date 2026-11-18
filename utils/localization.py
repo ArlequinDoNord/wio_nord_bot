@@ -352,6 +352,40 @@ STRINGS = {
         "ru": "{head}\n\nУдар за ударом — стружка летит, но сук топор не берёт: сучковатое дерево уходит на дрова.\nПробуй ещё!",
         "en": "{head}\n\nStrike after strike — chips fly, but the knot won't give to the axe: the knotty tree goes to firewood.\nKeep trying!",
     },
+    "logging.bat.owl_appears": {
+        "ru": "Из чащи вылетает тяжёлый силуэт — Неясыть! Совиный глаз прикован к тебе.\n\n",
+        "en": "A heavy shape bursts out of the thicket — an Owl! Its eye is fixed on you.\n\n",
+    },
+    "logging.bat.owl_tail": {
+        "ru": "Сову нельзя убить — она сама решит, когда отступить.",
+        "en": "You can't kill the owl — it will decide for itself when to back off.",
+    },
+    "logging.bat.snake_appears": {
+        "ru": "Из-под валуна с шипением выползает длинная тень — Лесная змея!\n\n",
+        "en": "A long shadow hisses out from under a boulder — a Forest Snake!\n\n",
+    },
+    "logging.bat.snake_tail": {
+        "ru": "Ударь змею — или уноси ноги.",
+        "en": "Strike the snake — or run for it.",
+    },
+    "logging.bat.round_tail": {"ru": "Ход {round}. {tail}", "en": "Turn {round}. {tail}"},
+    "battle.hp.enemy": {"ru": "Враг   HP", "en": "Enemy  HP"},
+    "logging.firewood.result": {
+        "ru": ("🪓 РУБКА ДРОВ\n\n"
+               "Ты ставишь бревно на плаху и работаешь топором: щепки веером, "
+               "из {n} {n_w} вышло {firewood} «{name}» — {pack_verb} у сторожки.\n\n"
+               "⚡ Потрачено ОД: {spent}.\n"
+               "🎒 Получено: «{name}» x{firewood}.\n"
+               "📦 Осталось: {left} {left_w}.\n\n"
+               "{ap_line}"),
+        "en": ("🪓 FIREWOOD CHOPPING\n\n"
+               "You set the log on the block and work the axe: chips fly everywhere — "
+               "{n} log(s) gave {firewood} «{name}», stacked by the lodge.\n\n"
+               "⚡ AP spent: {spent}.\n"
+               "🎒 Received: «{name}» x{firewood}.\n"
+               "📦 Left: {left} {left_w}.\n\n"
+               "{ap_line}"),
+    },
     "logging.plank.result": {
         "ru": ("🪚 РАСПИЛ БРЁВЕН\n\n"
                "Артельные пилы визжат, опилки летят в лицо: {n} {n_w} {verb} в {planks} {planks_w}.\n\n"

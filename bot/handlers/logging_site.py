@@ -766,16 +766,14 @@ async def logging_firewood(callback: CallbackQuery):
 
     left_wood = await _wood_count(user_id)
     pack_verb = "сложен" if firewood % 10 == 1 and firewood % 100 != 11 else "сложены"
-    text = (
-        "🪓 РУБКА ДРОВ\n\n"
-        f"Ты ставишь бревно на плаху и работаешь топором: щепки веером, "
-        f"из {n} {plural_choose(n, ('бревна', 'брёвен', 'брёвен'))} "
-        f"вышло {firewood} «{fw_item['name']}» — {pack_verb} у сторожки.\n\n"
-        f"⚡ Потрачено ОД: {n * LOGGING_FIREWOOD_AP_COST}.\n"
-        f"🎒 Получено: «{fw_item['name']}» x{firewood}.\n"
-        f"📦 Осталось: {left_wood} "
-        f"{plural_choose(left_wood, ('бревно', 'бревна', 'брёвен'))}.\n\n"
-        f"{await _ap_line(user_id)}"
+    from utils.localization import t as _tfw
+    text = _tfw(
+        "logging.firewood.result",
+        n=n, n_w=plural_choose(n, ('бревна', 'брёвен', 'брёвен')),
+        firewood=firewood, name=fw_item['name'], pack_verb=pack_verb,
+        spent=n * LOGGING_FIREWOOD_AP_COST,
+        left=left_wood, left_w=plural_choose(left_wood, ('бревно', 'бревна', 'брёвен')),
+        ap_line=await _ap_line(user_id),
     )
     await _item_paint(callback, fw_item, text=text,
                       kb=_enter_markup_extra(token, left_wood > 0))
@@ -826,21 +824,20 @@ async def _show_battle(callback: CallbackQuery, prefix: str = ""):
     emoji = battle.get('emoji') or SNAKE_EMOJI
     effects_line = onhit.active_line(battle)
     effects_line = f"\n{effects_line}" if effects_line else ""
+    from utils.localization import t as _tsn
     if battle.get('kind') == "owl":
-        flavor = ("Из чащи вылетает тяжёлый силуэт — Неясыть! Совиный глаз "
-                  "прикован к тебе.\n\n")
-        tail = "Сову нельзя убить — она сама решит, когда отступить."
+        flavor = _tsn("logging.bat.owl_appears")
+        tail = _tsn("logging.bat.owl_tail")
     else:
-        flavor = ("Из-под валуна с шипением выползает длинная тень — Лесная "
-                  "змея!\n\n")
-        tail = "Ударь змею — или уноси ноги."
+        flavor = _tsn("logging.bat.snake_appears")
+        tail = _tsn("logging.bat.snake_tail")
     text = (
         f"{prefix}{emoji} {enemy_name.upper()}\n\n"
         f"{flavor}"
-        f"{emoji} Враг   HP {_hp_bar(enemy_hp, enemy_hp_max)} {max(0, enemy_hp)}/{enemy_hp_max}\n"
-        f"🧑 Ты     HP {_hp_bar(player_hp, battle['player_hp_max'])} "
+        f"{emoji} {_tsn('battle.hp.enemy')} {_hp_bar(enemy_hp, enemy_hp_max)} {max(0, enemy_hp)}/{enemy_hp_max}\n"
+        f"🧑 {_tsn('battle.hp.you')} {_hp_bar(player_hp, battle['player_hp_max'])} "
         f"{max(0, player_hp)}/{battle['player_hp_max']}{effects_line}\n\n"
-        f"Ход {battle['round']}. {tail}"
+        + _tsn("logging.bat.round_tail", round=battle['round'], tail=tail)
     )
     await _enemy_paint(callback, battle, text=text,
                        kb=_battle_markup(battle['token']))
