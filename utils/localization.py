@@ -347,6 +347,57 @@ STRINGS = {
         "en": "{emoji} {title}: consumables and potions can't be used in battle right now.",
     },
     "battle.lifesteal": {"ru": "🩸 Кровопийца: +{healed} HP", "en": "🩸 Lifesteal: +{healed} HP"},
+    # Состояния игрока (utils/states.py): название и подсказка, по имени состояния.
+    "state.пьян.title": {"ru": "Пьян", "en": "Drunk"},
+    "state.пьян.hint": {
+        "ru": "Выпил лишнего. В Ратушу, Библиотеку и Лабиринт не пускают, в бою руки не слушаются.",
+        "en": "You had too much to drink. Town Hall, Library and the Labyrinth won't let you in; in battle your hands won't listen.",
+    },
+    "state.очень пьян.title": {"ru": "Очень пьян", "en": "Very drunk"},
+    "state.очень пьян.hint": {
+        "ru": ("Ты едва держишься на ногах: атака и уклонение сильно снижены, "
+               "зелья и расходники недоступны, вход во все здания закрыт. Пройдёт через 6 часов."),
+        "en": ("You can barely stand: attack and dodge are badly reduced, potions and "
+               "consumables are unavailable, all buildings are closed. Passes in 6 hours."),
+    },
+    "state.истощён.title": {"ru": "Истощён", "en": "Exhausted"},
+    "state.истощён.hint": {
+        "ru": ("Истощение от перегрузки ОД: лимит восстановления за сутки исчерпан. "
+               "Восстановление 75 ОД/сутки, максимум 90 ОД."),
+        "en": ("Exhaustion from AP overload: the daily restore limit is used up. "
+               "Restores 75 AP per day, up to 90 AP."),
+    },
+    "state.несварение.title": {"ru": "Несварение", "en": "Indigestion"},
+    "state.несварение.hint": {
+        "ru": ("Слишком много водорослей! Нельзя применять расходники (в том числе для "
+               "восстановления ОД). Пройдёт через сутки."),
+        "en": ("Too much seaweed! Consumables can't be used (including AP restore). "
+               "Passes in a day."),
+    },
+    "state.внимание севера.title": {"ru": "Внимание Севера", "en": "Northern Attention"},
+    "state.внимание севера.hint": {
+        "ru": ("Белый Волк Севера заметил тебя и отпустил. +5% к урону и уклонению на сутки. "
+               "Пока действует — волк не придёт снова."),
+        "en": ("The White Wolf of the North noticed you and let you go. +5% damage and dodge "
+               "for a day. While it lasts, the wolf won't come again."),
+    },
+    "state.благословение севера.title": {"ru": "Благословение Севера", "en": "Northern Blessing"},
+    "state.благословение севера.hint": {
+        "ru": ("Боги Нордхайма отметили тебя за встречу с Белым Волком: +10% к атаке и уклонению, "
+               "+5% к лечению, −3% к ценам в магазинах на сутки. Пока действует — волк не придёт снова."),
+        "en": ("The gods of Nordheim marked you for meeting the White Wolf: +10% attack and dodge, "
+               "+5% healing, −3% shop prices for a day. While it lasts, the wolf won't come again."),
+    },
+    "state.ослеплён.title": {"ru": "Ослеплён", "en": "Blinded"},
+    "state.ослеплён.hint": {
+        "ru": "Неясыть ослепила тебя: в темноте удары мимо цели, уклонение едва работает.",
+        "en": "The owl blinded you: in the dark your blows miss, and dodging barely works.",
+    },
+    "state.оглушён.title": {"ru": "Оглушён", "en": "Stunned"},
+    "state.оглушён.hint": {
+        "ru": "Оглушение: точность, крит и уклонение снижены, расходники недоступны.",
+        "en": "Stunned: accuracy, crit and dodge reduced, consumables unavailable.",
+    },
     "battle.weapon.stun_applied": {
         "ru": "\n{emoji} {attack}! Шанс {enemy} промахнуться: +{dmg}% ({ticks} хода).",
         "en": "\n{emoji} {attack}! {enemy} now has a +{dmg}% chance to miss ({ticks} turns).",

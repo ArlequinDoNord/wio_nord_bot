@@ -82,6 +82,17 @@ def main():
     check("ключи battle.* заведены", len(battle_keys) >= 10)
     check("у каждого battle.* есть ru и en",
           all(STRINGS[k].get("ru") and STRINGS[k].get("en") for k in battle_keys))
+    from utils.states import STATE_CONF
+    from utils.localization import _current
+    check("название состояния на ru", STATE_CONF["пьян"]["title"] == "Пьян")
+    tok = _current.set("en")
+    try:
+        check("название состояния на en", STATE_CONF["пьян"]["title"] == "Drunk")
+        check("подсказка состояния на en", STATE_CONF["оглушён"]["hint"].startswith("Stunned"))
+    finally:
+        _current.reset(tok)
+    check("у каждого состояния есть ru и en название",
+          all(f"state.{k}.title" in STRINGS for k in STATE_CONF))
 
     print(f"\nИТОГО: {passed} passed, {failed} failed")
     return failed
