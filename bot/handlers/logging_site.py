@@ -861,13 +861,15 @@ async def logging_battle_hit(callback: CallbackQuery):
     user_id = callback.from_user.id
     battle = LOGGING_BATTLE.get(user_id)
     if not battle:
+        from utils.localization import t as _tb0
         await _logging_paint(
             callback,
-            text="⏳ Бой устарел.",
+            text=_tb0("logging.bat.expired"),
             kb=_enter_markup(LOGGING_TOKEN.get(user_id, "")),
         )
         return
     await callback.answer()
+    from utils.localization import t as _tb
     emoji = battle.get('emoji') or SNAKE_EMOJI
     kind = battle.get('kind') or "snake"
 
@@ -898,18 +900,14 @@ async def logging_battle_hit(callback: CallbackQuery):
     else:
         battle['enemy_hp'] = prev_hp - player_hit
     if res['dodged']:
-        hit_line = "Ты бьёшь — но змея уходит в сторону, словно сквозь тень.\n\n" \
-            if kind == "snake" else \
-            "Ты бьёшь — но неясыть отклоняется в воздухе, хлопая крылом.\n\n"
+        hit_line = _tb("logging.bat.miss." + kind)
     else:
         extra = ""
         if res['armor_blocked']:
-            extra += f"🛡️ {res['armor_blocked']} урона поглотила чешуя. " if kind == "snake" \
-                else f"🛡️ {res['armor_blocked']} урона поглотило оперение. "
+            extra += _tb("logging.bat.armor." + kind, amount=res['armor_blocked'])
         if res['crit']:
-            from utils.localization import t as _tl
-            extra += _tl("battle.crit_short")
-        hit_line = f"Ты бьёшь наотмашь: −{player_hit} HP по врагу! {extra}\n\n"
+            extra += _tb("battle.crit_short")
+        hit_line = _tb("logging.bat.hit", dmg=player_hit, extra=extra)
 
     # ── Неясыть отлетает (победа) ──
     if kind == "owl" and enemy_fled:
@@ -927,17 +925,14 @@ async def logging_battle_hit(callback: CallbackQuery):
             got.append(item['name'])
         if got:
             loot_list = "\n".join(f"• «{name}»" for name in got)
-            result_line = (f"Из-под крыла, которым неясыть прикрывала гнездо, "
-                           f"падает:\n{loot_list}\n\nПоложено в инвентарь.")
+            result_line = _tb("logging.bat.owl_loot", loot=loot_list)
         else:
-            result_line = ("Сова улетела, не роняя ничего — на этот раз обошлось "
-                           "без трофеев.")
+            result_line = _tb("logging.bat.owl_loot_none")
         text = (
-            f"{emoji} НЕЯСЫТЬ\n\n"
-            f"{dot_note}{hit_line}"
-            "Раненая неясыть бросает бой: тяжёлый силуэт вздымается над кронами "
-            "и растворяется в сумерках. Ты победил!\n\n"
-            f"{result_line}"
+            _tb("logging.bat.owl_title", emoji=emoji) + "\n\n"
+            + f"{dot_note}{hit_line}"
+            + _tb("logging.bat.owl_fled")
+            + f"{result_line}"
         )
         await _logging_paint(callback, text=text,
                              kb=_result_markup(LOGGING_TOKEN.get(user_id, "")))
@@ -959,14 +954,14 @@ async def logging_battle_hit(callback: CallbackQuery):
             got.append(item['name'])
         if got:
             loot_list = "\n".join(f"• «{name}»" for name in got)
-            result_line = f"Из-под поверженной змеи ты забираешь:\n{loot_list}\n\nПоложено в инвентарь."
+            result_line = _tb("logging.bat.snake_loot", loot=loot_list)
         else:
-            result_line = "Змея повержена, но ничего ценного на этот раз не нашлось."
+            result_line = _tb("logging.bat.snake_loot_none")
         text = (
-            f"{emoji} БОЙ СО ЗМЕЁЙ\n\n"
-            f"{dot_note}{hit_line}"
-            "Змея дёргается и замирает — подлесок снова затихает.\n\n"
-            f"{result_line}"
+            _tb("logging.bat.snake_title", emoji=emoji) + "\n\n"
+            + f"{dot_note}{hit_line}"
+            + _tb("logging.bat.snake_down")
+            + f"{result_line}"
         )
         await _logging_paint(callback, text=text,
                              kb=_result_markup(LOGGING_TOKEN.get(user_id, "")))
@@ -980,17 +975,15 @@ async def logging_battle_hit(callback: CallbackQuery):
     })
     enemy_hit = eres['damage']
     if eres['dodged']:
-        counter_line = "💨 Ты уклоняешься от выпада! (−0 HP)\n\n"
+        counter_line = _tb("logging.bat.dodged")
         enemy_hit = 0
     else:
         extra = ""
-        from utils.localization import t as _tl
         if eres['armor_blocked']:
-            extra += _tl("battle.armor_absorbed_short", amount=eres['armor_blocked'])
+            extra += _tb("battle.armor_absorbed_short", amount=eres['armor_blocked'])
         if eres['crit']:
-            extra += _tl("battle.crit_short")
-        counter_line = (f"Змея бьёт: −{enemy_hit} HP. {extra}\n\n" if kind == "snake"
-                        else f"Неясыть бьёт когтем: −{enemy_hit} HP. {extra}\n\n")
+            extra += _tb("battle.crit_short")
+        counter_line = _tb("logging.bat.counter." + kind, dmg=enemy_hit, extra=extra)
     battle['player_hp'] -= enemy_hit
     lifesteal_line = ""
     if not eres['dodged'] and enemy_hit > 0 and battle.get('enemy_hp', 0) > 0:
@@ -1037,24 +1030,20 @@ async def _battle_defeat(callback: CallbackQuery, user_id: int, battle: dict,
     onhit.unregister(user_id)
     removed = await remove_ap_or_floor(user_id, int(battle.get('loss_ap')
                                                      or LOGGING_SNAKE_SEED['loss_ap']))
+    from utils.localization import t as _tdf
     if kind == "owl":
         await log_activity(user_id, "logging", f"Проиграл Неясыти (−{removed} ОД)")
         text = (
-            f"{emoji} НЕЯСЫТЬ\n\n"
-            f"{prefix}"
-            "Когти впиваются в плечо, крыло обрушивает темноту — сознание "
-            "гаснет...\n\n"
-            f"Очнулся ты у сторожки, весь в ссадинах. Неясыть ушла в чащу "
-            f"(−{removed} ОД)."
+            _tdf("logging.bat.owl_title", emoji=emoji) + "\n\n"
+            + prefix
+            + _tdf("logging.bat.owl_lost", removed=removed)
         )
     else:
         await log_activity(user_id, "logging", f"Проиграл Лесной змее (−{removed} ОД)")
         text = (
-            f"{emoji} БОЙ СО ЗМЕЁЙ\n\n"
-            f"{prefix}"
-            "Мир плывёт, зубы холодят кровь — сознание гаснет...\n\n"
-            f"Очнулся ты у сторожки, тяжело дыша. Змея уползла в подлесок "
-            f"(−{removed} ОД)."
+            _tdf("logging.bat.snake_title", emoji=emoji) + "\n\n"
+            + prefix
+            + _tdf("logging.bat.snake_lost", removed=removed)
         )
     await _logging_paint(callback, text=text,
                          kb=_result_markup(LOGGING_TOKEN.get(user_id, "")))
@@ -1071,13 +1060,9 @@ async def logging_battle_flee(callback: CallbackQuery):
     kind = (battle or {}).get('kind') or "snake"
     if battle:
         await log_activity(user_id, "logging", "Сбежал из боя на лесозаготовке")
+    from utils.localization import t as _tfl
     await _logging_paint(
         callback,
-        text=("🏃 Ты отступаешь к сторожке, отмахиваясь от врага.\n\n"
-              "Бой окончен — но рубка-то не закончена! Попробуй ещё раз!")
-        if kind == "snake" else
-        ("🏃 Ты отступаешь к сторожке, не сводя глаз с тяжёлого силуэта над "
-         "кронами.\n\n"
-         "Сова ушла — и хорошо. Рубка-то не закончена! Попробуй ещё раз!"),
+        text=_tfl("logging.bat.flee.snake") if kind == "snake" else _tfl("logging.bat.flee.owl"),
         kb=_result_markup(LOGGING_TOKEN.get(user_id, "")),
     )

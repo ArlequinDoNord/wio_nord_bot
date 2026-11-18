@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=bea77302a6b69052 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=56725fcee135c706 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **316** (ru + en).
+Всего строк: **337** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -1057,13 +1057,99 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - EN:
   > Town Hall
 
-#### logging · `logging.` (24)
+#### logging · `logging.` (45)
 
 ### UI-logging.alert.busy
 - RU:
   > Ты уже замахнулся топором — дождись результата!
 - EN:
   > You're already swinging — wait for the result!
+
+### UI-logging.bat.armor.owl
+- RU:
+  > 🛡️ {amount} урона поглотило оперение. 
+- EN:
+  > 🛡️ {amount} damage absorbed by its feathers. 
+
+### UI-logging.bat.armor.snake
+- RU:
+  > 🛡️ {amount} урона поглотила чешуя. 
+- EN:
+  > 🛡️ {amount} damage absorbed by its scales. 
+
+### UI-logging.bat.counter.owl
+- RU:
+  > Неясыть бьёт когтем: −{dmg} HP. {extra}
+  >
+- EN:
+  > The owl rakes you with a claw: −{dmg} HP. {extra}
+  >
+
+### UI-logging.bat.counter.snake
+- RU:
+  > Змея бьёт: −{dmg} HP. {extra}
+  >
+- EN:
+  > The snake strikes: −{dmg} HP. {extra}
+  >
+
+### UI-logging.bat.dodged
+- RU:
+  > 💨 Ты уклоняешься от выпада! (−0 HP)
+  >
+- EN:
+  > 💨 You dodge the lunge! (−0 HP)
+  >
+
+### UI-logging.bat.expired
+- RU:
+  > ⏳ Бой устарел.
+- EN:
+  > ⏳ The fight is out of date.
+
+### UI-logging.bat.flee.owl
+- RU:
+  > 🏃 Ты отступаешь к сторожке, не сводя глаз с тяжёлого силуэта над кронами.
+  >
+  > Сова ушла — и хорошо. Рубка-то не закончена! Попробуй ещё раз!
+- EN:
+  > 🏃 You back off toward the lodge, eyes on the heavy shape above the treetops.
+  >
+  > The owl is gone — good. The chopping isn't finished! Try again!
+
+### UI-logging.bat.flee.snake
+- RU:
+  > 🏃 Ты отступаешь к сторожке, отмахиваясь от врага.
+  >
+  > Бой окончен — но рубка-то не закончена! Попробуй ещё раз!
+- EN:
+  > 🏃 You back off toward the lodge, swatting at the enemy.
+  >
+  > The fight is over — but the chopping isn't! Try again!
+
+### UI-logging.bat.hit
+- RU:
+  > Ты бьёшь наотмашь: −{dmg} HP по врагу! {extra}
+  >
+- EN:
+  > You strike hard: −{dmg} HP to the enemy! {extra}
+  >
+
+### UI-logging.bat.miss.owl
+- RU:
+  > Ты бьёшь — но неясыть отклоняется в воздухе, хлопая крылом.
+  >
+- EN:
+  > You strike — but the owl swerves in the air, beating its wing.
+  >
+
+### UI-logging.bat.miss.snake
+- RU:
+  > Ты бьёшь — но змея уходит в сторону, словно сквозь тень.
+  >
+- EN:
+  > You strike — but the snake slips aside like a shadow.
+  >
 
 ### UI-logging.bat.owl_appears
 - RU:
@@ -1073,11 +1159,53 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   > A heavy shape bursts out of the thicket — an Owl! Its eye is fixed on you.
   >
 
+### UI-logging.bat.owl_fled
+- RU:
+  > Раненая неясыть бросает бой: тяжёлый силуэт вздымается над кронами и растворяется в сумерках. Ты победил!
+  >
+- EN:
+  > The wounded owl gives up the fight: its heavy shape rises above the treetops and dissolves into dusk. You won!
+  >
+
+### UI-logging.bat.owl_loot
+- RU:
+  > Из-под крыла, которым неясыть прикрывала гнездо, падает:
+  > {loot}
+  >
+  > Положено в инвентарь.
+- EN:
+  > From under the wing the owl used to shield its nest, falls:
+  > {loot}
+  >
+  > Added to your inventory.
+
+### UI-logging.bat.owl_loot_none
+- RU:
+  > Сова улетела, не роняя ничего — на этот раз обошлось без трофеев.
+- EN:
+  > The owl flew off, dropping nothing — no trophies this time.
+
+### UI-logging.bat.owl_lost
+- RU:
+  > Когти впиваются в плечо, крыло обрушивает темноту — сознание гаснет...
+  >
+  > Очнулся ты у сторожки, весь в ссадинах. Неясыть ушла в чащу (−{removed} ОД).
+- EN:
+  > Claws dig into your shoulder, a wing drowns you in darkness — you black out...
+  >
+  > You come to by the lodge, bruised all over. The owl flew off into the thicket (−{removed} AP).
+
 ### UI-logging.bat.owl_tail
 - RU:
   > Сову нельзя убить — она сама решит, когда отступить.
 - EN:
   > You can't kill the owl — it will decide for itself when to back off.
+
+### UI-logging.bat.owl_title
+- RU:
+  > {emoji} НЕЯСЫТЬ
+- EN:
+  > {emoji} OWL
 
 ### UI-logging.bat.round_tail
 - RU:
@@ -1093,11 +1221,53 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   > A long shadow hisses out from under a boulder — a Forest Snake!
   >
 
+### UI-logging.bat.snake_down
+- RU:
+  > Змея дёргается и замирает — подлесок снова затихает.
+  >
+- EN:
+  > The snake jerks and goes still — the undergrowth falls quiet again.
+  >
+
+### UI-logging.bat.snake_loot
+- RU:
+  > Из-под поверженной змеи ты забираешь:
+  > {loot}
+  >
+  > Положено в инвентарь.
+- EN:
+  > From under the fallen snake you take:
+  > {loot}
+  >
+  > Added to your inventory.
+
+### UI-logging.bat.snake_loot_none
+- RU:
+  > Змея повержена, но ничего ценного на этот раз не нашлось.
+- EN:
+  > The snake is down, but there was nothing valuable this time.
+
+### UI-logging.bat.snake_lost
+- RU:
+  > Мир плывёт, зубы холодят кровь — сознание гаснет...
+  >
+  > Очнулся ты у сторожки, тяжело дыша. Змея уползла в подлесок (−{removed} ОД).
+- EN:
+  > The world swims, fangs chill your blood — you black out...
+  >
+  > You come to by the lodge, gasping. The snake slid off into the undergrowth (−{removed} AP).
+
 ### UI-logging.bat.snake_tail
 - RU:
   > Ударь змею — или уноси ноги.
 - EN:
   > Strike the snake — or run for it.
+
+### UI-logging.bat.snake_title
+- RU:
+  > {emoji} БОЙ СО ЗМЕЁЙ
+- EN:
+  > {emoji} SNAKE FIGHT
 
 ### UI-logging.entrance
 - RU:
@@ -4947,7 +5117,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4920** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4901** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -12686,7 +12856,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - 🔑 Войти
 - 🔙 В город
 
-#### `bot/handlers/logging_site.py` (94)
+#### `bot/handlers/logging_site.py` (75)
 
 ##### `_ap_line`
 
@@ -12696,16 +12866,6 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ##### `_battle_defeat`
 
-- {emoji} БОЙ СО ЗМЕЁЙ
-  
-  {prefix}Мир плывёт, зубы холодят кровь — сознание гаснет...
-  
-  Очнулся ты у сторожки, тяжело дыша. Змея уползла в подлесок (−{removed} ОД).
-- {emoji} НЕЯСЫТЬ
-  
-  {prefix}Когти впиваются в плечо, крыло обрушивает темноту — сознание гаснет...
-  
-  Очнулся ты у сторожки, весь в ссадинах. Неясыть ушла в чащу (−{removed} ОД).
 - Проиграл Лесной змее (−{removed} ОД)
 - Проиграл Неясыти (−{removed} ОД)
 
@@ -12756,48 +12916,13 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 ##### `logging_battle_flee`
 
 - Сбежал из боя на лесозаготовке
-- 🏃 Ты отступаешь к сторожке, не сводя глаз с тяжёлого силуэта над кронами.
-  
-  Сова ушла — и хорошо. Рубка-то не закончена! Попробуй ещё раз!
-- 🏃 Ты отступаешь к сторожке, отмахиваясь от врага.
-  
-  Бой окончен — но рубка-то не закончена! Попробуй ещё раз!
 
 ##### `logging_battle_hit`
 
-- {emoji} БОЙ СО ЗМЕЁЙ
-  
-  {dot_note}{hit_line}Змея дёргается и замирает — подлесок снова затихает.
-  
-  {result_line}
-- {emoji} НЕЯСЫТЬ
-  
-  {dot_note}{hit_line}Раненая неясыть бросает бой: тяжёлый силуэт вздымается над кронами и растворяется в сумерках. Ты победил!
-  
-  {result_line}
 - Враг
 - Добыча: {…}
-- Змея бьёт: −{enemy_hit} HP. {extra}
-- Змея повержена, но ничего ценного на этот раз не нашлось.
-- Из-под крыла, которым неясыть прикрывала гнездо, падает:
-  {loot_list}
-  
-  Положено в инвентарь.
-- Из-под поверженной змеи ты забираешь:
-  {loot_list}
-  
-  Положено в инвентарь.
-- Неясыть бьёт когтем: −{enemy_hit} HP. {extra}
 - Неясыть отлетела (победа над неясытью)
 - Победил Лесную змею
-- Сова улетела, не роняя ничего — на этот раз обошлось без трофеев.
-- Ты бьёшь наотмашь: −{player_hit} HP по врагу! {extra}
-- Ты бьёшь — но змея уходит в сторону, словно сквозь тень.
-- Ты бьёшь — но неясыть отклоняется в воздухе, хлопая крылом.
-- ⏳ Бой устарел.
-- 💨 Ты уклоняешься от выпада! (−0 HP)
-- 🛡️ {…} урона поглотила чешуя.
-- 🛡️ {…} урона поглотило оперение.
 
 ##### `logging_chop`
 

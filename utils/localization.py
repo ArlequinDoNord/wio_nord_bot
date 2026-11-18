@@ -352,6 +352,81 @@ STRINGS = {
         "ru": "{head}\n\nУдар за ударом — стружка летит, но сук топор не берёт: сучковатое дерево уходит на дрова.\nПробуй ещё!",
         "en": "{head}\n\nStrike after strike — chips fly, but the knot won't give to the axe: the knotty tree goes to firewood.\nKeep trying!",
     },
+    "logging.bat.owl_lost": {
+        "ru": "Когти впиваются в плечо, крыло обрушивает темноту — сознание гаснет...\n\nОчнулся ты у сторожки, весь в ссадинах. Неясыть ушла в чащу (−{removed} ОД).",
+        "en": "Claws dig into your shoulder, a wing drowns you in darkness — you black out...\n\nYou come to by the lodge, bruised all over. The owl flew off into the thicket (−{removed} AP).",
+    },
+    "logging.bat.snake_lost": {
+        "ru": "Мир плывёт, зубы холодят кровь — сознание гаснет...\n\nОчнулся ты у сторожки, тяжело дыша. Змея уползла в подлесок (−{removed} ОД).",
+        "en": "The world swims, fangs chill your blood — you black out...\n\nYou come to by the lodge, gasping. The snake slid off into the undergrowth (−{removed} AP).",
+    },
+    "logging.bat.flee.snake": {
+        "ru": "🏃 Ты отступаешь к сторожке, отмахиваясь от врага.\n\nБой окончен — но рубка-то не закончена! Попробуй ещё раз!",
+        "en": "🏃 You back off toward the lodge, swatting at the enemy.\n\nThe fight is over — but the chopping isn't! Try again!",
+    },
+    "logging.bat.flee.owl": {
+        "ru": "🏃 Ты отступаешь к сторожке, не сводя глаз с тяжёлого силуэта над кронами.\n\nСова ушла — и хорошо. Рубка-то не закончена! Попробуй ещё раз!",
+        "en": "🏃 You back off toward the lodge, eyes on the heavy shape above the treetops.\n\nThe owl is gone — good. The chopping isn't finished! Try again!",
+    },
+    "logging.bat.expired": {"ru": "⏳ Бой устарел.", "en": "⏳ The fight is out of date."},
+    "logging.bat.miss.snake": {
+        "ru": "Ты бьёшь — но змея уходит в сторону, словно сквозь тень.\n\n",
+        "en": "You strike — but the snake slips aside like a shadow.\n\n",
+    },
+    "logging.bat.miss.owl": {
+        "ru": "Ты бьёшь — но неясыть отклоняется в воздухе, хлопая крылом.\n\n",
+        "en": "You strike — but the owl swerves in the air, beating its wing.\n\n",
+    },
+    "logging.bat.armor.snake": {
+        "ru": "🛡️ {amount} урона поглотила чешуя. ",
+        "en": "🛡️ {amount} damage absorbed by its scales. ",
+    },
+    "logging.bat.armor.owl": {
+        "ru": "🛡️ {amount} урона поглотило оперение. ",
+        "en": "🛡️ {amount} damage absorbed by its feathers. ",
+    },
+    "logging.bat.hit": {
+        "ru": "Ты бьёшь наотмашь: −{dmg} HP по врагу! {extra}\n\n",
+        "en": "You strike hard: −{dmg} HP to the enemy! {extra}\n\n",
+    },
+    "logging.bat.owl_title": {"ru": "{emoji} НЕЯСЫТЬ", "en": "{emoji} OWL"},
+    "logging.bat.owl_fled": {
+        "ru": "Раненая неясыть бросает бой: тяжёлый силуэт вздымается над кронами и растворяется в сумерках. Ты победил!\n\n",
+        "en": "The wounded owl gives up the fight: its heavy shape rises above the treetops and dissolves into dusk. You won!\n\n",
+    },
+    "logging.bat.owl_loot": {
+        "ru": "Из-под крыла, которым неясыть прикрывала гнездо, падает:\n{loot}\n\nПоложено в инвентарь.",
+        "en": "From under the wing the owl used to shield its nest, falls:\n{loot}\n\nAdded to your inventory.",
+    },
+    "logging.bat.owl_loot_none": {
+        "ru": "Сова улетела, не роняя ничего — на этот раз обошлось без трофеев.",
+        "en": "The owl flew off, dropping nothing — no trophies this time.",
+    },
+    "logging.bat.snake_loot": {
+        "ru": "Из-под поверженной змеи ты забираешь:\n{loot}\n\nПоложено в инвентарь.",
+        "en": "From under the fallen snake you take:\n{loot}\n\nAdded to your inventory.",
+    },
+    "logging.bat.snake_loot_none": {
+        "ru": "Змея повержена, но ничего ценного на этот раз не нашлось.",
+        "en": "The snake is down, but there was nothing valuable this time.",
+    },
+    "logging.bat.snake_title": {"ru": "{emoji} БОЙ СО ЗМЕЁЙ", "en": "{emoji} SNAKE FIGHT"},
+    "logging.bat.snake_down": {
+        "ru": "Змея дёргается и замирает — подлесок снова затихает.\n\n",
+        "en": "The snake jerks and goes still — the undergrowth falls quiet again.\n\n",
+    },
+    "logging.bat.dodged": {
+        "ru": "💨 Ты уклоняешься от выпада! (−0 HP)\n\n",
+        "en": "💨 You dodge the lunge! (−0 HP)\n\n",
+    },
+    "logging.bat.counter.snake": {
+        "ru": "Змея бьёт: −{dmg} HP. {extra}\n\n",
+        "en": "The snake strikes: −{dmg} HP. {extra}\n\n",
+    },
+    "logging.bat.counter.owl": {
+        "ru": "Неясыть бьёт когтем: −{dmg} HP. {extra}\n\n",
+        "en": "The owl rakes you with a claw: −{dmg} HP. {extra}\n\n",
+    },
     "logging.bat.owl_appears": {
         "ru": "Из чащи вылетает тяжёлый силуэт — Неясыть! Совиный глаз прикован к тебе.\n\n",
         "en": "A heavy shape bursts out of the thicket — an Owl! Its eye is fixed on you.\n\n",
