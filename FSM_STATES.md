@@ -1171,13 +1171,13 @@
 - `location:enter:`: `bot/handlers/locations.py:111`
 - `location:preview:`: `bot/handlers/locations.py:40`
 - `locstat:`: `bot/handlers/admin.py:5771`
-- `logsite:battle:flee:\d+$`: `bot/handlers/logging_site.py:1078`
-- `logsite:battle:hit:\d+$`: `bot/handlers/logging_site.py:872`
+- `logsite:battle:flee:\d+$`: `bot/handlers/logging_site.py:1068`
+- `logsite:battle:hit:\d+$`: `bot/handlers/logging_site.py:862`
 - `logsite:chop:\d+$`: `bot/handlers/logging_site.py:456`
-- `logsite:fire:(1|all):\d+$`: `bot/handlers/logging_site.py:721`
+- `logsite:fire:(1|all):\d+$`: `bot/handlers/logging_site.py:711`
 - `logsite:menu:\d+$`: `bot/handlers/logging_site.py:441`
 - `logsite:mill:\d+$`: `bot/handlers/logging_site.py:595`
-- `logsite:plank:(1|all):\d+$`: `bot/handlers/logging_site.py:658`
+- `logsite:plank:(1|all):\d+$`: `bot/handlers/logging_site.py:648`
 - `lootonly:`: `bot/handlers/admin.py:1742`
 - `marketok:`: `bot/handlers/admin.py:1720`
 - `mine:battle:flee:\d+$`: `bot/handlers/mine.py:728`

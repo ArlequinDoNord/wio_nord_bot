@@ -623,34 +623,24 @@ async def logging_mill(callback: CallbackQuery):
     paid_wood = min(wood_qty, nordmarks // max(1, LOGGING_PLANK_FEE))
     fw_wood = min(wood_qty, ap // max(1, LOGGING_FIREWOOD_AP_COST))
 
-    lines = [f"🪚 ПЕРЕРАБОТКА БРЁВЕН", ""]
-    lines.append(f"🎒 В инвентаре: {wood_qty} "
-                 f"{plural_choose(wood_qty, ('бревно', 'бревна', 'брёвен'))}")
-    lines.append(f"💰 Кошелёк: {nordmarks} {plural_nordmark(nordmarks)} НМ")
-    lines.append(f"⚡ ОД: {ap}")
-    lines.append("")
-    lines.append(
-        f"🪚 Распил на доски (артель)\n"
-        f"   1 бревно → {LOGGING_PLANK_YIELD} "
-        f"{plural_choose(LOGGING_PLANK_YIELD, ('доска', 'доски', 'досок'))} "
-        f"«{LOGGING_PLANK_NAME}», плата {LOGGING_PLANK_FEE} НМ за бревно "
-        f"(в казну), топор не нужен.\n"
-        f"   Доступно: {paid_wood} "
-        f"{plural_choose(paid_wood, ('бревно', 'бревна', 'брёвен'))} → {planks} "
-        f"{plural_choose(planks, ('доска', 'доски', 'досок'))}."
+    from utils.localization import t as _tmill
+    _bw = ('бревно', 'бревна', 'брёвен')
+    text = _tmill(
+        "logging.mill.screen",
+        inv=f"{wood_qty} {plural_choose(wood_qty, _bw)}",
+        nm=nordmarks, nm_word=plural_nordmark(nordmarks),
+        ap=ap,
+        py=LOGGING_PLANK_YIELD, py_w=plural_choose(LOGGING_PLANK_YIELD, ('доска', 'доски', 'досок')),
+        pn=LOGGING_PLANK_NAME, fee=LOGGING_PLANK_FEE,
+        pw=paid_wood, pw_w=plural_choose(paid_wood, _bw),
+        pl=planks, pl_w=plural_choose(planks, ('доска', 'доски', 'досок')),
+        fy=LOGGING_FIREWOOD_YIELD,
+        fy_w=plural_choose(LOGGING_FIREWOOD_YIELD, ('пак', 'пака', 'паков')),
+        fn=LOGGING_FIREWOOD_NAME, fap=LOGGING_FIREWOOD_AP_COST,
+        fwq=fw_wood, fwq_w=plural_choose(fw_wood, _bw),
+        fw=firewood, fw_w=plural_choose(firewood, ('пак', 'пака', 'паков')),
     )
-    lines.append("")
-    lines.append(
-        f"🪓 Рубка дров (самостоятельно)\n"
-        f"   1 бревно → {LOGGING_FIREWOOD_YIELD} "
-        f"{plural_choose(LOGGING_FIREWOOD_YIELD, ('пак', 'пака', 'паков'))} "
-        f"«{LOGGING_FIREWOOD_NAME}», тратит {LOGGING_FIREWOOD_AP_COST} ОД за "
-        f"бревно, нужен топор.\n"
-        f"   Доступно: {fw_wood} "
-        f"{plural_choose(fw_wood, ('бревно', 'бревна', 'брёвен'))} → {firewood} "
-        f"{plural_choose(firewood, ('пак', 'пака', 'паков'))} дров."
-    )
-    await _logging_paint(callback, text="\n".join(lines),
+    await _logging_paint(callback, text=text,
                          kb=_mill_markup(token, planks, firewood,
                                          planks_one, firewood_one))
 

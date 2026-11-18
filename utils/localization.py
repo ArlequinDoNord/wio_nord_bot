@@ -352,6 +352,28 @@ STRINGS = {
         "ru": "{head}\n\nУдар за ударом — стружка летит, но сук топор не берёт: сучковатое дерево уходит на дрова.\nПробуй ещё!",
         "en": "{head}\n\nStrike after strike — chips fly, but the knot won't give to the axe: the knotty tree goes to firewood.\nKeep trying!",
     },
+    "logging.mill.screen": {
+        "ru": ("🪚 ПЕРЕРАБОТКА БРЁВЕН\n\n"
+               "🎒 В инвентаре: {inv}\n"
+               "💰 Кошелёк: {nm} {nm_word} НМ\n"
+               "⚡ ОД: {ap}\n\n"
+               "🪚 Распил на доски (артель)\n"
+               "   1 бревно → {py} {py_w} «{pn}», плата {fee} НМ за бревно (в казну), топор не нужен.\n"
+               "   Доступно: {pw} {pw_w} → {pl} {pl_w}.\n\n"
+               "🪓 Рубка дров (самостоятельно)\n"
+               "   1 бревно → {fy} {fy_w} «{fn}», тратит {fap} ОД за бревно, нужен топор.\n"
+               "   Доступно: {fwq} {fwq_w} → {fw} {fw_w} дров."),
+        "en": ("🪚 LOG PROCESSING\n\n"
+               "🎒 In inventory: {inv}\n"
+               "💰 Purse: {nm} {nm_word}\n"
+               "⚡ AP: {ap}\n\n"
+               "🪚 Sawing into planks (the mill)\n"
+               "   1 log → {py} {py_w} «{pn}», fee {fee} per log (to the treasury), no axe needed.\n"
+               "   Available: {pw} {pw_w} → {pl} {pl_w}.\n\n"
+               "🪓 Chopping firewood (by hand)\n"
+               "   1 log → {fy} {fy_w} «{fn}», costs {fap} AP per log, needs an axe.\n"
+               "   Available: {fwq} {fwq_w} → {fw} {fw_w} of firewood."),
+    },
     "logging.tourist": {
         "ru": "⛔ На лесозаготовку не пускают туристов — это работа настоящих пилотов.",
         "en": "⛔ Tourists aren't allowed at the logging camp — this is real pilots' work.",
