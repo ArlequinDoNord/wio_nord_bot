@@ -1575,19 +1575,20 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     from utils.combat_model import roll_enemy_damage
     eres = roll_enemy_damage(stats, enemy_row)
     blocked_line = ""
+    from utils.localization import t as _tr
     if stunned_miss:
         reduced = 0
-        stun_line = (f"💫 {enemy['name']} оглушён и промахивается! (−0 HP)")
+        stun_line = _tr("battle.enemy.stunned_miss", enemy=enemy['name'])
     elif eres['dodged']:
         reduced = 0
         stun_line = ""
-        dodge_line = f"💨 Ты уклонился от атаки {enemy['name']}! (−0 HP)"
+        dodge_line = _tr("battle.player.dodged", enemy=enemy['name'])
     else:
         reduced = eres['damage']
         if eres['armor_blocked']:
-            blocked_line = f"\n🛡️ Броня поглотила {eres['armor_blocked']} урона!"
+            blocked_line = "\n" + _tr("battle.armor_blocked", amount=eres['armor_blocked'])
         if eres['crit']:
-            blocked_line += " 💥 crit!"
+            blocked_line += " " + _tr("battle.crit")
         stun_line = ""
         dodge_line = ""
     player_hp = max(0, player_hp - reduced)

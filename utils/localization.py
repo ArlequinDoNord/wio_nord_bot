@@ -296,6 +296,19 @@ STRINGS = {
         "ru": "\n🛡 {enemy} невосприимчив к «{label}» — эффект не сработал.",
         "en": "\n🛡 {enemy} is immune to «{label}» — the effect did nothing.",
     },
+    "battle.enemy.stunned_miss": {
+        "ru": "💫 {enemy} оглушён и промахивается! (−0 HP)",
+        "en": "💫 {enemy} is stunned and misses! (−0 HP)",
+    },
+    "battle.player.dodged": {
+        "ru": "💨 Ты уклонился от атаки {enemy}! (−0 HP)",
+        "en": "💨 You dodged the attack of {enemy}! (−0 HP)",
+    },
+    "battle.armor_blocked": {
+        "ru": "🛡️ Броня поглотила {amount} урона!",
+        "en": "🛡️ Armor absorbed {amount} damage!",
+    },
+    "battle.crit": {"ru": "💥 crit!", "en": "💥 crit!"},
     "battle.weapon.stun_applied": {
         "ru": "\n{emoji} {attack}! Шанс {enemy} промахнуться: +{dmg}% ({ticks} хода).",
         "en": "\n{emoji} {attack}! {enemy} now has a +{dmg}% chance to miss ({ticks} turns).",
