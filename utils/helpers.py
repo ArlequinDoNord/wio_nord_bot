@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 from config import RARITY_LEVELS, RARITY_EMOJI
-from utils.i18n import all_button_labels
+from utils.localization import all_button_labels
 
 MOSCOW_TZ = timezone(timedelta(hours=3))
 
@@ -109,7 +109,7 @@ def rarity_emoji(rarity: int) -> str:
 
 def category_label(category: str) -> str:
     from config import ITEM_CATEGORIES
-    from utils.i18n import STRINGS, t
+    from utils.localization import STRINGS, t
     if f"cat.{category}" in STRINGS:
         return t(f"cat.{category}")
     return ITEM_CATEGORIES.get(category, category)

@@ -7,7 +7,7 @@ from aiogram.fsm.state import State, StatesGroup
 from config import REPORT_MAX_TROOPS, REPORT_MAX_REGION, REPORT_DAILY_LIMIT, REPORT_ARCHIVE_PAGE
 from database.db import add_report, approve_report, get_user, get_user_reports, get_report_with_user, report_tax_percent_for, get_report_auto_approve_troops, count_reports_today, log_activity, user_is_tourist, report_payout_context, report_prev_day_total, created_at_msk, report_day_value_of
 from utils.helpers import is_main_menu_text
-from utils.i18n import t
+from utils.localization import t
 from utils.notify import notify_report_praise
 from keyboards.keyboards import report_keyboard, cancel_keyboard
 
@@ -23,7 +23,7 @@ class ReportSubmit(StatesGroup):
 
 async def _report_menu_text(user_id: int) -> str:
     remaining = REPORT_DAILY_LIMIT - await count_reports_today(user_id)
-    from utils.i18n import t
+    from utils.localization import t
     header = t("report.menu_header")
     if remaining > 0:
         header += "\n" + t("report.remaining", n=remaining)
@@ -32,7 +32,7 @@ async def _report_menu_text(user_id: int) -> str:
     return header
 
 
-from utils.i18n import btn_labels
+from utils.localization import btn_labels
 
 
 @router.message(F.text.in_(btn_labels("btn.report")))
@@ -105,7 +105,7 @@ async def report_submit_start(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         return
     await state.set_state(ReportSubmit.waiting_photo)
-    from utils.i18n import t
+    from utils.localization import t
     await callback.message.answer(
         t("report.photo_prompt", remaining=remaining),
         reply_markup=cancel_keyboard()
@@ -120,7 +120,7 @@ async def report_receive_photo(message: Message, state: FSMContext):
     photo = message.photo[-1]
     await state.update_data(screenshot_file_id=photo.file_id)
     await state.set_state(ReportSubmit.waiting_daily_troops)
-    from utils.i18n import t
+    from utils.localization import t
     await message.answer(
         t("report.daily_prompt", max=f"{REPORT_MAX_TROOPS:,}".replace(",", " ")),
         reply_markup=cancel_keyboard()
@@ -147,7 +147,7 @@ async def report_receive_daily_troops(message: Message, state: FSMContext):
     await state.update_data(daily_troops=troops)
     await state.set_state(ReportSubmit.waiting_total_troops)
     prev_total = await report_prev_day_total(message.from_user.id)
-    from utils.i18n import t
+    from utils.localization import t
     prev_note = ("\n" + t("report.prev_day", n=prev_total)) if prev_total else ""
     await message.answer(
         t("report.total_prompt", max=f"{REPORT_MAX_TROOPS:,}".replace(",", " "))

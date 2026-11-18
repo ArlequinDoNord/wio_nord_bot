@@ -160,14 +160,14 @@ WEAPON_EFFECT_EMOJI = {
 
 
 def _weapon_label(kind: str) -> str:
-    """Название эффекта оружия/статуса для текста боя (из utils/i18n)."""
-    from utils.i18n import t
+    """Название эффекта оружия/статуса для текста боя (из utils/localization)."""
+    from utils.localization import t
     return t(f"battle.weapon.label.{kind}")
 
 
 def _weapon_attack(kind: str) -> str:
-    """Строка атаки с эффектом (из utils/i18n)."""
-    from utils.i18n import t
+    """Строка атаки с эффектом (из utils/localization)."""
+    from utils.localization import t
     return t(f"battle.weapon.attack.{kind}")
 
 # Рыба подземного водохранилища (после победы над Крысиным капитаном): веса.
@@ -1535,7 +1535,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         resist = await get_enemy_effect_resist(enemy['id'])
         if effects.is_immune(resist, weff):
             if wch and wdmg and random.randint(1, 100) <= wch:
-                from utils.i18n import t
+                from utils.localization import t
                 text += t("battle.weapon.immune", enemy=enemy['name'], label=_weapon_label(weff))
             wch = 0
         else:
@@ -1544,7 +1544,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
             if weff == 'stun':
                 await state.update_data(enemy_stun_ticks=WEAPON_STUN_TICKS,
                                         enemy_stun_penalty=wdmg)
-                from utils.i18n import t
+                from utils.localization import t
                 text += t("battle.weapon.stun_applied", emoji=WEAPON_EFFECT_EMOJI[weff],
                           attack=_weapon_attack(weff), enemy=enemy['name'], dmg=wdmg,
                           ticks=WEAPON_STUN_TICKS)
@@ -1553,7 +1553,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
                 enemy_dots = dict(data.get('enemy_dots') or {})
                 res = effects.apply_dot(enemy_dots, weff, wdmg, WEAPON_DOT_TICKS)
                 await state.update_data(enemy_dots=enemy_dots)
-                from utils.i18n import t
+                from utils.localization import t
                 if res["applied"]:
                     text += t("battle.weapon.dot_applied", emoji=WEAPON_EFFECT_EMOJI[weff],
                               attack=_weapon_attack(weff), label=_weapon_label(weff),
@@ -1653,7 +1653,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         status_text += f"\n♻ Регенерация активна: следующий тик +{rq[0]} HP (осталось {len(rq)} х.)."
     text += proc_text + round_note + status_text
     # Текущий эффект оружия на враге (пока сам не спал).
-    from utils.i18n import t as _t
+    from utils.localization import t as _t
     enemy_dots_after = data_after.get('enemy_dots') or {}
     if enemy_dots_after and not enemy_eff_just:
         for kind, entry in enemy_dots_after.items():

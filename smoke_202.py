@@ -27,7 +27,7 @@ async def main():
 
     import database.db as db
     from database.db import init_db, close_db, add_user, get_user, get_user_lang, set_user_lang
-    from utils.i18n import (t, btn_labels, all_button_labels, use_lang, LangMiddleware,
+    from utils.localization import (t, btn_labels, all_button_labels, use_lang, LangMiddleware,
                             current_lang)
     from utils.helpers import MAIN_MENU_TEXTS
     from keyboards.keyboards import main_menu_keyboard

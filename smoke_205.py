@@ -21,7 +21,7 @@ async def main():
     import database.db as db
     from database.db import (init_db, close_db, add_user, update_user, set_user_lang,
                              create_fine, fines_block_text, pay_fine)
-    from utils.i18n import t, t_user, use_lang
+    from utils.localization import t, t_user, use_lang
     from keyboards.keyboards import bank_keyboard, admin_panel_keyboard
 
     await init_db()

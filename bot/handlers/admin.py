@@ -494,7 +494,7 @@ async def pickuser_cb(callback: CallbackQuery, state: FSMContext):
             ])
         )
     elif next_step == "fine_target":
-        from utils.i18n import t
+        from utils.localization import t
         if not await _is_super_admin(callback.from_user.id):
             await callback.message.answer(t("admin.fine_not_super"))
             await state.clear()
@@ -739,7 +739,7 @@ async def show_admin_panel(user_id: int, to_edit: CallbackQuery = None, to_msg: 
         await to_msg.answer(text, reply_markup=markup)
 
 
-from utils.i18n import btn_labels, t, t_user
+from utils.localization import btn_labels, t, t_user
 
 
 @router.message(F.text.in_(btn_labels("btn.admin")))
@@ -2880,7 +2880,7 @@ class AdminFine(StatesGroup):
 
 
 def _fines_menu_kb():
-    from utils.i18n import t
+    from utils.localization import t
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t("admin.fine_new"), callback_data="fines:new")],
         [InlineKeyboardButton(text=t("admin.fine_list"), callback_data="fines:list")],
@@ -2890,7 +2890,7 @@ def _fines_menu_kb():
 
 @router.callback_query(F.data == "fines:menu")
 async def fines_menu(callback: CallbackQuery, state: FSMContext):
-    from utils.i18n import t
+    from utils.localization import t
     await callback.answer()
     await state.clear()
     if not await _is_super_admin(callback.from_user.id):
@@ -2901,7 +2901,7 @@ async def fines_menu(callback: CallbackQuery, state: FSMContext):
 
 @router.callback_query(F.data == "fines:new")
 async def fines_new(callback: CallbackQuery, state: FSMContext):
-    from utils.i18n import t
+    from utils.localization import t
     await callback.answer()
     if not await _is_super_admin(callback.from_user.id):
         await callback.message.answer(t("admin.fine_not_super"))
@@ -2913,7 +2913,7 @@ async def fines_new(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminFine.user_id)
 async def fines_new_user(message: Message, state: FSMContext):
-    from utils.i18n import t
+    from utils.localization import t
     text = (message.text or "").strip()
     if text == "Отмена":
         await state.clear()
@@ -2934,7 +2934,7 @@ async def fines_new_user(message: Message, state: FSMContext):
 
 @router.message(AdminFine.amount)
 async def fines_new_amount(message: Message, state: FSMContext):
-    from utils.i18n import t
+    from utils.localization import t
     text = (message.text or "").strip()
     if not text.isdigit() or int(text) <= 0:
         await message.answer(t("admin.fine_bad_number"), reply_markup=cancel_keyboard())
@@ -2946,7 +2946,7 @@ async def fines_new_amount(message: Message, state: FSMContext):
 
 @router.message(AdminFine.reason)
 async def fines_new_reason(message: Message, state: FSMContext):
-    from utils.i18n import t, t_user
+    from utils.localization import t, t_user
     from database.db import create_fine
     from utils.permissions import log_action
     reason = (message.text or "").strip()
@@ -2971,7 +2971,7 @@ async def fines_new_reason(message: Message, state: FSMContext):
 
 @router.callback_query(F.data == "fines:list")
 async def fines_list(callback: CallbackQuery):
-    from utils.i18n import t
+    from utils.localization import t
     from database.db import get_all_active_fines
     await callback.answer()
     if not await _is_super_admin(callback.from_user.id):
@@ -2996,7 +2996,7 @@ async def fines_list(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("fines:cancel:"))
 async def fines_cancel(callback: CallbackQuery):
-    from utils.i18n import t, t_user
+    from utils.localization import t, t_user
     from database.db import cancel_fine, get_all_active_fines
     from utils.permissions import log_action
     await callback.answer()

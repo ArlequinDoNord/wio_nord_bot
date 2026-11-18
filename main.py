@@ -281,7 +281,7 @@ async def scheduled_jobs(bot: Bot):
         try:
             from database.db import process_fines_daily
             from utils.helpers import MOSCOW_TZ
-            from utils.i18n import t_user
+            from utils.localization import t_user
             from datetime import datetime as _dt
             game_day = _dt.now(MOSCOW_TZ).strftime("%Y-%m-%d")
             for ev in await process_fines_daily(game_day):
@@ -685,7 +685,7 @@ async def main():
     dp.include_router(duel_router)
     dp.include_router(mvd_router)
 
-    from utils.i18n import LangMiddleware
+    from utils.localization import LangMiddleware
     dp.update.outer_middleware(LangMiddleware())
 
     for r in (start_router, changelog_router, profile_router, bank_router, admin_router, admin_recipes_router, shop_router,

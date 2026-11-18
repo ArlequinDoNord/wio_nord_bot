@@ -196,7 +196,7 @@ async def shop_cmd(message: Message):
     await shop_menu(message)
 
 
-from utils.i18n import btn_labels
+from utils.localization import btn_labels
 
 
 @router.message(F.text.in_(btn_labels("btn.shop")))
@@ -633,7 +633,7 @@ async def _buy_item_impl(callback: CallbackQuery, item_id: int, qty: int, specia
         return
 
     from database.db import shop_limit_status
-    from utils.i18n import t
+    from utils.localization import t
     held, limit = await shop_limit_status(callback.from_user.id, item_id)
     if limit and held + qty > limit:
         await callback.answer(t("shop.limit_reached", held=held, limit=limit), show_alert=True)

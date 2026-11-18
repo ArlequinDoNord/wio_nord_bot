@@ -6,7 +6,7 @@ from database.db import get_user, transfer_nordmarks, get_transactions_history, 
 from config import TOURIST_BALANCE_LIMIT
 from keyboards.keyboards import bank_keyboard, cancel_keyboard, main_menu_kb
 from utils.helpers import format_amount, plural_nordmark, is_main_menu_text
-from utils.i18n import t
+from utils.localization import t
 
 router = Router()
 
@@ -412,7 +412,7 @@ async def process_message(message: Message, state: FSMContext):
 async def _fines_screen(uid: int):
     """Текст и клавиатура раздела «Штрафы» для пилота."""
     from database.db import get_active_fines, fine_charge_base
-    from utils.i18n import t
+    from utils.localization import t
     fines = await get_active_fines(uid)
     rows = []
     if not fines:
@@ -441,7 +441,7 @@ async def bank_fines(callback: CallbackQuery, state: FSMContext):
 
 
 def _fine_result_text(code: str, fine_id: int, taken: int) -> str:
-    from utils.i18n import t
+    from utils.localization import t
     return t("fines." + code, id=fine_id, taken=taken)
 
 
@@ -458,7 +458,7 @@ async def bank_fine_pay_all(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("fine:part:"))
 async def bank_fine_pay_part(callback: CallbackQuery, state: FSMContext):
-    from utils.i18n import t
+    from utils.localization import t
     await callback.answer()
     fine_id = int(callback.data.split(":")[2])
     await state.set_state(BankStates.waiting_fine_amount)
@@ -469,7 +469,7 @@ async def bank_fine_pay_part(callback: CallbackQuery, state: FSMContext):
 @router.message(BankStates.waiting_fine_amount)
 async def bank_fine_amount(message: Message, state: FSMContext):
     from database.db import pay_fine
-    from utils.i18n import t
+    from utils.localization import t
     text = (message.text or "").strip()
     if text == "Отмена" or text.lower() == "/cancel":
         await state.clear()

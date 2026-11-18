@@ -113,7 +113,7 @@ async def run():
                              delete_rejected_report, get_db, set_callsign)
     from bot.handlers import admin as adm
     from bot.handlers.reports import report_card_text
-    from utils import i18n
+    from utils import localization
 
     await init_db()
     passed = failed = 0
@@ -203,13 +203,13 @@ async def run():
           all("Причина отклонения: Скриншот нечитаемый" in x for x in texts))
 
     print("\n5. Английский интерфейс")
-    token = i18n._current.set("en")
+    token = localization._current.set("en")
     try:
         en_card = report_card_text(r)
         check("EN: Reviewed by", "Reviewed by: Инспектор" in en_card)
         check("EN: Rejection reason", "Rejection reason:" in en_card)
     finally:
-        i18n._current.reset(token)
+        localization._current.reset(token)
 
     print("\n6. Принятый отчёт: имя проверяющего тоже пишется")
     rid2, _ = await add_report(PILOT2, "file", 400, 400, "0")
@@ -302,14 +302,14 @@ async def run():
           any(x["id"] == rid4 for x in await get_rejected_reports_fresh()))
 
     print("\n14. Английский интерфейс вкладки")
-    token = i18n._current.set("en")
+    token = localization._current.set("en")
     try:
         msg = FakeMessage(user_id=ADMIN)
         await adm.show_rejected_reports(msg, 0)
         check("EN: заголовок", "REJECTED REPORTS" in _texts(msg))
         check("EN: кнопка «Back to reports»", "Back to reports" in _kb_texts(msg))
     finally:
-        i18n._current.reset(token)
+        localization._current.reset(token)
 
     await close_db()
     print(f"\nИТОГО: {passed} passed, {failed} failed")

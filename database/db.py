@@ -6749,7 +6749,7 @@ async def fines_block_text(user_id: int):
     """Текст отказа для должника (покупки, переводы, передача) или None, если всё можно."""
     if not await has_unpaid_fines(user_id):
         return None
-    from utils.i18n import t
+    from utils.localization import t
     return t("fine.blocked")
 
 

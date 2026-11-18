@@ -32,7 +32,7 @@ from utils.helpers import (
 )
 from keyboards.keyboards import cancel_keyboard, main_menu_kb
 from config import TOURIST_BOOKLET_NAME
-from utils.i18n import t
+from utils.localization import t
 
 router = Router()
 
@@ -583,7 +583,7 @@ async def unequip_slot_cb(callback: CallbackQuery):
     await _render_equip_slot(callback.message, user_id, slot)
 
 
-from utils.i18n import btn_labels
+from utils.localization import btn_labels
 
 
 @router.message(F.text.in_(btn_labels("btn.inventory")))
@@ -1067,7 +1067,7 @@ async def _sell_confirm(callback: CallbackQuery, item_id: int, qty: int):
 async def inv_sell_ask(callback: CallbackQuery):
     """Второй шаг для редких предметов: явное подтверждение продажи редкости."""
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-    from utils.i18n import t
+    from utils.localization import t
     await callback.answer()
     _, item_s, qty_s = callback.data.split(":")
     item = await get_item(int(item_s))

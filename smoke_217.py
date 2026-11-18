@@ -25,7 +25,7 @@ async def main():
         add_inventory_item, get_db, ensure_forest_zones, ensure_recipes, add_item,
     )
     from bot.handlers import profile as pf
-    from utils.i18n import _current
+    from utils.localization import _current
 
     await init_db()
     await ensure_recipes()

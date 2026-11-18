@@ -85,7 +85,7 @@ async def run():
                              shop_limit_status, get_item, get_db)
     from bot.handlers.inventory import inv_stock_label
     from bot.handlers import admin as adm
-    from utils import i18n
+    from utils import localization
 
     await init_db()
     passed = failed = 0
@@ -190,12 +190,12 @@ async def run():
     check("состояние сброшено", st._state is None)
 
     print("\n11. Английский интерфейс")
-    token = i18n._current.set("en")
+    token = localization._current.set("en")
     try:
-        text = i18n.t("shop.limit_reached", held=2, limit=2)
+        text = localization.t("shop.limit_reached", held=2, limit=2)
         check("EN: отказ по лимиту", "Hand limit reached" in text)
     finally:
-        i18n._current.reset(token)
+        localization._current.reset(token)
 
     await close_db()
     print(f"\nИТОГО: {passed} passed, {failed} failed")

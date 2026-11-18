@@ -8,7 +8,7 @@ from database.db import (add_user, get_user, ensure_base_status, user_is_tourist
                          get_all_locations, get_active_run, finalize_run_for,
                          get_latest_rep_speech, fire_event_visible)
 from keyboards.keyboards import main_menu_keyboard, main_menu_kb, city_keyboard
-from utils.i18n import t, btn_labels
+from utils.localization import t, btn_labels
 from utils.permissions import is_admin
 from utils.helpers import resolve_image
 from config import VERSION, VERSION_NOTES
@@ -128,7 +128,7 @@ async def _city_photo():
     return FSInputFile(resolve_image("city/arkholm"))
 
 
-from utils.i18n import btn_labels
+from utils.localization import btn_labels
 
 
 @router.message(F.text.in_(btn_labels("btn.city")))
@@ -149,13 +149,13 @@ async def show_city(message: Message, state: FSMContext):
 
 @router.message(F.text.in_(btn_labels("btn.lang")))
 async def toggle_language(message: Message, state: FSMContext):
-    from utils.i18n import current_lang, use_lang
+    from utils.localization import current_lang, use_lang
     uid = message.from_user.id
     new_lang = "en" if current_lang() == "ru" else "ru"
     await db.set_user_lang(uid, new_lang)
     use_lang(new_lang)
     key = "lang.switched_en" if new_lang == "en" else "lang.switched_ru"
-    from utils.i18n import t
+    from utils.localization import t
     await message.answer(t(key), reply_markup=await main_menu_kb(uid))
 
 

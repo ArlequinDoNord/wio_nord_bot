@@ -34,7 +34,7 @@ async def main():
 
     import config
     from database.db import init_db, get_db, add_user, close_db, get_item_by_name
-    from utils.i18n import _current, place_name
+    from utils.localization import _current, place_name
     from utils.helpers import category_label
     from keyboards.keyboards import (
         city_keyboard, business_quarter_keyboard, admin_quarter_keyboard,

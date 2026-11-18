@@ -2,7 +2,7 @@
 """TEXTS_CATALOG.md — единый каталог ВСЕХ текстов, которые видит игрок.
 
 Разделы (темы):
-  1. Интерфейс и кнопки — utils/i18n.py (STRINGS, ru/en)
+  1. Интерфейс и кнопки — utils/localization.py (STRINGS, ru/en)
   2. Боевые тексты — встроены из BATTLE_TEXTS.md
   3. Сущности из БД: предметы, локации, подземелья, враги, награды, рецепты,
      статусы, книги, постройки, памятники
@@ -56,7 +56,7 @@ DB_END = "<!-- texts-catalog-db:end -->"
 CODE_DIRS = ("bot", "utils", "keyboards")
 CODE_FILES = ("main.py",)
 # i18n разбирается отдельно (раздел «Интерфейс и кнопки») — не дублируем.
-CODE_SKIP_FILES = {"utils/i18n.py"}
+CODE_SKIP_FILES = {"utils/localization.py"}
 CYR_RE = re.compile(r"[А-Яа-яЁё]")
 SQL_RE = re.compile(
     r"\b(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|PRAGMA|REPLACE|FROM|WHERE|JOIN|VALUES)\b")
@@ -364,9 +364,9 @@ def render_code_texts(entries):
     body = [
         f"Всего текстов: **{len(entries)}** (уникальные вхождения по файлам и функциям).",
         "",
-        "> Эти строки пока живут прямо в коде (не в `utils/i18n.py`). Раздел нужен для",
+        "> Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для",
         "> полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу",
-        "> заводить ключами в `utils/i18n.py` (ru + en) — тогда они попадут в раздел",
+        "> заводить ключами в `utils/localization.py` (ru + en) — тогда они попадут в раздел",
         "> «Интерфейс и кнопки» с переводом. Здесь правки переносятся по тексту в",
         "> указанной функции соответствующего файла.",
         "",
@@ -396,7 +396,7 @@ def render_code_texts(entries):
 def i18n_strings():
     if ROOT not in sys.path:
         sys.path.insert(0, ROOT)
-    from utils.i18n import STRINGS  # noqa: WPS433 (осознанный импорт проекта)
+    from utils.localization import STRINGS  # noqa: WPS433 (осознанный импорт проекта)
 
     return STRINGS
 
@@ -764,7 +764,7 @@ def build_catalog(db_sections, db_fp, code_fp, seeds_fp, snapshot_note, entries)
     add("# TEXTS_CATALOG.md — все тексты N.O.R.D. в одном файле")
     add("")
     add("> Единый каталог того, что видит игрок, разбитый по темам. Генерируется")
-    add("> `tools/export_texts.py` из трёх источников: `utils/i18n.py` (интерфейс),")
+    add("> `tools/export_texts.py` из трёх источников: `utils/localization.py` (интерфейс),")
     add("> `BATTLE_TEXTS.md` (боевые тексты) и БД (описания сущностей), плюс")
     add("> приложение с русскими строками, которые пока живут прямо в коде.")
     add(">")
@@ -775,7 +775,7 @@ def build_catalog(db_sections, db_fp, code_fp, seeds_fp, snapshot_note, entries)
     add("> отдельно и из каталога не переносится.")
     add(">")
     add("> Когда закончите — скажите агенту «примени TEXTS_CATALOG.md»: правки уйдут")
-    add("> в `utils/i18n.py`, `BATTLE_TEXTS.md` + боевые хендлеры, код/БД и сиды,")
+    add("> в `utils/localization.py`, `BATTLE_TEXTS.md` + боевые хендлеры, код/БД и сиды,")
     add("> после чего каталог будет перегенерирован. Генератор **перезаписывает**")
     add("> этот файл, поэтому не храните правки только здесь.")
     add(">")

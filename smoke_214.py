@@ -35,7 +35,7 @@ async def main():
     import database.db as db
     from database.db import init_db, add_user, get_db, add_nordmarks, close_db
     from bot.handlers import bank as bh
-    from utils.i18n import _current
+    from utils.localization import _current
 
     await init_db()
     conn = await get_db()

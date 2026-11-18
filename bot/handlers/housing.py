@@ -302,7 +302,7 @@ async def housing_menu(cb: CallbackQuery):
     await _paint(cb, text, photo, kb)
 
 
-from utils.i18n import btn_labels
+from utils.localization import btn_labels
 
 
 @router.message(F.text.in_(btn_labels("btn.housing")))

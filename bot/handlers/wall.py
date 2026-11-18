@@ -140,7 +140,7 @@ def _post_date_short(created_at) -> str:
         return str(created_at)
 
 
-from utils.i18n import btn_labels
+from utils.localization import btn_labels
 
 
 @router.message(F.text.in_(btn_labels("btn.wall")))

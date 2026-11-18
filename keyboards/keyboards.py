@@ -1,10 +1,10 @@
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 
-from utils.i18n import STRINGS, place_name, t
+from utils.localization import STRINGS, place_name, t
 
 
 def main_menu_keyboard(is_admin: bool = False, is_pilot: bool = True):
-    from utils.i18n import t
+    from utils.localization import t
     keyboard = [
         [KeyboardButton(text=t("btn.profile"))],
         [KeyboardButton(text=t("btn.report"))],
@@ -35,7 +35,7 @@ async def main_menu_kb(user_id: int):
 
 
 def admin_panel_keyboard(permissions: dict):
-    from utils.i18n import t
+    from utils.localization import t
     buttons = []
     if permissions.get('can_issue_fines'):
         buttons.append([InlineKeyboardButton(text=t("admin.fines_btn"), callback_data="fines:menu")])
@@ -86,7 +86,7 @@ def admin_panel_keyboard(permissions: dict):
 
 def profile_keyboard(notify_enabled: bool = True, profile_public: bool = True, can_toggle_visibility: bool = False, has_callsign: bool = False,
                      clan_id: int | None = None, clan_name: str | None = None):
-    from utils.i18n import t
+    from utils.localization import t
     rows = [
         [InlineKeyboardButton(text=t("profile.set_photo"), callback_data="profile:set_photo")],
         [InlineKeyboardButton(text=t("profile.choose_status"), callback_data="profile:choose_status")],
@@ -118,7 +118,7 @@ def profile_keyboard(notify_enabled: bool = True, profile_public: bool = True, c
 
 
 def shop_keyboard():
-    from utils.i18n import t
+    from utils.localization import t
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t("shop.catalog"), callback_data="shop:catalog")],
         [InlineKeyboardButton(text=t("shop.my_purchases"), callback_data="shop:my_purchases")],
@@ -158,7 +158,7 @@ def shop_admin_keyboard():
 
 
 def bank_keyboard():
-    from utils.i18n import t
+    from utils.localization import t
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t("bank.my_balance"), callback_data="bank:balance")],
         [InlineKeyboardButton(text=t("bank.transfer_btn"), callback_data="bank:transfer")],
@@ -247,7 +247,7 @@ QUARTER_HIDDEN_KEYS = ADMIN_QUARTER_KEYS + BUSINESS_QUARTER_KEYS + COUNTRYSIDE_K
 
 def city_keyboard(is_pilot: bool = True, locations: list = None,
                   event_visible: bool = False):
-    from utils.i18n import t
+    from utils.localization import t
     buttons = [
         [InlineKeyboardButton(text=t("city.business"), callback_data="city:business")],
         [InlineKeyboardButton(text=t("city.admin"), callback_data="city:quarter")],
@@ -425,7 +425,7 @@ def production_keyboard():
 
 
 def report_keyboard():
-    from utils.i18n import t
+    from utils.localization import t
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=t("report.btn_submit"), callback_data="report:submit")],
         [InlineKeyboardButton(text=t("report.btn_my"), callback_data="report:my_reports")],

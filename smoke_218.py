@@ -48,7 +48,7 @@ async def main():
     from config import TOURIST_BOOKLET_AWARD
     from bot.handlers import profile as pf
     from keyboards.keyboards import profile_keyboard
-    from utils.i18n import _current
+    from utils.localization import _current
 
     await init_db()
     await ensure_achievements()

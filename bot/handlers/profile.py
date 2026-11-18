@@ -237,7 +237,7 @@ async def profile_cmd(message: Message):
     await render_profile(message, message.from_user.id)
 
 
-from utils.i18n import btn_labels
+from utils.localization import btn_labels
 
 
 @router.message(F.text.in_(btn_labels("btn.profile")))
@@ -479,7 +479,7 @@ def _awards_tabs_row(active: str) -> list:
     Достижения — прогресс по ачивкам без медалей. Награды — медали, нашивки и
     значки (ВУСП, «Опытный турист» и т.п.).
     """
-    from utils.i18n import t
+    from utils.localization import t
 
     def label(key: str, text: str) -> str:
         return f"• {text} •" if key == active else text
@@ -532,7 +532,7 @@ async def _achievements_text(user_id: int) -> str:
 
 async def build_awards_tab(user_id: int, tab: str):
     """Раздел «Награды» в профиле: вкладка достижений или наград. Возвращает (текст, клавиатура)."""
-    from utils.i18n import t
+    from utils.localization import t
     rows = []
     if tab == "awd":
         awards = await get_user_medals(user_id)
@@ -650,7 +650,7 @@ def _recipes_sorted(rows) -> list:
 
 async def build_recipes_screen(user_id: int, page: int = 0):
     """Список выученных рецептов пилота по станциям, с листанием. Возвращает (текст, клавиатура)."""
-    from utils.i18n import t
+    from utils.localization import t
     from database.db import get_learned_recipes
     rows = _recipes_sorted(await get_learned_recipes(user_id))
     if not rows:
@@ -687,7 +687,7 @@ async def build_recipes_screen(user_id: int, page: int = 0):
 
 async def build_recipe_card(user_id: int, recipe_id: int):
     """Карточка выученного рецепта: ингредиенты пилота, ОД со скидкой, станция. None — не выучен."""
-    from utils.i18n import t
+    from utils.localization import t
     from database.db import get_learned_recipes, get_ingredient_map
     from utils.crafting import parse_ingredients, recipe_ap_cost
     r = next((x for x in await get_learned_recipes(user_id) if x['id'] == recipe_id), None)
@@ -736,7 +736,7 @@ async def profile_recipes_page(callback: CallbackQuery):
 
 @router.callback_query(F.data.regexp(r"^profile:recipe:\d+$"))
 async def profile_recipe_card_cb(callback: CallbackQuery):
-    from utils.i18n import t
+    from utils.localization import t
     rid = int(callback.data.split(":")[2])
     card = await build_recipe_card(callback.from_user.id, rid)
     if card is None:

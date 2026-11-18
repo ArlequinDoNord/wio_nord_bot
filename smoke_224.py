@@ -107,7 +107,7 @@ async def run():
     from database.db import (init_db, close_db, add_item, get_item, update_item,
                              run_weekly_restock, get_setting, get_db)
     from utils.helpers import MOSCOW_TZ
-    from utils import i18n
+    from utils import localization
 
     await init_db()
     passed = failed = 0
@@ -227,13 +227,13 @@ async def run():
     check("включилась снова", (await get_item(e))["restock_enabled"] == 1)
 
     print("\n10. Английский интерфейс")
-    token = i18n._current.set("en")
+    token = localization._current.set("en")
     try:
-        check("EN: кнопка", i18n.t("restock.btn") == "🔁 Weekly auto-restock")
-        check("EN: экран содержит Monday", "Monday" in i18n.t(
+        check("EN: кнопка", localization.t("restock.btn") == "🔁 Weekly auto-restock")
+        check("EN: экран содержит Monday", "Monday" in localization.t(
             "restock.screen", name="X", state="on", stock=1))
     finally:
-        i18n._current.reset(token)
+        localization._current.reset(token)
 
     await close_db()
     print(f"\nИТОГО: {passed} passed, {failed} failed")

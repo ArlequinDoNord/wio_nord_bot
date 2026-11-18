@@ -77,7 +77,7 @@ def main():
     check("в dungeon.py используется enemy_dots", "enemy_dots" in src)
 
     print("\n7. Боевые фразы: каждый ключ battle.* есть на ru и en")
-    from utils.i18n import STRINGS
+    from utils.localization import STRINGS
     battle_keys = [k for k in STRINGS if k.startswith("battle.")]
     check("ключи battle.* заведены", len(battle_keys) >= 10)
     check("у каждого battle.* есть ru и en",
