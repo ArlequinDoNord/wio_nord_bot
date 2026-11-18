@@ -311,6 +311,51 @@ STRINGS = {
     "battle.crit": {"ru": "💥 crit!", "en": "💥 crit!"},
     "battle.crit_mark": {"ru": " 💥 crit!", "en": " 💥 crit!"},
     "battle.crit_short": {"ru": "💥 crit! ", "en": "💥 crit! "},
+    # Железная копь: вход, запреты, подсказки (bot/handlers/mine.py).
+    "mine.stale": {
+        "ru": "⏳ Это окно копи устарело — открой её заново (Город → Железная копи).",
+        "en": "⏳ This mine window is out of date — reopen it (City → Iron Mine).",
+    },
+    "mine.tourist": {
+        "ru": "⛔ В копи не пускают туристов — вход только с «Пилота 1 класса».",
+        "en": "⛔ Tourists aren't allowed in the mine — entry is for Pilots 1st class only.",
+    },
+    "mine.in_dungeon": {
+        "ru": "⛔ Ты сейчас проходишь подземелье — в копи нельзя.\nВыйди из подземелья, а потом возвращайся.",
+        "en": "⛔ You're in a dungeon right now — no mine.\nLeave the dungeon and come back.",
+    },
+    "mine.hint.has_pickaxe": {
+        "ru": "⛏ У тебя есть кирка: {name} — спускайся и бей породу.",
+        "en": "⛏ You have a pickaxe: {name} — go down and strike the rock.",
+    },
+    "mine.hint.no_pickaxe": {
+        "ru": "⛏ Без кирки в штольню не сунешься: купи «Кирка» (магазин → Добыча ресурсов).",
+        "en": "⛏ You can't go down without a pickaxe: buy one (Shop → Resource Mining).",
+    },
+    "mine.entrance": {
+        "ru": ("⛏ ЖЕЛЕЗНАЯ КОПЬ\n\n"
+               "Лампы у входа мерцают, из штольни тянет холодом и запахом руды. "
+               "Ворота открыты — но где-то в глубине шелестит крыльями здешняя хозяйка.\n\n"
+               "{hint}\n\n"
+               "Спустись на первый уровень шахт или вернись в город."),
+        "en": ("⛏ IRON MINE\n\n"
+               "Lamps flicker at the entrance, cold and the smell of ore drift up from the "
+               "shaft. The gate is open — but somewhere deep below, the mine's mistress rustles her wings.\n\n"
+               "{hint}\n\n"
+               "Go down to the first mine level or head back to town."),
+    },
+    "mine.no_pickaxe": {
+        "ru": "❌ У тебя нет кирки. Купи «Кирка» в магазине (категория «Добыча ресурсов»).",
+        "en": "❌ You have no pickaxe. Buy one in the shop (Resource Mining category).",
+    },
+    "mine.no_ap": {
+        "ru": "❌ Не хватает ОД: нужно {cost}, доступно меньше. Восстановление — в новые сутки.",
+        "en": "❌ Not enough AP: you need {cost}. AP comes back with the new day.",
+    },
+    "mine.swing": {
+        "ru": "⛏ Ты замахиваешься киркой и бьёшь по породе...\nРезультат через {delay} секунд. Не шуми — прислушивайся!",
+        "en": "⛏ You swing your pickaxe at the rock...\nResult in {delay} seconds. Keep quiet — listen!",
+    },
     # Бой с летучей мышью в копи (bot/handlers/mine.py).
     "battle.mine.bat.title": {"ru": "{emoji} БОЙ С МЫШЬЮ", "en": "{emoji} BATTLE WITH THE BAT"},
     "battle.mine.bat.miss": {

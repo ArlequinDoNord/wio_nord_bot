@@ -88,10 +88,8 @@ async def _mine_ok(callback) -> bool:
             await log_activity(callback.from_user.id, "stale_button", "копи: устаревшее окно")
         except Exception:
             pass
-        await callback.answer(
-            "⏳ Это окно копи устарело — открой её заново (Город → Железная копи).",
-            show_alert=True,
-        )
+        from utils.localization import t as _tmine
+        await callback.answer(_tmine("mine.stale"), show_alert=True)
         return False
     return True
 
@@ -324,17 +322,13 @@ async def mine_menu_cb(callback: CallbackQuery):
     """Вход в Железную копи (location:enter:mine)."""
     await callback.answer()
 
+    from utils.localization import t as _tmine
     if await user_is_tourist(callback.from_user.id):
-        await callback.message.answer(
-            "⛔ В копи не пускают туристов — вход только с «Пилота 1 класса»."
-        )
+        await callback.message.answer(_tmine("mine.tourist"))
         return
 
     if await get_active_run(callback.from_user.id):
-        await callback.message.answer(
-            "⛔ Ты сейчас проходишь подземелье — в копи нельзя.\n"
-            "Выйди из подземелья, а потом возвращайся."
-        )
+        await callback.message.answer(_tmine("mine.in_dungeon"))
         return
 
     token = _new_token()
@@ -342,19 +336,11 @@ async def mine_menu_cb(callback: CallbackQuery):
 
     pickaxe = await _pickaxe_for(callback.from_user.id)
     if pickaxe:
-        hint = f"⛏ У тебя есть кирка: {pickaxe['name']} — спускайся и бей породу."
+        hint = _tmine("mine.hint.has_pickaxe", name=pickaxe['name'])
     else:
-        hint = ("⛏ Без кирки в штольню не сунешься: купи «Кирка» "
-                "(магазин → Добыча ресурсов).")
+        hint = _tmine("mine.hint.no_pickaxe")
 
-    caption = (
-        "⛏ ЖЕЛЕЗНАЯ КОПЬ\n\n"
-        "Лампы у входа мерцают, из штольни тянет холодом и запахом руды. "
-        "Ворота открыты — но где-то в глубине шелестит крыльями здешняя "
-        "хозяйка.\n\n"
-        f"{hint}\n\n"
-        "Спустись на первый уровень шахт или вернись в город."
-    )
+    caption = _tmine("mine.entrance", hint=hint)
     await _mine_paint(callback, text=caption, kb=_enter_markup(token))
 
 
@@ -436,11 +422,12 @@ async def mine_dig(callback: CallbackQuery):
             await callback.answer("Сначала нажми /start", show_alert=True)
             return
 
+        from utils.localization import t as _tmine
         pickaxe = await _pickaxe_for(user_id)
         if not pickaxe:
             await _level_paint(
                 callback,
-                text="❌ У тебя нет кирки. Купи «Кирка» в магазине (категория «Добыча ресурсов»).",
+                text=_tmine("mine.no_pickaxe"),
                 kb=_level_markup(MINE_TOKEN.get(user_id, "")),
             )
             return
@@ -450,8 +437,7 @@ async def mine_dig(callback: CallbackQuery):
         if not await remove_ap(user_id, ap_cost, reason="добыча руды"):
             await _level_paint(
                 callback,
-                text=f"❌ Не хватает ОД: нужно {ap_cost}, доступно меньше. "
-                     "Восстановление — в новые сутки.",
+                text=_tmine("mine.no_ap", cost=ap_cost),
                 kb=_level_markup(MINE_TOKEN.get(user_id, "")),
             )
             return
@@ -459,8 +445,7 @@ async def mine_dig(callback: CallbackQuery):
         delay = random.randint(*MINE_RESULT_DELAY)
         await _level_paint(
             callback,
-            text=(f"⛏ Ты замахиваешься киркой и бьёшь по породе...\n"
-                  f"Результат через {delay} секунд. Не шуми — прислушивайся!"),
+            text=_tmine("mine.swing", delay=delay),
             kb=None,
         )
         await log_activity(user_id, "mine", f"Добыча руды: удар киркой ({ap_cost} ОД)")
