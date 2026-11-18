@@ -6393,6 +6393,7 @@ async def _enemy_card_send(source, enemy_id: int, edit: bool = False):
         [InlineKeyboardButton(text="💨 УКЛ (%)", callback_data="enemy_field:dodge")],
         [InlineKeyboardButton(text="🛡 Броня", callback_data="enemy_field:armor")],
         [InlineKeyboardButton(text="✨ Эффекты при ударе", callback_data=f"enemy:effects:{enemy_id}")],
+        [InlineKeyboardButton(text="🛡 Иммунитеты к эффектам", callback_data=f"enemy:res:{enemy_id}")],
         [InlineKeyboardButton(text="💰 Награда (НМ)", callback_data="enemy_field:reward_nm")],
         [InlineKeyboardButton(text="📝 Описание", callback_data="enemy_field:description")],
         [InlineKeyboardButton(text="🖼 Картинка", callback_data="enemy_field:image")],
@@ -6717,6 +6718,88 @@ def _onhit_merge(effects: list, eff: dict) -> list:
     if not replaced:
         out.append(eff)
     return out
+
+
+RESIST_KIND_LABELS = {
+    "poison": "☠️ Яд",
+    "bleed": "🩸 Кровотечение",
+    "burn": "🔥 Горение",
+    "frostbite": "🧊 Обморожение",
+    "stun": "💫 Оглушение",
+}
+
+
+def _resist_text(name: str, resist: dict) -> str:
+    lines = [f"🛡 ИММУНИТЕТЫ «{name}»\n",
+             "Нажми на эффект, чтобы переключить: без защиты → иммунитет → "
+             "сопротивление ×0.5 → без защиты.\n"]
+    for kind, label in RESIST_KIND_LABELS.items():
+        if kind in resist.get("immune", []):
+            state = "🚫 иммунитет (не срабатывает)"
+        elif kind in resist.get("resist", {}):
+            state = f"🔻 шанс ×{resist['resist'][kind]:g}"
+        else:
+            state = "—"
+        lines.append(f"• {label}: {state}")
+    return "\n".join(lines)
+
+
+def _resist_kb(enemy_id: int):
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    rows = [[InlineKeyboardButton(text=label, callback_data=f"enemy:res:tog:{enemy_id}:{idx}")]
+            for idx, label in enumerate(RESIST_KIND_LABELS.values())]
+    rows.append([InlineKeyboardButton(text="🔙 К врагу", callback_data=f"dungeon:enemy:{enemy_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.regexp(r"^enemy:res:\d+$"))
+async def enemy_resist_screen(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    from database.db import get_enemy_effect_resist
+    enemy_id = int(callback.data.split(":")[2])
+    enemy = await get_enemy(enemy_id)
+    if not enemy:
+        await callback.message.answer("❌ Враг не найден.")
+        return
+    resist = await get_enemy_effect_resist(enemy_id)
+    await callback.message.edit_text(_resist_text(enemy['name'], resist),
+                                     reply_markup=_resist_kb(enemy_id))
+
+
+@router.callback_query(F.data.regexp(r"^enemy:res:tog:\d+:\d+$"))
+async def enemy_resist_toggle(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    if not await has_permission(callback.from_user.id, "can_manage_locations"):
+        return
+    from database.db import get_enemy_effect_resist, set_enemy_effect_resist
+    parts = callback.data.split(":")
+    enemy_id, idx = int(parts[3]), int(parts[4])
+    kinds = list(RESIST_KIND_LABELS)
+    if idx < 0 or idx >= len(kinds):
+        return
+    kind = kinds[idx]
+    resist = await get_enemy_effect_resist(enemy_id)
+    immune = list(resist.get("immune", []))
+    shares = dict(resist.get("resist", {}))
+    if kind in immune:
+        immune.remove(kind)
+        shares[kind] = 0.5
+        step = "сопротивление ×0.5"
+    elif kind in shares:
+        shares.pop(kind)
+        step = "без защиты"
+    else:
+        immune.append(kind)
+        step = "иммунитет"
+    await set_enemy_effect_resist(enemy_id, {"immune": immune, "resist": shares})
+    await log_action(callback.from_user.id, 'edit_enemy', None,
+                     f"enemy_id={enemy_id} resist {kind}: {step}")
+    enemy = await get_enemy(enemy_id)
+    await callback.message.edit_text(
+        _resist_text(enemy['name'] if enemy else "?", {"immune": immune, "resist": shares}),
+        reply_markup=_resist_kb(enemy_id))
 
 
 def _onhit_item_key(e: dict) -> str:

@@ -6,6 +6,40 @@ DoT-словарь цели: {вид: {"dmg": урон за ход, "ticks": х�
 """
 
 DOT_KINDS = ("poison", "bleed", "burn", "frostbite")
+# Все виды эффектов, которые может получить враг (включая оглушение и заморозку).
+ENEMY_EFFECT_KINDS = ("poison", "bleed", "burn", "frostbite", "stun")
+
+
+def parse_resist(raw) -> dict:
+    """Разбирает иммунитеты/сопротивления врага. Пустое или битое — без защиты."""
+    import json
+    data = raw
+    if isinstance(raw, (str, bytes)):
+        try:
+            data = json.loads(raw) if raw else {}
+        except (ValueError, TypeError):
+            data = {}
+    if not isinstance(data, dict):
+        data = {}
+    immune = [k for k in (data.get("immune") or []) if k in ENEMY_EFFECT_KINDS]
+    resist = {}
+    for k, v in (data.get("resist") or {}).items():
+        if k in ENEMY_EFFECT_KINDS:
+            try:
+                resist[k] = min(1.0, max(0.0, float(v)))
+            except (TypeError, ValueError):
+                continue
+    return {"immune": immune, "resist": resist}
+
+
+def is_immune(resist: dict, kind: str) -> bool:
+    return kind in (resist or {}).get("immune", [])
+
+
+def effective_chance(chance: int, resist: dict, kind: str) -> int:
+    """Шанс наложения с учётом сопротивления вида (доля 0.5 — вдвое реже)."""
+    mult = (resist or {}).get("resist", {}).get(kind, 1.0)
+    return max(0, int(round(int(chance) * float(mult))))
 
 # Какой вид гасит наложение другого (оба снимаются, новый не накладывается).
 CANCELS = {"burn": "frostbite", "frostbite": "burn"}

@@ -1355,6 +1355,8 @@ async def init_db():
     for _t in ("dungeon_enemies", "forest_enemies", "fishing_enemies",
                "mine_enemies", "logging_enemies"):
         await _ensure_column(conn, _t, "on_hit_effects", "TEXT DEFAULT NULL")
+    # Иммунитеты и сопротивления врага к эффектам: {"immune": [вид...], "resist": {вид: доля}}.
+    await _ensure_column(conn, "dungeon_enemies", "effect_resist", "TEXT DEFAULT NULL")
     # admin_tuned=1 в обычных врагах dungeon не должен мешать: миграции по дропам
     # (ensure_dungeon_enemy_drops / seed_kvp) запускаются только по admin_tuned>0
     await _ensure_column(conn, "dungeon_enemies", "admin_tuned", "INTEGER DEFAULT 0")
@@ -11286,6 +11288,23 @@ async def set_enemy_on_hit_effects(enemy_id: int, effects: list):
     await conn.execute(
         "UPDATE dungeon_enemies SET on_hit_effects = ? WHERE id = ?",
         (json.dumps(effects, ensure_ascii=False), enemy_id))
+    await conn.commit()
+
+
+async def get_enemy_effect_resist(enemy_id: int) -> dict:
+    """Иммунитеты и сопротивления врага к эффектам: {"immune": [...], "resist": {вид: доля}}."""
+    from utils.effects import parse_resist
+    enemy = await get_enemy(enemy_id)
+    if not enemy:
+        return parse_resist(None)
+    return parse_resist(enemy.get('effect_resist'))
+
+
+async def set_enemy_effect_resist(enemy_id: int, resist: dict):
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE dungeon_enemies SET effect_resist = ? WHERE id = ?",
+        (json.dumps(resist, ensure_ascii=False), enemy_id))
     await conn.commit()
 
 

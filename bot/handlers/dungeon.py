@@ -1533,6 +1533,15 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     if weff and not enemy_dodged:
         wch = int(weapon.get('weapon_effect_chance') or 0)
         wdmg = int(weapon.get('weapon_effect_dmg') or 0)
+        from database.db import get_enemy_effect_resist
+        resist = await get_enemy_effect_resist(enemy['id'])
+        if effects.is_immune(resist, weff):
+            if wch and wdmg and random.randint(1, 100) <= wch:
+                text += (f"\n🛡 {enemy['name']} невосприимчив к "
+                         f"«{WEAPON_EFFECT_LABELS.get(weff, weff)}» — эффект не сработал.")
+            wch = 0
+        else:
+            wch = effects.effective_chance(wch, resist, weff)
         if wch and wdmg and random.randint(1, 100) <= wch:
             if weff == 'stun':
                 await state.update_data(enemy_stun_ticks=WEAPON_STUN_TICKS,

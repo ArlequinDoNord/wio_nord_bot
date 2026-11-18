@@ -71,7 +71,9 @@ def main():
     print("\n6. Боевой код: одиночного слота enemy_effect больше нет")
     src = open(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                             "bot", "handlers", "dungeon.py"), encoding="utf-8").read()
-    check("в dungeon.py нет enemy_effect", "enemy_effect" not in src)
+    import re
+    check("в dungeon.py нет одиночного ключа enemy_effect",
+          re.search(r"\benemy_effect\b", src) is None)
     check("в dungeon.py используется enemy_dots", "enemy_dots" in src)
 
     print(f"\nИТОГО: {passed} passed, {failed} failed")
