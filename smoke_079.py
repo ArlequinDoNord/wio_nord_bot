@@ -85,7 +85,7 @@ async def main():
     import bot.handlers.dungeon as dung
     import bot.handlers.admin as adm
     step("imports done")
-    check("stun.label", "stun" in dung.WEAPON_EFFECT_LABELS)
+    check("stun.label", dung._weapon_label("stun") == "оглушение")
     check("stun.emoji", "stun" in dung.WEAPON_EFFECT_EMOJI)
     check("stun.admin_label", "stun" in adm.WEAPON_EFFECT_LABELS)
 

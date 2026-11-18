@@ -268,6 +268,46 @@ STRINGS = {
     "report.rejected_back_btn": {"ru": "🔙 К отклонённым", "en": "🔙 Back to rejected"},
     "report.rejected_back_reports": {"ru": "🔙 К отчётам", "en": "🔙 Back to reports"},
     # Авто-выкладка товара «как госпоставка» (карточка в Хранилище, раз в неделю).
+    # Боевые фразы эффектов оружия и статусов врага (подземелье). Правятся в TEXTS_EDIT.md.
+    "battle.weapon.label.poison": {"ru": "отравление", "en": "poison"},
+    "battle.weapon.label.bleed": {"ru": "кровотечение", "en": "bleeding"},
+    "battle.weapon.label.frostbite": {"ru": "обморожение", "en": "frostbite"},
+    "battle.weapon.label.stun": {"ru": "оглушение", "en": "stun"},
+    "battle.weapon.label.burn": {"ru": "поджиг", "en": "burning"},
+    "battle.weapon.attack.poison": {"ru": "Ты отравил врага — яд въедается в рану",
+                                    "en": "You poisoned the enemy — the venom seeps into the wound"},
+    "battle.weapon.attack.bleed": {"ru": "Ты глубоко ранил врага — он истекает кровью",
+                                   "en": "You cut the enemy deep — it bleeds"},
+    "battle.weapon.attack.frostbite": {"ru": "Ты оковал врага холодом — мороз сковывает его тело",
+                                       "en": "You chilled the enemy — frost locks its body"},
+    "battle.weapon.attack.stun": {"ru": "Ты оглушил врага — его следующие удары неточны",
+                                  "en": "You stunned the enemy — its next blows go astray"},
+    "battle.weapon.attack.burn": {"ru": "Ты поджёг врага — пламя лижет его броню",
+                                  "en": "You set the enemy alight — flames lick its armor"},
+    "battle.weapon.dot_applied": {
+        "ru": "\n{emoji} {attack}! {label}: −{dmg} HP врагу каждый ход ({ticks} хода).",
+        "en": "\n{emoji} {attack}! {label}: −{dmg} HP to the enemy each turn ({ticks} turns).",
+    },
+    "battle.weapon.dot_cancelled": {
+        "ru": "\n{emoji} {attack}! Но {label} врага уже гасит этот эффект — оба снимаются.",
+        "en": "\n{emoji} {attack}! But the enemy already has {label} — both cancel out.",
+    },
+    "battle.weapon.immune": {
+        "ru": "\n🛡 {enemy} невосприимчив к «{label}» — эффект не сработал.",
+        "en": "\n🛡 {enemy} is immune to «{label}» — the effect did nothing.",
+    },
+    "battle.weapon.stun_applied": {
+        "ru": "\n{emoji} {attack}! Шанс {enemy} промахнуться: +{dmg}% ({ticks} хода).",
+        "en": "\n{emoji} {attack}! {enemy} now has a +{dmg}% chance to miss ({ticks} turns).",
+    },
+    "battle.enemy.dot_status": {
+        "ru": "\n{emoji} Враг под {label}: −{dmg} HP каждый ход (осталось {ticks} х.).",
+        "en": "\n{emoji} Enemy under {label}: −{dmg} HP each turn ({ticks} turns left).",
+    },
+    "battle.enemy.stun_status": {
+        "ru": "\n💫 Враг оглушён: его точность −{penalty}% (осталось {ticks} х.).",
+        "en": "\n💫 Enemy stunned: its accuracy −{penalty}% ({ticks} turns left).",
+    },
     "restock.btn": {"ru": "🔁 Авто-выкладка раз в неделю", "en": "🔁 Weekly auto-restock"},
     "restock.screen": {
         "ru": ("🔁 АВТО-ВЫКЛАДКА «{name}»\n\n"

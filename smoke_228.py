@@ -76,6 +76,13 @@ def main():
           re.search(r"\benemy_effect\b", src) is None)
     check("в dungeon.py используется enemy_dots", "enemy_dots" in src)
 
+    print("\n7. Боевые фразы: каждый ключ battle.* есть на ru и en")
+    from utils.i18n import STRINGS
+    battle_keys = [k for k in STRINGS if k.startswith("battle.")]
+    check("ключи battle.* заведены", len(battle_keys) >= 10)
+    check("у каждого battle.* есть ru и en",
+          all(STRINGS[k].get("ru") and STRINGS[k].get("en") for k in battle_keys))
+
     print(f"\nИТОГО: {passed} passed, {failed} failed")
     return failed
 

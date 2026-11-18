@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=4b801d7341fa6da2 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=8c30d3b2e8373465 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **186** (ru + en).
+Всего строк: **202** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -210,6 +210,116 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   > Перевести
 - EN:
   > Transfer
+
+#### battle · `battle.` (16)
+
+### UI-battle.enemy.dot_status
+- RU:
+  >
+  > {emoji} Враг под {label}: −{dmg} HP каждый ход (осталось {ticks} х.).
+- EN:
+  >
+  > {emoji} Enemy under {label}: −{dmg} HP each turn ({ticks} turns left).
+
+### UI-battle.enemy.stun_status
+- RU:
+  >
+  > 💫 Враг оглушён: его точность −{penalty}% (осталось {ticks} х.).
+- EN:
+  >
+  > 💫 Enemy stunned: its accuracy −{penalty}% ({ticks} turns left).
+
+### UI-battle.weapon.attack.bleed
+- RU:
+  > Ты глубоко ранил врага — он истекает кровью
+- EN:
+  > You cut the enemy deep — it bleeds
+
+### UI-battle.weapon.attack.burn
+- RU:
+  > Ты поджёг врага — пламя лижет его броню
+- EN:
+  > You set the enemy alight — flames lick its armor
+
+### UI-battle.weapon.attack.frostbite
+- RU:
+  > Ты оковал врага холодом — мороз сковывает его тело
+- EN:
+  > You chilled the enemy — frost locks its body
+
+### UI-battle.weapon.attack.poison
+- RU:
+  > Ты отравил врага — яд въедается в рану
+- EN:
+  > You poisoned the enemy — the venom seeps into the wound
+
+### UI-battle.weapon.attack.stun
+- RU:
+  > Ты оглушил врага — его следующие удары неточны
+- EN:
+  > You stunned the enemy — its next blows go astray
+
+### UI-battle.weapon.dot_applied
+- RU:
+  >
+  > {emoji} {attack}! {label}: −{dmg} HP врагу каждый ход ({ticks} хода).
+- EN:
+  >
+  > {emoji} {attack}! {label}: −{dmg} HP to the enemy each turn ({ticks} turns).
+
+### UI-battle.weapon.dot_cancelled
+- RU:
+  >
+  > {emoji} {attack}! Но {label} врага уже гасит этот эффект — оба снимаются.
+- EN:
+  >
+  > {emoji} {attack}! But the enemy already has {label} — both cancel out.
+
+### UI-battle.weapon.immune
+- RU:
+  >
+  > 🛡 {enemy} невосприимчив к «{label}» — эффект не сработал.
+- EN:
+  >
+  > 🛡 {enemy} is immune to «{label}» — the effect did nothing.
+
+### UI-battle.weapon.label.bleed
+- RU:
+  > кровотечение
+- EN:
+  > bleeding
+
+### UI-battle.weapon.label.burn
+- RU:
+  > поджиг
+- EN:
+  > burning
+
+### UI-battle.weapon.label.frostbite
+- RU:
+  > обморожение
+- EN:
+  > frostbite
+
+### UI-battle.weapon.label.poison
+- RU:
+  > отравление
+- EN:
+  > poison
+
+### UI-battle.weapon.label.stun
+- RU:
+  > оглушение
+- EN:
+  > stun
+
+### UI-battle.weapon.stun_applied
+- RU:
+  >
+  > {emoji} {attack}! Шанс {enemy} промахнуться: +{dmg}% ({ticks} хода).
+- EN:
+  >
+  > {emoji} {attack}! {enemy} now has a +{dmg}% chance to miss ({ticks} turns).
 
 #### кнопки главного меню · `btn.` (10)
 
@@ -3943,7 +4053,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **5038** (уникальные вхождения по файлам и функциям).
+Всего текстов: **5022** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/i18n.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -8983,7 +9093,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - 🏆 РЕЙТИНГ АРЕНЫ
 - 🔙 Назад
 
-#### `bot/handlers/dungeon.py` (323)
+#### `bot/handlers/dungeon.py` (307)
 
 ##### `(модуль)`
 
@@ -8997,17 +9107,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - Рыбный
 - Светящаяся форель
 - Снять: «Огненная вода (водка)» или «Горячий ягодный морс».
-- Ты глубоко ранил врага — он истекает кровью
-- Ты оглушил врага — его следующие удары неточны
-- Ты оковал врага холодом — мороз сковывает его тело
-- Ты отравил врага — яд въедается в рану
-- Ты поджёг врага — пламя лижет его броню
 - Улучшенная настойка здоровья
-- кровотечение
-- обморожение
-- оглушение
-- отравление
-- поджиг
 
 ##### `_do_dungeon_escape`
 
@@ -9180,10 +9280,6 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - (−{dot_dmg} HP за ход)
 - {regen_line}🗡️ Ты атакуешь {…}!
   {attack_line}{enemy_bar}
-- {…} {…}! {…}: −{wdmg} HP врагу каждый ход ({WEAPON_DOT_TICKS} хода).
-- {…} {…}! Но {…} врага уже гасит этот эффект — оба снимаются.
-- {…} {…}! Шанс {…} промахнуться: +{wdmg}% ({WEAPON_STUN_TICKS} хода).
-- {…} Враг под {…}: −{…} HP каждый ход (осталось {…} х.).
 - Погиб в подземелье от «{…}»
 - Штраф за смерть в подземелье
 - данж: устаревшая кнопка атаки
@@ -9199,8 +9295,6 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - 💨 {…} уклонился от удара! (−0 HP врагу)
 - 💨 Ты уклонился от атаки {…}! (−0 HP)
 - 💫 {…} оглушён и промахивается! (−0 HP)
-- 💫 Враг оглушён: его точность −{stun_pen}% (осталось {stun_ticks_left} х.).
-- 🛡 {…} невосприимчив к «{…}» — эффект не сработал.
 - 🛡️ Броня врага поглотила {…} урона!
 - 🛡️ Броня поглотила {…} урона!
 

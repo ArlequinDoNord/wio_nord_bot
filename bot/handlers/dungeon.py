@@ -150,13 +150,6 @@ WEAPON_DOT_TICKS = 3
 # «Оглушение» (v0.15.18): при срабатывании шанса враг дезориентирован — на
 # WEAPON_STUN_TICKS ходов его точность падает: chance промаха = weapon_effect_dmg %.
 WEAPON_STUN_TICKS = 2
-WEAPON_EFFECT_LABELS = {
-    "poison": "отравление",
-    "bleed": "кровотечение",
-    "frostbite": "обморожение",
-    "stun": "оглушение",
-    "burn": "поджиг",
-}
 WEAPON_EFFECT_EMOJI = {
     "poison": "☠️",
     "bleed": "🩸",
@@ -164,13 +157,18 @@ WEAPON_EFFECT_EMOJI = {
     "stun": "💫",
     "burn": "🔥",
 }
-WEAPON_EFFECT_ATTACK_LINE = {
-    "poison": "Ты отравил врага — яд въедается в рану",
-    "bleed": "Ты глубоко ранил врага — он истекает кровью",
-    "frostbite": "Ты оковал врага холодом — мороз сковывает его тело",
-    "stun": "Ты оглушил врага — его следующие удары неточны",
-    "burn": "Ты поджёг врага — пламя лижет его броню",
-}
+
+
+def _weapon_label(kind: str) -> str:
+    """Название эффекта оружия/статуса для текста боя (из utils/i18n)."""
+    from utils.i18n import t
+    return t(f"battle.weapon.label.{kind}")
+
+
+def _weapon_attack(kind: str) -> str:
+    """Строка атаки с эффектом (из utils/i18n)."""
+    from utils.i18n import t
+    return t(f"battle.weapon.attack.{kind}")
 
 # Рыба подземного водохранилища (после победы над Крысиным капитаном): веса.
 # Стоимость заброса — RESERVOIR_AP_COST из config (5 ОД, дороже озера).
@@ -1481,7 +1479,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
             current_enemy_hp = max(0, current_enemy_hp - edmg)
         await state.update_data(enemy_dots=enemy_dots, current_enemy_hp=current_enemy_hp)
         if current_enemy_hp <= 0:
-            label = " и ".join(WEAPON_EFFECT_LABELS.get(k, k) for k, _ in eparts)
+            label = " и ".join(_weapon_label(k) for k, _ in eparts)
             await callback.message.answer(
                 f"💀 {enemy['name']} пал от {label} твоего оружия (−{edmg} HP)!"
             )
@@ -1537,8 +1535,8 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         resist = await get_enemy_effect_resist(enemy['id'])
         if effects.is_immune(resist, weff):
             if wch and wdmg and random.randint(1, 100) <= wch:
-                text += (f"\n🛡 {enemy['name']} невосприимчив к "
-                         f"«{WEAPON_EFFECT_LABELS.get(weff, weff)}» — эффект не сработал.")
+                from utils.i18n import t
+                text += t("battle.weapon.immune", enemy=enemy['name'], label=_weapon_label(weff))
             wch = 0
         else:
             wch = effects.effective_chance(wch, resist, weff)
@@ -1546,22 +1544,23 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
             if weff == 'stun':
                 await state.update_data(enemy_stun_ticks=WEAPON_STUN_TICKS,
                                         enemy_stun_penalty=wdmg)
-                text += (f"\n{WEAPON_EFFECT_EMOJI[weff]} {WEAPON_EFFECT_ATTACK_LINE[weff]}! "
-                         f"Шанс {enemy['name']} промахнуться: +{wdmg}% "
-                         f"({WEAPON_STUN_TICKS} хода).")
+                from utils.i18n import t
+                text += t("battle.weapon.stun_applied", emoji=WEAPON_EFFECT_EMOJI[weff],
+                          attack=_weapon_attack(weff), enemy=enemy['name'], dmg=wdmg,
+                          ticks=WEAPON_STUN_TICKS)
                 enemy_eff_just = True
             else:
                 enemy_dots = dict(data.get('enemy_dots') or {})
                 res = effects.apply_dot(enemy_dots, weff, wdmg, WEAPON_DOT_TICKS)
                 await state.update_data(enemy_dots=enemy_dots)
+                from utils.i18n import t
                 if res["applied"]:
-                    text += (f"\n{WEAPON_EFFECT_EMOJI[weff]} {WEAPON_EFFECT_ATTACK_LINE[weff]}! "
-                             f"{WEAPON_EFFECT_LABELS[weff]}: −{wdmg} HP врагу каждый ход "
-                             f"({WEAPON_DOT_TICKS} хода).")
+                    text += t("battle.weapon.dot_applied", emoji=WEAPON_EFFECT_EMOJI[weff],
+                              attack=_weapon_attack(weff), label=_weapon_label(weff),
+                              dmg=wdmg, ticks=WEAPON_DOT_TICKS)
                 else:
-                    text += (f"\n{WEAPON_EFFECT_EMOJI[weff]} {WEAPON_EFFECT_ATTACK_LINE[weff]}! "
-                             f"Но {WEAPON_EFFECT_LABELS[res['cancelled']]} врага уже гасит "
-                             f"этот эффект — оба снимаются.")
+                    text += t("battle.weapon.dot_cancelled", emoji=WEAPON_EFFECT_EMOJI[weff],
+                              attack=_weapon_attack(weff), label=_weapon_label(res['cancelled']))
                 enemy_eff_just = True
 
     # Уклонение пилота: шанс избежать контратаки (база + нашивка, × состояния)
@@ -1654,18 +1653,17 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         status_text += f"\n♻ Регенерация активна: следующий тик +{rq[0]} HP (осталось {len(rq)} х.)."
     text += proc_text + round_note + status_text
     # Текущий эффект оружия на враге (пока сам не спал).
+    from utils.i18n import t as _t
     enemy_dots_after = data_after.get('enemy_dots') or {}
     if enemy_dots_after and not enemy_eff_just:
         for kind, entry in enemy_dots_after.items():
-            text += (f"\n{WEAPON_EFFECT_EMOJI.get(kind, '•')} Враг под "
-                     f"{WEAPON_EFFECT_LABELS.get(kind, kind)}: −{entry['dmg']} HP каждый ход "
-                     f"(осталось {entry['ticks']} х.).")
+            text += _t("battle.enemy.dot_status", emoji=WEAPON_EFFECT_EMOJI.get(kind, '•'),
+                       label=_weapon_label(kind), dmg=entry['dmg'], ticks=entry['ticks'])
     # Оглушение врага (отдельно: это не DoT, а штраф к точности).
     if data_after.get('enemy_stun_ticks') and not enemy_eff_just:
         stun_ticks_left = int(data_after.get('enemy_stun_ticks', 0) or 0)
         stun_pen = int(data_after.get('enemy_stun_penalty', 0) or 0)
-        text += (f"\n💫 Враг оглушён: его точность −{stun_pen}% "
-                 f"(осталось {stun_ticks_left} х.).")
+        text += _t("battle.enemy.stun_status", penalty=stun_pen, ticks=stun_ticks_left)
 
     if player_hp <= 0:
         nm_penalty = max(5, enemy['reward_nm'] * 2)

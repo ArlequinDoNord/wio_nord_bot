@@ -258,8 +258,9 @@ async def run():
         weapon_effect_choice_markup,
         DROP_ITEM_STAT_LABELS,
     )
-    check("словари эффектов идентичны (admin vs dungeon)",
-          set(ADMIN_WEF.keys()) == set(DH.WEAPON_EFFECT_LABELS.keys()))
+    check("словари эффектов идентичны (admin vs i18n)",
+          set(ADMIN_WEF.keys()) == {k for k in ("poison", "bleed", "frostbite", "stun", "burn")
+                                    if DH._weapon_label(k)})
     check("список эффектов admin: poison/bleed/frostbite",
           "poison" in ADMIN_WEF and "bleed" in ADMIN_WEF and "frostbite" in ADMIN_WEF)
     weff_markup = weapon_effect_choice_markup()
