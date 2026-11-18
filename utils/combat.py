@@ -56,18 +56,21 @@ def calculate_escape_damage() -> int:
 
 def get_enemy_attack_text(enemy_name: str, damage: int, player_hp: int) -> str:
     """Текст атаки врага."""
-    return f"⚔️ {enemy_name} атакует! −{damage} HP\n❤️ Осталось: {player_hp}/100"
+    from utils.localization import t
+    return t("battle.enemy_attack", enemy=enemy_name, dmg=damage, hp=player_hp)
 
 
 def get_player_attack_text(player_damage: int, enemy_name: str, enemy_hp: int, enemy_max_hp: int) -> str:
     """Текст атаки игрока."""
+    from utils.localization import t
     bar = _hp_bar(enemy_hp, enemy_max_hp)
-    return f"🗡️ Ты наносишь удар! −{player_damage} HP\n{bar}"
+    return t("battle.player_attack", dmg=player_damage, bar=bar)
 
 
 def get_enemy_attack_text_boss(boss_name: str, damage: int, player_hp: int) -> str:
     """Текст атаки босса."""
-    return f"💀 {boss_name} обрушивает удар! −{damage} HP\n❤️ Осталось: {player_hp}/100"
+    from utils.localization import t
+    return t("battle.boss_attack", boss=boss_name, dmg=damage, hp=player_hp)
 
 
 def _hp_bar(current: int, maximum: int, length: int = 10) -> str:

@@ -1513,10 +1513,11 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
 
     from utils.combat import get_enemy_bar
     enemy_bar = get_enemy_bar(current_enemy_hp, enemy['hp'])
+    from utils.localization import t as _tt
     if enemy_dodged:
-        attack_line = f"💨 {enemy['name']} уклонился от удара! (−0 HP врагу)\n"
+        attack_line = _tt("battle.enemy_dodged", enemy=enemy['name'])
     else:
-        crit_mark = " 💥 crit!" if res['crit'] else ""
+        crit_mark = _tt("battle.crit_mark") if res['crit'] else ""
         attack_line = f"−{damage_to_enemy} HP врагу{crit_mark}{enemy_armor_line}\n"
     regen_line = f"♻ Регенерация: +{regen_healed} HP.\n" if regen_healed else ""
     text = (

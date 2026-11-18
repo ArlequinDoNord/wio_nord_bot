@@ -309,6 +309,14 @@ STRINGS = {
         "en": "🛡️ Armor absorbed {amount} damage!",
     },
     "battle.crit": {"ru": "💥 crit!", "en": "💥 crit!"},
+    "battle.crit_mark": {"ru": " 💥 crit!", "en": " 💥 crit!"},
+    "battle.crit_short": {"ru": "💥 crit! ", "en": "💥 crit! "},
+    "battle.armor_absorbed_short": {"ru": "🛡️ Броня поглотила {amount}. ",
+                                    "en": "🛡️ Armor absorbed {amount}. "},
+    "battle.enemy_dodged": {
+        "ru": "💨 {enemy} уклонился от удара! (−0 HP врагу)\n",
+        "en": "💨 {enemy} dodged the blow! (−0 HP to the enemy)\n",
+    },
     "battle.on_hit.bleed": {
         "ru": "🩸 {enemy} ранил тебя! Кровотечение: −{dmg} HP каждый ход до конца боя.",
         "en": "🩸 {enemy} cut you! Bleeding: −{dmg} HP each turn until the battle ends.",
@@ -347,6 +355,18 @@ STRINGS = {
         "en": "{emoji} {title}: consumables and potions can't be used in battle right now.",
     },
     "battle.lifesteal": {"ru": "🩸 Кровопийца: +{healed} HP", "en": "🩸 Lifesteal: +{healed} HP"},
+    "battle.enemy_attack": {
+        "ru": "⚔️ {enemy} атакует! −{dmg} HP\n❤️ Осталось: {hp}/100",
+        "en": "⚔️ {enemy} attacks! −{dmg} HP\n❤️ Left: {hp}/100",
+    },
+    "battle.player_attack": {
+        "ru": "🗡️ Ты наносишь удар! −{dmg} HP\n{bar}",
+        "en": "🗡️ You strike! −{dmg} HP\n{bar}",
+    },
+    "battle.boss_attack": {
+        "ru": "💀 {boss} обрушивает удар! −{dmg} HP\n❤️ Осталось: {hp}/100",
+        "en": "💀 {boss} unleashes a blow! −{dmg} HP\n❤️ Left: {hp}/100",
+    },
     # Состояния игрока (utils/states.py): название и подсказка, по имени состояния.
     "state.пьян.title": {"ru": "Пьян", "en": "Drunk"},
     "state.пьян.hint": {

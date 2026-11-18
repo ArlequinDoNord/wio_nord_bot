@@ -610,15 +610,16 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     from utils.combat_model import roll_enemy_damage
     eres = roll_enemy_damage(stats, enemy_row)
     blocked_line = ""
+    from utils.localization import t as _tk
     if eres['dodged']:
         reduced = 0
-        dodge_line = f"💨 Ты уклонился от атаки {enemy['name']}! (−0 HP)"
+        dodge_line = _tk("battle.player.dodged", enemy=enemy['name'])
     else:
         reduced = eres['damage']
         if eres['armor_blocked']:
-            blocked_line = f"\n🛡️ Броня поглотила {eres['armor_blocked']} урона!"
+            blocked_line = "\n" + _tk("battle.armor_blocked", amount=eres['armor_blocked'])
         if eres['crit']:
-            blocked_line += " 💥 crit!"
+            blocked_line += " " + _tk("battle.crit")
         dodge_line = ""
     player_hp = max(0, player_hp - reduced)
     await update_run_hp(run['id'], player_hp)
@@ -644,9 +645,9 @@ async def kvp_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     # ни экрана боя, ни ошибки (v0.22.7).
     if enemy_dodged:
         crit_mark = ""
-        dodge_attack_line = f"💨 {enemy['name']} уклонился от удара! (−0 HP врагу)\n"
+        dodge_attack_line = _tk("battle.enemy_dodged", enemy=enemy['name'])
     else:
-        crit_mark = " 💥 crit!" if res['crit'] else ""
+        crit_mark = _tk("battle.crit_mark") if res['crit'] else ""
         dodge_attack_line = ""
     armor_note = (f"\n🛡️ Броня врага поглотила {res['armor_blocked']} урона!"
                   if res['armor_blocked'] else "")

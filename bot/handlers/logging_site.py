@@ -955,7 +955,8 @@ async def logging_battle_hit(callback: CallbackQuery):
             extra += f"🛡️ {res['armor_blocked']} урона поглотила чешуя. " if kind == "snake" \
                 else f"🛡️ {res['armor_blocked']} урона поглотило оперение. "
         if res['crit']:
-            extra += "💥 crit! "
+            from utils.localization import t as _tl
+            extra += _tl("battle.crit_short")
         hit_line = f"Ты бьёшь наотмашь: −{player_hit} HP по врагу! {extra}\n\n"
 
     # ── Неясыть отлетает (победа) ──
@@ -1031,10 +1032,11 @@ async def logging_battle_hit(callback: CallbackQuery):
         enemy_hit = 0
     else:
         extra = ""
+        from utils.localization import t as _tl
         if eres['armor_blocked']:
-            extra += f"🛡️ Броня поглотила {eres['armor_blocked']}. "
+            extra += _tl("battle.armor_absorbed_short", amount=eres['armor_blocked'])
         if eres['crit']:
-            extra += "💥 crit! "
+            extra += _tl("battle.crit_short")
         counter_line = (f"Змея бьёт: −{enemy_hit} HP. {extra}\n\n" if kind == "snake"
                         else f"Неясыть бьёт когтем: −{enemy_hit} HP. {extra}\n\n")
     battle['player_hp'] -= enemy_hit
