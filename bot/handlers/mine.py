@@ -311,8 +311,10 @@ async def _ap_line(user_id: int) -> str:
     ap = fresh.get('ap', 0) or 0
     ap_max = fresh.get('ap_max', ap) or ap
     line = f"⚡ ОД: {ap}/{ap_max}"
-    if ap < MINE_AP_COST:
-        line += f" — на следующий удар не хватит ({MINE_AP_COST} ОД)"
+    from database.db import gather_ap_cost
+    ap_cost = await gather_ap_cost(user_id, "mining", MINE_AP_COST)
+    if ap < ap_cost:
+        line += f" — на следующий удар не хватит ({ap_cost} ОД)"
     else:
         line += " — можно копать ещё"
     return line
@@ -382,13 +384,15 @@ async def mine_level_cb(callback: CallbackQuery):
         pickaxe_line = "⛏ Кирка: нет — купи «Кирка» (магазин → Добыча ресурсов)"
         dig_line = "Без кирки в штольню не сунешься: сначала разживись киркой."
 
+    from database.db import gather_ap_cost
+    ap_cost = await gather_ap_cost(user_id, "mining", MINE_AP_COST)
     caption = (
         "⛏ УРОВЕНЬ 1 ШАХТ\n\n"
         "Крепь из подгнивших балок уходит вглубь, под ногами хрустит щебень, "
         "фонарь выхватывает жилы руды в тёмной породе.\n\n"
         f"{pickaxe_line}\n"
         f"{dig_line}\n\n"
-        f"Удар киркой стоит {MINE_AP_COST} ОД, результат через "
+        f"Удар киркой стоит {ap_cost} ОД, результат через "
         f"{MINE_RESULT_DELAY[0]}–{MINE_RESULT_DELAY[1]} секунд.\n\n"
         f"{await _ap_line(user_id)}"
     )
@@ -441,10 +445,12 @@ async def mine_dig(callback: CallbackQuery):
             )
             return
 
-        if not await remove_ap(user_id, MINE_AP_COST, reason="добыча руды"):
+        from database.db import gather_ap_cost
+        ap_cost = await gather_ap_cost(user_id, "mining", MINE_AP_COST)
+        if not await remove_ap(user_id, ap_cost, reason="добыча руды"):
             await _level_paint(
                 callback,
-                text=f"❌ Не хватает ОД: нужно {MINE_AP_COST}, доступно меньше. "
+                text=f"❌ Не хватает ОД: нужно {ap_cost}, доступно меньше. "
                      "Восстановление — в новые сутки.",
                 kb=_level_markup(MINE_TOKEN.get(user_id, "")),
             )
@@ -457,7 +463,7 @@ async def mine_dig(callback: CallbackQuery):
                   f"Результат через {delay} секунд. Не шуми — прислушивайся!"),
             kb=None,
         )
-        await log_activity(user_id, "mine", f"Добыча руды: удар киркой ({MINE_AP_COST} ОД)")
+        await log_activity(user_id, "mine", f"Добыча руды: удар киркой ({ap_cost} ОД)")
         await asyncio.sleep(delay)
 
         # ── встреча с Летучей мышью: бросок ПЕРЕД находкой (как грибы/рыбалка) ──

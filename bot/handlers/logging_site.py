@@ -387,8 +387,10 @@ async def _ap_line(user_id: int) -> str:
     ap = fresh.get('ap', 0) or 0
     ap_max = fresh.get('ap_max', ap) or ap
     line = f"⚡ ОД: {ap}/{ap_max}"
-    if ap < LOGGING_AP_COST:
-        line += f" — на следующий удар топора не хватит ({LOGGING_AP_COST} ОД)"
+    from database.db import gather_ap_cost
+    ap_cost = await gather_ap_cost(user_id, "logging", LOGGING_AP_COST)
+    if ap < ap_cost:
+        line += f" — на следующий удар топора не хватит ({ap_cost} ОД)"
     else:
         line += " — можно рубить ещё"
     return line
@@ -434,6 +436,8 @@ async def logging_menu_cb(callback: CallbackQuery):
                      f"{plural_choose(wood_qty, ('бревно', 'бревна', 'брёвен'))} — "
                      "можно распилить их на доски в артели или наколоть дров.")
 
+    from database.db import gather_ap_cost
+    ap_cost = await gather_ap_cost(callback.from_user.id, "logging", LOGGING_AP_COST)
     caption = (
         "🪓 ЛЕСОЗАГОТОВКА\n\n"
         "За дальнейшей опушкой, там, где тропа уходит в самый глухой подлесок, "
@@ -441,7 +445,7 @@ async def logging_menu_cb(callback: CallbackQuery):
         "и отсюда редко кто возвращается с пустыми руками. Или вообще "
         "не возвращается.\n\n"
         f"{hint}\n\n"
-        f"Рубка дерева стоит {LOGGING_AP_COST} ОД, результат через "
+        f"Рубка дерева стоит {ap_cost} ОД, результат через "
         f"{LOGGING_RESULT_DELAY[0]}–{LOGGING_RESULT_DELAY[1]} секунд."
         f"{mill_hint}\n\n"
         f"{await _ap_line(callback.from_user.id)}"
@@ -502,10 +506,12 @@ async def logging_chop(callback: CallbackQuery):
             )
             return
 
-        if not await remove_ap(user_id, LOGGING_AP_COST, reason="рубка деревьев"):
+        from database.db import gather_ap_cost
+        ap_cost = await gather_ap_cost(user_id, "logging", LOGGING_AP_COST)
+        if not await remove_ap(user_id, ap_cost, reason="рубка деревьев"):
             await _logging_paint(
                 callback,
-                text=f"❌ Не хватает ОД: нужно {LOGGING_AP_COST}, доступно меньше. "
+                text=f"❌ Не хватает ОД: нужно {ap_cost}, доступно меньше. "
                      "Восстановление — в новые сутки.",
                 kb=_enter_markup(LOGGING_TOKEN.get(user_id, "")),
             )
@@ -519,7 +525,7 @@ async def logging_chop(callback: CallbackQuery):
                   "в подлеске что-то шевелится!"),
             kb=None,
         )
-        await log_activity(user_id, "logging", f"Рубка деревьев ({LOGGING_AP_COST} ОД)")
+        await log_activity(user_id, "logging", f"Рубка деревьев ({ap_cost} ОД)")
         await asyncio.sleep(delay)
 
         # ── встреча со Змеёй: бросок ПЕРЕД находкой бревен ──

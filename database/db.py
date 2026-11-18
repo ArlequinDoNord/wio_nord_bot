@@ -14228,6 +14228,8 @@ BONUS_BONUS_LABELS = {
     "super_rare": "доступ к супер-редкой рыбе",
     "mining_pct": "% к шансу добычи руды",
     "logging_pct": "% к шансу рубки деревьев",
+    "logging_ap": "ОД на рубку дерева",
+    "mining_ap": "ОД на удар киркой",
 }
 
 
@@ -14287,11 +14289,11 @@ ACHIEVEMENTS_DEF = {
             {"level": 1, "threshold": 10, "name": "Осколок",
              "bonus": {"mining_pct": 2}},
             {"level": 2, "threshold": 50, "name": "Старатель",
-             "bonus": {"mining_pct": 4}},
+             "bonus": {"mining_pct": 4, "mining_ap": -1}},
             {"level": 3, "threshold": 150, "name": "Армадило",
-             "bonus": {"mining_pct": 7}},
+             "bonus": {"mining_pct": 7, "mining_ap": -2}},
             {"level": 4, "threshold": 400, "name": "Глашатай Скади",
-             "bonus": {"mining_pct": 10}},
+             "bonus": {"mining_pct": 10, "mining_ap": -3}},
         ],
     },
     "logging": {
@@ -14300,11 +14302,11 @@ ACHIEVEMENTS_DEF = {
             {"level": 1, "threshold": 10, "name": "Обух",
              "bonus": {"logging_pct": 2}},
             {"level": 2, "threshold": 50, "name": "Колун",
-             "bonus": {"logging_pct": 4}},
+             "bonus": {"logging_pct": 4, "logging_ap": -1}},
             {"level": 3, "threshold": 200, "name": "Мастер Лесоруб",
-             "bonus": {"logging_pct": 7}},
+             "bonus": {"logging_pct": 7, "logging_ap": -2}},
             {"level": 4, "threshold": 500, "name": "Хозяин Леса",
-             "bonus": {"logging_pct": 10}},
+             "bonus": {"logging_pct": 10, "logging_ap": -3}},
         ],
     },
     "writer": {
@@ -14688,6 +14690,16 @@ async def get_achievement_bonus(user_id: int, akey: str, key: str) -> int:
         if lvl["level"] == level:
             return int(lvl.get("bonus", {}).get(key, 0) or 0)
     return 0
+
+
+async def gather_ap_cost(user_id: int, activity: str, base: int) -> int:
+    """Стоимость попытки рубки/руды с учётом уровня достижения (бонус *_ap, отрицательный).
+
+    Минимум 1 ОД. Бонус зависит только от текущего уровня, поэтому при повышении
+    уровня старый бонус не копится.
+    """
+    bonus = await get_achievement_bonus(user_id, activity, f"{activity}_ap")
+    return max(1, int(base) + int(bonus))
 
 
 async def get_user_achievements(user_id: int) -> list:
