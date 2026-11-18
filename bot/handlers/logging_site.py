@@ -695,14 +695,12 @@ async def logging_plank(callback: CallbackQuery):
     left_wood = await _wood_count(user_id)
     left_word = plural_choose(left_wood, ('бревно', 'бревна', 'брёвен'))
     verb = "превращается" if n == 1 else "превращаются"
-    text = (
-        "🪚 РАСПИЛ БРЁВЕН\n\n"
-        f"Артельные пилы визжат, опилки летят в лицо: {n} "
-        f"{plural_choose(n, ('бревно', 'бревна', 'брёвен'))} {verb} в {planks} "
-        f"{plural_choose(planks, ('доску', 'доски', 'досок'))}.\n\n"
-        f"💰 Заплачено артели: {total_fee} НМ (ушло в казну).\n"
-        f"🎒 Получено: «{plank_item['name']}» x{planks}.\n"
-        f"📦 Осталось: {left_wood} {left_word}."
+    from utils.localization import t as _tsaw
+    text = _tsaw(
+        "logging.plank.result",
+        n=n, n_w=plural_choose(n, ('бревно', 'бревна', 'брёвен')), verb=verb,
+        planks=planks, planks_w=plural_choose(planks, ('доску', 'доски', 'досок')),
+        fee=total_fee, name=plank_item['name'], left=left_wood, left_w=left_word,
     )
     await _item_paint(callback, plank_item, text=text,
                       kb=_enter_markup_extra(token, left_wood > 0))

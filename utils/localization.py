@@ -352,6 +352,18 @@ STRINGS = {
         "ru": "{head}\n\nУдар за ударом — стружка летит, но сук топор не берёт: сучковатое дерево уходит на дрова.\nПробуй ещё!",
         "en": "{head}\n\nStrike after strike — chips fly, but the knot won't give to the axe: the knotty tree goes to firewood.\nKeep trying!",
     },
+    "logging.plank.result": {
+        "ru": ("🪚 РАСПИЛ БРЁВЕН\n\n"
+               "Артельные пилы визжат, опилки летят в лицо: {n} {n_w} {verb} в {planks} {planks_w}.\n\n"
+               "💰 Заплачено артели: {fee} НМ (ушло в казну).\n"
+               "🎒 Получено: «{name}» x{planks}.\n"
+               "📦 Осталось: {left} {left_w}."),
+        "en": ("🪚 LOG SAWING\n\n"
+               "The mill saws whine, sawdust flies in your face: {n} log(s) become {planks} plank(s).\n\n"
+               "💰 Paid to the mill: {fee} (to the treasury).\n"
+               "🎒 Received: «{name}» x{planks}.\n"
+               "📦 Left: {left} {left_w}."),
+    },
     "logging.mill.screen": {
         "ru": ("🪚 ПЕРЕРАБОТКА БРЁВЕН\n\n"
                "🎒 В инвентаре: {inv}\n"

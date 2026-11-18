@@ -1171,10 +1171,10 @@
 - `location:enter:`: `bot/handlers/locations.py:111`
 - `location:preview:`: `bot/handlers/locations.py:40`
 - `locstat:`: `bot/handlers/admin.py:5771`
-- `logsite:battle:flee:\d+$`: `bot/handlers/logging_site.py:1068`
-- `logsite:battle:hit:\d+$`: `bot/handlers/logging_site.py:862`
+- `logsite:battle:flee:\d+$`: `bot/handlers/logging_site.py:1066`
+- `logsite:battle:hit:\d+$`: `bot/handlers/logging_site.py:860`
 - `logsite:chop:\d+$`: `bot/handlers/logging_site.py:456`
-- `logsite:fire:(1|all):\d+$`: `bot/handlers/logging_site.py:711`
+- `logsite:fire:(1|all):\d+$`: `bot/handlers/logging_site.py:709`
 - `logsite:menu:\d+$`: `bot/handlers/logging_site.py:441`
 - `logsite:mill:\d+$`: `bot/handlers/logging_site.py:595`
 - `logsite:plank:(1|all):\d+$`: `bot/handlers/logging_site.py:648`
