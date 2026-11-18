@@ -49,6 +49,7 @@ from bot.handlers.fishing import (
 )
 from utils.notify import notify, player_display
 from utils import onhit
+from utils import effects
 from config import (
     DUNGEON_HEAL_SOFT_LIMIT, DUNGEON_HEAL_HARD_LIMIT,
     DUNGEON_HEAL_SOFT_MULT, DUNGEON_HEAL_HARD_MULT,
@@ -1260,7 +1261,7 @@ async def show_room(message, run, user_id, state: FSMContext):
         if rolled:
             enemy = random.choice(non_boss) if non_boss else random.choice(enemies)
             await state.update_data(current_enemy_id=enemy['id'], current_enemy_hp=enemy['hp'],
-                                    enemy_effect=None, enemy_effect_dmg=0, enemy_effect_ticks=0)
+                                    enemy_dots={})
         else:
             prev_id = sdata.get('current_enemy_id')
             enemy = next((e for e in enemies if e['id'] == prev_id), None)
@@ -1459,7 +1460,10 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         if onhit.has_dot(data, 'poison'):
             res_pct = await get_achievement_bonus(user_id, "antidote", "poison_res_pct")
             if res_pct:
-                dot_dmg = max(1, round(dot_dmg * (100 - res_pct) / 100))
+                poison_raw = int((onhit.get_store(data).get('poison') or {}).get('dmg') or 0)
+                if poison_raw:
+                    poison_cut = max(1, round(poison_raw * (100 - res_pct) / 100))
+                    dot_dmg = dot_dmg - poison_raw + poison_cut
         player_hp = max(0, player_hp - dot_dmg)
         await update_run_hp(run['id'], player_hp)
         if player_hp <= 0:
@@ -1470,19 +1474,14 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     # см. end_round ниже (здесь ничего не декрементируем).
 
     # ── Тики эффекта оружия игрока на враге (в начале хода игрока) ──
-    if data.get('enemy_effect'):
-        edmg = int(data.get('enemy_effect_dmg', 0) or 0)
-        eticks = int(data.get('enemy_effect_ticks', 0) or 0)
+    enemy_dots = dict(data.get('enemy_dots') or {})
+    if enemy_dots:
+        edmg, eparts = effects.tick_dots(enemy_dots)
         if edmg > 0:
             current_enemy_hp = max(0, current_enemy_hp - edmg)
-        remained = eticks - 1
-        if remained <= 0:
-            await state.update_data(enemy_effect=None, enemy_effect_dmg=0, enemy_effect_ticks=0)
-        else:
-            await state.update_data(enemy_effect_ticks=remained)
-        await state.update_data(current_enemy_hp=current_enemy_hp)
+        await state.update_data(enemy_dots=enemy_dots, current_enemy_hp=current_enemy_hp)
         if current_enemy_hp <= 0:
-            label = WEAPON_EFFECT_LABELS.get(data['enemy_effect'], data['enemy_effect'])
+            label = " и ".join(WEAPON_EFFECT_LABELS.get(k, k) for k, _ in eparts)
             await callback.message.answer(
                 f"💀 {enemy['name']} пал от {label} твоего оружия (−{edmg} HP)!"
             )
@@ -1543,11 +1542,17 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
                          f"({WEAPON_STUN_TICKS} хода).")
                 enemy_eff_just = True
             else:
-                await state.update_data(enemy_effect=weff, enemy_effect_dmg=wdmg,
-                                        enemy_effect_ticks=WEAPON_DOT_TICKS)
-                text += (f"\n{WEAPON_EFFECT_EMOJI[weff]} {WEAPON_EFFECT_ATTACK_LINE[weff]}! "
-                         f"{WEAPON_EFFECT_LABELS[weff]}: −{wdmg} HP врагу каждый ход "
-                         f"({WEAPON_DOT_TICKS} хода).")
+                enemy_dots = dict(data.get('enemy_dots') or {})
+                res = effects.apply_dot(enemy_dots, weff, wdmg, WEAPON_DOT_TICKS)
+                await state.update_data(enemy_dots=enemy_dots)
+                if res["applied"]:
+                    text += (f"\n{WEAPON_EFFECT_EMOJI[weff]} {WEAPON_EFFECT_ATTACK_LINE[weff]}! "
+                             f"{WEAPON_EFFECT_LABELS[weff]}: −{wdmg} HP врагу каждый ход "
+                             f"({WEAPON_DOT_TICKS} хода).")
+                else:
+                    text += (f"\n{WEAPON_EFFECT_EMOJI[weff]} {WEAPON_EFFECT_ATTACK_LINE[weff]}! "
+                             f"Но {WEAPON_EFFECT_LABELS[res['cancelled']]} врага уже гасит "
+                             f"этот эффект — оба снимаются.")
                 enemy_eff_just = True
 
     # Уклонение пилота: шанс избежать контратаки (база + нашивка, × состояния)
@@ -1640,13 +1645,12 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         status_text += f"\n♻ Регенерация активна: следующий тик +{rq[0]} HP (осталось {len(rq)} х.)."
     text += proc_text + round_note + status_text
     # Текущий эффект оружия на враге (пока сам не спал).
-    if data_after.get('enemy_effect') and not enemy_eff_just:
-        eeff = data_after['enemy_effect']
-        edmg = int(data_after.get('enemy_effect_dmg', 0) or 0)
-        eticks = int(data_after.get('enemy_effect_ticks', 0) or 0)
-        rem = f" (осталось {eticks} х.)" if eticks else ""
-        text += (f"\n{WEAPON_EFFECT_EMOJI[eeff]} Враг под "
-                 f"{WEAPON_EFFECT_LABELS.get(eeff, eeff)}: −{edmg} HP каждый ход{rem}.")
+    enemy_dots_after = data_after.get('enemy_dots') or {}
+    if enemy_dots_after and not enemy_eff_just:
+        for kind, entry in enemy_dots_after.items():
+            text += (f"\n{WEAPON_EFFECT_EMOJI.get(kind, '•')} Враг под "
+                     f"{WEAPON_EFFECT_LABELS.get(kind, kind)}: −{entry['dmg']} HP каждый ход "
+                     f"(осталось {entry['ticks']} х.).")
     # Оглушение врага (отдельно: это не DoT, а штраф к точности).
     if data_after.get('enemy_stun_ticks') and not enemy_eff_just:
         stun_ticks_left = int(data_after.get('enemy_stun_ticks', 0) or 0)
@@ -2069,7 +2073,7 @@ async def show_boss(message, run, user_id, state: FSMContext):
     step = await dungeon_new_step(state)
 
     await state.update_data(current_enemy_id=boss['id'], current_enemy_hp=boss['hp'],
-                                enemy_effect=None, enemy_effect_dmg=0, enemy_effect_ticks=0)
+                            enemy_dots={})
 
     boss_status = status_lines(sdata)
     boss_heal_uses = int(sdata.get('dungeon_heal_uses', 0) or 0)

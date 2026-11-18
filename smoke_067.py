@@ -203,9 +203,7 @@ async def run():
     cb = FakeCallback(uid, data=f"dungeon:attack:{foe['id']}:1", message=FakeMessage())
     await DH.dungeon_attack(cb, st, bot=None)
     check("при попадании эффект наложен на врага",
-          st._data.get('enemy_effect') == 'poison'
-          and st._data.get('enemy_effect_dmg') == 10
-          and st._data.get('enemy_effect_ticks') == 3)
+          (st._data.get('enemy_dots') or {}).get('poison') == {'dmg': 10, 'ticks': 3})
     text1 = last_sent_text(cb.message)
     check("в тексте боя есть строка про отравление врага",
           "отравил" in text1 and "HP врагу каждый ход" in text1)
@@ -219,7 +217,7 @@ async def run():
     check("тик эффекта в начале хода: HP врага уменьшился более чем на 10",
           st._data.get('current_enemy_hp') < hp_after_hit - 10)
     check("тики эффекта уменьшены (3 -> 2)",
-          st._data.get('enemy_effect_ticks') == 2)
+          (st._data.get('enemy_dots') or {}).get('poison', {}).get('ticks') == 2)
 
     # ── 6. Враг, добитый эффектом ──
     # У оружия: урон 0 (удар не убьёт), шанс 100 (прокае первый ход), эффект 10.
@@ -237,7 +235,7 @@ async def run():
     await DH.dungeon_attack(cb3, st3, bot=None)
     check("первый удар: враг выжил и отравлен",
           st3._data.get('current_enemy_hp') > 0
-          and st3._data.get('enemy_effect') == 'poison')
+          and 'poison' in (st3._data.get('enemy_dots') or {}))
 
     cb4 = FakeCallback(uid, data=f"dungeon:attack:{foe['id']}:2", message=FakeMessage())
     await DH.dungeon_attack(cb4, st4 := st3, bot=None)
