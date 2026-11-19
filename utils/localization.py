@@ -995,6 +995,105 @@ STRINGS = {
         "en": "💀 <b>You fell in the Fire Maze.</b>\nThe flame snuffed out your spark — but the Cycle endures, and the attempt was worth it. You can keep running the maze for NM today.",
     },
     "fire.alert.died": {"ru": "💀 Ты пал в Огненном Лабиринте!", "en": "💀 You fell in the Fire Maze!"},
+    # Подземное водохранилище: моллюск и меню (bot/handlers/dungeon.py).
+    "mollusk.screen": {
+        "ru": "{prefix}🦪 {name_up}\n\nВместо рыбы на крючке — раковина. Она вся в бугорках, панцирь хрустит от напряжения — и моллюск бросается на снасть!\n\n🦪 {name}  HP {ebar}\n🧑 Ты          HP {pbar}{effects}\n\nХод {round}. Ударь моллюска или сними снасть.",
+        "en": "{prefix}🦪 {name_up}\n\nInstead of a fish there's a shell on the hook. It's all bumps, its plates crack under strain — and the mollusk lunges at your line!\n\n🦪 {name}  HP {ebar}\n🧑 You         HP {pbar}{effects}\n\nTurn {round}. Strike the mollusk or cut the line.",
+    },
+    "mollusk.default_name": {"ru": "Мутировавший моллюск", "en": "Mutated mollusk"},
+    "mollusk.default_short": {"ru": "Моллюск", "en": "Mollusk"},
+    "mollusk.loot.empty": {"ru": "Добыча не досталась: моллюск оказался пустым.", "en": "No loot: the mollusk turned out empty."},
+    "mollusk.loot.sell": {"ru": " — продать за {price} {money}", "en": " — sells for {price} {money}"},
+    "mollusk.loot.lost": {"ru": "Добыча потерялась — предмет не найден. Сообщи хранителю.", "en": "The loot got lost — item not found. Tell the keeper."},
+    "mollusk.loot.rare": {"ru": "\n\n✨ Редчайшая находка!", "en": "\n\n✨ A rarest find!"},
+    "mollusk.loot.got": {
+        "ru": "Из раковины ты вытащил:\n{items}\n\nВсё в инвентаре.{rare}",
+        "en": "From the shell you pulled out:\n{items}\n\nAll in your inventory.{rare}",
+    },
+    "mollusk.alert.stale": {"ru": "⏳ Это окно устарело.", "en": "⏳ This window is out of date."},
+    "mollusk.alert.not_here": {"ru": "❌ Ты больше не в водохранилище.", "en": "❌ You're no longer in the reservoir."},
+    "mollusk.defeat.dot": {
+        "ru": "🦪 БОЙ С МОЛЮСКОМ\n\n{dot}Ты срываешься с крючка.\n\nПока ты выбирался из воды, снасть потерялась. Плата за бессмысленный риск: −{removed} ОД.",
+        "en": "🦪 FIGHT WITH THE MOLLUSK\n\n{dot}You slip off the hook.\n\nWhile you climbed out of the water, the tackle was lost. The price of a pointless risk: −{removed} AP.",
+    },
+    "mollusk.win": {
+        "ru": "🦪 БОЙ С МОЛЮСКОМ\n\n{pre}Панцирь хрустнул и раскрылся — в тёмной воде осталось только сияние.\n\n{loot}",
+        "en": "🦪 FIGHT WITH THE MOLLUSK\n\n{pre}The shell cracks open — only a glow is left in the dark water.\n\n{loot}",
+    },
+    "mollusk.hit.miss": {
+        "ru": "Ты ударил по панцирю — раковина скользнула, моллюск ушёл в глубину.\n\n",
+        "en": "You hit the shell — it slides off, and the mollusk sinks into the depths.\n\n",
+    },
+    "mollusk.hit.armor": {"ru": "🛡️ Панцирь поглотил {amount}. ", "en": "🛡️ The shell absorbed {amount}. "},
+    "mollusk.hit.crit": {"ru": "💥 crit! ", "en": "💥 crit! "},
+    "mollusk.hit.hit": {
+        "ru": "Ты сжимаешь раковину: −{dmg} HP по моллюску! {extra}\n\n",
+        "en": "You squeeze the shell: −{dmg} HP to the mollusk! {extra}\n\n",
+    },
+    "mollusk.counter.dodged": {
+        "ru": "💨 Ты уклонился от щупальца! (−0 HP)\n\n",
+        "en": "💨 You dodge the tentacle! (−0 HP)\n\n",
+    },
+    "mollusk.counter.hit": {
+        "ru": "Молюск впивается щупальцем: −{dmg} HP. {extra}\n\n",
+        "en": "The mollusk clamps on with a tentacle: −{dmg} HP. {extra}\n\n",
+    },
+    "mollusk.counter.armor": {"ru": "🛡️ Броня поглотила {amount}. ", "en": "🛡️ Armor absorbed {amount}. "},
+    "mollusk.defeat.counter": {
+        "ru": "🦪 БОЙ С МОЛЮСКОМ\n\n{pre}{counter}Ты срываешься с крючка.\n\nПока ты выбирался из воды, снасть потерялась. Плата за бессмысленный риск: −{removed} ОД.",
+        "en": "🦪 FIGHT WITH THE MOLLUSK\n\n{pre}{counter}You slip off the hook.\n\nWhile you climbed out of the water, the tackle was lost. The price of a pointless risk: −{removed} AP.",
+    },
+    "mollusk.fled": {
+        "ru": "🎣 РЫБАЛКА\n\n🏃 Ты выдернул снасть и отчалил от раковины. Моллюск остался на дне — и немного обиделся.",
+        "en": "🎣 FISHING\n\n🏃 You yanked the line and pulled away from the shell. The mollusk stayed on the bottom — and is a bit offended.",
+    },
+    "resv.btn.fish_here": {"ru": "🎣 Порыбачить в водохранилище", "en": "🎣 Fish in the reservoir"},
+    "resv.btn.deeper": {"ru": "⚔️ Продолжить вглубь (Этаж 2)", "en": "⚔️ Go deeper (Floor 2)"},
+    "resv.btn.exit": {"ru": "🚪 Выйти из подземелья", "en": "🚪 Leave the dungeon"},
+    "resv.btn.cast": {"ru": "🎣 Забросить удочку (−{ap} ОД)", "en": "🎣 Cast the rod (−{ap} AP)"},
+    "resv.btn.bait": {"ru": "🪱 Наживка", "en": "🪱 Bait"},
+    "resv.btn.gear": {"ru": "🎒 Снаряжение", "en": "🎒 Gear"},
+    "resv.bait.none": {"ru": "🚫 Без наживки", "en": "🚫 No bait"},
+    "resv.btn.back_resv": {"ru": "🔙 В водохранилище", "en": "🔙 Back to the reservoir"},
+    "resv.btn.again": {"ru": "🎣 Ещё раз", "en": "🎣 Again"},
+    "resv.btn.recover": {"ru": "🔄 Проверить крючок", "en": "🔄 Check the hook"},
+    "resv.captain.text": {
+        "ru": "🏆 КРЫСИНЫЙ КАПИТАН ПОВЕРЖЁН!\n💀 «Генерал» в кастрюлевом шлеме с жалким писком отползает в темноту, и на этаже становится тихо.\n\nВпереди развилка:\n🎣 Боковое ответвление ведёт к подземному водохранилищу — там слышен плеск невидимой рыбы. Говорят, в тёмной воде водится рыба, которой больше нигде нет.\n⚔️ Вниз уходит ход в сердце подвала, где ждёт сам Король крыс.\n",
+        "en": "🏆 THE RAT CAPTAIN IS DOWN!\n💀 The «General» in his pot helmet crawls into the dark with a pitiful squeal, and the floor goes quiet.\n\nAhead, a fork:\n🎣 A side branch leads to the underground reservoir — an unseen fish splashes there. They say the dark water holds a fish found nowhere else.\n⚔️ A passage leads down to the heart of the cellar, where the Rat King himself waits.\n",
+    },
+    "resv.captain.loot": {
+        "ru": "\n💰 В лут с 1-го этажа накоплено: {nm} НМ (заберёшь при выходе).",
+        "en": "\n💰 Loot from floor 1 collected so far: {nm} NM (you'll take it on the way out).",
+    },
+    "resv.captain.tail": {
+        "ru": "\n\nМожно порыбачить, а потом продолжить путь на 2-й этаж.",
+        "en": "\n\nYou can fish first, then continue to floor 2.",
+    },
+    "resv.menu.intro": {
+        "ru": "🌊 ПОДЗЕМНОЕ ВОДОХРАНИЛИЩЕ\n\nТёмная вода мерцает холодным светом. Тишина такая, что слышно собственные шаги. Иногда по воде пробегает рябь — там кто-то есть, и рыба тут непугливая.\n\n🐟 В глубине водится редкий улов, которого больше нигде не найти. Что именно попадётся на крючок — заранее не скажешь.\n",
+        "en": "🌊 UNDERGROUND RESERVOIR\n\nThe dark water glimmers with cold light. The silence is so deep you hear your own steps. Now and then a ripple runs across the water — something is there, and the fish here aren't shy.\n\n🐟 Rare catches live in the depths, found nowhere else. You can't tell in advance what will bite.\n",
+    },
+    "resv.menu.rod": {
+        "ru": "\n🎣 Удочка: {name} (ранг {rank}, +{bonus}%)\n🪱 Наживка: {bait}\n",
+        "en": "\n🎣 Rod: {name} (tier {rank}, +{bonus}%)\n🪱 Bait: {bait}\n",
+    },
+    "resv.menu.chance": {"ru": "⚡ Шанс улова: {chance}%\n", "en": "⚡ Catch chance: {chance}%\n"},
+    "resv.menu.nobait": {
+        "ru": "⚡ Без наживки рыба НЕ клюёт: со дна только мусор {junk}.\n",
+        "en": "⚡ Without bait the fish WON'T bite: the bottom only gives junk {junk}.\n",
+    },
+    "resv.menu.no_rod": {
+        "ru": "\n🎣 Удочка: нет — купи «Удочка из орешника» (магазин → Рыбалка)\n",
+        "en": "\n🎣 Rod: none — buy a «Hazel rod» (Shop → Fishing)\n",
+    },
+    "resv.ap": {"ru": "\n⚡ ОД: {ap}/{ap_max}", "en": "\n⚡ AP: {ap}/{ap_max}"},
+    "resv.ap_short": {"ru": " — не хватит на заброс ({cost} ОД)", "en": " — not enough for a cast ({cost} AP)"},
+    "resv.catch.head": {"ru": "\n\n🎒 Поймано тут (Улов):\n", "en": "\n\n🎒 Caught here (catch):\n"},
+    "resv.menu.safe": {
+        "ru": "\n\nЗдесь можно спокойно поменять слоты расходников — боя в этом зале нет.",
+        "en": "\n\nYou can safely swap your consumable slots here — there's no fight in this hall.",
+    },
+    "resv.alert.wait": {"ru": "⏳ Сначала дождись улова из водохранилища!", "en": "⏳ Wait for your catch from the reservoir first!"},
     "forest.mush.found": {
         "ru": "{head}\n\n{kind} Ты нашёл: «{name}»!\n\n🎒 Гриб положен в инвентарь.{heal_line}{sell_line}",
         "en": "{head}\n\n{kind} You found: «{name}»!\n\n🎒 The mushroom is in your inventory.{heal_line}{sell_line}",

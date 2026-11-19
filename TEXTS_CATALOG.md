@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=d49c81bc9cd187ff seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=3583ceefdb9e905f seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **663** (ru + en).
+Всего строк: **707** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -4017,6 +4017,194 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   > ⛔ Tourists aren't allowed in the mine — entry is for Pilots 1st class only.
 
+#### mollusk · `mollusk.` (21)
+
+### UI-mollusk.alert.not_here
+- RU:
+  > ❌ Ты больше не в водохранилище.
+- EN:
+  > ❌ You're no longer in the reservoir.
+
+### UI-mollusk.alert.stale
+- RU:
+  > ⏳ Это окно устарело.
+- EN:
+  > ⏳ This window is out of date.
+
+### UI-mollusk.counter.armor
+- RU:
+  > 🛡️ Броня поглотила {amount}. 
+- EN:
+  > 🛡️ Armor absorbed {amount}. 
+
+### UI-mollusk.counter.dodged
+- RU:
+  > 💨 Ты уклонился от щупальца! (−0 HP)
+  >
+- EN:
+  > 💨 You dodge the tentacle! (−0 HP)
+  >
+
+### UI-mollusk.counter.hit
+- RU:
+  > Молюск впивается щупальцем: −{dmg} HP. {extra}
+  >
+- EN:
+  > The mollusk clamps on with a tentacle: −{dmg} HP. {extra}
+  >
+
+### UI-mollusk.default_name
+- RU:
+  > Мутировавший моллюск
+- EN:
+  > Mutated mollusk
+
+### UI-mollusk.default_short
+- RU:
+  > Моллюск
+- EN:
+  > Mollusk
+
+### UI-mollusk.defeat.counter
+- RU:
+  > 🦪 БОЙ С МОЛЮСКОМ
+  >
+  > {pre}{counter}Ты срываешься с крючка.
+  >
+  > Пока ты выбирался из воды, снасть потерялась. Плата за бессмысленный риск: −{removed} ОД.
+- EN:
+  > 🦪 FIGHT WITH THE MOLLUSK
+  >
+  > {pre}{counter}You slip off the hook.
+  >
+  > While you climbed out of the water, the tackle was lost. The price of a pointless risk: −{removed} AP.
+
+### UI-mollusk.defeat.dot
+- RU:
+  > 🦪 БОЙ С МОЛЮСКОМ
+  >
+  > {dot}Ты срываешься с крючка.
+  >
+  > Пока ты выбирался из воды, снасть потерялась. Плата за бессмысленный риск: −{removed} ОД.
+- EN:
+  > 🦪 FIGHT WITH THE MOLLUSK
+  >
+  > {dot}You slip off the hook.
+  >
+  > While you climbed out of the water, the tackle was lost. The price of a pointless risk: −{removed} AP.
+
+### UI-mollusk.fled
+- RU:
+  > 🎣 РЫБАЛКА
+  >
+  > 🏃 Ты выдернул снасть и отчалил от раковины. Моллюск остался на дне — и немного обиделся.
+- EN:
+  > 🎣 FISHING
+  >
+  > 🏃 You yanked the line and pulled away from the shell. The mollusk stayed on the bottom — and is a bit offended.
+
+### UI-mollusk.hit.armor
+- RU:
+  > 🛡️ Панцирь поглотил {amount}. 
+- EN:
+  > 🛡️ The shell absorbed {amount}. 
+
+### UI-mollusk.hit.crit
+- RU:
+  > 💥 crit! 
+- EN:
+  > 💥 crit! 
+
+### UI-mollusk.hit.hit
+- RU:
+  > Ты сжимаешь раковину: −{dmg} HP по моллюску! {extra}
+  >
+- EN:
+  > You squeeze the shell: −{dmg} HP to the mollusk! {extra}
+  >
+
+### UI-mollusk.hit.miss
+- RU:
+  > Ты ударил по панцирю — раковина скользнула, моллюск ушёл в глубину.
+  >
+- EN:
+  > You hit the shell — it slides off, and the mollusk sinks into the depths.
+  >
+
+### UI-mollusk.loot.empty
+- RU:
+  > Добыча не досталась: моллюск оказался пустым.
+- EN:
+  > No loot: the mollusk turned out empty.
+
+### UI-mollusk.loot.got
+- RU:
+  > Из раковины ты вытащил:
+  > {items}
+  >
+  > Всё в инвентаре.{rare}
+- EN:
+  > From the shell you pulled out:
+  > {items}
+  >
+  > All in your inventory.{rare}
+
+### UI-mollusk.loot.lost
+- RU:
+  > Добыча потерялась — предмет не найден. Сообщи хранителю.
+- EN:
+  > The loot got lost — item not found. Tell the keeper.
+
+### UI-mollusk.loot.rare
+- RU:
+  >
+  >
+  > ✨ Редчайшая находка!
+- EN:
+  >
+  >
+  > ✨ A rarest find!
+
+### UI-mollusk.loot.sell
+- RU:
+  >  — продать за {price} {money}
+- EN:
+  >  — sells for {price} {money}
+
+### UI-mollusk.screen
+- RU:
+  > {prefix}🦪 {name_up}
+  >
+  > Вместо рыбы на крючке — раковина. Она вся в бугорках, панцирь хрустит от напряжения — и моллюск бросается на снасть!
+  >
+  > 🦪 {name}  HP {ebar}
+  > 🧑 Ты          HP {pbar}{effects}
+  >
+  > Ход {round}. Ударь моллюска или сними снасть.
+- EN:
+  > {prefix}🦪 {name_up}
+  >
+  > Instead of a fish there's a shell on the hook. It's all bumps, its plates crack under strain — and the mollusk lunges at your line!
+  >
+  > 🦪 {name}  HP {ebar}
+  > 🧑 You         HP {pbar}{effects}
+  >
+  > Turn {round}. Strike the mollusk or cut the line.
+
+### UI-mollusk.win
+- RU:
+  > 🦪 БОЙ С МОЛЮСКОМ
+  >
+  > {pre}Панцирь хрустнул и раскрылся — в тёмной воде осталось только сияние.
+  >
+  > {loot}
+- EN:
+  > 🦪 FIGHT WITH THE MOLLUSK
+  >
+  > {pre}The shell cracks open — only a glow is left in the dark water.
+  >
+  > {loot}
+
 #### профиль · `profile.` (8)
 
 ### UI-profile.about
@@ -4548,6 +4736,186 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   > ℹ️ Безлимитный или лут-товар — авто-выкладка не нужна.
 - EN:
   > ℹ️ Unlimited or loot-only item — auto-restock is not needed.
+
+#### resv · `resv.` (23)
+
+### UI-resv.alert.wait
+- RU:
+  > ⏳ Сначала дождись улова из водохранилища!
+- EN:
+  > ⏳ Wait for your catch from the reservoir first!
+
+### UI-resv.ap
+- RU:
+  >
+  > ⚡ ОД: {ap}/{ap_max}
+- EN:
+  >
+  > ⚡ AP: {ap}/{ap_max}
+
+### UI-resv.ap_short
+- RU:
+  >  — не хватит на заброс ({cost} ОД)
+- EN:
+  >  — not enough for a cast ({cost} AP)
+
+### UI-resv.bait.none
+- RU:
+  > 🚫 Без наживки
+- EN:
+  > 🚫 No bait
+
+### UI-resv.btn.again
+- RU:
+  > 🎣 Ещё раз
+- EN:
+  > 🎣 Again
+
+### UI-resv.btn.back_resv
+- RU:
+  > 🔙 В водохранилище
+- EN:
+  > 🔙 Back to the reservoir
+
+### UI-resv.btn.bait
+- RU:
+  > 🪱 Наживка
+- EN:
+  > 🪱 Bait
+
+### UI-resv.btn.cast
+- RU:
+  > 🎣 Забросить удочку (−{ap} ОД)
+- EN:
+  > 🎣 Cast the rod (−{ap} AP)
+
+### UI-resv.btn.deeper
+- RU:
+  > ⚔️ Продолжить вглубь (Этаж 2)
+- EN:
+  > ⚔️ Go deeper (Floor 2)
+
+### UI-resv.btn.exit
+- RU:
+  > 🚪 Выйти из подземелья
+- EN:
+  > 🚪 Leave the dungeon
+
+### UI-resv.btn.fish_here
+- RU:
+  > 🎣 Порыбачить в водохранилище
+- EN:
+  > 🎣 Fish in the reservoir
+
+### UI-resv.btn.gear
+- RU:
+  > 🎒 Снаряжение
+- EN:
+  > 🎒 Gear
+
+### UI-resv.btn.recover
+- RU:
+  > 🔄 Проверить крючок
+- EN:
+  > 🔄 Check the hook
+
+### UI-resv.captain.loot
+- RU:
+  >
+  > 💰 В лут с 1-го этажа накоплено: {nm} НМ (заберёшь при выходе).
+- EN:
+  >
+  > 💰 Loot from floor 1 collected so far: {nm} NM (you'll take it on the way out).
+
+### UI-resv.captain.tail
+- RU:
+  >
+  >
+  > Можно порыбачить, а потом продолжить путь на 2-й этаж.
+- EN:
+  >
+  >
+  > You can fish first, then continue to floor 2.
+
+### UI-resv.captain.text
+- RU:
+  > 🏆 КРЫСИНЫЙ КАПИТАН ПОВЕРЖЁН!
+  > 💀 «Генерал» в кастрюлевом шлеме с жалким писком отползает в темноту, и на этаже становится тихо.
+  >
+  > Впереди развилка:
+  > 🎣 Боковое ответвление ведёт к подземному водохранилищу — там слышен плеск невидимой рыбы. Говорят, в тёмной воде водится рыба, которой больше нигде нет.
+  > ⚔️ Вниз уходит ход в сердце подвала, где ждёт сам Король крыс.
+- EN:
+  > 🏆 THE RAT CAPTAIN IS DOWN!
+  > 💀 The «General» in his pot helmet crawls into the dark with a pitiful squeal, and the floor goes quiet.
+  >
+  > Ahead, a fork:
+  > 🎣 A side branch leads to the underground reservoir — an unseen fish splashes there. They say the dark water holds a fish found nowhere else.
+  > ⚔️ A passage leads down to the heart of the cellar, where the Rat King himself waits.
+
+### UI-resv.catch.head
+- RU:
+  >
+  >
+  > 🎒 Поймано тут (Улов):
+- EN:
+  >
+  >
+  > 🎒 Caught here (catch):
+
+### UI-resv.menu.chance
+- RU:
+  > ⚡ Шанс улова: {chance}%
+- EN:
+  > ⚡ Catch chance: {chance}%
+
+### UI-resv.menu.intro
+- RU:
+  > 🌊 ПОДЗЕМНОЕ ВОДОХРАНИЛИЩЕ
+  >
+  > Тёмная вода мерцает холодным светом. Тишина такая, что слышно собственные шаги. Иногда по воде пробегает рябь — там кто-то есть, и рыба тут непугливая.
+  >
+  > 🐟 В глубине водится редкий улов, которого больше нигде не найти. Что именно попадётся на крючок — заранее не скажешь.
+- EN:
+  > 🌊 UNDERGROUND RESERVOIR
+  >
+  > The dark water glimmers with cold light. The silence is so deep you hear your own steps. Now and then a ripple runs across the water — something is there, and the fish here aren't shy.
+  >
+  > 🐟 Rare catches live in the depths, found nowhere else. You can't tell in advance what will bite.
+
+### UI-resv.menu.no_rod
+- RU:
+  >
+  > 🎣 Удочка: нет — купи «Удочка из орешника» (магазин → Рыбалка)
+- EN:
+  >
+  > 🎣 Rod: none — buy a «Hazel rod» (Shop → Fishing)
+
+### UI-resv.menu.nobait
+- RU:
+  > ⚡ Без наживки рыба НЕ клюёт: со дна только мусор {junk}.
+- EN:
+  > ⚡ Without bait the fish WON'T bite: the bottom only gives junk {junk}.
+
+### UI-resv.menu.rod
+- RU:
+  >
+  > 🎣 Удочка: {name} (ранг {rank}, +{bonus}%)
+  > 🪱 Наживка: {bait}
+- EN:
+  >
+  > 🎣 Rod: {name} (tier {rank}, +{bonus}%)
+  > 🪱 Bait: {bait}
+
+### UI-resv.menu.safe
+- RU:
+  >
+  >
+  > Здесь можно спокойно поменять слоты расходников — боя в этом зале нет.
+- EN:
+  >
+  >
+  > You can safely swap your consumable slots here — there's no fight in this hall.
 
 #### продажа · `sell.` (3)
 
@@ -7373,7 +7741,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4557** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4503** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -12259,7 +12627,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 - Покинул дуэль #{…} (раунд {…})
 
-#### `bot/handlers/dungeon.py` (303)
+#### `bot/handlers/dungeon.py` (249)
 
 ##### `(модуль)`
 
@@ -12316,13 +12684,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ##### `_mollusk_loot`
 
-- Всё в инвентаре.{rare_line}
-- Добыча не досталась: моллюск оказался пустым.
-- Добыча потерялась — предмет не найден. Сообщи хранителю.
 - Добыча: {…}
-- Из раковины ты вытащил:
-- — продать за {…} {…}
-- ✨ Редчайшая находка!
 
 ##### `_mollusk_markup`
 
@@ -12333,22 +12695,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 - Встреча: {…}
 
-##### `_reservoir_bait_markup`
-
-- 🔙 В водохранилище
-- 🚫 Без наживки
-
-##### `_reservoir_result_markup`
-
-- ⚔️ Продолжить вглубь (Этаж 2)
-- 🎣 Ещё раз
-- 🚪 Выйти из подземелья
-- 🪱 Наживка
-
-##### `_reservoir_wait_markup`
-
-- 🔄 Проверить крючок
-
 ##### `_resv_eq_view`
 
 - Здесь нет врагов — можно спокойно сменить расходники в активных слотах.
@@ -12356,18 +12702,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - 🔄 Слот 1
 - 🔄 Слот 2
 - 🔙 К водохранилищу
-
-##### `_show_mollusk_battle`
-
-- {prefix}🦪 {…}
-  
-  Вместо рыбы на крючке — раковина. Она вся в бугорках, панцирь хрустит от напряжения — и моллюск бросается на снасть!
-  
-  🦪 {name}  HP {…}
-  🧑 Ты          HP {…}{effects_line}
-  
-  Ход {…}. Ударь моллюска или сними снасть.
-- Мутировавший моллюск
 
 ##### `_slot_button_label`
 
@@ -12479,7 +12813,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 ##### `dungeon_continue`
 
 - данж: устаревшая кнопка продолжения
-- ⏳ Сначала дождись улова из водохранилища!
 - ⚠️ Это устаревшая кнопка. Открой подземелье заново и продолжай с последнего сообщения.
 - ❌ Активное подземелье не найдено.
 
@@ -12494,7 +12827,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 - Ничего.
 - ↩️ Нет, остаться
-- ⏳ Сначала дождись улова из водохранилища!
 - ⚠️ Идёт бой с боссом! Убежать нельзя — это решающий бой.
   Продолжай бой кнопками последнего сообщения.
 - ✅ Да, выйти
@@ -12528,7 +12860,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 ##### `dungeon_main_keyboard`
 
 - 🏃 Продолжить путь
-- 🚪 Выйти из подземелья
 
 ##### `dungeon_start_keyboard`
 
@@ -12586,66 +12917,12 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 ##### `mollusk_flee`
 
 - Сбежал от моллюска
-- ⏳ Это окно устарело.
-- 🎣 РЫБАЛКА
-  
-  🏃 Ты выдернул снасть и отчалил от раковины. Моллюск остался на дне — и немного обиделся.
 
 ##### `mollusk_hit`
 
-- Моллюск
-- Молюск впивается щупальцем: −{dmg} HP. {extra}
-- Мутировавший моллюск
 - Победил: {name}
 - Проиграл моллюску (−{removed} ОД)
-- Ты сжимаешь раковину: −{player_hit} HP по моллюску! {extra}
-- Ты ударил по панцирю — раковина скользнула, моллюск ушёл в глубину.
-- ⏳ Это окно устарело.
 - ♻ Регенерация: +{heal} HP.
-- ❌ Ты больше не в водохранилище.
-- 💨 Ты уклонился от щупальца! (−0 HP)
-- 🛡️ Броня поглотила {…}.
-- 🛡️ Панцирь поглотил {…}.
-- 🦪 БОЙ С МОЛЮСКОМ
-  
-  {dot_note}{regen_note}{hit_line}{counter_line}Ты срываешься с крючка.
-  
-  Пока ты выбирался из воды, снасть потерялась. Плата за бессмысленный риск: −{removed} ОД.
-- 🦪 БОЙ С МОЛЮСКОМ
-  
-  {dot_note}{regen_note}{hit_line}Панцирь хрустнул и раскрылся — в тёмной воде осталось только сияние.
-  
-  {loot_line}
-- 🦪 БОЙ С МОЛЮСКОМ
-  
-  {dot_note}Ты срываешься с крючка.
-  
-  Пока ты выбирался из воды, снасть потерялась. Плата за бессмысленный риск: −{removed} ОД.
-
-##### `post_captain_keyboard`
-
-- ⚔️ Продолжить вглубь (Этаж 2)
-- 🎣 Порыбачить в водохранилище
-- 🚪 Выйти из подземелья
-
-##### `post_captain_menu`
-
-- Можно порыбачить, а потом продолжить путь на 2-й этаж.
-- 🏆 КРЫСИНЫЙ КАПИТАН ПОВЕРЖЁН!
-  💀 «Генерал» в кастрюлевом шлеме с жалким писком отползает в темноту, и на этаже становится тихо.
-  
-  Впереди развилка:
-  🎣 Боковое ответвление ведёт к подземному водохранилищу — там слышен плеск невидимой рыбы. Говорят, в тёмной воде водится рыба, которой больше нигде нет.
-  ⚔️ Вниз уходит ход в сердце подвала, где ждёт сам Король крыс.
-- 💰 В лут с 1-го этажа накоплено: {loot_nm} НМ (заберёшь при выходе).
-
-##### `reservoir_keyboard`
-
-- ⚔️ Продолжить вглубь (Этаж 2)
-- 🎒 Снаряжение
-- 🎣 Забросить удочку (−{RESERVOIR_AP_COST} ОД)
-- 🚪 Выйти из подземелья
-- 🪱 Наживка
 
 ##### `resv_bait_menu`
 
@@ -12735,7 +13012,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 - Спустился на 2-й этаж (лог Короля крыс)
 - данж: устаревшая кнопка водохранилища
-- ⏳ Сначала дождись улова из водохранилища!
 - ⚠️ Ты уже на самом нижнем этаже.
 - ⚠️ Это устаревшая кнопка.
 - ❌ Подземелье не найдено.
@@ -12826,23 +13102,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - 📜 ДОСКА КОНТРАКТОВ ОТ ШТАБА ВС
   
   Штаб вывешивает контракты на зачистку подземелий. Выбери контракт, чтобы посмотреть условия.
-
-##### `show_reservoir`
-
-- Здесь можно спокойно поменять слоты расходников — боя в этом зале нет.
-- — не хватит на заброс ({RESERVOIR_AP_COST} ОД)
-- ⚡ Без наживки рыба НЕ клюёт: со дна только мусор {…}.
-- ⚡ ОД: {ap}/{ap_max}
-- ⚡ Шанс улова: {chance}%
-- 🌊 ПОДЗЕМНОЕ ВОДОХРАНИЛИЩЕ
-  
-  Тёмная вода мерцает холодным светом. Тишина такая, что слышно собственные шаги. Иногда по воде пробегает рябь — там кто-то есть, и рыба тут непугливая.
-  
-  🐟 В глубине водится редкий улов, которого больше нигде не найти. Что именно попадётся на крючок — заранее не скажешь.
-- 🎒 Поймано тут (Улов):
-- 🎣 Удочка: {…} (ранг {rank}, +{…}%)
-  🪱 Наживка: {bait_label}
-- 🎣 Удочка: нет — купи «Удочка из орешника» (магазин → Рыбалка)
 
 ##### `show_room`
 

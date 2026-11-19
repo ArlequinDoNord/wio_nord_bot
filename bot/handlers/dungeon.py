@@ -3,6 +3,7 @@ import random
 import json
 import time
 import asyncio
+from utils.localization import t as _LT
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, FSInputFile, InputMediaPhoto
 from aiogram.fsm.context import FSMContext
@@ -285,18 +286,15 @@ async def _show_mollusk_battle(callback, prefix: str = ""):
     if not battle:
         return
     enemy = battle['enemy']
-    name = enemy.get('name') or "Мутировавший моллюск"
+    name = enemy.get('name') or _LT("mollusk.default_name")
     effects_line = onhit.active_line(battle)
     effects_line = f"\n🧑 {effects_line}" if effects_line else ""
     hp_max = battle['enemy_hp_max']
-    text = (
-        f"{prefix}🦪 {name.upper()}\n\n"
-        "Вместо рыбы на крючке — раковина. Она вся в бугорках, панцирь "
-        "хрустит от напряжения — и моллюск бросается на снасть!\n\n"
-        f"🦪 {name}  HP {_hp_bar(battle['enemy_hp'], hp_max)}\n"
-        f"🧑 Ты          HP {_hp_bar(battle['player_hp'], battle['player_hp_max'])}{effects_line}\n\n"
-        f"Ход {battle['round']}. Ударь моллюска или сними снасть."
-    )
+    text = _LT(
+        "mollusk.screen", prefix=prefix, name_up=name.upper(), name=name,
+        ebar=_hp_bar(battle['enemy_hp'], hp_max),
+        pbar=_hp_bar(battle['player_hp'], battle['player_hp_max']),
+        effects=effects_line, round=battle['round'])
     photo_id, photo = await _mollusk_media(enemy)
     await _resv_answer(callback.from_user.id, callback.message, text, _mollusk_markup(battle['token']),
                        photo=photo, photo_id=photo_id)
@@ -334,7 +332,7 @@ async def _mollusk_loot(user_id: int, enemy: dict) -> str:
     drops = await get_source_enemy_drops("fishing", enemy.get('id'))
     picked = roll_enemy_drops_db(drops)
     if not picked:
-        return "Добыча не досталась: моллюск оказался пустым."
+        return _LT("mollusk.loot.empty")
     got = []
     rare = False
     for p in picked:
@@ -346,15 +344,15 @@ async def _mollusk_loot(user_id: int, enemy: dict) -> str:
         await log_activity(user_id, "dungeon_reservoir", f"Добыча: {item['name']}")
         line = f"• «{item['name']}» ×{qty}"
         if item['sell_price'] > 0:
-            line += f" — продать за {item['sell_price']} {plural_nordmark(item['sell_price'])}"
+            line += _LT("mollusk.loot.sell", price=item['sell_price'],
+                        money=plural_nordmark(item['sell_price']))
         if int(item.get('rarity') or 1) >= 5:
             rare = True
         got.append(line)
     if not got:
-        return "Добыча потерялась — предмет не найден. Сообщи хранителю."
-    rare_line = "\n\n✨ Редчайшая находка!" if rare else ""
-    return ("Из раковины ты вытащил:\n" + "\n".join(got)
-            + f"\n\nВсё в инвентаре.{rare_line}")
+        return _LT("mollusk.loot.lost")
+    rare_line = _LT("mollusk.loot.rare") if rare else ""
+    return _LT("mollusk.loot.got", items="\n".join(got), rare=rare_line)
 
 
 async def _reservoir_answer_result(callback, text, markup, enemy: dict | None = None):
@@ -377,12 +375,12 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     battle = MOLLUSK_BATTLE.get(user_id)
     if not battle or battle['token'] != callback.data.split(":")[-1]:
-        await callback.answer("⏳ Это окно устарело.", show_alert=True)
+        await callback.answer(_LT("mollusk.alert.stale"), show_alert=True)
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
         MOLLUSK_BATTLE.pop(user_id, None)
         onhit.unregister(user_id)
-        await callback.answer("❌ Ты больше не в водохранилище.", show_alert=True)
+        await callback.answer(_LT("mollusk.alert.not_here"), show_alert=True)
         return
     await callback.answer()
 
@@ -398,13 +396,7 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
             loss_ap = int(enemy.get('loss_ap') or 12)
             removed = await remove_ap_or_floor(user_id, loss_ap)
             await log_activity(user_id, "dungeon_reservoir", f"Проиграл моллюску (−{removed} ОД)")
-            text = (
-                "🦪 БОЙ С МОЛЮСКОМ\n\n"
-                f"{dot_note}"
-                "Ты срываешься с крючка.\n\n"
-                f"Пока ты выбирался из воды, снасть потерялась. Плата за бессмысленный риск: "
-                f"−{removed} ОД."
-            )
+            text = _LT("mollusk.defeat.dot", dot=dot_note, removed=removed)
             step = await dungeon_new_step(state)
             await _reservoir_answer_result(callback, text, _reservoir_result_markup(step))
             return
@@ -429,28 +421,23 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
         player_hit = max(1, round(player_hit * (100 + dungeon_dmg_pct) / 100))
     battle['enemy_hp'] -= player_hit
     if res['dodged']:
-        hit_line = "Ты ударил по панцирю — раковина скользнула, моллюск ушёл в глубину.\n\n"
+        hit_line = _LT("mollusk.hit.miss")
     else:
         extra = ""
         if res['armor_blocked']:
-            extra += f"🛡️ Панцирь поглотил {res['armor_blocked']}. "
+            extra += _LT("mollusk.hit.armor", amount=res['armor_blocked'])
         if res['crit']:
-            extra += "💥 crit! "
-        hit_line = f"Ты сжимаешь раковину: −{player_hit} HP по моллюску! {extra}\n\n"
+            extra += _LT("mollusk.hit.crit")
+        hit_line = _LT("mollusk.hit.hit", dmg=player_hit, extra=extra)
 
     if battle['enemy_hp'] <= 0:
         MOLLUSK_BATTLE.pop(user_id, None)
         onhit.unregister(user_id)
-        name = enemy.get('name') or "Мутировавший моллюск"
+        name = enemy.get('name') or _LT("mollusk.default_name")
         loot_line = await _mollusk_loot(user_id, enemy)
         await log_activity(user_id, "dungeon_reservoir", f"Победил: {name}")
         await bump_achievement(user_id, "monsters", 1)
-        text = (
-            "🦪 БОЙ С МОЛЮСКОМ\n\n"
-            f"{dot_note}{regen_note}{hit_line}"
-            "Панцирь хрустнул и раскрылся — в тёмной воде осталось только сияние.\n\n"
-            f"{loot_line}"
-        )
+        text = _LT("mollusk.win", pre=dot_note + regen_note + hit_line, loot=loot_line)
         await clear_dungeon_regen(state)
         step = await dungeon_new_step(state)
         await _reservoir_answer_result(callback, text, _reservoir_result_markup(step), enemy)
@@ -461,27 +448,22 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
     dmg = eres['damage']
     battle['player_hp'] -= dmg
     if eres['dodged']:
-        counter_line = "💨 Ты уклонился от щупальца! (−0 HP)\n\n"
+        counter_line = _LT("mollusk.counter.dodged")
     else:
         extra = ""
         if eres['armor_blocked']:
-            extra += f"🛡️ Броня поглотила {eres['armor_blocked']}. "
+            extra += _LT("mollusk.counter.armor", amount=eres['armor_blocked'])
         if eres['crit']:
-            extra += "💥 crit! "
-        counter_line = f"Молюск впивается щупальцем: −{dmg} HP. {extra}\n\n"
+            extra += _LT("mollusk.hit.crit")
+        counter_line = _LT("mollusk.counter.hit", dmg=dmg, extra=extra)
     if battle['player_hp'] <= 0:
         MOLLUSK_BATTLE.pop(user_id, None)
         onhit.unregister(user_id)
         loss_ap = int(enemy.get('loss_ap') or 12)
         removed = await remove_ap_or_floor(user_id, loss_ap)
         await log_activity(user_id, "dungeon_reservoir", f"Проиграл моллюску (−{removed} ОД)")
-        text = (
-            "🦪 БОЙ С МОЛЮСКОМ\n\n"
-            f"{dot_note}{regen_note}{hit_line}"
-            f"{counter_line}Ты срываешься с крючка.\n\n"
-            f"Пока ты выбирался из воды, снасть потерялась. Плата за бессмысленный риск: "
-            f"−{removed} ОД."
-        )
+        text = _LT("mollusk.defeat.counter", pre=dot_note + regen_note + hit_line,
+                   counter=counter_line, removed=removed)
         step = await dungeon_new_step(state)
         await _reservoir_answer_result(callback, text, _reservoir_result_markup(step))
         return
@@ -492,7 +474,7 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
         procs = onhit.roll_procs(battle.get('on_hit_effects') or [])
         if procs:
             proc_lines = onhit.apply_procs(user_id, battle, procs,
-                                           enemy_name=enemy.get('name') or "Моллюск")
+                                           enemy_name=enemy.get('name') or _LT("mollusk.default_short"))
             proc_line = "".join(f"{line}\n\n" for line in proc_lines)
 
     # Спад срочных эффектов (оглушение/ослепление и т.д.) в конце хода.
@@ -509,7 +491,7 @@ async def mollusk_flee(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     battle = MOLLUSK_BATTLE.get(user_id)
     if not battle or battle['token'] != callback.data.split(":")[-1]:
-        await callback.answer("⏳ Это окно устарело.", show_alert=True)
+        await callback.answer(_LT("mollusk.alert.stale"), show_alert=True)
         return
     MOLLUSK_BATTLE.pop(user_id, None)
     onhit.unregister(user_id)
@@ -518,8 +500,7 @@ async def mollusk_flee(callback: CallbackQuery, state: FSMContext):
     step = await dungeon_new_step(state)
     await _reservoir_answer_result(
         callback,
-        "🎣 РЫБАЛКА\n\n🏃 Ты выдернул снасть и отчалил от раковины. "
-        "Моллюск остался на дне — и немного обиделся.",
+        _LT("mollusk.fled"),
         _reservoir_result_markup(step))
 
 
@@ -551,7 +532,7 @@ def dungeon_main_keyboard(step: int = 0):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🏃 Продолжить путь", callback_data=f"dungeon:continue:{step}")],
-        [InlineKeyboardButton(text="🚪 Выйти из подземелья", callback_data="dungeon:exit")],
+        [InlineKeyboardButton(text=_LT("resv.btn.exit"), callback_data="dungeon:exit")],
     ])
 
 
@@ -603,9 +584,9 @@ def post_captain_keyboard(step: int = 0):
     """Выбор после победы над Крысиным капитаном: водохранилище или дальше."""
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎣 Порыбачить в водохранилище", callback_data=f"resv:enter:{step}")],
-        [InlineKeyboardButton(text="⚔️ Продолжить вглубь (Этаж 2)", callback_data=f"resv:deeper:{step}")],
-        [InlineKeyboardButton(text="🚪 Выйти из подземелья", callback_data="dungeon:exit")],
+        [InlineKeyboardButton(text=_LT("resv.btn.fish_here"), callback_data=f"resv:enter:{step}")],
+        [InlineKeyboardButton(text=_LT("resv.btn.deeper"), callback_data=f"resv:deeper:{step}")],
+        [InlineKeyboardButton(text=_LT("resv.btn.exit"), callback_data="dungeon:exit")],
     ])
 
 
@@ -613,11 +594,11 @@ def reservoir_keyboard(step: int = 0):
     """Меню подземного водохранилища: рыбалка, наживка, снаряжение, дальше, выход."""
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"🎣 Забросить удочку (−{RESERVOIR_AP_COST} ОД)", callback_data=f"resv:cast:{step}")],
-        [InlineKeyboardButton(text="🪱 Наживка", callback_data=f"resv:bait:{step}")],
-        [InlineKeyboardButton(text="🎒 Снаряжение", callback_data=f"resv:eq:{step}")],
-        [InlineKeyboardButton(text="⚔️ Продолжить вглубь (Этаж 2)", callback_data=f"resv:deeper:{step}")],
-        [InlineKeyboardButton(text="🚪 Выйти из подземелья", callback_data="dungeon:exit")],
+        [InlineKeyboardButton(text=_LT("resv.btn.cast", ap=RESERVOIR_AP_COST), callback_data=f"resv:cast:{step}")],
+        [InlineKeyboardButton(text=_LT("resv.btn.bait"), callback_data=f"resv:bait:{step}")],
+        [InlineKeyboardButton(text=_LT("resv.btn.gear"), callback_data=f"resv:eq:{step}")],
+        [InlineKeyboardButton(text=_LT("resv.btn.deeper"), callback_data=f"resv:deeper:{step}")],
+        [InlineKeyboardButton(text=_LT("resv.btn.exit"), callback_data="dungeon:exit")],
     ])
 
 
@@ -643,9 +624,9 @@ def _reservoir_bait_markup(chosen: str, worms_qty: int, spider_qty: int, combine
             text=row(f"🪤 {COMBINED_BAIT_NAME} x{combined_qty} (+{BAIT_BONUS[COMBINED_BAIT_NAME]}%)", "combined"),
             callback_data=f"resv:bait:set:{step}:combined")])
     rows.append([InlineKeyboardButton(
-        text=row("🚫 Без наживки", "none"),
+        text=row(_LT("resv.bait.none"), "none"),
         callback_data=f"resv:bait:set:{step}:none")])
-    rows.append([InlineKeyboardButton(text="🔙 В водохранилище", callback_data=f"resv:menu:{step}")])
+    rows.append([InlineKeyboardButton(text=_LT("resv.btn.back_resv"), callback_data=f"resv:menu:{step}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -653,10 +634,10 @@ def _reservoir_result_markup(step: int = 0):
     """Кнопки после заброса в водохранилище."""
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎣 Ещё раз", callback_data=f"resv:cast:{step}")],
-        [InlineKeyboardButton(text="🪱 Наживка", callback_data=f"resv:bait:{step}")],
-        [InlineKeyboardButton(text="⚔️ Продолжить вглубь (Этаж 2)", callback_data=f"resv:deeper:{step}")],
-        [InlineKeyboardButton(text="🚪 Выйти из подземелья", callback_data="dungeon:exit")],
+        [InlineKeyboardButton(text=_LT("resv.btn.again"), callback_data=f"resv:cast:{step}")],
+        [InlineKeyboardButton(text=_LT("resv.btn.bait"), callback_data=f"resv:bait:{step}")],
+        [InlineKeyboardButton(text=_LT("resv.btn.deeper"), callback_data=f"resv:deeper:{step}")],
+        [InlineKeyboardButton(text=_LT("resv.btn.exit"), callback_data="dungeon:exit")],
     ])
 
 
@@ -669,7 +650,7 @@ def _reservoir_wait_markup():
     """
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Проверить крючок", callback_data="resv:recover")],
+        [InlineKeyboardButton(text=_LT("resv.btn.recover"), callback_data="resv:recover")],
     ])
 
 
@@ -999,18 +980,10 @@ async def roll_enemy_drops(run_id: int, enemy) -> list:
 async def post_captain_menu(where, run, state: FSMContext):
     """Экран после победы над Крысиным капитаном: водохранилище или этаж 2."""
     loot_nm = run['loot_nm'] or 0
-    text = (
-        "🏆 КРЫСИНЫЙ КАПИТАН ПОВЕРЖЁН!\n"
-        "💀 «Генерал» в кастрюлевом шлеме с жалким писком отползает в темноту, "
-        "и на этаже становится тихо.\n\n"
-        "Впереди развилка:\n"
-        "🎣 Боковое ответвление ведёт к подземному водохранилищу — там слышен плеск "
-        "невидимой рыбы. Говорят, в тёмной воде водится рыба, которой больше нигде нет.\n"
-        "⚔️ Вниз уходит ход в сердце подвала, где ждёт сам Король крыс.\n"
-    )
+    text = _LT("resv.captain.text")
     if loot_nm > 0:
-        text += f"\n💰 В лут с 1-го этажа накоплено: {loot_nm} НМ (заберёшь при выходе)."
-    text += "\n\nМожно порыбачить, а потом продолжить путь на 2-й этаж."
+        text += _LT("resv.captain.loot", nm=loot_nm)
+    text += _LT("resv.captain.tail")
     step = await dungeon_new_step(state)
     await state.set_state(DungeonFSM.in_dungeon)
     await where.answer(text, reply_markup=post_captain_keyboard(step))
@@ -1118,13 +1091,7 @@ async def show_reservoir(where, user_id: int, state: FSMContext):
     """Меню подземного водохранилища (рыбалка как на озере: наживка, удочка, улов)."""
     run = await get_active_run(user_id)
     step = await dungeon_new_step(state)
-    text = (
-        "🌊 ПОДЗЕМНОЕ ВОДОХРАНИЛИЩЕ\n\n"
-        "Тёмная вода мерцает холодным светом. Тишина такая, что слышно собственные шаги. "
-        "Иногда по воде пробегает рябь — там кто-то есть, и рыба тут непугливая.\n\n"
-        "🐟 В глубине водится редкий улов, которого больше нигде не найти. "
-        "Что именно попадётся на крючок — заранее не скажешь.\n"
-    )
+    text = _LT("resv.menu.intro")
     user = await get_user(user_id) or {}
     chosen = (user.get('fishing_bait') or "").strip()
     rod = await _rod_for(user_id)
@@ -1133,23 +1100,20 @@ async def show_reservoir(where, user_id: int, state: FSMContext):
         bait_label = await _bait_label(user_id, chosen)
         bait_name, _ = await _resolve_bait(user_id, chosen)
         chance = _catch_chance(rod, bait_name, (await get_award_bonus(user_id))['fishing'])
-        text += (
-            f"\n🎣 Удочка: {rod['name']} (ранг {rank}, +{rank * ROD_BONUS_PER_RANK}%)\n"
-            f"🪱 Наживка: {bait_label}\n"
-        )
+        text += _LT("resv.menu.rod", name=rod['name'], rank=rank,
+                    bonus=rank * ROD_BONUS_PER_RANK, bait=bait_label)
         if bait_name:
-            text += f"⚡ Шанс улова: {chance}%\n"
+            text += _LT("resv.menu.chance", chance=chance)
         else:
-            text += (f"⚡ Без наживки рыба НЕ клюёт: со дна только мусор "
-                     f"{await junk_hint('reservoir')}.\n")
+            text += _LT("resv.menu.nobait", junk=await junk_hint('reservoir'))
     else:
-        text += "\n🎣 Удочка: нет — купи «Удочка из орешника» (магазин → Рыбалка)\n"
+        text += _LT("resv.menu.no_rod")
 
     ap = user.get('ap', 0) or 0
     ap_max = user.get('ap_max', ap) or ap
-    text += f"\n⚡ ОД: {ap}/{ap_max}"
+    text += _LT("resv.ap", ap=ap, ap_max=ap_max)
     if ap < RESERVOIR_AP_COST:
-        text += f" — не хватит на заброс ({RESERVOIR_AP_COST} ОД)"
+        text += _LT("resv.ap_short", cost=RESERVOIR_AP_COST)
 
     caught = await get_fish_catches(user_id)
     names = {r['name'] for r in await get_water_fish_pool("reservoir")}
@@ -1160,9 +1124,9 @@ async def show_reservoir(where, user_id: int, state: FSMContext):
         counts = {}
         for c in resv_caught:
             counts[c['name']] = counts.get(c['name'], 0) + 1
-        text += "\n\n🎒 Поймано тут (Улов):\n" + "\n".join(f"• {n} x{k}" for n, k in counts.items())
+        text += _LT("resv.catch.head") + "\n".join(f"• {n} x{k}" for n, k in counts.items())
 
-    text += "\n\nЗдесь можно спокойно поменять слоты расходников — боя в этом зале нет."
+    text += _LT("resv.menu.safe")
 
     photo = _reservoir_photo()
     if photo and not os.path.isfile(photo):
@@ -1200,7 +1164,7 @@ async def dungeon_continue(callback: CallbackQuery, state: FSMContext):
         return
 
     if user_id in FISHING_CASTING:
-        await callback.answer("⏳ Сначала дождись улова из водохранилища!", show_alert=True)
+        await callback.answer(_LT("resv.alert.wait"), show_alert=True)
         return
 
     if await state.get_state() == DungeonFSM.in_reservoir.state:
@@ -2490,7 +2454,7 @@ async def resv_deeper(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("⚠️ Это устаревшая кнопка.")
         return
     if user_id in FISHING_CASTING:
-        await callback.answer("⏳ Сначала дождись улова из водохранилища!", show_alert=True)
+        await callback.answer(_LT("resv.alert.wait"), show_alert=True)
         return
     run = await get_active_run(user_id)
     if not run:
@@ -2661,7 +2625,7 @@ async def dungeon_exit(callback: CallbackQuery, state: FSMContext):
 
     # Пока идёт рыбалка — сначала дождись улова.
     if user_id in FISHING_CASTING:
-        await callback.answer("⏳ Сначала дождись улова из водохранилища!", show_alert=True)
+        await callback.answer(_LT("resv.alert.wait"), show_alert=True)
         return
 
     run = await get_active_run(user_id)
