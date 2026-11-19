@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=8b7ee692fcda7e55 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=6b6202d6b7990876 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **761** (ru + en).
+Всего строк: **790** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -1309,7 +1309,163 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   > 🏆 ARENA RANKING
 
-#### подземелье · `dungeon.` (7)
+#### подземелье · `dungeon.` (36)
+
+### UI-dungeon.board.btn
+- RU:
+  > 📜 {name} — условия контракта
+- EN:
+  > 📜 {name} — contract terms
+
+### UI-dungeon.board.foot
+- RU:
+  >
+  > 🎫 Контрактов на зачистку: {contracts}
+  > (покупаются в магазине, доступно Ветеранам).
+  > Вход по контракту списывает его и 30 ⚡ ОД.
+- EN:
+  >
+  > 🎫 Clearance contracts: {contracts}
+  > (bought in the shop, available to Veterans).
+  > Entering on a contract uses one contract and 30 ⚡ AP.
+
+### UI-dungeon.board.head
+- RU:
+  > 📜 ДОСКА КОНТРАКТОВ ОТ ШТАБА ВС
+  >
+  > Штаб вывешивает контракты на зачистку подземелий. Выбери контракт, чтобы посмотреть условия.
+  >
+- EN:
+  > 📜 CONTRACT BOARD FROM THE HQ
+  >
+  > HQ posts contracts to clear the dungeons. Pick a contract to see its terms.
+  >
+
+### UI-dungeon.board.item
+- RU:
+  > {i}. ⚔️ {name}
+  >     Этажей: {floors}, комнат/этаж: {rooms}
+- EN:
+  > {i}. ⚔️ {name}
+  >     Floors: {floors}, rooms/floor: {rooms}
+
+### UI-dungeon.btn.attack
+- RU:
+  > 🗡️ Атаковать
+- EN:
+  > 🗡️ Attack
+
+### UI-dungeon.btn.back_list
+- RU:
+  > ↩️ К списку контрактов
+- EN:
+  > ↩️ To the contract list
+
+### UI-dungeon.btn.cancel
+- RU:
+  > ↩️ Отмена
+- EN:
+  > ↩️ Cancel
+
+### UI-dungeon.btn.city
+- RU:
+  > 🏠 В меню города
+- EN:
+  > 🏠 To the city menu
+
+### UI-dungeon.btn.continue
+- RU:
+  > 🏃 Продолжить путь
+- EN:
+  > 🏃 Keep going
+
+### UI-dungeon.btn.contracts
+- RU:
+  > 🏰 К списку контрактов
+- EN:
+  > 🏰 To the contract list
+
+### UI-dungeon.btn.enter_contract
+- RU:
+  > 🎫 Войти (1 контракт)
+- EN:
+  > 🎫 Enter (1 contract)
+
+### UI-dungeon.btn.escape
+- RU:
+  > 🏃 Попытаться убежать
+- EN:
+  > 🏃 Try to escape
+
+### UI-dungeon.btn.yes_enter
+- RU:
+  > ✅ Да, войти
+- EN:
+  > ✅ Yes, enter
+
+### UI-dungeon.card.text
+- RU:
+  > 📜 КОНТРАКТ ОТ ШТАБА ВС
+  >
+  > ⚔️ {name}
+  > {desc}
+  >
+  > 🏚 Этажей: {floors} (комнат/этаж: {rooms})
+  > ☠ Сложность: {stars}
+  > 💰 Награда за зачистку: до {reward} НМ с врагов
+  >
+  > 🎫 Стоимость входа:
+  >    • 1 «Контракт на зачистку» (у тебя: {contracts})
+  >    • 30 ⚡ ОД (у тебя: {ap})
+  >
+  > Ресурсы списываются сразу при входе, даже если ты выйдешь из подземелья.
+- EN:
+  > 📜 CONTRACT FROM THE HQ
+  >
+  > ⚔️ {name}
+  > {desc}
+  >
+  > 🏚 Floors: {floors} (rooms/floor: {rooms})
+  > ☠ Difficulty: {stars}
+  > 💰 Clearance reward: up to {reward} NM from enemies
+  >
+  > 🎫 Entry cost:
+  >    • 1 «Clearance contract» (you have: {contracts})
+  >    • 30 ⚡ AP (you have: {ap})
+  >
+  > Resources are spent at entry, even if you leave the dungeon.
+
+### UI-dungeon.enter.confirm
+- RU:
+  > ⚠️ ПО КОНТРАКТУ «{name}» БУДУТ СПИСАНЫ:
+  >
+  > 🎫 1 «Контракт на зачистку» (у тебя: {contracts})
+  > ⚡ 30 очков действий (у тебя: {ap})
+  >
+  > Эти ресурсы потратятся сразу, даже если ты выйдешь из подземелья. Продолжить?
+- EN:
+  > ⚠️ UNDER CONTRACT «{name}» THE FOLLOWING WILL BE SPENT:
+  >
+  > 🎫 1 «Clearance contract» (you have: {contracts})
+  > ⚡ 30 action points (you have: {ap})
+  >
+  > These resources are spent right away, even if you leave the dungeon. Continue?
+
+### UI-dungeon.enter.done
+- RU:
+  > 🎫 Контракт использован! ⚡ −30 AP за вход
+  > 🏰 {name}
+  > Этаж 1 | Комната 0/{rooms}
+  > ❤️ {bar}
+  >
+  > Ты входишь в подземелье...
+- EN:
+  > 🎫 Contract used! ⚡ −30 AP for entry
+  > 🏰 {name}
+  > Floor 1 | Room 0/{rooms}
+  > ❤️ {bar}
+  >
+  > You enter the dungeon...
 
 ### UI-dungeon.exit.boss
 - RU:
@@ -1363,11 +1519,99 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   > ✅ Yes, leave
 
+### UI-dungeon.msg.ap_fail
+- RU:
+  > ❌ Не удалось списать очки действий.
+- EN:
+  > ❌ Couldn't spend action points.
+
+### UI-dungeon.msg.ap_short
+- RU:
+  > ❌ Недостаточно очков действий. Нужно 30 AP, у тебя {ap} AP.
+- EN:
+  > ❌ Not enough action points. You need 30 AP, you have {ap} AP.
+
+### UI-dungeon.msg.ap_short_enter
+- RU:
+  > ❌ Недостаточно очков действий для входа.
+  > Нужно 30 AP за попытку, у тебя {ap} AP.
+  >
+  > ⚡ Очки действий восстанавливаются раз в сутки.
+- EN:
+  > ❌ Not enough action points to enter.
+  > You need 30 AP per attempt, you have {ap} AP.
+  >
+  > ⚡ Action points come back once a day.
+
+### UI-dungeon.msg.contract_fail
+- RU:
+  > ❌ Не удалось списать контракт.
+- EN:
+  > ❌ Couldn't spend the contract.
+
+### UI-dungeon.msg.contract_missing
+- RU:
+  > ❌ Контракт не найден.
+- EN:
+  > ❌ Contract not found.
+
+### UI-dungeon.msg.no_contract
+- RU:
+  > ❌ У тебя нет «Контракта на зачистку».
+- EN:
+  > ❌ You have no «Clearance contract».
+
+### UI-dungeon.msg.no_contract_full
+- RU:
+  > ❌ У тебя нет «Контракта на зачистку».
+  >
+  > Купи его в магазине (Особое) — доступно Ветеранам. Контракт даёт право на один вход.
+- EN:
+  > ❌ You have no «Clearance contract».
+  >
+  > Buy one in the shop (Special) — available to Veterans. A contract allows one entry.
+
+### UI-dungeon.msg.no_contracts
+- RU:
+  > ❌ Контрактов пока нет.
+- EN:
+  > ❌ No contracts yet.
+
 ### UI-dungeon.msg.not_found
 - RU:
   > ❌ Подземелье не найдено.
 - EN:
   > ❌ Dungeon not found.
+
+### UI-dungeon.slot.antidote
+- RU:
+  > ⚗️ Антидот{suffix}
+- EN:
+  > ⚗️ Antidote{suffix}
+
+### UI-dungeon.slot.frost
+- RU:
+  > 🧊 {name}{suffix}
+- EN:
+  > 🧊 {name}{suffix}
+
+### UI-dungeon.slot.heal
+- RU:
+  > 💊 {name}{suffix}
+- EN:
+  > 💊 {name}{suffix}
+
+### UI-dungeon.slot.other
+- RU:
+  > 🧪 {name}{suffix}
+- EN:
+  > 🧪 {name}{suffix}
+
+### UI-dungeon.slot.smoke
+- RU:
+  > 💨 Дымовая шашка{suffix}
+- EN:
+  > 💨 Smoke bomb{suffix}
 
 #### fine · `fine.` (5)
 
@@ -8168,7 +8412,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4427** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4396** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -13054,7 +13298,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 - Покинул дуэль #{…} (раунд {…})
 
-#### `bot/handlers/dungeon.py` (173)
+#### `bot/handlers/dungeon.py` (142)
 
 ##### `(модуль)`
 
@@ -13122,11 +13366,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 - Встреча: {…}
 
-##### `_slot_button_label`
-
-- ⚗️ Антидот{suffix}
-- 💨 Дымовая шашка{suffix}
-
 ##### `battle_state_block_message`
 
 - очень пьян
@@ -13134,65 +13373,11 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - 🤢 Несварение: пищеварение на паузе. Расходники нельзя применять ещё сутки.
 - 🥴 Ты слишком пьян, чтобы что-то применять. Зелья и расходники станут доступны, когда «очень пьян» пройдёт (6 часов).
 
-##### `contract_enter`
-
-- ↩️ Отмена
-- ⚠️ ПО КОНТРАКТУ «{…}» БУДУТ СПИСАНЫ:
-  
-  🎫 1 «Контракт на зачистку» (у тебя: {contracts})
-  ⚡ 30 очков действий (у тебя: {…})
-  
-  Эти ресурсы потратятся сразу, даже если ты выйдешь из подземелья. Продолжить?
-- ✅ Да, войти
-- ❌ Недостаточно очков действий для входа.
-  Нужно 30 AP за попытку, у тебя {…} AP.
-  
-  ⚡ Очки действий восстанавливаются раз в сутки.
-- ❌ У тебя нет «Контракта на зачистку».
-  
-  Купи его в магазине (Особое) — доступно Ветеранам. Контракт даёт право на один вход.
-
 ##### `contract_enter_confirm`
 
 - Контракт «{…}»
 - Контракт на зачистку
 - вход в подземелье
-- ❌ Не удалось списать контракт.
-- ❌ Не удалось списать очки действий.
-- ❌ Недостаточно очков действий. Нужно 30 AP, у тебя {…} AP.
-- ❌ У тебя нет «Контракта на зачистку».
-- 🎫 Контракт использован! ⚡ −30 AP за вход
-  🏰 {…}
-  Этаж 1 | Комната 0/{rooms0}
-  ❤️ {…}
-  
-  Ты входишь в подземелье...
-
-##### `contract_missing_keyboard`
-
-- 🏠 В меню города
-- 🏰 К списку контрактов
-
-##### `contract_pick`
-
-- ↩️ К списку контрактов
-- ❌ Контракт не найден.
-- 🎫 Войти (1 контракт)
-- 🏠 В меню города
-- 📜 КОНТРАКТ ОТ ШТАБА ВС
-  
-  ⚔️ {…}
-  {…}
-  
-  🏚 Этажей: {floors_n} (комнат/этаж: {…})
-  ☠ Сложность: {stars}
-  💰 Награда за зачистку: до {reward_nm} НМ с врагов
-  
-  🎫 Стоимость входа:
-     • 1 «Контракт на зачистку» (у тебя: {contracts})
-     • 30 ⚡ ОД (у тебя: {…})
-  
-  Ресурсы списываются сразу при входе, даже если ты выйдешь из подземелья.
 
 ##### `dungeon_attack`
 
@@ -13219,15 +13404,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   Собранный лут потерян.
 - Штраф за смерть в подземелье
 
-##### `dungeon_boss_keyboard`
-
-- 🗡️ Атаковать
-
-##### `dungeon_combat_keyboard`
-
-- 🏃 Попытаться убежать
-- 🗡️ Атаковать
-
 ##### `dungeon_continue`
 
 - данж: устаревшая кнопка продолжения
@@ -13253,15 +13429,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - Ты покидаешь подземелье ни с чем.
 - Ты покидаешь подземелье.
 - 📦 Ты выносишь из подземелья:
-
-##### `dungeon_main_keyboard`
-
-- 🏃 Продолжить путь
-
-##### `dungeon_start_keyboard`
-
-- 🏠 В меню города
-- 🏰 К списку контрактов
 
 ##### `dungeon_use_slot`
 
@@ -13386,20 +13553,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   
   ⚠️ Это решающий бой! Убежать нельзя!
 - 💊 Лекарства: {boss_heal_uses} применений (×{bmult})
-
-##### `show_contracts`
-
-- {i}. ⚔️ {…}
-      Этажей: {floors_n}, комнат/этаж: {…}
-- ❌ Контрактов пока нет.
-- 🎫 Контрактов на зачистку: {contracts}
-  (покупаются в магазине, доступно Ветеранам).
-  Вход по контракту списывает его и 30 ⚡ ОД.
-- 🏠 В меню города
-- 📜 {…} — условия контракта
-- 📜 ДОСКА КОНТРАКТОВ ОТ ШТАБА ВС
-  
-  Штаб вывешивает контракты на зачистку подземелий. Выбери контракт, чтобы посмотреть условия.
 
 ##### `show_room`
 

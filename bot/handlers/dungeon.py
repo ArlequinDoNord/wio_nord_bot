@@ -531,7 +531,7 @@ def status_lines(data) -> list:
 def dungeon_main_keyboard(step: int = 0):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏃 Продолжить путь", callback_data=f"dungeon:continue:{step}")],
+        [InlineKeyboardButton(text=_LT("dungeon.btn.continue"), callback_data=f"dungeon:continue:{step}")],
         [InlineKeyboardButton(text=_LT("resv.btn.exit"), callback_data="dungeon:exit")],
     ])
 
@@ -540,31 +540,31 @@ def _slot_button_label(row):
     qty = int(row.get('quantity') or 0)
     suffix = f" x{qty}" if qty > 0 else ""
     if row['name'] == SMOKE_ITEM_NAME:
-        return f"💨 Дымовая шашка{suffix}"
+        return _LT("dungeon.slot.smoke", suffix=suffix)
     if row['cure_poison']:
-        return f"⚗️ Антидот{suffix}"
+        return _LT("dungeon.slot.antidote", suffix=suffix)
     if row.get('cure_frostbite'):
-        return f"🧊 {row['name']}{suffix}"
+        return _LT("dungeon.slot.frost", name=row['name'], suffix=suffix)
     if row['heal'] > 0:
-        return f"💊 {row['name']}{suffix}"
-    return f"🧪 {row['name']}{suffix}"
+        return _LT("dungeon.slot.heal", name=row['name'], suffix=suffix)
+    return _LT("dungeon.slot.other", name=row['name'], suffix=suffix)
 
 
 def dungeon_combat_keyboard(enemy_id: int, slot_items: list = None, step: int = 0):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = [
-        [InlineKeyboardButton(text="🗡️ Атаковать", callback_data=f"dungeon:attack:{enemy_id}:{step}")],
+        [InlineKeyboardButton(text=_LT("dungeon.btn.attack"), callback_data=f"dungeon:attack:{enemy_id}:{step}")],
     ]
     for slot, row in (slot_items or []):
         buttons.append([InlineKeyboardButton(text=_slot_button_label(row), callback_data=f"dungeon:use_slot:{slot}:{step}")])
-    buttons.append([InlineKeyboardButton(text="🏃 Попытаться убежать", callback_data=f"dungeon:escape:{enemy_id}:{step}")])
+    buttons.append([InlineKeyboardButton(text=_LT("dungeon.btn.escape"), callback_data=f"dungeon:escape:{enemy_id}:{step}")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def dungeon_boss_keyboard(boss_id: int, slot_items: list = None, step: int = 0):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     buttons = [
-        [InlineKeyboardButton(text="🗡️ Атаковать", callback_data=f"dungeon:attack:{boss_id}:{step}")],
+        [InlineKeyboardButton(text=_LT("dungeon.btn.attack"), callback_data=f"dungeon:attack:{boss_id}:{step}")],
     ]
     for slot, row in (slot_items or []):
         buttons.append([InlineKeyboardButton(text=_slot_button_label(row), callback_data=f"dungeon:use_slot:{slot}:{step}")])
@@ -657,16 +657,16 @@ def _reservoir_wait_markup():
 def dungeon_start_keyboard():
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏰 К списку контрактов", callback_data="contracts:list")],
-        [InlineKeyboardButton(text="🏠 В меню города", callback_data="city:menu")],
+        [InlineKeyboardButton(text=_LT("dungeon.btn.contracts"), callback_data="contracts:list")],
+        [InlineKeyboardButton(text=_LT("dungeon.btn.city"), callback_data="city:menu")],
     ])
 
 
 def contract_missing_keyboard():
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏰 К списку контрактов", callback_data="contracts:list")],
-        [InlineKeyboardButton(text="🏠 В меню города", callback_data="city:menu")],
+        [InlineKeyboardButton(text=_LT("dungeon.btn.contracts"), callback_data="contracts:list")],
+        [InlineKeyboardButton(text=_LT("dungeon.btn.city"), callback_data="city:menu")],
     ])
 
 
@@ -682,37 +682,27 @@ async def show_contracts(msg, user_id: int, state: FSMContext | None = None):
 
     dungeons = await get_all_dungeons(training=False)
     if not dungeons:
-        await msg.answer("❌ Контрактов пока нет.")
+        await msg.answer(_LT("dungeon.msg.no_contracts"))
         return
 
     contracts = await get_user_contract_count(user_id)
 
-    text = (
-        "📜 ДОСКА КОНТРАКТОВ ОТ ШТАБА ВС\n\n"
-        "Штаб вывешивает контракты на зачистку подземелий. "
-        "Выбери контракт, чтобы посмотреть условия.\n\n"
-    )
+    text = _LT("dungeon.board.head")
 
     buttons = []
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     for i, d in enumerate(dungeons, 1):
         rooms = await get_dungeon_rooms_map(d['id'])
         floors_n = len(rooms) or int(d.get('floors_count') or 1)
-        text += (
-            f"{i}. ⚔️ {d['name']}\n"
-            f"    Этажей: {floors_n}, комнат/этаж: {rooms[0] if rooms else d.get('rooms_per_floor') or '—'}\n"
-        )
+        text += _LT("dungeon.board.item", i=i, name=d['name'], floors=floors_n,
+                    rooms=rooms[0] if rooms else d.get('rooms_per_floor') or '—')
         buttons.append([InlineKeyboardButton(
-            text=f"📜 {d['name']} — условия контракта",
+            text=_LT("dungeon.board.btn", name=d['name']),
             callback_data=f"contract:pick:{d['id']}"
         )])
 
-    text += (
-        f"\n🎫 Контрактов на зачистку: {contracts}\n"
-        f"(покупаются в магазине, доступно Ветеранам).\n"
-        f"Вход по контракту списывает его и 30 ⚡ ОД."
-    )
-    buttons.append([InlineKeyboardButton(text="🏠 В меню города", callback_data="city:menu")])
+    text += _LT("dungeon.board.foot", contracts=contracts)
+    buttons.append([InlineKeyboardButton(text=_LT("dungeon.btn.city"), callback_data="city:menu")])
 
     markup = InlineKeyboardMarkup(inline_keyboard=buttons)
     photo = None
@@ -769,7 +759,7 @@ async def contract_pick(callback: CallbackQuery, state: FSMContext):
         return
     dungeon = await get_dungeon(dungeon_id)
     if not dungeon:
-        await callback.message.answer("❌ Контракт не найден.")
+        await callback.message.answer(_LT("dungeon.msg.contract_missing"))
         return
 
     user_id = callback.from_user.id
@@ -782,24 +772,16 @@ async def contract_pick(callback: CallbackQuery, state: FSMContext):
     reward_nm = await _contract_reward_nm(dungeon)
 
     stars = "★" * difficulty + "☆" * (5 - difficulty)
-    text = (
-        f"📜 КОНТРАКТ ОТ ШТАБА ВС\n\n"
-        f"⚔️ {dungeon['name']}\n"
-        f"{dungeon['description'] or ''}\n\n"
-        f"🏚 Этажей: {floors_n} (комнат/этаж: {rooms[0] if rooms else dungeon.get('rooms_per_floor') or '—'})\n"
-        f"☠ Сложность: {stars}\n"
-        f"💰 Награда за зачистку: до {reward_nm} НМ с врагов\n\n"
-        f"🎫 Стоимость входа:\n"
-        f"   • 1 «Контракт на зачистку» (у тебя: {contracts})\n"
-        f"   • 30 ⚡ ОД (у тебя: {user['ap'] if user else 0})\n\n"
-        f"Ресурсы списываются сразу при входе, даже если ты выйдешь из подземелья."
-    )
+    text = _LT(
+        "dungeon.card.text", name=dungeon['name'], desc=dungeon['description'] or '',
+        floors=floors_n, rooms=rooms[0] if rooms else dungeon.get('rooms_per_floor') or '—',
+        stars=stars, reward=reward_nm, contracts=contracts, ap=user['ap'] if user else 0)
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     markup = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🎫 Войти (1 контракт)", callback_data=f"contract:enter:{dungeon_id}")],
-        [InlineKeyboardButton(text="↩️ К списку контрактов", callback_data="contracts:list")],
-        [InlineKeyboardButton(text="🏠 В меню города", callback_data="city:menu")],
+        [InlineKeyboardButton(text=_LT("dungeon.btn.enter_contract"), callback_data=f"contract:enter:{dungeon_id}")],
+        [InlineKeyboardButton(text=_LT("dungeon.btn.back_list"), callback_data="contracts:list")],
+        [InlineKeyboardButton(text=_LT("dungeon.btn.city"), callback_data="city:menu")],
     ])
     photo = dungeon_entrance_photo(dungeon)
     if photo:
@@ -827,8 +809,7 @@ async def contract_enter(callback: CallbackQuery, state: FSMContext):
     contracts = await get_user_contract_count(user_id)
     if contracts <= 0:
         await callback.message.answer(
-            "❌ У тебя нет «Контракта на зачистку».\n\n"
-            "Купи его в магазине (Особое) — доступно Ветеранам. Контракт даёт право на один вход.",
+            _LT("dungeon.msg.no_contract_full"),
             reply_markup=contract_missing_keyboard()
         )
         return
@@ -836,9 +817,7 @@ async def contract_enter(callback: CallbackQuery, state: FSMContext):
     user = await get_user(user_id)
     if user['ap'] < 30:
         await callback.message.answer(
-            f"❌ Недостаточно очков действий для входа.\n"
-            f"Нужно 30 AP за попытку, у тебя {user['ap']} AP.\n\n"
-            f"⚡ Очки действий восстанавливаются раз в сутки.",
+            _LT("dungeon.msg.ap_short_enter", ap=user['ap']),
         )
         return
 
@@ -846,13 +825,10 @@ async def contract_enter(callback: CallbackQuery, state: FSMContext):
     await state.set_state(DungeonFSM.confirm_enter)
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     await callback.message.answer(
-        f"⚠️ ПО КОНТРАКТУ «{dungeon['name']}» БУДУТ СПИСАНЫ:\n\n"
-        f"🎫 1 «Контракт на зачистку» (у тебя: {contracts})\n"
-        f"⚡ 30 очков действий (у тебя: {user['ap']})\n\n"
-        f"Эти ресурсы потратятся сразу, даже если ты выйдешь из подземелья. Продолжить?",
+        _LT("dungeon.enter.confirm", name=dungeon['name'], contracts=contracts, ap=user['ap']),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Да, войти", callback_data=f"contract:enter:confirm:{dungeon_id}")],
-            [InlineKeyboardButton(text="↩️ Отмена", callback_data=f"contract:pick:{dungeon_id}")],
+            [InlineKeyboardButton(text=_LT("dungeon.btn.yes_enter"), callback_data=f"contract:enter:confirm:{dungeon_id}")],
+            [InlineKeyboardButton(text=_LT("dungeon.btn.cancel"), callback_data=f"contract:pick:{dungeon_id}")],
         ])
     )
 
@@ -875,7 +851,7 @@ async def contract_enter_confirm(callback: CallbackQuery, state: FSMContext):
     if contracts <= 0:
         await state.clear()
         await callback.message.answer(
-            "❌ У тебя нет «Контракта на зачистку».",
+            _LT("dungeon.msg.no_contract"),
             reply_markup=contract_missing_keyboard()
         )
         return
@@ -884,7 +860,7 @@ async def contract_enter_confirm(callback: CallbackQuery, state: FSMContext):
     if user['ap'] < 30:
         await state.clear()
         await callback.message.answer(
-            f"❌ Недостаточно очков действий. Нужно 30 AP, у тебя {user['ap']} AP."
+            _LT("dungeon.msg.ap_short", ap=user['ap'])
         )
         return
 
@@ -892,13 +868,13 @@ async def contract_enter_confirm(callback: CallbackQuery, state: FSMContext):
     ok = await remove_inventory_item(user_id, contract['id'], 1)
     if not ok:
         await state.clear()
-        await callback.message.answer("❌ Не удалось списать контракт.")
+        await callback.message.answer(_LT("dungeon.msg.contract_fail"))
         return
 
     ok = await remove_ap(user_id, 30, reason="вход в подземелье")
     if not ok:
         await state.clear()
-        await callback.message.answer("❌ Не удалось списать очки действий.")
+        await callback.message.answer(_LT("dungeon.msg.ap_fail"))
         return
 
     await start_dungeon_run(user_id, dungeon['id'])
@@ -908,11 +884,8 @@ async def contract_enter_confirm(callback: CallbackQuery, state: FSMContext):
 
     rooms0 = await rooms_total_now(run)
     await callback.message.answer(
-        f"🎫 Контракт использован! ⚡ −30 AP за вход\n"
-        f"🏰 {dungeon['name']}\n"
-        f"Этаж 1 | Комната 0/{rooms0}\n"
-        f"❤️ {_hp_bar(run['hp'], run['hp_max'])}\n\n"
-        f"Ты входишь в подземелье...",
+        _LT("dungeon.enter.done", name=dungeon['name'], rooms=rooms0,
+            bar=_hp_bar(run['hp'], run['hp_max'])),
     )
     await state.set_state(DungeonFSM.in_dungeon)
     await show_room(callback.message, run, user_id, state)

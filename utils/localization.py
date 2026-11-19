@@ -1206,6 +1206,63 @@ STRINGS = {
     "dungeon.exit.nm": {"ru": "💰 {nm} Нордмарок", "en": "💰 {nm} Nordmarks"},
     "dungeon.exit.yes": {"ru": "✅ Да, выйти", "en": "✅ Yes, leave"},
     "dungeon.exit.no": {"ru": "↩️ Нет, остаться", "en": "↩️ No, stay"},
+    # Подземелье: кнопки боя, доска контрактов, карточка и вход (bot/handlers/dungeon.py).
+    "dungeon.btn.continue": {"ru": "🏃 Продолжить путь", "en": "🏃 Keep going"},
+    "dungeon.btn.attack": {"ru": "🗡️ Атаковать", "en": "🗡️ Attack"},
+    "dungeon.btn.escape": {"ru": "🏃 Попытаться убежать", "en": "🏃 Try to escape"},
+    "dungeon.slot.smoke": {"ru": "💨 Дымовая шашка{suffix}", "en": "💨 Smoke bomb{suffix}"},
+    "dungeon.slot.antidote": {"ru": "⚗️ Антидот{suffix}", "en": "⚗️ Antidote{suffix}"},
+    "dungeon.slot.frost": {"ru": "🧊 {name}{suffix}", "en": "🧊 {name}{suffix}"},
+    "dungeon.slot.heal": {"ru": "💊 {name}{suffix}", "en": "💊 {name}{suffix}"},
+    "dungeon.slot.other": {"ru": "🧪 {name}{suffix}", "en": "🧪 {name}{suffix}"},
+    "dungeon.btn.contracts": {"ru": "🏰 К списку контрактов", "en": "🏰 To the contract list"},
+    "dungeon.btn.city": {"ru": "🏠 В меню города", "en": "🏠 To the city menu"},
+    "dungeon.btn.back_list": {"ru": "↩️ К списку контрактов", "en": "↩️ To the contract list"},
+    "dungeon.msg.no_contracts": {"ru": "❌ Контрактов пока нет.", "en": "❌ No contracts yet."},
+    "dungeon.board.head": {
+        "ru": "📜 ДОСКА КОНТРАКТОВ ОТ ШТАБА ВС\n\nШтаб вывешивает контракты на зачистку подземелий. Выбери контракт, чтобы посмотреть условия.\n\n",
+        "en": "📜 CONTRACT BOARD FROM THE HQ\n\nHQ posts contracts to clear the dungeons. Pick a contract to see its terms.\n\n",
+    },
+    "dungeon.board.item": {
+        "ru": "{i}. ⚔️ {name}\n    Этажей: {floors}, комнат/этаж: {rooms}\n",
+        "en": "{i}. ⚔️ {name}\n    Floors: {floors}, rooms/floor: {rooms}\n",
+    },
+    "dungeon.board.btn": {"ru": "📜 {name} — условия контракта", "en": "📜 {name} — contract terms"},
+    "dungeon.board.foot": {
+        "ru": "\n🎫 Контрактов на зачистку: {contracts}\n(покупаются в магазине, доступно Ветеранам).\nВход по контракту списывает его и 30 ⚡ ОД.",
+        "en": "\n🎫 Clearance contracts: {contracts}\n(bought in the shop, available to Veterans).\nEntering on a contract uses one contract and 30 ⚡ AP.",
+    },
+    "dungeon.msg.contract_missing": {"ru": "❌ Контракт не найден.", "en": "❌ Contract not found."},
+    "dungeon.card.text": {
+        "ru": "📜 КОНТРАКТ ОТ ШТАБА ВС\n\n⚔️ {name}\n{desc}\n\n🏚 Этажей: {floors} (комнат/этаж: {rooms})\n☠ Сложность: {stars}\n💰 Награда за зачистку: до {reward} НМ с врагов\n\n🎫 Стоимость входа:\n   • 1 «Контракт на зачистку» (у тебя: {contracts})\n   • 30 ⚡ ОД (у тебя: {ap})\n\nРесурсы списываются сразу при входе, даже если ты выйдешь из подземелья.",
+        "en": "📜 CONTRACT FROM THE HQ\n\n⚔️ {name}\n{desc}\n\n🏚 Floors: {floors} (rooms/floor: {rooms})\n☠ Difficulty: {stars}\n💰 Clearance reward: up to {reward} NM from enemies\n\n🎫 Entry cost:\n   • 1 «Clearance contract» (you have: {contracts})\n   • 30 ⚡ AP (you have: {ap})\n\nResources are spent at entry, even if you leave the dungeon.",
+    },
+    "dungeon.btn.enter_contract": {"ru": "🎫 Войти (1 контракт)", "en": "🎫 Enter (1 contract)"},
+    "dungeon.msg.no_contract_full": {
+        "ru": "❌ У тебя нет «Контракта на зачистку».\n\nКупи его в магазине (Особое) — доступно Ветеранам. Контракт даёт право на один вход.",
+        "en": "❌ You have no «Clearance contract».\n\nBuy one in the shop (Special) — available to Veterans. A contract allows one entry.",
+    },
+    "dungeon.msg.ap_short_enter": {
+        "ru": "❌ Недостаточно очков действий для входа.\nНужно 30 AP за попытку, у тебя {ap} AP.\n\n⚡ Очки действий восстанавливаются раз в сутки.",
+        "en": "❌ Not enough action points to enter.\nYou need 30 AP per attempt, you have {ap} AP.\n\n⚡ Action points come back once a day.",
+    },
+    "dungeon.enter.confirm": {
+        "ru": "⚠️ ПО КОНТРАКТУ «{name}» БУДУТ СПИСАНЫ:\n\n🎫 1 «Контракт на зачистку» (у тебя: {contracts})\n⚡ 30 очков действий (у тебя: {ap})\n\nЭти ресурсы потратятся сразу, даже если ты выйдешь из подземелья. Продолжить?",
+        "en": "⚠️ UNDER CONTRACT «{name}» THE FOLLOWING WILL BE SPENT:\n\n🎫 1 «Clearance contract» (you have: {contracts})\n⚡ 30 action points (you have: {ap})\n\nThese resources are spent right away, even if you leave the dungeon. Continue?",
+    },
+    "dungeon.btn.yes_enter": {"ru": "✅ Да, войти", "en": "✅ Yes, enter"},
+    "dungeon.btn.cancel": {"ru": "↩️ Отмена", "en": "↩️ Cancel"},
+    "dungeon.msg.no_contract": {"ru": "❌ У тебя нет «Контракта на зачистку».", "en": "❌ You have no «Clearance contract»."},
+    "dungeon.msg.ap_short": {
+        "ru": "❌ Недостаточно очков действий. Нужно 30 AP, у тебя {ap} AP.",
+        "en": "❌ Not enough action points. You need 30 AP, you have {ap} AP.",
+    },
+    "dungeon.msg.contract_fail": {"ru": "❌ Не удалось списать контракт.", "en": "❌ Couldn't spend the contract."},
+    "dungeon.msg.ap_fail": {"ru": "❌ Не удалось списать очки действий.", "en": "❌ Couldn't spend action points."},
+    "dungeon.enter.done": {
+        "ru": "🎫 Контракт использован! ⚡ −30 AP за вход\n🏰 {name}\nЭтаж 1 | Комната 0/{rooms}\n❤️ {bar}\n\nТы входишь в подземелье...",
+        "en": "🎫 Contract used! ⚡ −30 AP for entry\n🏰 {name}\nFloor 1 | Room 0/{rooms}\n❤️ {bar}\n\nYou enter the dungeon...",
+    },
     "forest.mush.found": {
         "ru": "{head}\n\n{kind} Ты нашёл: «{name}»!\n\n🎒 Гриб положен в инвентарь.{heal_line}{sell_line}",
         "en": "{head}\n\n{kind} You found: «{name}»!\n\n🎒 The mushroom is in your inventory.{heal_line}{sell_line}",
