@@ -11,6 +11,7 @@ from aiogram import Bot
 
 from database.db import get_db, get_user, get_news_chat
 from config import ADMIN_IDS
+from utils.localization import t as _t, t_user
 
 # Пороги для похвалы за суточный отчёт (строго больше):
 #   > MASTERY — «высокое мастерство», > ACE — «истинный Ас», иначе молчим.
@@ -114,6 +115,23 @@ async def notify_user(bot: Bot, user_id: int, text: str) -> bool:
         return False
 
 
+async def _text_for(user_id, key: str, **fmt) -> str:
+    """Текст на языке пилота user_id; без адресата — язык по умолчанию (ru)."""
+    if user_id is None:
+        return _t(key, **fmt)
+    return await t_user(user_id, key, **fmt)
+
+
+async def notify_t(bot: Bot, user_id, key: str, **fmt) -> bool:
+    """Оповещение в общий чат на языке пилота user_id (см. notify)."""
+    return await notify(bot, await _text_for(user_id, key, **fmt), user_id)
+
+
+async def notify_user_t(bot: Bot, user_id: int, key: str, **fmt) -> bool:
+    """Личное сообщение на языке получателя (см. notify_user)."""
+    return await notify_user(bot, user_id, await _text_for(user_id, key, **fmt))
+
+
 # Ключ settings с последней версией, объявленной в общем чате (см. notify_release_update).
 RELEASE_ANNOUNCED_SETTING_KEY = "last_announced_version"
 
@@ -201,6 +219,15 @@ def report_praise_text(display: str, amount: int):
     return praise_tier_text(display, praise_tier_for(amount))
 
 
+async def praise_text_for(user_id, display: str, tier: int):
+    """Похвала на языке пилота (None — уровня нет)."""
+    if tier >= PRIZE_TIER_ACE:
+        return await _text_for(user_id, "notify.praise.ace", who=display)
+    if tier >= PRIZE_TIER_MASTERY:
+        return await _text_for(user_id, "notify.praise.mastery", who=display)
+    return None
+
+
 def praise_tier_text(display: str, tier: int):
     """Текст похвалы для заданного уровня (None — уровня нет)."""
     if tier >= PRIZE_TIER_ACE:
@@ -237,7 +264,7 @@ async def notify_report_praise(bot: Bot, pilot, user_id: int = None, day_total: 
         return False
     if tier <= await get_report_notify_tier(uid, day=day):
         return False
-    text = praise_tier_text(await player_callsign_display(pilot), tier)
+    text = await praise_text_for(uid, await player_callsign_display(pilot), tier)
     if not text:
         return False
     await notify(bot, text, uid)
@@ -247,8 +274,9 @@ async def notify_report_praise(bot: Bot, pilot, user_id: int = None, day_total: 
 
 async def notify_award(bot: Bot, pilot, award_title: str, user_id: int = None):
     """Оповещение о выдаче любой награды: «@pilot награждён: Название»."""
-    title = (award_title or "").strip() or "награда"
-    await notify(bot, f"🎖️ {await player_display(pilot)} награждён: {title}", user_id)
+    title = (award_title or "").strip() or await _text_for(user_id, "notify.award.untitled")
+    await notify(bot, await _text_for(user_id, "notify.award", who=await player_display(pilot), title=title),
+                 user_id)
 
 
 async def treasury_staff_ids() -> list:
@@ -270,21 +298,15 @@ async def notify_treasury_shortage(bot: Bot, total_shortage: int, details: list)
     """
     if total_shortage <= 0 or not details:
         return
-    lines = [
-        f"⚠️ НЕХВАТКА КАЗНЫ НА ЗАРПЛАТЫ\n"
-        f"Не хватило суммарно: {total_shortage} НМ\n"
-        f"Задолженность копится и будет выплачена, когда появятся средства.\n"
-        f"\nДолжники:"
-    ]
-    for uid, amt in details[:15]:
-        u = await get_user(uid)
-        name = await player_display(u)
-        lines.append(f"  • {name}: {amt} НМ")
-    if len(details) > 15:
-        lines.append(f"  … и ещё {len(details) - 15} пилотов")
-    text = "\n".join(lines)
     for tg_id in await treasury_staff_ids():
+        lines = [await _text_for(tg_id, "notify.treasury.head", total=total_shortage)]
+        for uid, amt in details[:15]:
+            u = await get_user(uid)
+            name = await player_display(u)
+            lines.append(await _text_for(tg_id, "notify.treasury.debtor", name=name, amt=amt))
+        if len(details) > 15:
+            lines.append(await _text_for(tg_id, "notify.treasury.more", n=len(details) - 15))
         try:
-            await bot.send_message(tg_id, text)
+            await bot.send_message(tg_id, "\n".join(lines))
         except Exception:
             pass

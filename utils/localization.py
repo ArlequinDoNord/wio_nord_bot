@@ -1378,6 +1378,52 @@ STRINGS = {
     },
     "dungeon.escape.run": {"ru": "🏃 Ты успешно убежал от {name}!\n", "en": "🏃 You escaped {name}!\n"},
     # Подземелье: босс, выход (bot/handlers/dungeon.py).
+    # Оповещения в общий чат и личные сообщения (utils/notify.py, handlers).
+    "notify.award": {"ru": "🎖️ {who} награждён: {title}", "en": "🎖️ {who} has been awarded: {title}"},
+    "notify.award.untitled": {"ru": "награда", "en": "award"},
+    "notify.praise.ace": {"ru": "🏆 {who} проявляет характер истинного Аса!", "en": "🏆 {who} shows the spirit of a true Ace!"},
+    "notify.praise.mastery": {"ru": "⚡ {who} показал высокое мастерство!", "en": "⚡ {who} showed high mastery!"},
+    "notify.rank": {"ru": "⭐ Пилот {who} получил звание «{rank}»!", "en": "⭐ Pilot {who} earned the rank «{rank}»!"},
+    "notify.speech.head": {"ru": "📢 РЕЧЬ ПРЕДСТАВИТЕЛЯ", "en": "📢 REPRESENTATIVE'S SPEECH"},
+    "notify.treasury.head": {
+        "ru": "⚠️ НЕХВАТКА КАЗНЫ НА ЗАРПЛАТЫ\nНе хватило суммарно: {total} НМ\nЗадолженность копится и будет выплачена, когда появятся средства.\n\nДолжники:",
+        "en": "⚠️ TREASURY SHORTFALL FOR SALARIES\nShort by a total of {total} NM\nThe debt accumulates and will be paid when funds appear.\n\nDebtors:",
+    },
+    "notify.treasury.debtor": {"ru": "  • {name}: {amt} НМ", "en": "  • {name}: {amt} NM"},
+    "notify.treasury.more": {"ru": "  … и ещё {n} пилотов", "en": "  … and {n} more pilots"},
+    "pers.duty.add": {"ru": "🎖 Тебе присвоена должность: «{label}».", "en": "🎖 You've been given the post: «{label}»."},
+    "pers.duty.remove": {"ru": "🎖 С тебя снята должность: «{label}».", "en": "🎖 You've been removed from the post: «{label}»."},
+    "pers.legion.off": {"ru": "🦅 С тебя снят статус легионера.", "en": "🦅 Your legionnaire status has been removed."},
+    "pers.legion.on": {"ru": "🦅 Тебе присвоен статус легионера.", "en": "🦅 You've been granted legionnaire status."},
+    "pers.status.grant": {"ru": "🎖 Тебе присвоен статус «{name}».", "en": "🎖 You've been granted the status «{name}»."},
+    "pers.clan.leader_set": {
+        "ru": "👑 Тебя назначили главой {kind} «{name}».",
+        "en": "👑 You've been appointed head of the {kind} «{name}».",
+    },
+    "pers.clan.leader_removed": {
+        "ru": "👑 Ты больше не глава {kind} «{name}» — руководство передано другому пилоту.",
+        "en": "👑 You're no longer head of the {kind} «{name}» — leadership passed to another pilot.",
+    },
+    "pers.clan.leader_unset": {
+        "ru": "👑 С тебя снята должность главы {kind} «{name}».",
+        "en": "👑 You've been removed as head of the {kind} «{name}».",
+    },
+    "pers.clan.disbanded": {
+        "ru": "🗑 {kind} «{name}» распущено — ты больше не глава.",
+        "en": "🗑 The {kind} «{name}» has been disbanded — you're no longer its head.",
+    },
+    "pers.wing.commander_set": {"ru": "🎖 Ты назначен командиром {wing}.", "en": "🎖 You've been appointed commander of {wing}."},
+    "pers.wing.commander_removed": {
+        "ru": "🎖 Ты больше не командир {wing} — назначен другой пилот.",
+        "en": "🎖 You're no longer commander of {wing} — another pilot was appointed.",
+    },
+    "pers.wing.commander_unset": {"ru": "🎖 С тебя снята должность командира {wing}.", "en": "🎖 You've been removed as commander of {wing}."},
+    "pers.wing.deputy_set": {"ru": "🎖 Ты назначен заместителем командира {wing}.", "en": "🎖 You've been appointed deputy commander of {wing}."},
+    "pers.wing.deputy_removed": {"ru": "🎖 Ты больше не заместитель командира {wing}.", "en": "🎖 You're no longer deputy commander of {wing}."},
+    "pers.wing.deputy_unset": {
+        "ru": "🎖 С тебя снята должность заместителя командира {wing}.",
+        "en": "🎖 You've been removed as deputy commander of {wing}.",
+    },
     "dungeon.notify.boss_won": {
         "ru": "🏆 {who} прошёл подземелье и победил босса «{boss}»!",
         "en": "🏆 {who} cleared the dungeon and defeated the boss «{boss}»!",

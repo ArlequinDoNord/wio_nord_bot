@@ -5512,6 +5512,198 @@
 - ✏️ НОВЫЙ EN:
 
 
+### notify.award
+
+- ТЕКУЩИЙ RU: `"🎖️ {who} награждён: {title}"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🎖️ {who} has been awarded: {title}"`
+- ✏️ НОВЫЙ EN:
+
+
+### notify.award.untitled
+
+- ТЕКУЩИЙ RU: `"награда"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"award"`
+- ✏️ НОВЫЙ EN:
+
+
+### notify.praise.ace
+
+- ТЕКУЩИЙ RU: `"🏆 {who} проявляет характер истинного Аса!"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🏆 {who} shows the spirit of a true Ace!"`
+- ✏️ НОВЫЙ EN:
+
+
+### notify.praise.mastery
+
+- ТЕКУЩИЙ RU: `"⚡ {who} показал высокое мастерство!"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"⚡ {who} showed high mastery!"`
+- ✏️ НОВЫЙ EN:
+
+
+### notify.rank
+
+- ТЕКУЩИЙ RU: `"⭐ Пилот {who} получил звание «{rank}»!"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"⭐ Pilot {who} earned the rank «{rank}»!"`
+- ✏️ НОВЫЙ EN:
+
+
+### notify.speech.head
+
+- ТЕКУЩИЙ RU: `"📢 РЕЧЬ ПРЕДСТАВИТЕЛЯ"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"📢 REPRESENTATIVE'S SPEECH"`
+- ✏️ НОВЫЙ EN:
+
+
+### notify.treasury.debtor
+
+- ТЕКУЩИЙ RU: `"  • {name}: {amt} НМ"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"  • {name}: {amt} NM"`
+- ✏️ НОВЫЙ EN:
+
+
+### notify.treasury.head
+
+- ТЕКУЩИЙ RU: `"⚠️ НЕХВАТКА КАЗНЫ НА ЗАРПЛАТЫ\nНе хватило суммарно: {total} НМ\nЗадолженность копится и будет выплачена, когда появятся средства.\n\nДолжники:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"⚠️ TREASURY SHORTFALL FOR SALARIES\nShort by a total of {total} NM\nThe debt accumulates and will be paid when funds appear.\n\nDebtors:"`
+- ✏️ НОВЫЙ EN:
+
+
+### notify.treasury.more
+
+- ТЕКУЩИЙ RU: `"  … и ещё {n} пилотов"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"  … and {n} more pilots"`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.clan.disbanded
+
+- ТЕКУЩИЙ RU: `"🗑 {kind} «{name}» распущено — ты больше не глава."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🗑 The {kind} «{name}» has been disbanded — you're no longer its head."`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.clan.leader_removed
+
+- ТЕКУЩИЙ RU: `"👑 Ты больше не глава {kind} «{name}» — руководство передано другому пилоту."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"👑 You're no longer head of the {kind} «{name}» — leadership passed to another pilot."`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.clan.leader_set
+
+- ТЕКУЩИЙ RU: `"👑 Тебя назначили главой {kind} «{name}»."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"👑 You've been appointed head of the {kind} «{name}»."`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.clan.leader_unset
+
+- ТЕКУЩИЙ RU: `"👑 С тебя снята должность главы {kind} «{name}»."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"👑 You've been removed as head of the {kind} «{name}»."`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.duty.add
+
+- ТЕКУЩИЙ RU: `"🎖 Тебе присвоена должность: «{label}»."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🎖 You've been given the post: «{label}»."`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.duty.remove
+
+- ТЕКУЩИЙ RU: `"🎖 С тебя снята должность: «{label}»."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🎖 You've been removed from the post: «{label}»."`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.legion.off
+
+- ТЕКУЩИЙ RU: `"🦅 С тебя снят статус легионера."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🦅 Your legionnaire status has been removed."`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.legion.on
+
+- ТЕКУЩИЙ RU: `"🦅 Тебе присвоен статус легионера."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🦅 You've been granted legionnaire status."`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.status.grant
+
+- ТЕКУЩИЙ RU: `"🎖 Тебе присвоен статус «{name}»."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🎖 You've been granted the status «{name}»."`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.wing.commander_removed
+
+- ТЕКУЩИЙ RU: `"🎖 Ты больше не командир {wing} — назначен другой пилот."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🎖 You're no longer commander of {wing} — another pilot was appointed."`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.wing.commander_set
+
+- ТЕКУЩИЙ RU: `"🎖 Ты назначен командиром {wing}."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🎖 You've been appointed commander of {wing}."`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.wing.commander_unset
+
+- ТЕКУЩИЙ RU: `"🎖 С тебя снята должность командира {wing}."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🎖 You've been removed as commander of {wing}."`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.wing.deputy_removed
+
+- ТЕКУЩИЙ RU: `"🎖 Ты больше не заместитель командира {wing}."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🎖 You're no longer deputy commander of {wing}."`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.wing.deputy_set
+
+- ТЕКУЩИЙ RU: `"🎖 Ты назначен заместителем командира {wing}."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🎖 You've been appointed deputy commander of {wing}."`
+- ✏️ НОВЫЙ EN:
+
+
+### pers.wing.deputy_unset
+
+- ТЕКУЩИЙ RU: `"🎖 С тебя снята должность заместителя командира {wing}."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🎖 You've been removed as deputy commander of {wing}."`
+- ✏️ НОВЫЙ EN:
+
+
 ### profile.about
 
 - ТЕКУЩИЙ RU: `"📖 О себе"`

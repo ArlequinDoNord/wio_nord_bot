@@ -121,31 +121,30 @@ def run():
     check("карточка объединения показывает фото",
           "photo=clan.get('photo_file_id')" in clans)
 
-    # ── 7. Точечные уведомления и импорты ──
-    def uses_notify_user(src, needle):
-        return needle in src
-
+    # ── 7. Личные уведомления: вызовы с ключами локализации (языки пилотов) ──
     for mod, label in (("bot/handlers/clans.py", "кланы"),
                        ("bot/handlers/admin.py", "админка"),
                        ("bot/handlers/hq.py", "штаб")):
         src = _read(os.path.join(*mod.split("/")))
-        check(f"{label}: notify_user импортирован", "notify_user" in src.split("router = ")[0])
-        check(f"{label}: notify_user вызывается", "await notify_user(" in src)
+        check(f"{label}: notify_user_t импортирован", "notify_user_t" in src.split("router = ")[0])
+        check(f"{label}: личные уведомления идут через ключи", "await notify_user_t(" in src)
 
-    check("уведомление о назначении главы",
-          'f"👑 Тебя назначили главой' in clans)
-    check("уведомление о снятии главы", "👑 С тебя снята должность главы" in clans)
-    check("уведомление о роспуске объединения", "распущено" in clans)
-
-    admin = _read(os.path.join("bot", "handlers", "admin.py"))
-    check("уведомление о должности (add/remove role)",
-          "Тебе присвоена должность" in admin and "С тебя снята должность" in admin)
-    check("уведомление о выдаче статуса", "Тебе присвоен статус" in admin)
-    check("уведомление о легионере", "присвоен статус легионера" in admin)
-
-    hq = _read(os.path.join("bot", "handlers", "hq.py"))
-    check("уведомление командиру крыла", "Ты назначен командиром" in hq)
-    check("уведомление заместителю крыла", "Ты назначен заместителем командира" in hq)
+    from utils import localization
+    S = localization.STRINGS
+    ru_checks = (
+        ("pers.clan.leader_set", "Тебя назначили главой"),
+        ("pers.clan.leader_unset", "С тебя снята должность главы"),
+        ("pers.clan.disbanded", "распущено"),
+        ("pers.duty.add", "Тебе присвоена должность"),
+        ("pers.duty.remove", "С тебя снята должность"),
+        ("pers.status.grant", "Тебе присвоен статус"),
+        ("pers.legion.on", "присвоен статус легионера"),
+        ("pers.wing.commander_set", "Ты назначен командиром"),
+        ("pers.wing.deputy_set", "Ты назначен заместителем командира"),
+    )
+    for key, phrase in ru_checks:
+        check(f"ключ {key}: русский текст сохранён", phrase in S.get(key, {}).get("ru", ""))
+        check(f"ключ {key}: есть английский вариант", bool(S.get(key, {}).get("en")))
 
     print(f"\n{passed} passed, {failed} failed")
     return failed

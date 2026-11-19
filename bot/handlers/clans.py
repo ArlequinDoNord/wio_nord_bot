@@ -27,7 +27,7 @@ from database.db import (
     KIND_LABELS,
 )
 from utils.permissions import has_permission, log_action
-from utils.notify import player_display, notify_user
+from utils.notify import player_display, notify_user, notify_user_t
 from html import escape as _esc
 
 router = Router()
@@ -681,12 +681,11 @@ async def clan_leader_set_cb(callback: CallbackQuery):
     await add_user_role(uid, 'clan_leader', granted_by=callback.from_user.id)
     await log_action(callback.from_user.id, 'clan_set_leader', uid, f"clan_id={clan['id']}")
     u = await get_user(uid)
-    await notify_user(callback.bot, uid,
-                      f"👑 Тебя назначили главой {_type_label(clan)} «{clan['name']}».")
+    await notify_user_t(callback.bot, uid, "pers.clan.leader_set",
+                        kind=_type_label(clan), name=clan['name'])
     if old_leader and old_leader != uid:
-        await notify_user(callback.bot, old_leader,
-                          f"👑 Ты больше не глава {_type_label(clan)} «{clan['name']}» — "
-                          f"руководство передано другому пилоту.")
+        await notify_user_t(callback.bot, old_leader, "pers.clan.leader_removed",
+                            kind=_type_label(clan), name=clan['name'])
     await callback.message.answer(
         f"👑 Глава {_type_label(clan)} «{clan['name']}» — {await player_display(u) if u else uid}.")
     await _show_manage(callback, clan)
@@ -708,8 +707,8 @@ async def clan_leader_unset_cb(callback: CallbackQuery):
     await update_clan(clan['id'], leader_id=None)
     await remove_user_role(old, 'clan_leader')
     await log_action(callback.from_user.id, 'clan_unset_leader', old, f"clan_id={clan['id']}")
-    await notify_user(callback.bot, old,
-                      f"👑 С тебя снята должность главы {_type_label(clan)} «{clan['name']}».")
+    await notify_user_t(callback.bot, old, "pers.clan.leader_unset",
+                        kind=_type_label(clan), name=clan['name'])
     await callback.message.answer(f"👑 Глава снят с {_type_label(clan)} «{clan['name']}».")
     await _show_manage(callback, clan)
 
@@ -996,9 +995,8 @@ async def clan_delete_yes_cb(callback: CallbackQuery):
         return
     if clan['leader_id']:
         await remove_user_role(clan['leader_id'], 'clan_leader')
-        await notify_user(callback.bot, clan['leader_id'],
-                          f"🗑 {_type_label(clan).title()} «{clan['name']}» распущено — "
-                          f"ты больше не глава.")
+        await notify_user_t(callback.bot, clan['leader_id'], "pers.clan.disbanded",
+                            kind=_type_label(clan).title(), name=clan['name'])
     await delete_clan(clan_id)
     await log_action(callback.from_user.id, 'clan_delete', clan_id, clan['name'])
     await callback.message.answer(f"🗑 {_type_label(clan).title()} «{clan['name']}» удалён.")

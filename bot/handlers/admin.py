@@ -86,7 +86,7 @@ from config import (RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES, get_effective_
                     ON_HIT_EFFECTS, ON_HIT_STATE_ROUNDS,
                     REJECTED_REPORTS_FRESH_DAYS, REJECTED_REPORTS_PAGE)
 from utils.states import STATE_CONF, enemy_appliable_states
-from utils.notify import notify, player_display, notify_award, notify_report_praise, notify_user
+from utils.notify import notify, notify_t, player_display, notify_award, notify_report_praise, notify_user, notify_user_t
 
 router = Router()
 
@@ -3362,9 +3362,9 @@ async def roles_apply(callback: CallbackQuery, state: FSMContext):
     if ok:
         label = role_label(role)
         if action == "add":
-            await notify_user(callback.bot, target_id, f"🎖 Тебе присвоена должность: «{label}».")
+            await notify_user_t(callback.bot, target_id, "pers.duty.add", label=label)
         else:
-            await notify_user(callback.bot, target_id, f"🎖 С тебя снята должность: «{label}».")
+            await notify_user_t(callback.bot, target_id, "pers.duty.remove", label=label)
 
     await state.clear()
     await callback.message.answer(("✅ " if ok else "❌ ") + msg)
@@ -3796,7 +3796,7 @@ async def status_legioner_toggle(callback: CallbackQuery, state: FSMContext):
         await set_legioner(target_id, False)
         await revoke_status(target_id, st['id'])
         await log_action(callback.from_user.id, 'revoke_legioner', target_id)
-        await notify_user(callback.bot, target_id, "🦅 С тебя снят статус легионера.")
+        await notify_user_t(callback.bot, target_id, "pers.legion.off")
         text = f"🦅 Снят легионерский статус: {name}"
     else:
         await set_legioner(target_id, True)
@@ -3808,7 +3808,7 @@ async def status_legioner_toggle(callback: CallbackQuery, state: FSMContext):
             await callback.message.answer(f"❌ Статус не выдан: {why}")
             return
         await log_action(callback.from_user.id, 'grant_legioner', target_id)
-        await notify_user(callback.bot, target_id, "🦅 Тебе присвоен статус легионера.")
+        await notify_user_t(callback.bot, target_id, "pers.legion.on")
         text = (f"🦅 Пилот — легионер: {name}\n"
                 "Доступы не выше Ветерана, голосовать нельзя.\n"
                 "Статус «🦅 Легионер» игрок выбирает себе сам в профиле.")
@@ -3943,8 +3943,8 @@ async def status_grant_pick(callback: CallbackQuery, state: FSMContext):
     if ok:
         await log_action(callback.from_user.id, 'grant_status', target_id,
                          f"status={s['name'] if s else status_id}")
-        await notify_user(callback.bot, target_id,
-                          f"🎖 Тебе присвоен статус «{s['name'] if s else status_id}».")
+        await notify_user_t(callback.bot, target_id, "pers.status.grant",
+                            name=s['name'] if s else status_id)
         # v0.35.0: первый пилотский статус без формирования → «Резерв» (🪖):
         # командиры набирают пилотов из Резерва.
         if s and (s['access_tag'] or '') in ('pilot2', 'pilot1', 'veteran',
@@ -5628,7 +5628,7 @@ async def rank_pick(callback: CallbackQuery, bot: Bot):
         f"✅ {name} повышен до звания «{rank_name}» "
         f"({user['troops']} войск, порог {required})."
     )
-    await notify(bot, f"⭐ Пилот {await player_display(user)} получил звание «{rank_name}»!", user['user_id'])
+    await notify_t(bot, user['user_id'], "notify.rank", who=await player_display(user), rank=rank_name)
     await admin_ranks(callback)
 
 

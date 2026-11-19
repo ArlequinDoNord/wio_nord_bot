@@ -386,22 +386,22 @@
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
 | `kind` | — | — |
-| `wait_name` | `bot/handlers/clans.py:729` `clan_create_start` | `bot/handlers/clans.py:737` `clan_create_name` |
-| `wait_desc` | `bot/handlers/clans.py:744` `clan_create_name` | `bot/handlers/clans.py:752` `clan_create_desc` |
-| `wait_photo` | `bot/handlers/clans.py:762` `clan_create_desc` | `bot/handlers/clans.py:806` `clan_create_photo`<br>`bot/handlers/clans.py:813` `clan_create_photo_hint` |
+| `wait_name` | `bot/handlers/clans.py:728` `clan_create_start` | `bot/handlers/clans.py:736` `clan_create_name` |
+| `wait_desc` | `bot/handlers/clans.py:743` `clan_create_name` | `bot/handlers/clans.py:751` `clan_create_desc` |
+| `wait_photo` | `bot/handlers/clans.py:761` `clan_create_desc` | `bot/handlers/clans.py:805` `clan_create_photo`<br>`bot/handlers/clans.py:812` `clan_create_photo_hint` |
 
 ### `ClansEdit` — `bot/handlers/clans.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
 | `field` | — | — |
-| `wait_value` | `bot/handlers/clans.py:877` `clan_edit_field_cb` | `bot/handlers/clans.py:883` `clan_edit_finish_photo`<br>`bot/handlers/clans.py:897` `clan_edit_finish_text` |
+| `wait_value` | `bot/handlers/clans.py:876` `clan_edit_field_cb` | `bot/handlers/clans.py:882` `clan_edit_finish_photo`<br>`bot/handlers/clans.py:896` `clan_edit_finish_text` |
 
 ### `ClansMessage` — `bot/handlers/clans.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `wait_text` | `bot/handlers/clans.py:934` `clan_msg_start` | `bot/handlers/clans.py:942` `clan_msg_send` |
+| `wait_text` | `bot/handlers/clans.py:933` `clan_msg_start` | `bot/handlers/clans.py:941` `clan_msg_send` |
 
 ### `DungeonFSM` — `bot/handlers/dungeon.py`
 
@@ -417,24 +417,24 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `target` | `bot/handlers/hq.py:175` `hq_order_start`<br>`bot/handlers/hq.py:717` `hq_wingcmd_send_cb` | `bot/handlers/hq.py:184` `hq_order_text` |
+| `target` | `bot/handlers/hq.py:175` `hq_order_start`<br>`bot/handlers/hq.py:715` `hq_wingcmd_send_cb` | `bot/handlers/hq.py:184` `hq_order_text` |
 
 ### `HqWingCreate` — `bot/handlers/hq.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `num` | `bot/handlers/hq.py:1071` `hq_wing_add_start` | `bot/handlers/hq.py:1080` `hq_wing_add_num` |
-| `abbr` | `bot/handlers/hq.py:1089` `hq_wing_add_num` | `bot/handlers/hq.py:1099` `hq_wing_add_abbr` |
-| `name` | `bot/handlers/hq.py:1108` `hq_wing_add_abbr` | `bot/handlers/hq.py:1116` `hq_wing_add_name` |
-| `callsign` | `bot/handlers/hq.py:1125` `hq_wing_add_name` | `bot/handlers/hq.py:1133` `hq_wing_add_callsign` |
-| `emoji` | `bot/handlers/hq.py:1141` `hq_wing_add_callsign` | `bot/handlers/hq.py:1149` `hq_wing_add_emoji` |
+| `num` | `bot/handlers/hq.py:1068` `hq_wing_add_start` | `bot/handlers/hq.py:1077` `hq_wing_add_num` |
+| `abbr` | `bot/handlers/hq.py:1086` `hq_wing_add_num` | `bot/handlers/hq.py:1096` `hq_wing_add_abbr` |
+| `name` | `bot/handlers/hq.py:1105` `hq_wing_add_abbr` | `bot/handlers/hq.py:1113` `hq_wing_add_name` |
+| `callsign` | `bot/handlers/hq.py:1122` `hq_wing_add_name` | `bot/handlers/hq.py:1130` `hq_wing_add_callsign` |
+| `emoji` | `bot/handlers/hq.py:1138` `hq_wing_add_callsign` | `bot/handlers/hq.py:1146` `hq_wing_add_emoji` |
 
 ### `HqWingEdit` — `bot/handlers/hq.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
 | `field` | — | — |
-| `value` | `bot/handlers/hq.py:1195` `hq_wing_edit_cb` | `bot/handlers/hq.py:1205` `hq_wing_edit_value` |
+| `value` | `bot/handlers/hq.py:1192` `hq_wing_edit_cb` | `bot/handlers/hq.py:1202` `hq_wing_edit_value` |
 
 ### `TransferItem` — `bot/handlers/inventory.py`
 
@@ -530,7 +530,7 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `waiting_text` | `bot/handlers/representative.py:101` `rep_speech_write`<br>`bot/handlers/representative.py:128` `rep_speech_delete` | `bot/handlers/representative.py:176` `rep_speech_text` |
+| `waiting_text` | `bot/handlers/representative.py:101` `rep_speech_write`<br>`bot/handlers/representative.py:128` `rep_speech_delete` | `bot/handlers/representative.py:177` `rep_speech_text` |
 
 ### `SpecialDeptBuy` — `bot/handlers/shop.py`
 
@@ -683,7 +683,7 @@
 - `clanh:noop`: `bot/handlers/clan_hall.py:2602`
 - `clanhph:construction`: `bot/handlers/admin_clanphotos.py:174`
 - `clanhph:menu`: `bot/handlers/admin_clanphotos.py:116`
-- `clans:create_skip`: `bot/handlers/clans.py:817`
+- `clans:create_skip`: `bot/handlers/clans.py:816`
 - `clans:noop`: `bot/handlers/clans.py:602`
 - `clanshopadm:menu`: `bot/handlers/admin_shop_clan.py:103`
 - `contracts:list`: `bot/handlers/dungeon.py:724`
@@ -730,10 +730,10 @@
 - `hq:region_stats_refresh`: `bot/handlers/hq.py:516`
 - `hq:send`: `bot/handlers/hq.py:155`
 - `hq:wing`: `bot/handlers/hq.py:235`
-- `hq:wingadd`: `bot/handlers/hq.py:1065`
+- `hq:wingadd`: `bot/handlers/hq.py:1062`
 - `hq:wingcmd`: `bot/handlers/hq.py:568`
-- `hq:wingcmd_send`: `bot/handlers/hq.py:706`
-- `hq:wings`: `bot/handlers/hq.py:1035`
+- `hq:wingcmd_send`: `bot/handlers/hq.py:704`
+- `hq:wings`: `bot/handlers/hq.py:1032`
 - `inventory:eq`: `bot/handlers/inventory.py:515`
 - `inventory:list`: `bot/handlers/inventory.py:609`
 - `kvp:exit`: `bot/handlers/kvp.py:753`
@@ -938,20 +938,20 @@
 - `clans:add:`: `bot/handlers/clans.py:607`
 - `clans:addset:`: `bot/handlers/clans.py:624`
 - `clans:cancel:`: `bot/handlers/clans.py:412`
-- `clans:create:`: `bot/handlers/clans.py:719`
-- `clans:del:`: `bot/handlers/clans.py:971`
-- `clans:delyes:`: `bot/handlers/clans.py:988`
-- `clans:edit:`: `bot/handlers/clans.py:832`
-- `clans:editf:`: `bot/handlers/clans.py:856`
+- `clans:create:`: `bot/handlers/clans.py:718`
+- `clans:del:`: `bot/handlers/clans.py:970`
+- `clans:delyes:`: `bot/handlers/clans.py:987`
+- `clans:edit:`: `bot/handlers/clans.py:831`
+- `clans:editf:`: `bot/handlers/clans.py:855`
 - `clans:join:`: `bot/handlers/clans.py:375`
 - `clans:kick:`: `bot/handlers/clans.py:557`
 - `clans:leader:`: `bot/handlers/clans.py:648`
 - `clans:leaderset:`: `bot/handlers/clans.py:665`
-- `clans:leaderunset:`: `bot/handlers/clans.py:695`
+- `clans:leaderunset:`: `bot/handlers/clans.py:694`
 - `clans:leave:`: `bot/handlers/clans.py:422`
 - `clans:list:`: `bot/handlers/clans.py:132`
 - `clans:manage:`: `bot/handlers/clans.py:501`
-- `clans:msg:`: `bot/handlers/clans.py:926`
+- `clans:msg:`: `bot/handlers/clans.py:925`
 - `clans:reqno:`: `bot/handlers/clans.py:484`
 - `clans:reqok:`: `bot/handlers/clans.py:460`
 - `clans:view:`: `bot/handlers/clans.py:169`
@@ -1124,13 +1124,13 @@
 - `hq:wing:set:`: `bot/handlers/hq.py:368`
 - `hq:wingcmd:assign:`: `bot/handlers/hq.py:632`
 - `hq:wingcmd:pick:`: `bot/handlers/hq.py:609`
-- `hq:wingcmd:unset:`: `bot/handlers/hq.py:677`
-- `hq:wingdel:`: `bot/handlers/hq.py:1231`
-- `hq:wingdep:`: `bot/handlers/hq.py:910`
-- `hq:wingdrop:`: `bot/handlers/hq.py:826`
-- `hq:wingedit:`: `bot/handlers/hq.py:1167`
+- `hq:wingcmd:unset:`: `bot/handlers/hq.py:676`
+- `hq:wingdel:`: `bot/handlers/hq.py:1228`
+- `hq:wingdep:`: `bot/handlers/hq.py:908`
+- `hq:wingdrop:`: `bot/handlers/hq.py:824`
+- `hq:wingedit:`: `bot/handlers/hq.py:1164`
 - `hq:wingfarm:`: `bot/handlers/hq.py:448`
-- `hq:wingtake:`: `bot/handlers/hq.py:752`
+- `hq:wingtake:`: `bot/handlers/hq.py:750`
 - `http`: `bot/handlers/library.py:360`
 - `inv_equip:`: `bot/handlers/inventory.py:833`
 - `inv_sell:`: `bot/handlers/inventory.py:968`

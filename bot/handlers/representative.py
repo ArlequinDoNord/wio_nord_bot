@@ -168,7 +168,8 @@ async def _publish(bot: Bot, message: Message, state: FSMContext, text: str):
     # Оповещение городу: обращение целиком, одним сообщением в общий чат.
     # user_id не передаём — это не личное событие игрока, а голос города, и
     # отписка от личных оповещений его не должна скрывать.
-    await notify(bot, f"📢 РЕЧЬ ПРЕДСТАВИТЕЛЯ\n\n{text}")
+    from utils.localization import t_user as _tu
+    await notify(bot, f"{await _tu(uid, 'notify.speech.head')}\n\n{text}")
     await log_activity(uid, "rep_speech", text[:60])
 
 

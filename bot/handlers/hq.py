@@ -28,7 +28,7 @@ from database.db import (
 )
 from utils.permissions import has_permission, log_action
 from utils.wings import wing_label, wing_short, wing_display, all_wings
-from utils.notify import player_display, notify_user
+from utils.notify import player_display, notify_user, notify_user_t
 from keyboards.keyboards import cancel_keyboard
 
 router = Router()
@@ -664,11 +664,10 @@ async def hq_wingcmd_assign(callback: CallbackQuery):
     if old_uid and old_uid != uid:
         if not await get_wing_staff_wing(old_uid):
             await remove_user_role(old_uid, 'wing_commander')
-    await notify_user(callback.bot, uid,
-                      f"🎖 Ты назначен командиром {wing_label(wing)}.")
+    await notify_user_t(callback.bot, uid, "pers.wing.commander_set", wing=wing_label(wing))
     if old_uid and old_uid != uid:
-        await notify_user(callback.bot, old_uid,
-                          f"🎖 Ты больше не командир {wing_label(wing)} — назначен другой пилот.")
+        await notify_user_t(callback.bot, old_uid, "pers.wing.commander_removed",
+                            wing=wing_label(wing))
     await callback.message.answer(
         f"✅ Командир {wing_short(wing)}: {await player_display(u)}"
     )
@@ -694,8 +693,7 @@ async def hq_wingcmd_unset(callback: CallbackQuery):
     # Командир остаётся в крылу и может быть назначен заместителем.
     if not await get_wing_staff_wing(old_uid):
         await remove_user_role(old_uid, 'wing_commander')
-    await notify_user(callback.bot, old_uid,
-                      f"🎖 С тебя снята должность командира {wing_label(wing)}.")
+    await notify_user_t(callback.bot, old_uid, "pers.wing.commander_unset", wing=wing_label(wing))
     await callback.message.answer(
         f"✅ Командир снят с {wing_short(wing)}."
         + ("" if await get_wing_deputy(wing) == old_uid
@@ -977,11 +975,10 @@ async def hq_wing_deputy_cb(callback: CallbackQuery):
                          details=f"wing={wing}, deputy={uid}")
         if dep_uid and not await get_wing_staff_wing(dep_uid):
             await remove_user_role(dep_uid, 'wing_deputy')
-        await notify_user(callback.bot, uid,
-                          f"🎖 Ты назначен заместителем командира {wing_label(wing)}.")
+        await notify_user_t(callback.bot, uid, "pers.wing.deputy_set", wing=wing_label(wing))
         if dep_uid and dep_uid != uid:
-            await notify_user(callback.bot, dep_uid,
-                              f"🎖 Ты больше не заместитель командира {wing_label(wing)}.")
+            await notify_user_t(callback.bot, dep_uid, "pers.wing.deputy_removed",
+                                wing=wing_label(wing))
         await callback.message.answer(
             f"✅ Заместитель {wing_short(wing)}: {await player_display(u)}\n"
             f"Теперь он отдаёт приказы своему крылу.",
@@ -1000,8 +997,8 @@ async def hq_wing_deputy_cb(callback: CallbackQuery):
                          details=f"wing={wing}, deputy={dep_uid}")
         if not await get_wing_staff_wing(dep_uid):
             await remove_user_role(dep_uid, 'wing_deputy')
-        await notify_user(callback.bot, dep_uid,
-                          f"🎖 С тебя снята должность заместителя командира {wing_label(wing)}.")
+        await notify_user_t(callback.bot, dep_uid, "pers.wing.deputy_unset",
+                            wing=wing_label(wing))
         await callback.message.answer(f"✅ Заместитель {wing_short(wing)} снят: {dep_name}.")
         return
 
