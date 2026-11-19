@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=81fe1733a58da9c7 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=5e6fc842dbe12d55 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **438** (ru + en).
+Всего строк: **507** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -820,6 +820,494 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   > Назад
 - EN:
   > Back
+
+#### дуэли · `duel.` (69)
+
+### UI-duel.accept.ap_now
+- RU:
+  > ⛔ Дуэль не состоялась: у соперника не хватило ОД.
+- EN:
+  > ⛔ The duel didn't happen: your opponent is short on AP.
+
+### UI-duel.accept.failed
+- RU:
+  > Не удалось начать дуэль.
+- EN:
+  > The duel couldn't start.
+
+### UI-duel.accept.need_ap
+- RU:
+  > ⛔ Для дуэли нужно {ap} ОД.
+- EN:
+  > ⛔ The duel needs {ap} AP.
+
+### UI-duel.accept.need_card
+- RU:
+  > Нужна клубная карта, чтобы принять вызов.
+- EN:
+  > You need a club card to accept the challenge.
+
+### UI-duel.accept.nocard_now
+- RU:
+  > У соперника больше нет клубной карты — вызов отменён.
+- EN:
+  > Your opponent no longer has a club card — challenge cancelled.
+
+### UI-duel.accept.push_ap
+- RU:
+  > ⛔ Дуэль не состоялась: не хватило ОД.
+- EN:
+  > ⛔ The duel didn't happen: not enough AP.
+
+### UI-duel.accept.push_nocard
+- RU:
+  > ⛔ Дуэль не состоялась: у соперника нет клубной карты.
+- EN:
+  > ⛔ The duel didn't happen: your opponent has no club card.
+
+### UI-duel.accept.stale
+- RU:
+  > Этот вызов уже неактуален.
+- EN:
+  > This challenge is no longer valid.
+
+### UI-duel.access_denied
+- RU:
+  > ⛔ Дом Дуэлей открыт с «Пилота 2 класса».
+  > Подрасти в звании — и добро пожаловать на арену.
+- EN:
+  > ⛔ The Duel House opens to Class 2 pilots.
+  > Rank up — and you're welcome in the arena.
+
+### UI-duel.btn.accept
+- RU:
+  > ✅ Принять
+- EN:
+  > ✅ Accept
+
+### UI-duel.btn.back
+- RU:
+  > 🔙 Назад
+- EN:
+  > 🔙 Back
+
+### UI-duel.btn.back_house
+- RU:
+  > 🔙 В Дом Дуэлей
+- EN:
+  > 🔙 To the Duel House
+
+### UI-duel.btn.back_house_alt
+- RU:
+  > 🔁 В Дом Дуэлей
+- EN:
+  > 🔁 To the Duel House
+
+### UI-duel.btn.buy_card
+- RU:
+  > 🛒 Купить клубную карту ({price} НМ)
+- EN:
+  > 🛒 Buy club card ({price} NM)
+
+### UI-duel.btn.cancel_invite
+- RU:
+  > 🚪 Отменить вызов
+- EN:
+  > 🚪 Cancel challenge
+
+### UI-duel.btn.city
+- RU:
+  > 🔙 В город
+- EN:
+  > 🔙 To the city
+
+### UI-duel.btn.decline
+- RU:
+  > ❌ Отклонить
+- EN:
+  > ❌ Decline
+
+### UI-duel.btn.help
+- RU:
+  > ❓ Правила
+- EN:
+  > ❓ Rules
+
+### UI-duel.btn.invite
+- RU:
+  > 🎯 Вызвать на дуэль
+- EN:
+  > 🎯 Challenge to a duel
+
+### UI-duel.btn.leave
+- RU:
+  > 🚪 Покинуть дуэль
+- EN:
+  > 🚪 Leave the duel
+
+### UI-duel.btn.top
+- RU:
+  > 🏆 Рейтинг арены
+- EN:
+  > 🏆 Arena ranking
+
+### UI-duel.card.access
+- RU:
+  > ⛔ Клубная карта доступна с «Пилота 2 класса».
+- EN:
+  > ⛔ The club card is available from Class 2 pilot.
+
+### UI-duel.card.bought
+- RU:
+  > Клубная карта куплена!
+- EN:
+  > Club card bought!
+
+### UI-duel.card.has
+- RU:
+  > У тебя уже есть клубная карта.
+- EN:
+  > You already have a club card.
+
+### UI-duel.card.no
+- RU:
+  > нет
+- EN:
+  > no
+
+### UI-duel.card.no_money
+- RU:
+  > Не хватает НМ (нужно {price}).
+- EN:
+  > Not enough NM (need {price}).
+
+### UI-duel.card.unavailable
+- RU:
+  > ❌ Товар временно недоступен.
+- EN:
+  > ❌ Item temporarily unavailable.
+
+### UI-duel.card.yes
+- RU:
+  > есть
+- EN:
+  > yes
+
+### UI-duel.challenge.sent
+- RU:
+  > ⚔️ ВЫЗОВ БРОШЕН
+  > ────────────────
+  > Ты вызвал: {name}.
+  > Начало боя спишет {ap} ОД у обоих.
+  > Ждём ответа соперника…
+- EN:
+  > ⚔️ CHALLENGE SENT
+  > ────────────────
+  > You challenged: {name}.
+  > Starting the bout costs {ap} AP from both.
+  > Waiting for an answer…
+
+### UI-duel.decline.done
+- RU:
+  > Вызов отклонён.
+- EN:
+  > Challenge declined.
+
+### UI-duel.end.draw
+- RU:
+  > 🤝 Ничья.
+- EN:
+  > 🤝 Draw.
+
+### UI-duel.end.draw_head
+- RU:
+  > 🤝 НИЧЬЯ
+- EN:
+  > 🤝 DRAW
+
+### UI-duel.end.lost
+- RU:
+  > 💀 Ты проиграл.
+- EN:
+  > 💀 You lost.
+
+### UI-duel.end.no_change
+- RU:
+  > Рейтинг не изменился.
+- EN:
+  > Rating unchanged.
+
+### UI-duel.end.win_head
+- RU:
+  > 🏆 ПОБЕДА
+- EN:
+  > 🏆 VICTORY
+
+### UI-duel.end.winner
+- RU:
+  > Победитель: {name}. +{win} / {loss} рейтинга.
+- EN:
+  > Winner: {name}. +{win} / {loss} rating.
+
+### UI-duel.end.won
+- RU:
+  > 🏆 Ты победил!
+- EN:
+  > 🏆 You won!
+
+### UI-duel.ended
+- RU:
+  > Дуэль уже завершена.
+- EN:
+  > The duel is already over.
+
+### UI-duel.gear.off
+- RU:
+  > не надето
+- EN:
+  > none equipped
+
+### UI-duel.gear.on
+- RU:
+  > +{dmg} урона
+- EN:
+  > +{dmg} damage
+
+### UI-duel.help
+- RU:
+  > 🥊 ДОМ ДУЭЛЕЙ — ПРАВИЛА
+  > ────────────────
+  > • Каждый раунд оба тайно выбирают зону атаки и зону защиты (Голова / Тело / Руки / Ноги).
+  > • Если защита угадала зону атаки — удар гасится вдвое.
+  > • Раунд резолвится, когда выбор сделали оба.
+  > • Старт боя стоит {ap} ОД каждому.
+  > • Рейтинг: победа +{win}, поражение {loss}, ничья {draw}.
+  > • Покинул бой — {forfeit} и поражение, сопернику +{forfeit_win} и победа.
+  > • Дуэльные перчатки работают только на арене.
+- EN:
+  > 🥊 DUEL HOUSE — RULES
+  > ────────────────
+  > • Each round both secretly pick an attack zone and a guard zone (Head / Body / Arms / Legs).
+  > • If your guard matches the enemy's attack zone, the hit is halved.
+  > • The round resolves once both have chosen.
+  > • A bout costs {ap} AP from each side.
+  > • Rating: win +{win}, loss {loss}, draw {draw}.
+  > • Leave the fight — {forfeit} and a loss; your opponent gets +{forfeit_win} and a win.
+  > • Duel gloves work only in the arena.
+
+### UI-duel.invite.busy
+- RU:
+  > У тебя или соперника уже идёт поединок.
+- EN:
+  > You or your opponent are already in a bout.
+
+### UI-duel.invite.no_card
+- RU:
+  > У соперника нет клубной карты.
+- EN:
+  > Your opponent has no club card.
+
+### UI-duel.invite.not_admitted
+- RU:
+  > Этот пилот ещё не допущен к арене.
+- EN:
+  > This pilot isn't admitted to the arena yet.
+
+### UI-duel.invite.not_found
+- RU:
+  > Пилот не найден.
+- EN:
+  > Pilot not found.
+
+### UI-duel.invite.self
+- RU:
+  > Нельзя вызвать себя.
+- EN:
+  > You can't challenge yourself.
+
+### UI-duel.invite.sent
+- RU:
+  > Вызов брошен!
+- EN:
+  > Challenge sent!
+
+### UI-duel.invite.text
+- RU:
+  > ⚔️ ТЕБЯ ВЫЗВАЛИ НА ДУЭЛЬ
+  > ────────────────
+  > {name} вызывает тебя на арену!
+  >
+  > Старт боя спишет {ap} ОД у обоих. Решение за тобой.
+- EN:
+  > ⚔️ YOU'VE BEEN CHALLENGED
+  > ────────────────
+  > {name} challenges you to the arena!
+  >
+  > Starting the bout costs {ap} AP from both. The choice is yours.
+
+### UI-duel.left.opp
+- RU:
+  > 🏆 Соперник покинул дуэль — победа за тобой!
+  > Рейтинг: +{rating}.
+- EN:
+  > 🏆 Your opponent left the duel — you win!
+  > Rating: +{rating}.
+
+### UI-duel.left.self
+- RU:
+  > 🚪 Ты покинул дуэль. Рейтинг: {rating}.
+- EN:
+  > 🚪 You left the duel. Rating: {rating}.
+
+### UI-duel.list.head
+- RU:
+  > 🎯 Кого вызвать на дуэль?
+- EN:
+  > 🎯 Who do you challenge?
+
+### UI-duel.list.none
+- RU:
+  > — пока некого вызвать —
+- EN:
+  > — no one to challenge yet —
+
+### UI-duel.menu
+- RU:
+  > 🥊 ДОМ ДУЭЛЕЙ
+  > ────────────────
+  > Арена чести: поединки один на один «зона на зону».
+  >
+  > 🏅 Рейтинг: {rating}
+  > 🏆 Побед: {wins}   💀 Поражений: {losses}
+  > 🎫 Клубная карта: {card}
+  > 🥊 Дуэльное снаряжение: {gear}
+  > 💰 Кошелёк: {nm} НМ
+  > ⚔️ Старт дуэли: {ap} ОД с каждого участника
+- EN:
+  > 🥊 DUEL HOUSE
+  > ────────────────
+  > Honor arena: one-on-one bouts, «zone against zone».
+  >
+  > 🏅 Rating: {rating}
+  > 🏆 Wins: {wins}   💀 Losses: {losses}
+  > 🎫 Club card: {card}
+  > 🥊 Duel gear: {gear}
+  > 💰 Purse: {nm} NM
+  > ⚔️ Duel start: {ap} AP from each side
+
+### UI-duel.need_card
+- RU:
+  > Нужна клубная карта.
+- EN:
+  > You need a club card.
+
+### UI-duel.not_yours
+- RU:
+  > Это не твоя дуэль.
+- EN:
+  > This isn't your duel.
+
+### UI-duel.pick.def_head
+- RU:
+  > 🎯 Бьёшь в: {zone_emoji} {zone_label}.
+  > Теперь выбери, что защищаешь:
+- EN:
+  > 🎯 Striking at: {zone_emoji} {zone_label}.
+  > Now pick what you guard:
+
+### UI-duel.push.cancelled
+- RU:
+  > ⚔️ Вызов отменён.
+- EN:
+  > ⚔️ Challenge cancelled.
+
+### UI-duel.push.declined
+- RU:
+  > ❌ Соперник отклонил вызов.
+- EN:
+  > ❌ Your opponent declined the challenge.
+
+### UI-duel.round.head
+- RU:
+  > ⚔️ ДОМ ДУЭЛЕЙ — РАУНД {turn}
+  > ────────────────
+  > 🎯 {me_name}  {my_bar} {my_hp}/{my_max}
+  > 🥊 {op_name}  {op_bar} {op_hp}/{op_max}
+- EN:
+  > ⚔️ DUEL HOUSE — ROUND {turn}
+  > ────────────────
+  > 🎯 {me_name}  {my_bar} {my_hp}/{my_max}
+  > 🥊 {op_name}  {op_bar} {op_hp}/{op_max}
+
+### UI-duel.round.num
+- RU:
+  > — Раунд {turn} —
+- EN:
+  > — Round {turn} —
+
+### UI-duel.round.pick_atk
+- RU:
+  >
+  >
+  > Куда бьёшь?
+- EN:
+  >
+  >
+  > Where do you strike?
+
+### UI-duel.round.picked
+- RU:
+  >
+  >
+  > ✅ Ты выбрал: {atk_emoji} {atk_label} (атака), {def_label} (защита).
+  > Ждём соперника…
+- EN:
+  >
+  >
+  > ✅ You picked: {atk_emoji} {atk_label} (attack), {def_label} (guard).
+  > Waiting for your opponent…
+
+### UI-duel.round.theirs
+- RU:
+  > 🛡 
+- EN:
+  > 🛡 
+
+### UI-duel.strike.crit
+- RU:
+  > 💥 КРИТ! 
+- EN:
+  > 💥 CRIT! 
+
+### UI-duel.strike.dodged
+- RU:
+  > 🎯 Удар в {zone}: соперник уклонился
+- EN:
+  > 🎯 Strike to {zone}: the opponent dodged
+
+### UI-duel.strike.guard
+- RU:
+  >  (парировано)
+- EN:
+  >  (blocked)
+
+### UI-duel.strike.hit
+- RU:
+  > 🎯 Удар в {zone}: −{dmg} HP
+- EN:
+  > 🎯 Strike to {zone}: −{dmg} HP
+
+### UI-duel.top.empty
+- RU:
+  > Пока никто не сражался.
+- EN:
+  > Nobody has fought yet.
+
+### UI-duel.top.head
+- RU:
+  > 🏆 РЕЙТИНГ АРЕНЫ
+- EN:
+  > 🏆 ARENA RANKING
 
 #### fine · `fine.` (5)
 
@@ -5837,7 +6325,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4796** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4725** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -10701,181 +11189,27 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 - 🍺 Ты пьян! В Ратушу не пускают. Протрезвей сначала.
 
-#### `bot/handlers/duel.py` (76)
-
-##### `_battle_view`
-
-- Куда бьёшь?
-- Это не твоя дуэль.
-- ⚔️ ДОМ ДУЭЛЕЙ — РАУНД {…}
-  ────────────────
-  🎯 {…}  {…} {my_hp}/{my_max}
-  🥊 {…}  {…} {op_hp}/{op_max}
-- ✅ Ты выбрал: {…} {…} (атака), {…} (защита).
-  Ждём соперника…
+#### `bot/handlers/duel.py` (5)
 
 ##### `_finish_battle`
 
 - Дуэль #{…} завершена за {…} р. (HP {ch_hp}/{…} vs {op_hp}/{…})
-- Победитель: {wname}. +{DUEL_RATING_WIN} / {DUEL_RATING_LOSS} рейтинга.
-- Рейтинг не изменился.
-- 🏆 ПОБЕДА
-- 🔁 В Дом Дуэлей
-- 🤝 НИЧЬЯ
-
-##### `_finish_battle.verdict`
-
-- 🏆 Ты победил!
-- 💀 Ты проиграл.
-- 🤝 Ничья.
-
-##### `_invite_kb`
-
-- ✅ Принять
-- ❌ Отклонить
-
-##### `_invite_text`
-
-- ⚔️ ТЕБЯ ВЫЗВАЛИ НА ДУЭЛЬ
-  ────────────────
-  {…} вызывает тебя на арену!
-  
-  Старт боя спишет {DUEL_AP_COST} ОД у обоих. Решение за тобой.
-
-##### `_leave_row`
-
-- 🚪 Покинуть дуэль
-
-##### `_render_invite`
-
-- ⚔️ ВЫЗОВ БРОШЕН
-  ────────────────
-  Ты вызвал: {…}.
-  Начало боя спишет {DUEL_AP_COST} ОД у обоих.
-  Ждём ответа соперника…
-- 🚪 Отменить вызов
-
-##### `_render_menu`
-
-- ❓ Правила
-- 🎯 Вызвать на дуэль
-- 🏆 Рейтинг арены
-- 🔙 В город
-- 🛒 Купить клубную карту ({DUEL_CLUB_CARD_PRICE} НМ)
-- 🥊 ДОМ ДУЭЛЕЙ
-  ────────────────
-  Арена чести: поединки один на один «зона на зону».
-  
-  🏅 Рейтинг: {…}
-  🏆 Побед: {…}   💀 Поражений: {…}
-  🎫 Клубная карта: {…}
-  🥊 Дуэльное снаряжение: {…}
-  💰 Кошелёк: {nm} НМ
-  ⚔️ Старт дуэли: {DUEL_AP_COST} ОД с каждого участника
-
-##### `_round_log`
-
-- — Раунд {…} —
-
-##### `_strike_log`
-
-- (парировано)
-- 🎯 Удар в {zone_label}: соперник уклонился
-- 🎯 Удар в {zone_label}: −{…} HP
-- 💥 КРИТ!
 
 ##### `duel_accept`
 
 - Дуэль на арене
-- Не удалось начать дуэль.
-- Нужна клубная карта, чтобы принять вызов.
-- У соперника больше нет клубной карты — вызов отменён.
-- Этот вызов уже неактуален.
-- ⛔ Для дуэли нужно {DUEL_AP_COST} ОД.
-- ⛔ Дуэль не состоялась: не хватило ОД.
-- ⛔ Дуэль не состоялась: у соперника не хватило ОД.
-- ⛔ Дуэль не состоялась: у соперника нет клубной карты.
-- 🔙 В Дом Дуэлей
 
 ##### `duel_buy_card`
 
 - Клубная карта «Дом Дуэлей»
-- Клубная карта куплена!
-- Не хватает НМ (нужно {price}).
-- У тебя уже есть клубная карта.
-- ⛔ Клубная карта доступна с «Пилота 2 класса».
-- ❌ Товар временно недоступен.
-
-##### `duel_cancel`
-
-- ⚔️ Вызов отменён.
-
-##### `duel_choose_atk`
-
-- Дуэль уже завершена.
-- 🎯 Бьёшь в: {…} {…}.
-  Теперь выбери, что защищаешь:
 
 ##### `duel_choose_def`
 
-- Дуэль уже завершена.
 - 🔔 Соперник сделал свой выбор.
-
-##### `duel_decline`
-
-- Вызов отклонён.
-- ❌ Соперник отклонил вызов.
-- 🔙 В Дом Дуэлей
-
-##### `duel_help`
-
-- 🔙 Назад
-- 🥊 ДОМ ДУЭЛЕЙ — ПРАВИЛА
-  ────────────────
-  • Каждый раунд оба тайно выбирают зону атаки и зону защиты (Голова / Тело / Руки / Ноги).
-  • Если защита угадала зону атаки — удар гасится вдвое.
-  • Раунд резолвится, когда выбор сделали оба.
-  • Старт боя стоит {DUEL_AP_COST} ОД каждому.
-  • Рейтинг: победа +{DUEL_RATING_WIN}, поражение {DUEL_RATING_LOSS}, ничья {DUEL_RATING_DRAW}.
-  • Покинул бой — {DUEL_RATING_FORFEIT} и поражение, сопернику +{DUEL_RATING_FORFEIT_WIN} и победа.
-  • Дуэльные перчатки работают только на арене.
-
-##### `duel_house_menu`
-
-- ⛔ Дом Дуэлей открыт с «Пилота 2 класса».
-  Подрасти в звании — и добро пожаловать на арену.
-
-##### `duel_invite`
-
-- Вызов брошен!
-- Нельзя вызвать себя.
-- Нужна клубная карта.
-- Пилот не найден.
-- У соперника нет клубной карты.
-- У тебя или соперника уже идёт поединок.
-- Этот пилот ещё не допущен к арене.
 
 ##### `duel_leave`
 
-- Дуэль уже завершена.
 - Покинул дуэль #{…} (раунд {…})
-- 🏆 Соперник покинул дуэль — победа за тобой!
-  Рейтинг: +{DUEL_RATING_FORFEIT_WIN}.
-- 🔙 В Дом Дуэлей
-- 🚪 Ты покинул дуэль. Рейтинг: {DUEL_RATING_FORFEIT}.
-
-##### `duel_list`
-
-- Нужна клубная карта.
-- — пока некого вызвать —
-- 🎯 Кого вызвать на дуэль?
-- 🔙 Назад
-
-##### `duel_top`
-
-- Пока никто не сражался.
-- 🏆 РЕЙТИНГ АРЕНЫ
-- 🔙 Назад
 
 #### `bot/handlers/dungeon.py` (303)
 

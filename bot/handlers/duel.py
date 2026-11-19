@@ -14,6 +14,7 @@
 import asyncio
 import time
 
+from utils.localization import t as _LT
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 
@@ -85,7 +86,7 @@ def _grid_kb(callback_prefix: str) -> InlineKeyboardMarkup:
 
 
 def _leave_row(duel_id) -> list:
-    return [InlineKeyboardButton(text="🚪 Покинуть дуэль",
+    return [InlineKeyboardButton(text=_LT("duel.btn.leave"),
                                  callback_data=f"duel:leave:{duel_id}")]
 
 
@@ -168,8 +169,7 @@ async def duel_house_menu(callback: CallbackQuery):
     uid = callback.from_user.id
     if not await _has_access(uid):
         await callback.message.answer(
-            "⛔ Дом Дуэлей открыт с «Пилота 2 класса».\n"
-            "Подрасти в звании — и добро пожаловать на арену.")
+            _LT("duel.access_denied"))
         return
     cur = await get_active_duel(uid)
     if cur:
@@ -190,28 +190,22 @@ async def _render_menu(callback: CallbackQuery):
     has_card = await has_duel_club_card(uid)
     gear = await get_player_duel_gear_damage(uid)
 
-    text = (
-        "🥊 ДОМ ДУЭЛЕЙ\n"
-        "────────────────\n"
-        "Арена чести: поединки один на один «зона на зону».\n\n"
-        f"🏅 Рейтинг: {stats['rating']}\n"
-        f"🏆 Побед: {stats['wins']}   💀 Поражений: {stats['losses']}\n"
-        f"🎫 Клубная карта: {'есть' if has_card else 'нет'}\n"
-        f"🥊 Дуэльное снаряжение: {f'+{gear} урона' if gear else 'не надето'}\n"
-        f"💰 Кошелёк: {nm} НМ\n"
-        f"⚔️ Старт дуэли: {DUEL_AP_COST} ОД с каждого участника"
-    )
+    text = _LT(
+        "duel.menu", rating=stats['rating'], wins=stats['wins'], losses=stats['losses'],
+        card=_LT("duel.card.yes") if has_card else _LT("duel.card.no"),
+        gear=_LT("duel.gear.on", dmg=gear) if gear else _LT("duel.gear.off"),
+        nm=nm, ap=DUEL_AP_COST)
     rows = []
     if has_card:
-        rows.append([InlineKeyboardButton(text="🎯 Вызвать на дуэль",
+        rows.append([InlineKeyboardButton(text=_LT("duel.btn.invite"),
                                           callback_data="duel:list")])
     else:
         rows.append([InlineKeyboardButton(
-            text=f"🛒 Купить клубную карту ({DUEL_CLUB_CARD_PRICE} НМ)",
+            text=_LT("duel.btn.buy_card", price=DUEL_CLUB_CARD_PRICE),
             callback_data="duel:card:buy")])
-    rows.append([InlineKeyboardButton(text="🏆 Рейтинг арены", callback_data="duel:top"),
-                 InlineKeyboardButton(text="❓ Правила", callback_data="duel:help")])
-    rows.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
+    rows.append([InlineKeyboardButton(text=_LT("duel.btn.top"), callback_data="duel:top"),
+                 InlineKeyboardButton(text=_LT("duel.btn.help"), callback_data="duel:help")])
+    rows.append([InlineKeyboardButton(text=_LT("duel.btn.city"), callback_data="city:menu")])
     await _show(callback, text, InlineKeyboardMarkup(inline_keyboard=rows))
 
 
@@ -224,22 +218,11 @@ async def duel_menu_cb(callback: CallbackQuery):
 @router.callback_query(F.data == "duel:help")
 async def duel_help(callback: CallbackQuery):
     await _ack(callback)
-    text = (
-        "🥊 ДОМ ДУЭЛЕЙ — ПРАВИЛА\n"
-        "────────────────\n"
-        "• Каждый раунд оба тайно выбирают зону атаки и зону защиты "
-        "(Голова / Тело / Руки / Ноги).\n"
-        "• Если защита угадала зону атаки — удар гасится вдвое.\n"
-        "• Раунд резолвится, когда выбор сделали оба.\n"
-        f"• Старт боя стоит {DUEL_AP_COST} ОД каждому.\n"
-        f"• Рейтинг: победа +{DUEL_RATING_WIN}, поражение {DUEL_RATING_LOSS}, "
-        f"ничья {DUEL_RATING_DRAW}.\n"
-        f"• Покинул бой — {DUEL_RATING_FORFEIT} и поражение, сопернику "
-        f"+{DUEL_RATING_FORFEIT_WIN} и победа.\n"
-        "• Дуэльные перчатки работают только на арене."
-    )
+    text = _LT(
+        "duel.help", ap=DUEL_AP_COST, win=DUEL_RATING_WIN, loss=DUEL_RATING_LOSS,
+        draw=DUEL_RATING_DRAW, forfeit=DUEL_RATING_FORFEIT, forfeit_win=DUEL_RATING_FORFEIT_WIN)
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="duel:menu")]])
+        [InlineKeyboardButton(text=_LT("duel.btn.back"), callback_data="duel:menu")]])
     await callback.message.answer(text, reply_markup=kb)
 
 
@@ -254,24 +237,24 @@ async def duel_buy_card(callback: CallbackQuery):
         return
     if not await _has_access(uid):
         await _ack(callback)
-        await callback.message.answer("⛔ Клубная карта доступна с «Пилота 2 класса».")
+        await callback.message.answer(_LT("duel.card.access"))
         return
     if await has_duel_club_card(uid):
-        await _ack(callback, "У тебя уже есть клубная карта.", show_alert=True)
+        await _ack(callback, _LT("duel.card.has"), show_alert=True)
         return
     item = await get_item_by_name(DUEL_CLUB_CARD_NAME)
     if not item:
         await _ack(callback)
-        await callback.message.answer("❌ Товар временно недоступен.")
+        await callback.message.answer(_LT("duel.card.unavailable"))
         return
     user = await get_user(uid)
     price = item['price'] or DUEL_CLUB_CARD_PRICE
     if (user['nordmarks'] or 0) < price:
-        await _ack(callback, f"Не хватает НМ (нужно {price}).", show_alert=True)
+        await _ack(callback, _LT("duel.card.no_money", price=price), show_alert=True)
         return
     await remove_nordmarks(uid, price, "duel_card", "Клубная карта «Дом Дуэлей»")
     await add_inventory_item(uid, item['id'], 1)
-    await _ack(callback, "Клубная карта куплена!", show_alert=True)
+    await _ack(callback, _LT("duel.card.bought"), show_alert=True)
     await _render_menu(callback)
 
 
@@ -279,7 +262,7 @@ async def duel_buy_card(callback: CallbackQuery):
 async def duel_list(callback: CallbackQuery):
     uid = callback.from_user.id
     if not await has_duel_club_card(uid):
-        await _ack(callback, "Нужна клубная карта.", show_alert=True)
+        await _ack(callback, _LT("duel.need_card"), show_alert=True)
         return
     await _ack(callback)
     opponents = await get_duel_opponents(uid)
@@ -287,11 +270,11 @@ async def duel_list(callback: CallbackQuery):
         text=f"{_online_icon(o['last_active'])} {_pilot_name(o)} · 🏅{o['duel_rating'] or 0}",
         callback_data=f"duel:invite:{o['user_id']}")] for o in opponents]
     if not rows:
-        rows.append([InlineKeyboardButton(text="— пока некого вызвать —",
+        rows.append([InlineKeyboardButton(text=_LT("duel.list.none"),
                                           callback_data="noop")])
-    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data="duel:menu")])
+    rows.append([InlineKeyboardButton(text=_LT("duel.btn.back"), callback_data="duel:menu")])
     await callback.message.answer(
-        "🎯 Кого вызвать на дуэль?",
+        _LT("duel.list.head"),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
 
@@ -299,15 +282,15 @@ async def duel_list(callback: CallbackQuery):
 async def duel_top(callback: CallbackQuery):
     await _ack(callback)
     top = await get_duel_rating_top(10)
-    lines = ["🏆 РЕЙТИНГ АРЕНЫ", "────────────────"]
+    lines = [_LT("duel.top.head"), "────────────────"]
     if not top:
-        lines.append("Пока никто не сражался.")
+        lines.append(_LT("duel.top.empty"))
     for i, r in enumerate(top, 1):
         u = await get_user(r['user_id'])
         lines.append(f"{i}. {_pilot_name(u)} — {r['duel_rating']} "
                      f"({r['duel_wins']}−{r['duel_losses']})")
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="duel:menu")]])
+        [InlineKeyboardButton(text=_LT("duel.btn.back"), callback_data="duel:menu")]])
     await callback.message.answer("\n".join(lines), reply_markup=kb)
 
 
@@ -318,57 +301,52 @@ async def duel_invite(callback: CallbackQuery):
     uid = callback.from_user.id
     opp_id = int(callback.data.split(":")[2])
     if opp_id == uid:
-        await _ack(callback, "Нельзя вызвать себя.", show_alert=True)
+        await _ack(callback, _LT("duel.invite.self"), show_alert=True)
         return
     if not await has_duel_club_card(uid):
-        await _ack(callback, "Нужна клубная карта.", show_alert=True)
+        await _ack(callback, _LT("duel.need_card"), show_alert=True)
         return
     if not await _has_access(opp_id):
-        await _ack(callback, "Этот пилот ещё не допущен к арене.", show_alert=True)
+        await _ack(callback, _LT("duel.invite.not_admitted"), show_alert=True)
         return
     opponent = await get_user(opp_id)
     if not opponent:
-        await _ack(callback, "Пилот не найден.", show_alert=True)
+        await _ack(callback, _LT("duel.invite.not_found"), show_alert=True)
         return
     if not await has_duel_club_card(opp_id):
-        await _ack(callback, "У соперника нет клубной карты.", show_alert=True)
+        await _ack(callback, _LT("duel.invite.no_card"), show_alert=True)
         return
 
     duel_id = await create_duel_challenge(uid, opp_id)
     if duel_id is None:
-        await _ack(callback, "У тебя или соперника уже идёт поединок.",
+        await _ack(callback, _LT("duel.invite.busy"),
                               show_alert=True)
         return
 
     duel = await get_duel(duel_id)
     challenger = await get_user(uid)
     await _push(callback, opp_id, _invite_text(duel, challenger), _invite_kb(duel))
-    await _ack(callback, "Вызов брошен!")
+    await _ack(callback, _LT("duel.invite.sent"))
     await _render_invite(callback, duel, acting_uid=uid)
 
 
 def _invite_text(duel, challenger) -> str:
-    return (f"⚔️ ТЕБЯ ВЫЗВАЛИ НА ДУЭЛЬ\n────────────────\n"
-            f"{_pilot_name(challenger)} вызывает тебя на арену!\n\n"
-            f"Старт боя спишет {DUEL_AP_COST} ОД у обоих. Решение за тобой.")
+    return _LT("duel.invite.text", name=_pilot_name(challenger), ap=DUEL_AP_COST)
 
 
 def _invite_kb(duel) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Принять", callback_data=f"duel:accept:{duel['id']}"),
-        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"duel:decline:{duel['id']}"),
+        InlineKeyboardButton(text=_LT("duel.btn.accept"), callback_data=f"duel:accept:{duel['id']}"),
+        InlineKeyboardButton(text=_LT("duel.btn.decline"), callback_data=f"duel:decline:{duel['id']}"),
     ]])
 
 
 async def _render_invite(callback: CallbackQuery, duel, acting_uid: int):
     if acting_uid == duel['challenger_id']:
         op = await get_user(duel['opponent_id'])
-        text = (f"⚔️ ВЫЗОВ БРОШЕН\n────────────────\n"
-                f"Ты вызвал: {_pilot_name(op)}.\n"
-                f"Начало боя спишет {DUEL_AP_COST} ОД у обоих.\n"
-                f"Ждём ответа соперника…")
+        text = _LT("duel.challenge.sent", name=_pilot_name(op), ap=DUEL_AP_COST)
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🚪 Отменить вызов",
+            [InlineKeyboardButton(text=_LT("duel.btn.cancel_invite"),
                                   callback_data=f"duel:cancel:{duel['id']}")]])
         await _show(callback, text, kb)
     else:
@@ -384,7 +362,7 @@ async def duel_cancel(callback: CallbackQuery):
     uid = callback.from_user.id
     if duel and duel['status'] == 'invited' and uid == duel['challenger_id']:
         await decline_duel(duel_id)
-        await _push(callback, duel['opponent_id'], "⚔️ Вызов отменён.", None)
+        await _push(callback, duel['opponent_id'], _LT("duel.push.cancelled"), None)
     await _render_menu(callback)
 
 
@@ -396,10 +374,10 @@ async def duel_decline(callback: CallbackQuery):
     uid = callback.from_user.id
     if duel and duel['status'] == 'invited' and uid == duel['opponent_id']:
         await decline_duel(duel_id)
-        await _push(callback, duel['challenger_id'], "❌ Соперник отклонил вызов.", None)
-    await _show(callback, "Вызов отклонён.",
+        await _push(callback, duel['challenger_id'], _LT("duel.push.declined"), None)
+    await _show(callback, _LT("duel.decline.done"),
                 InlineKeyboardMarkup(inline_keyboard=[
-                    [InlineKeyboardButton(text="🔙 В Дом Дуэлей", callback_data="duel:menu")]]))
+                    [InlineKeyboardButton(text=_LT("duel.btn.back_house"), callback_data="duel:menu")]]))
 
 
 @router.callback_query(F.data.startswith("duel:accept:"))
@@ -409,19 +387,19 @@ async def duel_accept(callback: CallbackQuery):
     uid = callback.from_user.id
     duel = await get_duel(duel_id)
     if not duel or duel['status'] != 'invited' or uid != duel['opponent_id']:
-        await _show(callback, "Этот вызов уже неактуален.",
+        await _show(callback, _LT("duel.accept.stale"),
                     InlineKeyboardMarkup(inline_keyboard=[
-                        [InlineKeyboardButton(text="🔙 В Дом Дуэлей",
+                        [InlineKeyboardButton(text=_LT("duel.btn.back_house"),
                                               callback_data="duel:menu")]]))
         return
     if not await has_duel_club_card(uid):
-        await _show(callback, "Нужна клубная карта, чтобы принять вызов.")
+        await _show(callback, _LT("duel.accept.need_card"))
         return
     if not await has_duel_club_card(duel['challenger_id']):
         await decline_duel(duel_id)
         await _push(callback, duel['challenger_id'],
-                    "⛔ Дуэль не состоялась: у соперника нет клубной карты.", None)
-        await _show(callback, "У соперника больше нет клубной карты — вызов отменён.")
+                    _LT("duel.accept.push_nocard"), None)
+        await _show(callback, _LT("duel.accept.nocard_now"))
         return
 
     ch = await get_user(duel['challenger_id'])
@@ -429,11 +407,11 @@ async def duel_accept(callback: CallbackQuery):
     if (ch['ap'] or 0) < DUEL_AP_COST:
         await decline_duel(duel_id)
         await _push(callback, duel['challenger_id'],
-                    "⛔ Дуэль не состоялась: не хватило ОД.", None)
-        await _show(callback, "⛔ Дуэль не состоялась: у соперника не хватило ОД.")
+                    _LT("duel.accept.push_ap"), None)
+        await _show(callback, _LT("duel.accept.ap_now"))
         return
     if (op['ap'] or 0) < DUEL_AP_COST:
-        await _show(callback, f"⛔ Для дуэли нужно {DUEL_AP_COST} ОД.")
+        await _show(callback, _LT("duel.accept.need_ap", ap=DUEL_AP_COST))
         return
 
     ch_max = (await _duel_stats(duel['challenger_id']))['hp_max']
@@ -442,7 +420,7 @@ async def duel_accept(callback: CallbackQuery):
     await remove_ap(uid, DUEL_AP_COST, "Дуэль на арене")
 
     if not await accept_duel(duel_id, uid, ch_max, ch_max, op_max, op_max):
-        await _show(callback, "Не удалось начать дуэль.")
+        await _show(callback, _LT("duel.accept.failed"))
         return
 
     duel = await get_duel(duel_id)
@@ -460,10 +438,10 @@ async def duel_leave(callback: CallbackQuery):
     uid = callback.from_user.id
     duel = await get_duel(duel_id)
     back_kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 В Дом Дуэлей", callback_data="duel:menu")]])
+        [InlineKeyboardButton(text=_LT("duel.btn.back_house"), callback_data="duel:menu")]])
     if not duel or duel['status'] != 'active' or uid not in (
             duel['challenger_id'], duel['opponent_id']):
-        await _show(callback, "Дуэль уже завершена.", back_kb)
+        await _show(callback, _LT("duel.ended"), back_kb)
         return
     opp = _other(duel, uid)
     DUEL_PICK.pop(uid, None)
@@ -480,11 +458,10 @@ async def duel_leave(callback: CallbackQuery):
     except Exception:
         pass
     await _show(callback,
-                f"🚪 Ты покинул дуэль. Рейтинг: {DUEL_RATING_FORFEIT}.",
+                _LT("duel.left.self", rating=DUEL_RATING_FORFEIT),
                 back_kb)
     await _push(callback, opp,
-                "🏆 Соперник покинул дуэль — победа за тобой!\n"
-                f"Рейтинг: +{DUEL_RATING_FORFEIT_WIN}.",
+                _LT("duel.left.opp", rating=DUEL_RATING_FORFEIT_WIN),
                 back_kb)
 
 
@@ -502,28 +479,26 @@ async def _battle_view(duel, uid, note: str = None):
     """Текст и клавиатура боя для конкретного игрока."""
     side = _side(duel, uid)
     if side is None:
-        return "Это не твоя дуэль.", None
+        return _LT("duel.not_yours"), None
     opp_side = 'opponent' if side == 'challenger' else 'challenger'
     me = await get_user(uid)
     opp = await get_user(_other(duel, uid))
     my_hp, my_max = duel[f'{side}_hp'], duel[f'{side}_hp_max']
     op_hp, op_max = duel[f'{opp_side}_hp'], duel[f'{opp_side}_hp_max']
 
-    text = (
-        f"⚔️ ДОМ ДУЭЛЕЙ — РАУНД {duel['turn']}\n"
-        "────────────────\n"
-        f"🎯 {_pilot_name(me)}  {_hp_bar(my_hp, my_max)} {my_hp}/{my_max}\n"
-        f"🥊 {_pilot_name(opp)}  {_hp_bar(op_hp, op_max)} {op_hp}/{op_max}"
-    )
+    text = _LT(
+        "duel.round.head", turn=duel['turn'],
+        me_name=_pilot_name(me), my_bar=_hp_bar(my_hp, my_max), my_hp=my_hp, my_max=my_max,
+        op_name=_pilot_name(opp), op_bar=_hp_bar(op_hp, op_max), op_hp=op_hp, op_max=op_max)
     if note:
         text += f"\n\n{note}"
     if duel[f'{side}_atk']:
         atk = duel[f'{side}_atk']
         default = duel[f'{side}_def']
-        text += (f"\n\n✅ Ты выбрал: {DUEL_ZONE_EMOJI[atk]} {DUEL_ZONE_LABELS[atk]} "
-                 f"(атака), {DUEL_ZONE_LABELS[default]} (защита).\nЖдём соперника…")
+        text += _LT("duel.round.picked", atk_emoji=DUEL_ZONE_EMOJI[atk],
+                    atk_label=DUEL_ZONE_LABELS[atk], def_label=DUEL_ZONE_LABELS[default])
         return text, InlineKeyboardMarkup(inline_keyboard=[_leave_row(duel['id'])])
-    text += "\n\nКуда бьёшь?"
+    text += _LT("duel.round.pick_atk")
     return text, _with_leave(_grid_kb(f"duel:atk:{duel['id']}"), duel['id'])
 
 
@@ -539,11 +514,10 @@ async def duel_choose_atk(callback: CallbackQuery):
     uid = callback.from_user.id
     duel = await get_duel(int(duel_id))
     if not duel or duel['status'] != 'active':
-        await _show(callback, "Дуэль уже завершена.")
+        await _show(callback, _LT("duel.ended"))
         return
     DUEL_PICK[uid] = zone
-    text = (f"🎯 Бьёшь в: {DUEL_ZONE_EMOJI[zone]} {DUEL_ZONE_LABELS[zone]}.\n"
-            f"Теперь выбери, что защищаешь:")
+    text = _LT("duel.pick.def_head", zone_emoji=DUEL_ZONE_EMOJI[zone], zone_label=DUEL_ZONE_LABELS[zone])
     await _show(callback, text,
                 _with_leave(_grid_kb(f"duel:def:{duel_id}:{zone}"), int(duel_id)))
 
@@ -556,7 +530,7 @@ async def duel_choose_def(callback: CallbackQuery):
     duel = await get_duel(int(duel_id))
     if not duel or duel['status'] != 'active' or uid not in (
             duel['challenger_id'], duel['opponent_id']):
-        await _show(callback, "Дуэль уже завершена.")
+        await _show(callback, _LT("duel.ended"))
         return
     DUEL_PICK.pop(uid, None)
     await set_duel_zone(int(duel_id), uid, atk, zone)
@@ -633,12 +607,12 @@ async def _resolve_round(callback: CallbackQuery, duel):
 
 def _strike_log(strike, zone_label) -> str:
     if strike.get('dodged'):
-        return f"🎯 Удар в {zone_label}: соперник уклонился"
-    line = f"🎯 Удар в {zone_label}: −{strike['damage']} HP"
+        return _LT("duel.strike.dodged", zone=zone_label)
+    line = _LT("duel.strike.hit", zone=zone_label, dmg=strike['damage'])
     if strike.get('guarded'):
-        line += " (парировано)"
+        line += _LT("duel.strike.guard")
     if strike.get('crit'):
-        line = "💥 КРИТ! " + line
+        line = _LT("duel.strike.crit") + line
     return line
 
 
@@ -651,9 +625,9 @@ def _round_log(duel, strike_ch, strike_op, as_challenger: bool) -> str:
         mine, theirs = strike_op, strike_ch
         my_zone = DUEL_ZONE_LABELS[duel['opponent_atk']]
         their_zone = DUEL_ZONE_LABELS[duel['challenger_atk']]
-    return (f"— Раунд {duel['turn']} —\n"
+    return (_LT("duel.round.num", turn=duel['turn']) + "\n"
             + _strike_log(mine, my_zone) + "\n"
-            + "🛡 " + _strike_log(theirs, their_zone))
+            + _LT("duel.round.theirs") + _strike_log(theirs, their_zone))
 
 
 async def _finish_battle(callback: CallbackQuery, duel, ch_hp: int, op_hp: int):
@@ -688,20 +662,20 @@ async def _finish_battle(callback: CallbackQuery, duel, ch_hp: int, op_hp: int):
     ch = await get_user(duel['challenger_id'])
     op = await get_user(duel['opponent_id'])
     if winner is None:
-        header = "🤝 НИЧЬЯ"
-        note = "Рейтинг не изменился."
+        header = _LT("duel.end.draw_head")
+        note = _LT("duel.end.no_change")
     else:
         wname = _pilot_name(ch if winner == duel['challenger_id'] else op)
-        header = "🏆 ПОБЕДА"
-        note = f"Победитель: {wname}. +{DUEL_RATING_WIN} / {DUEL_RATING_LOSS} рейтинга."
+        header = _LT("duel.end.win_head")
+        note = _LT("duel.end.winner", name=wname, win=DUEL_RATING_WIN, loss=DUEL_RATING_LOSS)
 
     def verdict(uid):
         if winner is None:
-            return "🤝 Ничья."
-        return "🏆 Ты победил!" if winner == uid else "💀 Ты проиграл."
+            return _LT("duel.end.draw")
+        return _LT("duel.end.won") if winner == uid else _LT("duel.end.lost")
 
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔁 В Дом Дуэлей", callback_data="duel:menu")]])
+        [InlineKeyboardButton(text=_LT("duel.btn.back_house_alt"), callback_data="duel:menu")]])
     await _push(callback, duel['challenger_id'],
                 f"{header}\n────────────────\n{verdict(duel['challenger_id'])}\n{note}", kb)
     await _push(callback, duel['opponent_id'],
