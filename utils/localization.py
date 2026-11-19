@@ -1292,6 +1292,91 @@ STRINGS = {
     },
     "dungeon.msg.enemy_gone": {"ru": "⚠️ Этого врага уже нет в текущей комнате.", "en": "⚠️ That enemy is no longer in this room."},
     "dungeon.msg.not_found_active": {"ru": "❌ Активное подземелье не найдено.", "en": "❌ No active dungeon found."},
+    # Подземелье: ход игрока, расходники и побег (bot/handlers/dungeon.py).
+    "dungeon.fight.enemy_armor": {"ru": "\n🛡️ Броня врага поглотила {n} урона!", "en": "\n🛡️ The enemy's armor absorbed {n} damage!"},
+    "dungeon.fight.hit": {"ru": "−{dmg} HP врагу{crit}{armor}\n", "en": "−{dmg} HP to the enemy{crit}{armor}\n"},
+    "dungeon.fight.regen": {"ru": "♻ Регенерация: +{healed} HP.\n", "en": "♻ Regeneration: +{healed} HP.\n"},
+    "dungeon.fight.attack_head": {
+        "ru": "{regen}🗡️ Ты атакуешь {enemy}!\n{attack}{bar}\n\n",
+        "en": "{regen}🗡️ You attack {enemy}!\n{attack}{bar}\n\n",
+    },
+    "dungeon.fight.regen_active": {
+        "ru": "\n♻ Регенерация активна: следующий тик +{tick} HP (осталось {left} х.).",
+        "en": "\n♻ Regeneration active: next tick +{tick} HP ({left} turns left).",
+    },
+    "dungeon.fight.death_line": {
+        "ru": "💀 Ты погиб! −{nm} Нордмарок штраф.\nСобранный лут потерян.",
+        "en": "💀 You died! −{nm} Nordmarks penalty.\nThe loot you carried is lost.",
+    },
+    "dungeon.block.stunned": {
+        "ru": "💫 Ты оглушён: тело не слушается. Расходники будут доступны, когда оглушение пройдёт.",
+        "en": "💫 You're stunned: your body won't obey. Consumables become available when it wears off.",
+    },
+    "dungeon.block.drunk": {
+        "ru": "🥴 Ты слишком пьян, чтобы что-то применять. Зелья и расходники станут доступны, когда «очень пьян» пройдёт (6 часов).",
+        "en": "🥴 You're too drunk to use anything. Potions and consumables become available once «very drunk» wears off (6 hours).",
+    },
+    "dungeon.block.digest": {
+        "ru": "🤢 Несварение: пищеварение на паузе. Расходники нельзя применять ещё сутки.",
+        "en": "🤢 Indigestion: digestion is on pause. You can't use consumables for another day.",
+    },
+    "dungeon.slot.empty": {"ru": "❌ Этот слот пуст.", "en": "❌ This slot is empty."},
+    "dungeon.smoke.wrong_slot": {
+        "ru": "❌ Дымовая шашка применяется только из своего слота «Дымовая шашка» (Инвентарь → Снаряжение).",
+        "en": "❌ A smoke bomb can only be used from its own «Smoke bomb» slot (Inventory → Gear).",
+    },
+    "dungeon.msg.no_enemy": {"ru": "❌ Врага не найдено.", "en": "❌ Enemy not found."},
+    "dungeon.smoke.boss": {"ru": "⚠️ От босса не убежать! Дымовая шашка не поможет.", "en": "⚠️ You can't run from a boss! A smoke bomb won't help."},
+    "dungeon.smoke.limit": {
+        "ru": "❌ За один забег в подземелье можно применить не больше {n} дымовых шашек.",
+        "en": "❌ You can use at most {n} smoke bombs per dungeon run.",
+    },
+    "dungeon.smoke.fail": {"ru": "❌ Не удалось списать шашку.", "en": "❌ Couldn't spend the smoke bomb."},
+    "dungeon.antidote.useless": {"ru": "Ты не отравлен, антидот бесполезен.", "en": "You're not poisoned — the antidote is useless."},
+    "dungeon.use.antidote": {"ru": "⚗️ {name} применён: отравление снято!\nПродолжай бой:", "en": "⚗️ {name} used: poison cured!\nKeep fighting:"},
+    "dungeon.use.fail": {"ru": "❌ Не удалось списать предмет.", "en": "❌ Couldn't spend the item."},
+    "dungeon.use.full_hp": {
+        "ru": "❤️ HP уже полное ({hp}/{hp_max}), зелье не нужно.\nПримени его в бою, когда потеряешь HP.",
+        "en": "❤️ HP is already full ({hp}/{hp_max}), no potion needed.\nUse it in a fight when you lose HP.",
+    },
+    "dungeon.use.frost_cured": {"ru": "\n🧊 Обморожение снято!", "en": "\n🧊 Frostbite cured!"},
+    "dungeon.use.eff": {
+        "ru": " (эффективность ×{mult}: {heal} HP вместо {base})",
+        "en": " (efficiency ×{mult}: {heal} HP instead of {base})",
+    },
+    "dungeon.use.frost_weak": {"ru": "\n🧊 Обморожение снизило лечение.", "en": "\n🧊 Frostbite reduced the healing."},
+    "dungeon.use.mastery_nl": {"ru": "\n✨ Мастерство усилило лечение (+{pct}%).", "en": "\n✨ Mastery boosted the healing (+{pct}%)."},
+    "dungeon.use.mastery_sp": {"ru": " ✨ Мастерство усилило лечение (+{pct}%).", "en": " ✨ Mastery boosted the healing (+{pct}%)."},
+    "dungeon.use.bless_nl": {"ru": "\n🌟 Благословение Севера усилило лечение (+{pct}%).", "en": "\n🌟 Blessing of the North boosted the healing (+{pct}%)."},
+    "dungeon.use.bless_sp": {"ru": " 🌟 Благословение Севера усилило лечение (+{pct}%).", "en": " 🌟 Blessing of the North boosted the healing (+{pct}%)."},
+    "dungeon.use.regen": {
+        "ru": "\n♻ Регенерация: следующие ходы +{ticks} HP (затухает).",
+        "en": "\n♻ Regeneration: next turns +{ticks} HP (fading).",
+    },
+    "dungeon.use.continue": {"ru": "\n\nПродолжай бой:", "en": "\n\nKeep fighting:"},
+    "dungeon.use.healed": {
+        "ru": "💊 {name} применено: +{heal} HP{eff}!\n❤️ {bar}{regen}\n{limit}\n\nПродолжай бой:",
+        "en": "💊 {name} used: +{heal} HP{eff}!\n❤️ {bar}{regen}\n{limit}\n\nKeep fighting:",
+    },
+    "dungeon.use.seed": {"ru": "\n\n🌱 Из яблока выпало семечко!", "en": "\n\n🌱 A seed fell out of the apple!"},
+    "dungeon.use.spoiled": {
+        "ru": "\n\n🤢 Ты съел испорченную рыбу — наступило несварение на сутки. Нельзя применять расходники.",
+        "en": "\n\n🤢 You ate spoiled fish — indigestion for a day. You can't use consumables.",
+    },
+    "dungeon.use.dodge": {
+        "ru": "\n🪁 Уворот +{pct}% на сутки! (повторное применение баф не продлевает)",
+        "en": "\n🪁 Dodge +{pct}% for a day! (using it again doesn't extend the buff)",
+    },
+    "dungeon.use.dodge_active": {
+        "ru": "\n🪁 Баф уворота +{pct}% уже активен — не продлевается.",
+        "en": "\n🪁 The +{pct}% dodge buff is already active — it doesn't extend.",
+    },
+    "dungeon.use.not_in_fight": {"ru": "❌ Этот предмет нельзя использовать в бою.", "en": "❌ This item can't be used in a fight."},
+    "dungeon.escape.smoke": {
+        "ru": "💨 Ты взрываешь дымовую шашку — едкий дым застилает комнату!\n🏃 Пока враг мечется в пелене дыма, ты успешно убежал от {name}!\n",
+        "en": "💨 You set off a smoke bomb — acrid smoke fills the room!\n🏃 While the enemy thrashes in the haze, you escape {name}!\n",
+    },
+    "dungeon.escape.run": {"ru": "🏃 Ты успешно убежал от {name}!\n", "en": "🏃 You escaped {name}!\n"},
     "forest.mush.found": {
         "ru": "{head}\n\n{kind} Ты нашёл: «{name}»!\n\n🎒 Гриб положен в инвентарь.{heal_line}{sell_line}",
         "en": "{head}\n\n{kind} You found: «{name}»!\n\n🎒 The mushroom is in your inventory.{heal_line}{sell_line}",

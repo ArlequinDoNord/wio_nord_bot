@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=811034058be8f33a seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=4007780d78947b03 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **803** (ru + en).
+Всего строк: **839** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -1309,13 +1309,37 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   > 🏆 ARENA RANKING
 
-#### подземелье · `dungeon.` (49)
+#### подземелье · `dungeon.` (85)
 
 ### UI-dungeon.alert.stale_fight
 - RU:
   > ⚠️ Это устаревшая кнопка. Используй кнопки из последнего сообщения боя.
 - EN:
   > ⚠️ This button is out of date. Use the buttons from the last fight message.
+
+### UI-dungeon.antidote.useless
+- RU:
+  > Ты не отравлен, антидот бесполезен.
+- EN:
+  > You're not poisoned — the antidote is useless.
+
+### UI-dungeon.block.digest
+- RU:
+  > 🤢 Несварение: пищеварение на паузе. Расходники нельзя применять ещё сутки.
+- EN:
+  > 🤢 Indigestion: digestion is on pause. You can't use consumables for another day.
+
+### UI-dungeon.block.drunk
+- RU:
+  > 🥴 Ты слишком пьян, чтобы что-то применять. Зелья и расходники станут доступны, когда «очень пьян» пройдёт (6 часов).
+- EN:
+  > 🥴 You're too drunk to use anything. Potions and consumables become available once «very drunk» wears off (6 hours).
+
+### UI-dungeon.block.stunned
+- RU:
+  > 💫 Ты оглушён: тело не слушается. Расходники будут доступны, когда оглушение пройдёт.
+- EN:
+  > 💫 You're stunned: your body won't obey. Consumables become available when it wears off.
 
 ### UI-dungeon.board.btn
 - RU:
@@ -1501,6 +1525,20 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   >
   > You enter the dungeon...
 
+### UI-dungeon.escape.run
+- RU:
+  > 🏃 Ты успешно убежал от {name}!
+- EN:
+  > 🏃 You escaped {name}!
+
+### UI-dungeon.escape.smoke
+- RU:
+  > 💨 Ты взрываешь дымовую шашку — едкий дым застилает комнату!
+  > 🏃 Пока враг мечется в пелене дыма, ты успешно убежал от {name}!
+- EN:
+  > 💨 You set off a smoke bomb — acrid smoke fills the room!
+  > 🏃 While the enemy thrashes in the haze, you escape {name}!
+
 ### UI-dungeon.exit.boss
 - RU:
   > ⚠️ Идёт бой с боссом! Убежать нельзя — это решающий бой.
@@ -1552,6 +1590,52 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   > ✅ Да, выйти
 - EN:
   > ✅ Yes, leave
+
+### UI-dungeon.fight.attack_head
+- RU:
+  > {regen}🗡️ Ты атакуешь {enemy}!
+  > {attack}{bar}
+  >
+- EN:
+  > {regen}🗡️ You attack {enemy}!
+  > {attack}{bar}
+  >
+
+### UI-dungeon.fight.death_line
+- RU:
+  > 💀 Ты погиб! −{nm} Нордмарок штраф.
+  > Собранный лут потерян.
+- EN:
+  > 💀 You died! −{nm} Nordmarks penalty.
+  > The loot you carried is lost.
+
+### UI-dungeon.fight.enemy_armor
+- RU:
+  >
+  > 🛡️ Броня врага поглотила {n} урона!
+- EN:
+  >
+  > 🛡️ The enemy's armor absorbed {n} damage!
+
+### UI-dungeon.fight.hit
+- RU:
+  > −{dmg} HP врагу{crit}{armor}
+- EN:
+  > −{dmg} HP to the enemy{crit}{armor}
+
+### UI-dungeon.fight.regen
+- RU:
+  > ♻ Регенерация: +{healed} HP.
+- EN:
+  > ♻ Regeneration: +{healed} HP.
+
+### UI-dungeon.fight.regen_active
+- RU:
+  >
+  > ♻ Регенерация активна: следующий тик +{tick} HP (осталось {left} х.).
+- EN:
+  >
+  > ♻ Regeneration active: next tick +{tick} HP ({left} turns left).
 
 ### UI-dungeon.msg.ap_fail
 - RU:
@@ -1616,6 +1700,12 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   > ❌ Контрактов пока нет.
 - EN:
   > ❌ No contracts yet.
+
+### UI-dungeon.msg.no_enemy
+- RU:
+  > ❌ Врага не найдено.
+- EN:
+  > ❌ Enemy not found.
 
 ### UI-dungeon.msg.not_found
 - RU:
@@ -1715,6 +1805,12 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   > ⚗️ Antidote{suffix}
 
+### UI-dungeon.slot.empty
+- RU:
+  > ❌ Этот слот пуст.
+- EN:
+  > ❌ This slot is empty.
+
 ### UI-dungeon.slot.frost
 - RU:
   > 🧊 {name}{suffix}
@@ -1738,6 +1834,176 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   > 💨 Дымовая шашка{suffix}
 - EN:
   > 💨 Smoke bomb{suffix}
+
+### UI-dungeon.smoke.boss
+- RU:
+  > ⚠️ От босса не убежать! Дымовая шашка не поможет.
+- EN:
+  > ⚠️ You can't run from a boss! A smoke bomb won't help.
+
+### UI-dungeon.smoke.fail
+- RU:
+  > ❌ Не удалось списать шашку.
+- EN:
+  > ❌ Couldn't spend the smoke bomb.
+
+### UI-dungeon.smoke.limit
+- RU:
+  > ❌ За один забег в подземелье можно применить не больше {n} дымовых шашек.
+- EN:
+  > ❌ You can use at most {n} smoke bombs per dungeon run.
+
+### UI-dungeon.smoke.wrong_slot
+- RU:
+  > ❌ Дымовая шашка применяется только из своего слота «Дымовая шашка» (Инвентарь → Снаряжение).
+- EN:
+  > ❌ A smoke bomb can only be used from its own «Smoke bomb» slot (Inventory → Gear).
+
+### UI-dungeon.use.antidote
+- RU:
+  > ⚗️ {name} применён: отравление снято!
+  > Продолжай бой:
+- EN:
+  > ⚗️ {name} used: poison cured!
+  > Keep fighting:
+
+### UI-dungeon.use.bless_nl
+- RU:
+  >
+  > 🌟 Благословение Севера усилило лечение (+{pct}%).
+- EN:
+  >
+  > 🌟 Blessing of the North boosted the healing (+{pct}%).
+
+### UI-dungeon.use.bless_sp
+- RU:
+  >  🌟 Благословение Севера усилило лечение (+{pct}%).
+- EN:
+  >  🌟 Blessing of the North boosted the healing (+{pct}%).
+
+### UI-dungeon.use.continue
+- RU:
+  >
+  >
+  > Продолжай бой:
+- EN:
+  >
+  >
+  > Keep fighting:
+
+### UI-dungeon.use.dodge
+- RU:
+  >
+  > 🪁 Уворот +{pct}% на сутки! (повторное применение баф не продлевает)
+- EN:
+  >
+  > 🪁 Dodge +{pct}% for a day! (using it again doesn't extend the buff)
+
+### UI-dungeon.use.dodge_active
+- RU:
+  >
+  > 🪁 Баф уворота +{pct}% уже активен — не продлевается.
+- EN:
+  >
+  > 🪁 The +{pct}% dodge buff is already active — it doesn't extend.
+
+### UI-dungeon.use.eff
+- RU:
+  >  (эффективность ×{mult}: {heal} HP вместо {base})
+- EN:
+  >  (efficiency ×{mult}: {heal} HP instead of {base})
+
+### UI-dungeon.use.fail
+- RU:
+  > ❌ Не удалось списать предмет.
+- EN:
+  > ❌ Couldn't spend the item.
+
+### UI-dungeon.use.frost_cured
+- RU:
+  >
+  > 🧊 Обморожение снято!
+- EN:
+  >
+  > 🧊 Frostbite cured!
+
+### UI-dungeon.use.frost_weak
+- RU:
+  >
+  > 🧊 Обморожение снизило лечение.
+- EN:
+  >
+  > 🧊 Frostbite reduced the healing.
+
+### UI-dungeon.use.full_hp
+- RU:
+  > ❤️ HP уже полное ({hp}/{hp_max}), зелье не нужно.
+  > Примени его в бою, когда потеряешь HP.
+- EN:
+  > ❤️ HP is already full ({hp}/{hp_max}), no potion needed.
+  > Use it in a fight when you lose HP.
+
+### UI-dungeon.use.healed
+- RU:
+  > 💊 {name} применено: +{heal} HP{eff}!
+  > ❤️ {bar}{regen}
+  > {limit}
+  >
+  > Продолжай бой:
+- EN:
+  > 💊 {name} used: +{heal} HP{eff}!
+  > ❤️ {bar}{regen}
+  > {limit}
+  >
+  > Keep fighting:
+
+### UI-dungeon.use.mastery_nl
+- RU:
+  >
+  > ✨ Мастерство усилило лечение (+{pct}%).
+- EN:
+  >
+  > ✨ Mastery boosted the healing (+{pct}%).
+
+### UI-dungeon.use.mastery_sp
+- RU:
+  >  ✨ Мастерство усилило лечение (+{pct}%).
+- EN:
+  >  ✨ Mastery boosted the healing (+{pct}%).
+
+### UI-dungeon.use.not_in_fight
+- RU:
+  > ❌ Этот предмет нельзя использовать в бою.
+- EN:
+  > ❌ This item can't be used in a fight.
+
+### UI-dungeon.use.regen
+- RU:
+  >
+  > ♻ Регенерация: следующие ходы +{ticks} HP (затухает).
+- EN:
+  >
+  > ♻ Regeneration: next turns +{ticks} HP (fading).
+
+### UI-dungeon.use.seed
+- RU:
+  >
+  >
+  > 🌱 Из яблока выпало семечко!
+- EN:
+  >
+  >
+  > 🌱 A seed fell out of the apple!
+
+### UI-dungeon.use.spoiled
+- RU:
+  >
+  >
+  > 🤢 Ты съел испорченную рыбу — наступило несварение на сутки. Нельзя применять расходники.
+- EN:
+  >
+  >
+  > 🤢 You ate spoiled fish — indigestion for a day. You can't use consumables.
 
 #### fine · `fine.` (5)
 
@@ -8538,7 +8804,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4378** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4341** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -13424,7 +13690,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 - Покинул дуэль #{…} (раунд {…})
 
-#### `bot/handlers/dungeon.py` (124)
+#### `bot/handlers/dungeon.py` (87)
 
 ##### `(модуль)`
 
@@ -13450,12 +13716,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   ❤️ {…}
   
   Ты продолжаешь бой с {…}.
-- 🏃 Ты успешно убежал от {…}!
-- 💀 Ты погиб! −{nm_penalty} Нордмарок штраф.
-  Собранный лут потерян.
 - 💨 Дымовая шашка потрачена впустую.
-- 💨 Ты взрываешь дымовую шашку — едкий дым застилает комнату!
-  🏃 Пока враг мечется в пелене дыма, ты успешно убежал от {…}!
 - 🥴 Ты едва держишься на ногах, но удача не покинула тебя!
 - 🥴 Шатаясь, ты совсем теряешь координацию!
 
@@ -13482,9 +13743,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 ##### `battle_state_block_message`
 
 - очень пьян
-- 💫 Ты оглушён: тело не слушается. Расходники будут доступны, когда оглушение пройдёт.
-- 🤢 Несварение: пищеварение на паузе. Расходники нельзя применять ещё сутки.
-- 🥴 Ты слишком пьян, чтобы что-то применять. Зелья и расходники станут доступны, когда «очень пьян» пройдёт (6 часов).
 
 ##### `contract_enter_confirm`
 
@@ -13495,24 +13753,13 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 ##### `dungeon_attack`
 
 - (−{dot_dmg} HP за ход)
-- {regen_line}🗡️ Ты атакуешь {…}!
-  {attack_line}{enemy_bar}
 - Погиб в подземелье от «{…}»
 - Штраф за смерть в подземелье
 - данж: устаревшая кнопка атаки
-- −{damage_to_enemy} HP врагу{crit_mark}{enemy_armor_line}
-- ♻ Регенерация активна: следующий тик +{…} HP (осталось {…} х.).
-- ♻ Регенерация: +{regen_healed} HP.
 - 💀 {…} пал от {label} твоего оружия (−{edmg} HP)!
-- 💀 Ты погиб! −{nm_penalty} Нордмарок штраф.
-  Собранный лут потерян.
-- 🛡️ Броня врага поглотила {…} урона!
 
 ##### `dungeon_attack.dot_death`
 
-- {line}
-  💀 Ты погиб! −{nm_penalty} Нордмарок штраф.
-  Собранный лут потерян.
 - Штраф за смерть в подземелье
 
 ##### `dungeon_continue`
@@ -13540,44 +13787,14 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ##### `dungeon_use_slot`
 
-- (эффективность ×{mult}: {heal} HP вместо {…})
-- HP (затухает).
 - В бою: «{…}»
 - В бою: дымовая шашка (попытка побега)
 - Испорченн
-- Продолжай бой:
-- Ты не отравлен, антидот бесполезен.
 - Яблоко
 - Яблочное семечко
 - данж: устаревшая кнопка слота
 - несварение
 - съедена испорченная рыба
-- ♻ Регенерация: следующие ходы +
-- ⚗️ {…} применён: отравление снято!
-  Продолжай бой:
-- ⚠️ От босса не убежать! Дымовая шашка не поможет.
-- ✨ Мастерство усилило лечение (+{ach_heal_pct}%).
-- ❌ Врага не найдено.
-- ❌ Дымовая шашка применяется только из своего слота «Дымовая шашка» (Инвентарь → Снаряжение).
-- ❌ За один забег в подземелье можно применить не больше {DUNGEON_SMOKE_MAX} дымовых шашек.
-- ❌ Не удалось списать предмет.
-- ❌ Не удалось списать шашку.
-- ❌ Этот предмет нельзя использовать в бою.
-- ❌ Этот слот пуст.
-- ❤️ HP уже полное ({…}/{…}), зелье не нужно.
-  Примени его в бою, когда потеряешь HP.
-- 🌟 Благословение Севера усилило лечение (+{state_heal_pct}%).
-- 🌱 Из яблока выпало семечко!
-- 💊 {…} применено: +{heal} HP{eff}!
-  ❤️ {…}{regen_note}
-  {…}
-  
-  Продолжай бой:
-- 🤢 Ты съел испорченную рыбу — наступило несварение на сутки. Нельзя применять расходники.
-- 🧊 Обморожение снизило лечение.
-- 🧊 Обморожение снято!
-- 🪁 Баф уворота +{dbuff}% уже активен — не продлевается.
-- 🪁 Уворот +{dbuff}% на сутки! (повторное применение баф не продлевает)
 
 ##### `heal_limit_note`
 

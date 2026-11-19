@@ -1356,7 +1356,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     async def dot_death(line):
         nm_penalty = max(5, enemy['reward_nm'] * 2)
         await remove_nordmarks(user_id, nm_penalty, "dungeon_death", "Штраф за смерть в подземелье")
-        text = f"{line}\n💀 Ты погиб! −{nm_penalty} Нордмарок штраф.\nСобранный лут потерян."
+        text = f"{line}\n" + _LT("dungeon.fight.death_line", nm=nm_penalty)
         await end_run(run['id'], 0)
         await state.clear()
         await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
@@ -1412,7 +1412,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     if dungeon_dmg_pct and damage_to_enemy > 0:
         damage_to_enemy = max(1, round(damage_to_enemy * (100 + dungeon_dmg_pct) / 100))
     enemy_dodged = res['dodged']
-    enemy_armor_line = (f"\n🛡️ Броня врага поглотила {res['armor_blocked']} урона!"
+    enemy_armor_line = (_LT("dungeon.fight.enemy_armor", n=res['armor_blocked'])
                         if res['armor_blocked'] else "")
 
     current_enemy_hp = max(0, current_enemy_hp - damage_to_enemy)
@@ -1430,13 +1430,10 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         attack_line = _tt("battle.enemy_dodged", enemy=enemy['name'])
     else:
         crit_mark = _tt("battle.crit_mark") if res['crit'] else ""
-        attack_line = f"−{damage_to_enemy} HP врагу{crit_mark}{enemy_armor_line}\n"
-    regen_line = f"♻ Регенерация: +{regen_healed} HP.\n" if regen_healed else ""
-    text = (
-        f"{regen_line}🗡️ Ты атакуешь {enemy['name']}!\n"
-        f"{attack_line}"
-        f"{enemy_bar}\n\n"
-    )
+        attack_line = _LT("dungeon.fight.hit", dmg=damage_to_enemy, crit=crit_mark, armor=enemy_armor_line)
+    regen_line = _LT("dungeon.fight.regen", healed=regen_healed) if regen_healed else ""
+    text = _LT("dungeon.fight.attack_head", regen=regen_line, enemy=enemy['name'],
+               attack=attack_line, bar=enemy_bar)
 
     # Особый эффект оружия: при попадании есть шанс наложить DoT/оглушение на врага.
     weapon = await get_equipped_weapon(user_id)
@@ -1564,7 +1561,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         status_text = f"\n{cur_status}"
     if data_after.get('regen_amounts'):
         rq = list(data_after['regen_amounts'])
-        status_text += f"\n♻ Регенерация активна: следующий тик +{rq[0]} HP (осталось {len(rq)} х.)."
+        status_text += _LT("dungeon.fight.regen_active", tick=rq[0], left=len(rq))
     text += proc_text + round_note + status_text
     # Текущий эффект оружия на враге (пока сам не спал).
     from utils.localization import t as _t
@@ -1582,7 +1579,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     if player_hp <= 0:
         nm_penalty = max(5, enemy['reward_nm'] * 2)
         await remove_nordmarks(user_id, nm_penalty, "dungeon_death", "Штраф за смерть в подземелье")
-        text += f"\n\n💀 Ты погиб! −{nm_penalty} Нордмарок штраф.\nСобранный лут потерян."
+        text += "\n\n" + _LT("dungeon.fight.death_line", nm=nm_penalty)
         await end_run(run['id'], 0)
         await state.clear()
         onhit.unregister(user_id)
@@ -1607,17 +1604,14 @@ async def battle_state_block_message(user_id: int):
     """
     from utils.states import get_state_info, consumables_blocked
     if onhit.consumables_blocked_by_battle(user_id):
-        return ("💫 Ты оглушён: тело не слушается. Расходники будут доступны, "
-                "когда оглушение пройдёт.")
+        return _LT("dungeon.block.stunned")
     info = await get_state_info(user_id)
     blocked = consumables_blocked(info.get('names') or [])
     if not blocked:
         return None
     if "очень пьян" in blocked:
-        return ("🥴 Ты слишком пьян, чтобы что-то применять. "
-                "Зелья и расходники станут доступны, когда «очень пьян» пройдёт (6 часов).")
-    return ("🤢 Несварение: пищеварение на паузе. "
-            "Расходники нельзя применять ещё сутки.")
+        return _LT("dungeon.block.drunk")
+    return _LT("dungeon.block.digest")
 
 
 @router.callback_query(F.data.startswith("dungeon:use_slot:"))
@@ -1648,7 +1642,7 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
             item = row
             break
     if not item:
-        await callback.message.answer("❌ Этот слот пуст.")
+        await callback.message.answer(_LT("dungeon.slot.empty"))
         return
 
     # Состояния «несварение»/«очень пьян» блокируют расходники (еда/питьё) и в бою,
@@ -1676,23 +1670,20 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
     if item['name'] == SMOKE_ITEM_NAME:
         if slot != 'smoke':
             await callback.message.answer(
-                "❌ Дымовая шашка применяется только из своего слота «Дымовая шашка» "
-                "(Инвентарь → Снаряжение).")
+                _LT("dungeon.smoke.wrong_slot"))
             return
         if not enemy_row:
-            await callback.message.answer("❌ Врага не найдено.")
+            await callback.message.answer(_LT("dungeon.msg.no_enemy"))
             return
         if is_boss:
-            await callback.message.answer("⚠️ От босса не убежать! Дымовая шашка не поможет.")
+            await callback.message.answer(_LT("dungeon.smoke.boss"))
             return
         if smoke_uses >= DUNGEON_SMOKE_MAX:
-            await callback.message.answer(
-                f"❌ За один забег в подземелье можно применить не больше {DUNGEON_SMOKE_MAX} дымовых шашек."
-            )
+            await callback.message.answer(_LT("dungeon.smoke.limit", n=DUNGEON_SMOKE_MAX))
             return
         ok = await remove_inventory_item(user_id, item['id'], 1)
         if not ok:
-            await callback.message.answer("❌ Не удалось списать шашку.")
+            await callback.message.answer(_LT("dungeon.smoke.fail"))
             return
         await log_activity(user_id, "item_use", "В бою: дымовая шашка (попытка побега)")
         inv_after_sm = await get_inventory_item(user_id, item['id'])
@@ -1703,21 +1694,20 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         return
 
     if item['cure_poison'] and not onhit.has_dot(data, 'poison'):
-        await callback.message.answer("Ты не отравлен, антидот бесполезен.")
+        await callback.message.answer(_LT("dungeon.antidote.useless"))
         return
 
     from utils.helpers import row_get
     is_drink = bool(row_get(item, 'drink_effect'))
     if item['heal'] > 0 and run['hp'] >= run['hp_max'] and not is_drink:
         await callback.message.answer(
-            f"❤️ HP уже полное ({run['hp']}/{run['hp_max']}), зелье не нужно.\n"
-            f"Примени его в бою, когда потеряешь HP."
+            _LT("dungeon.use.full_hp", hp=run['hp'], hp_max=run['hp_max'])
         )
         return
 
     ok = await remove_inventory_item(user_id, item['id'], 1)
     if not ok:
-        await callback.message.answer("❌ Не удалось списать предмет.")
+        await callback.message.answer(_LT("dungeon.use.fail"))
         return
 
     # Предмет кончился — очищаем слот, чтобы он не остался «призрачным»
@@ -1733,10 +1723,7 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         _oh.pop('poison', None)
         await state.update_data(on_hit=_oh)
         await bump_achievement(user_id, "antidote", 1)
-        text = (
-            f"⚗️ {item['name']} применён: отравление снято!\n"
-            f"Продолжай бой:"
-        )
+        text = _LT("dungeon.use.antidote", name=item['name'])
 
     # Напиток: (+10 HP отдельным путём, +effect на состояние).
     elif is_drink:
@@ -1750,7 +1737,7 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
             _oh = dict(data.get('on_hit') or {})
             _oh.pop('frostbite', None)
             await state.update_data(on_hit=_oh)
-            frost_note = "\n🧊 Обморожение снято!"
+            frost_note = _LT("dungeon.use.frost_cured")
         if item['heal'] > 0:
             heal_uses = int(data.get('dungeon_heal_uses', 0) or 0) + 1
             await state.update_data(dungeon_heal_uses=heal_uses)
@@ -1772,21 +1759,20 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
             await update_run_hp(run['id'], new_hp)
             hp_note = f"\n❤️ {_hp_bar(new_hp, run['hp_max'])}"
             if mult < 1.0:
-                hp_note += f" (эффективность ×{mult:.0%}: {heal} HP вместо {item['heal']})"
+                hp_note += _LT("dungeon.use.eff", mult=f"{mult:.0%}", heal=heal, base=item['heal'])
             if frozen:
-                hp_note += "\n🧊 Обморожение снизило лечение."
+                hp_note += _LT("dungeon.use.frost_weak")
             if ach_heal_pct > 0:
-                hp_note += f"\n✨ Мастерство усилило лечение (+{ach_heal_pct}%)."
+                hp_note += _LT("dungeon.use.mastery_nl", pct=ach_heal_pct)
             if state_heal_pct > 0:
-                hp_note += f"\n🌟 Благословение Севера усилило лечение (+{state_heal_pct}%)."
+                hp_note += _LT("dungeon.use.bless_nl", pct=state_heal_pct)
             rpct = int(row_get(item, 'regen') or 0)
             if rpct > 0:
                 rturns = int(row_get(item, 'regen_turns') or 0) or REGEN_TURNS
                 amounts = regen_amounts(heal, rpct, turns=rturns)
                 await state.update_data(regen_amounts=amounts)
-                regen_note = ("\n♻ Регенерация: следующие ходы +"
-                              + "/".join(map(str, amounts)) + " HP (затухает).")
-        text = _msg + frost_note + hp_note + regen_note + heal_limit_note(int(data.get('dungeon_heal_uses', 0) or 0)) + "\n\nПродолжай бой:"
+                regen_note = _LT("dungeon.use.regen", ticks="/".join(map(str, amounts)))
+        text = _msg + frost_note + hp_note + regen_note + heal_limit_note(int(data.get('dungeon_heal_uses', 0) or 0)) + _LT("dungeon.use.continue")
 
     # Зелья лечения / яблоко / испорченная рыба.
     elif item['heal'] > 0:
@@ -1810,42 +1796,36 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         await update_run_hp(run['id'], new_hp)
         eff = ""
         if mult < 1.0:
-            eff = f" (эффективность ×{mult:.0%}: {heal} HP вместо {item['heal']})"
+            eff = _LT("dungeon.use.eff", mult=f"{mult:.0%}", heal=heal, base=item['heal'])
         if frozen:
-            eff += "\n🧊 Обморожение снизило лечение."
+            eff += _LT("dungeon.use.frost_weak")
         if ach_heal_pct > 0:
-            eff += f" ✨ Мастерство усилило лечение (+{ach_heal_pct}%)."
+            eff += _LT("dungeon.use.mastery_sp", pct=ach_heal_pct)
         if state_heal_pct > 0:
-            eff += f" 🌟 Благословение Севера усилило лечение (+{state_heal_pct}%)."
+            eff += _LT("dungeon.use.bless_sp", pct=state_heal_pct)
         regen_note = ""
         rpct = int(row_get(item, 'regen') or 0)
         if rpct > 0:
             rturns = int(row_get(item, 'regen_turns') or 0) or REGEN_TURNS
             amounts = regen_amounts(heal, rpct, turns=rturns)
             await state.update_data(regen_amounts=amounts)
-            regen_note = ("\n♻ Регенерация: следующие ходы +"
-                          + "/".join(map(str, amounts)) + " HP (затухает).")
-        text = (
-            f"💊 {item['name']} применено: +{heal} HP{eff}!\n"
-            f"❤️ {_hp_bar(new_hp, run['hp_max'])}"
-            f"{regen_note}"
-            f"\n{heal_limit_note(heal_uses)}"
-            f"\n\nПродолжай бой:"
-        )
+            regen_note = _LT("dungeon.use.regen", ticks="/".join(map(str, amounts)))
+        text = _LT("dungeon.use.healed", name=item['name'], heal=heal, eff=eff,
+                   bar=_hp_bar(new_hp, run['hp_max']), regen=regen_note,
+                   limit=heal_limit_note(heal_uses))
 
         # Яблоко: иногда из него выпадает семечко (10%)
         if item['name'] == "Яблоко" and random.random() < 0.1:
             seed = await get_item_by_name("Яблочное семечко")
             if seed:
                 await add_inventory_item(user_id, seed['id'], 1)
-                text += "\n\n🌱 Из яблока выпало семечко!"
+                text += _LT("dungeon.use.seed")
         # Испорченная рыба: несварение на сутки
         if item['name'].startswith("Испорченн"):
             from utils.states import apply_state_to
             await apply_state_to(user_id, "несварение", caused_by=user_id,
                                  reason="съедена испорченная рыба")
-            text += ("\n\n🤢 Ты съел испорченную рыбу — наступило несварение на сутки. "
-                     "Нельзя применять расходники.")
+            text += _LT("dungeon.use.spoiled")
 
         # Суточный баф уворота (items.dodge_buff_pct, v0.41.4 «Предания предков»):
         # активируется первым применением, повторное в течение суток НЕ продлевает.
@@ -1853,13 +1833,12 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
         if dbuff > 0:
             from database.db import activate_dodge_buff, dodge_buff_active
             if await activate_dodge_buff(user_id, dbuff):
-                text += (f"\n🪁 Уворот +{dbuff}% на сутки! "
-                         f"(повторное применение баф не продлевает)")
+                text += _LT("dungeon.use.dodge", pct=dbuff)
             elif await dodge_buff_active(user_id):
-                text += f"\n🪁 Баф уворота +{dbuff}% уже активен — не продлевается."
+                text += _LT("dungeon.use.dodge_active", pct=dbuff)
     else:
         await add_inventory_item(user_id, item['id'], 1)
-        await callback.message.answer("❌ Этот предмет нельзя использовать в бою.")
+        await callback.message.answer(_LT("dungeon.use.not_in_fight"))
         return
 
     next_step = await dungeon_new_step(state)
@@ -1891,16 +1870,9 @@ async def _do_dungeon_escape(where, state, user_id: int, run, enemy,
         await clear_dungeon_regen(state)
         next_step = await dungeon_new_step(state)
         if smoke_used:
-            text = (
-                f"💨 Ты взрываешь дымовую шашку — едкий дым застилает комнату!\n"
-                f"🏃 Пока враг мечется в пелене дыма, ты успешно убежал от {enemy['name']}!\n"
-                + _LT("dungeon.room.next_hint")
-            )
+            text = _LT("dungeon.escape.smoke", name=enemy['name']) + _LT("dungeon.room.next_hint")
         else:
-            text = (
-                f"🏃 Ты успешно убежал от {enemy['name']}!\n"
-                + _LT("dungeon.room.next_hint")
-            )
+            text = _LT("dungeon.escape.run", name=enemy['name']) + _LT("dungeon.room.next_hint")
         if drunk_escape:
             text = f"🥴 Ты едва держишься на ногах, но удача не покинула тебя!\n\n" + text
         await where.answer(text, reply_markup=dungeon_main_keyboard(next_step))
@@ -1924,7 +1896,7 @@ async def _do_dungeon_escape(where, state, user_id: int, run, enemy,
     if player_hp <= 0:
         nm_penalty = max(5, enemy['reward_nm'] * 2)
         await remove_nordmarks(user_id, nm_penalty, "dungeon_death", "Штраф за смерть в подземелье")
-        text += f"\n\n💀 Ты погиб! −{nm_penalty} Нордмарок штраф.\nСобранный лут потерян."
+        text += "\n\n" + _LT("dungeon.fight.death_line", nm=nm_penalty)
         await end_run(run['id'], 0)
         await state.clear()
         onhit.unregister(user_id)
