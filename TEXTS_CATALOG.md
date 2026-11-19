@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=4007780d78947b03 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=a35eac5c219dc2ef seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **839** (ru + en).
+Всего строк: **860** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -1309,13 +1309,19 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   > 🏆 ARENA RANKING
 
-#### подземелье · `dungeon.` (85)
+#### подземелье · `dungeon.` (104)
 
 ### UI-dungeon.alert.stale_fight
 - RU:
   > ⚠️ Это устаревшая кнопка. Используй кнопки из последнего сообщения боя.
 - EN:
   > ⚠️ This button is out of date. Use the buttons from the last fight message.
+
+### UI-dungeon.alert.stale_reopen
+- RU:
+  > ⚠️ Это устаревшая кнопка. Открой подземелье заново и продолжай с последнего сообщения.
+- EN:
+  > ⚠️ This button is out of date. Reopen the dungeon and continue from the last message.
 
 ### UI-dungeon.antidote.useless
 - RU:
@@ -1384,6 +1390,56 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   > … пусто.
 - EN:
   > … nothing.
+
+### UI-dungeon.boss.heal
+- RU:
+  > 💊 Лекарства: {uses} применений (×{mult})
+- EN:
+  > 💊 Medicine: {uses} uses (×{mult})
+
+### UI-dungeon.boss.no_escape
+- RU:
+  > ⚠️ От босса не убежать! Бой продолжается.
+- EN:
+  > ⚠️ You can't run from the boss! The fight goes on.
+
+### UI-dungeon.boss.not_found
+- RU:
+  > ❌ Босс не найден.
+- EN:
+  > ❌ Boss not found.
+
+### UI-dungeon.boss.screen
+- RU:
+  > 💀 {title}
+  > Этаж {floor} | БОСС
+  > ❤️ {hp}
+  > {status}💀 {boss} (HP: {bhp}, АТК: {atk}, УКЛ: {dodge}%)
+  >
+  > {desc}
+  >
+  > ⚠️ Это решающий бой! Убежать нельзя!
+- EN:
+  > 💀 {title}
+  > Floor {floor} | BOSS
+  > ❤️ {hp}
+  > {status}💀 {boss} (HP: {bhp}, ATK: {atk}, DODGE: {dodge}%)
+  >
+  > {desc}
+  >
+  > ⚠️ This is the decisive fight! You can't run!
+
+### UI-dungeon.boss.title_final
+- RU:
+  > КОМНАТА БОССА
+- EN:
+  > BOSS ROOM
+
+### UI-dungeon.boss.title_mid
+- RU:
+  > ПРОМЕЖУТОЧНЫЙ БОСС
+- EN:
+  > MIDBOSS
 
 ### UI-dungeon.boss.won
 - RU:
@@ -1487,6 +1543,12 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   >
   > Resources are spent at entry, even if you leave the dungeon.
 
+### UI-dungeon.dot.killed
+- RU:
+  > 💀 {name} пал от {label} твоего оружия (−{dmg} HP)!
+- EN:
+  > 💀 {name} fell to {label} from your weapon (−{dmg} HP)!
+
 ### UI-dungeon.enemy.down
 - RU:
   > 🏆 {name} повержен!
@@ -1525,6 +1587,36 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   >
   > You enter the dungeon...
 
+### UI-dungeon.escape.drunk_fall
+- RU:
+  > 🥴 Шатаясь, ты совсем теряешь координацию!
+  >
+- EN:
+  > 🥴 Staggering, you lose all coordination!
+  >
+
+### UI-dungeon.escape.drunk_luck
+- RU:
+  > 🥴 Ты едва держишься на ногах, но удача не покинула тебя!
+  >
+- EN:
+  > 🥴 You barely stay on your feet, but luck hasn't left you!
+  >
+
+### UI-dungeon.escape.fail
+- RU:
+  > ❌ Не удалось убежать!
+  > −{penalty} HP (штрафной удар)
+  > ❤️ {bar}
+  >
+  > Ты продолжаешь бой с {enemy}.
+- EN:
+  > ❌ The escape failed!
+  > −{penalty} HP (penalty hit)
+  > ❤️ {bar}
+  >
+  > You keep fighting {enemy}.
+
 ### UI-dungeon.escape.run
 - RU:
   > 🏃 Ты успешно убежал от {name}!
@@ -1538,6 +1630,24 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   > 💨 You set off a smoke bomb — acrid smoke fills the room!
   > 🏃 While the enemy thrashes in the haze, you escape {name}!
+
+### UI-dungeon.escape.smoke_wasted
+- RU:
+  >
+  > 💨 Дымовая шашка потрачена впустую.
+- EN:
+  >
+  > 💨 The smoke bomb was wasted.
+
+### UI-dungeon.exit.again
+- RU:
+  > {text}
+  >
+  > Войти снова?
+- EN:
+  > {text}
+  >
+  > Enter again?
 
 ### UI-dungeon.exit.boss
 - RU:
@@ -1566,6 +1676,30 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   > {loot}
   >
   > You won't be able to return to this run from this point.
+
+### UI-dungeon.exit.continue
+- RU:
+  > Продолжаем подземелье!
+- EN:
+  > Back to the dungeon!
+
+### UI-dungeon.exit.empty_leave
+- RU:
+  > Ты покидаешь подземелье ни с чем.
+- EN:
+  > You leave the dungeon empty-handed.
+
+### UI-dungeon.exit.leave
+- RU:
+  > 📦 Ты выносишь из подземелья:
+  > {loot}
+  >
+  > Ты покидаешь подземелье.
+- EN:
+  > 📦 You take out of the dungeon:
+  > {loot}
+  >
+  > You leave the dungeon.
 
 ### UI-dungeon.exit.nm
 - RU:
@@ -1636,6 +1770,22 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   >
   > ♻ Regeneration active: next tick +{tick} HP ({left} turns left).
+
+### UI-dungeon.heal.hard
+- RU:
+  >
+  > ⚠️ Лекарства почти не действуют: эффективность −1/2 (применено: {uses}).
+- EN:
+  >
+  > ⚠️ Medicine barely works: efficiency −1/2 (used: {uses}).
+
+### UI-dungeon.heal.soft
+- RU:
+  >
+  > ⚠️ Лекарства действуют хуже: эффективность −1/3 (применено: {uses}).
+- EN:
+  >
+  > ⚠️ Medicine works worse: efficiency −1/3 (used: {uses}).
 
 ### UI-dungeon.msg.ap_fail
 - RU:
@@ -1718,6 +1868,12 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   > ❌ Активное подземелье не найдено.
 - EN:
   > ❌ No active dungeon found.
+
+### UI-dungeon.resv.locked
+- RU:
+  > ⚠️ Водохранилище доступно только после победы над Крысиным капитаном.
+- EN:
+  > ⚠️ The reservoir opens only after defeating the Rat Captain.
 
 ### UI-dungeon.room.empty
 - RU:
@@ -4713,7 +4869,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   > ⛔ Tourists aren't allowed in the mine — entry is for Pilots 1st class only.
 
-#### mollusk · `mollusk.` (21)
+#### mollusk · `mollusk.` (23)
 
 ### UI-mollusk.alert.not_here
 - RU:
@@ -4726,6 +4882,18 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   > ⏳ Это окно устарело.
 - EN:
   > ⏳ This window is out of date.
+
+### UI-mollusk.btn.flee
+- RU:
+  > 🏃 Сбежать
+- EN:
+  > 🏃 Run away
+
+### UI-mollusk.btn.hit
+- RU:
+  > ⚔️ Ударить
+- EN:
+  > ⚔️ Strike
 
 ### UI-mollusk.counter.armor
 - RU:
@@ -8804,7 +8972,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4341** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4318** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -13690,7 +13858,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 - Покинул дуэль #{…} (раунд {…})
 
-#### `bot/handlers/dungeon.py` (87)
+#### `bot/handlers/dungeon.py` (64)
 
 ##### `(модуль)`
 
@@ -13711,14 +13879,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - Погиб при попытке побега в подземелье
 - Штраф за смерть в подземелье
 - очень пьян
-- ❌ Не удалось убежать!
-  −{penalty} HP (штрафной удар)
-  ❤️ {…}
-  
-  Ты продолжаешь бой с {…}.
-- 💨 Дымовая шашка потрачена впустую.
-- 🥴 Ты едва держишься на ногах, но удача не покинула тебя!
-- 🥴 Шатаясь, ты совсем теряешь координацию!
 
 ##### `_enemy_defeated`
 
@@ -13730,11 +13890,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 ##### `_mollusk_loot`
 
 - Добыча: {…}
-
-##### `_mollusk_markup`
-
-- ⚔️ Ударить
-- 🏃 Сбежать
 
 ##### `_mollusk_start`
 
@@ -13756,7 +13911,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - Погиб в подземелье от «{…}»
 - Штраф за смерть в подземелье
 - данж: устаревшая кнопка атаки
-- 💀 {…} пал от {label} твоего оружия (−{edmg} HP)!
 
 ##### `dungeon_attack.dot_death`
 
@@ -13765,25 +13919,15 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 ##### `dungeon_continue`
 
 - данж: устаревшая кнопка продолжения
-- ⚠️ Это устаревшая кнопка. Открой подземелье заново и продолжай с последнего сообщения.
 
 ##### `dungeon_escape`
 
 - данж: устаревшая кнопка побега
-- ⚠️ От босса не убежать! Бой продолжается.
-
-##### `dungeon_exit_cancel`
-
-- Продолжаем подземелье!
 
 ##### `dungeon_exit_confirm`
 
-- Войти снова?
 - Вынесено из подземелья
 - Покинул подземелье (досрочный выход)
-- Ты покидаешь подземелье ни с чем.
-- Ты покидаешь подземелье.
-- 📦 Ты выносишь из подземелья:
 
 ##### `dungeon_use_slot`
 
@@ -13796,11 +13940,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - несварение
 - съедена испорченная рыба
 
-##### `heal_limit_note`
-
-- ⚠️ Лекарства действуют хуже: эффективность −1/3 (применено: {uses}).
-- ⚠️ Лекарства почти не действуют: эффективность −1/2 (применено: {uses}).
-
 ##### `mollusk_flee`
 
 - Сбежал от моллюска
@@ -13809,7 +13948,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 - Победил: {name}
 - Проиграл моллюску (−{removed} ОД)
-- ♻ Регенерация: +{heal} HP.
 
 ##### `resv_bait_menu`
 
@@ -13840,7 +13978,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 - Зашёл в подземное водохранилище
 - данж: устаревшая кнопка водохранилища
-- ⚠️ Водохранилище доступно только после победы над Крысиным капитаном.
 
 ##### `resv_eq`
 
@@ -13861,21 +13998,6 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 ##### `resv_menu`
 
 - данж: устаревшая кнопка водохранилища
-
-##### `show_boss`
-
-- КОМНАТА БОССА
-- ПРОМЕЖУТОЧНЫЙ БОСС
-- ❌ Босс не найден.
-- 💀 {boss_name}
-  Этаж {…} | БОСС
-  ❤️ {hp_text}
-  {status_block}💀 {…} (HP: {…}, АТК: {…}, УКЛ: {…}%)
-  
-  {bdesc}
-  
-  ⚠️ Это решающий бой! Убежать нельзя!
-- 💊 Лекарства: {boss_heal_uses} применений (×{bmult})
 
 #### `bot/handlers/fire_event.py` (16)
 

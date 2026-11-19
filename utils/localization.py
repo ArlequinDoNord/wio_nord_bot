@@ -1377,6 +1377,59 @@ STRINGS = {
         "en": "💨 You set off a smoke bomb — acrid smoke fills the room!\n🏃 While the enemy thrashes in the haze, you escape {name}!\n",
     },
     "dungeon.escape.run": {"ru": "🏃 Ты успешно убежал от {name}!\n", "en": "🏃 You escaped {name}!\n"},
+    # Подземелье: босс, выход (bot/handlers/dungeon.py).
+    "dungeon.boss.no_escape": {"ru": "⚠️ От босса не убежать! Бой продолжается.", "en": "⚠️ You can't run from the boss! The fight goes on."},
+    "dungeon.boss.not_found": {"ru": "❌ Босс не найден.", "en": "❌ Boss not found."},
+    "dungeon.boss.heal": {"ru": "💊 Лекарства: {uses} применений (×{mult})", "en": "💊 Medicine: {uses} uses (×{mult})"},
+    "dungeon.boss.title_final": {"ru": "КОМНАТА БОССА", "en": "BOSS ROOM"},
+    "dungeon.boss.title_mid": {"ru": "ПРОМЕЖУТОЧНЫЙ БОСС", "en": "MIDBOSS"},
+    "dungeon.boss.screen": {
+        "ru": "💀 {title}\nЭтаж {floor} | БОСС\n❤️ {hp}\n{status}💀 {boss} (HP: {bhp}, АТК: {atk}, УКЛ: {dodge}%)\n\n{desc}\n\n⚠️ Это решающий бой! Убежать нельзя!",
+        "en": "💀 {title}\nFloor {floor} | BOSS\n❤️ {hp}\n{status}💀 {boss} (HP: {bhp}, ATK: {atk}, DODGE: {dodge}%)\n\n{desc}\n\n⚠️ This is the decisive fight! You can't run!",
+    },
+    "dungeon.resv.locked": {
+        "ru": "⚠️ Водохранилище доступно только после победы над Крысиным капитаном.",
+        "en": "⚠️ The reservoir opens only after defeating the Rat Captain.",
+    },
+    "dungeon.exit.leave": {
+        "ru": "📦 Ты выносишь из подземелья:\n{loot}\n\nТы покидаешь подземелье.",
+        "en": "📦 You take out of the dungeon:\n{loot}\n\nYou leave the dungeon.",
+    },
+    "dungeon.exit.empty_leave": {"ru": "Ты покидаешь подземелье ни с чем.", "en": "You leave the dungeon empty-handed."},
+    "dungeon.exit.again": {"ru": "{text}\n\nВойти снова?", "en": "{text}\n\nEnter again?"},
+    "dungeon.exit.continue": {"ru": "Продолжаем подземелье!", "en": "Back to the dungeon!"},
+    # Подземелье: остатки боя и побега, моллюск (bot/handlers/dungeon.py).
+    "dungeon.heal.hard": {
+        "ru": "\n⚠️ Лекарства почти не действуют: эффективность −1/2 (применено: {uses}).",
+        "en": "\n⚠️ Medicine barely works: efficiency −1/2 (used: {uses}).",
+    },
+    "dungeon.heal.soft": {
+        "ru": "\n⚠️ Лекарства действуют хуже: эффективность −1/3 (применено: {uses}).",
+        "en": "\n⚠️ Medicine works worse: efficiency −1/3 (used: {uses}).",
+    },
+    "dungeon.escape.drunk_luck": {
+        "ru": "🥴 Ты едва держишься на ногах, но удача не покинула тебя!\n\n",
+        "en": "🥴 You barely stay on your feet, but luck hasn't left you!\n\n",
+    },
+    "dungeon.escape.fail": {
+        "ru": "❌ Не удалось убежать!\n−{penalty} HP (штрафной удар)\n❤️ {bar}\n\nТы продолжаешь бой с {enemy}.",
+        "en": "❌ The escape failed!\n−{penalty} HP (penalty hit)\n❤️ {bar}\n\nYou keep fighting {enemy}.",
+    },
+    "dungeon.escape.smoke_wasted": {"ru": "\n💨 Дымовая шашка потрачена впустую.", "en": "\n💨 The smoke bomb was wasted."},
+    "dungeon.escape.drunk_fall": {
+        "ru": "🥴 Шатаясь, ты совсем теряешь координацию!\n\n",
+        "en": "🥴 Staggering, you lose all coordination!\n\n",
+    },
+    "dungeon.alert.stale_reopen": {
+        "ru": "⚠️ Это устаревшая кнопка. Открой подземелье заново и продолжай с последнего сообщения.",
+        "en": "⚠️ This button is out of date. Reopen the dungeon and continue from the last message.",
+    },
+    "dungeon.dot.killed": {
+        "ru": "💀 {name} пал от {label} твоего оружия (−{dmg} HP)!",
+        "en": "💀 {name} fell to {label} from your weapon (−{dmg} HP)!",
+    },
+    "mollusk.btn.hit": {"ru": "⚔️ Ударить", "en": "⚔️ Strike"},
+    "mollusk.btn.flee": {"ru": "🏃 Сбежать", "en": "🏃 Run away"},
     "forest.mush.found": {
         "ru": "{head}\n\n{kind} Ты нашёл: «{name}»!\n\n🎒 Гриб положен в инвентарь.{heal_line}{sell_line}",
         "en": "{head}\n\n{kind} You found: «{name}»!\n\n🎒 The mushroom is in your inventory.{heal_line}{sell_line}",

@@ -79,9 +79,9 @@ def heal_limit_mult(uses: int) -> float:
 
 def heal_limit_note(uses: int) -> str:
     if uses >= DUNGEON_HEAL_HARD_LIMIT:
-        return f"\n⚠️ Лекарства почти не действуют: эффективность −1/2 (применено: {uses})."
+        return _LT("dungeon.heal.hard", uses=uses)
     if uses >= DUNGEON_HEAL_SOFT_LIMIT:
-        return f"\n⚠️ Лекарства действуют хуже: эффективность −1/3 (применено: {uses})."
+        return _LT("dungeon.heal.soft", uses=uses)
     return ""
 
 
@@ -254,8 +254,8 @@ def purge_mollusk_battle(now: float | None = None):
 def _mollusk_markup(token: str):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="⚔️ Ударить", callback_data=f"mollusk:hit:{token}")],
-        [InlineKeyboardButton(text="🏃 Сбежать", callback_data=f"mollusk:flee:{token}")],
+        [InlineKeyboardButton(text=_LT("mollusk.btn.hit"), callback_data=f"mollusk:hit:{token}")],
+        [InlineKeyboardButton(text=_LT("mollusk.btn.flee"), callback_data=f"mollusk:flee:{token}")],
     ])
 
 
@@ -408,7 +408,7 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
         heal = min(battle['player_hp_max'] - battle['player_hp'], ach_regen)
         if heal > 0:
             battle['player_hp'] += heal
-            regen_note = f"♻ Регенерация: +{heal} HP.\n\n"
+            regen_note = _LT("dungeon.fight.regen", healed=heal) + "\n"
 
     # Твой удар: считается от ТВОЕГО оружия, наград и состояний.
     from utils.combat_model import pilot_combat_stats, roll_pilot_damage
@@ -1133,7 +1133,7 @@ async def dungeon_continue(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     if len(parts) < 3 or int(parts[2]) != await dungeon_current_step(state):
         await _log_stale(callback, "данж: устаревшая кнопка продолжения")
-        await callback.message.answer("⚠️ Это устаревшая кнопка. Открой подземелье заново и продолжай с последнего сообщения.")
+        await callback.message.answer(_LT("dungeon.alert.stale_reopen"))
         return
 
     if user_id in FISHING_CASTING:
@@ -1393,7 +1393,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
         if current_enemy_hp <= 0:
             label = " и ".join(_weapon_label(k) for k, _ in eparts)
             await callback.message.answer(
-                f"💀 {enemy['name']} пал от {label} твоего оружия (−{edmg} HP)!"
+                _LT("dungeon.dot.killed", name=enemy['name'], label=label, dmg=edmg)
             )
             await _enemy_defeated(callback, state, bot, run, enemy, player_hp)
             return
@@ -1874,7 +1874,7 @@ async def _do_dungeon_escape(where, state, user_id: int, run, enemy,
         else:
             text = _LT("dungeon.escape.run", name=enemy['name']) + _LT("dungeon.room.next_hint")
         if drunk_escape:
-            text = f"🥴 Ты едва держишься на ногах, но удача не покинула тебя!\n\n" + text
+            text = _LT("dungeon.escape.drunk_luck") + text
         await where.answer(text, reply_markup=dungeon_main_keyboard(next_step))
         return
 
@@ -1882,16 +1882,12 @@ async def _do_dungeon_escape(where, state, user_id: int, run, enemy,
     player_hp = max(0, run['hp'] - penalty)
     await update_run_hp(run['id'], player_hp)
 
-    text = (
-        f"❌ Не удалось убежать!\n"
-        f"−{penalty} HP (штрафной удар)\n"
-        f"❤️ {_hp_bar(player_hp, run['hp_max'])}\n\n"
-        f"Ты продолжаешь бой с {enemy['name']}."
-    )
+    text = _LT("dungeon.escape.fail", penalty=penalty, bar=_hp_bar(player_hp, run['hp_max']),
+               enemy=enemy['name'])
     if smoke_used:
-        text += "\n💨 Дымовая шашка потрачена впустую."
+        text += _LT("dungeon.escape.smoke_wasted")
     if drunk_escape:
-        text = "🥴 Шатаясь, ты совсем теряешь координацию!\n\n" + text
+        text = _LT("dungeon.escape.drunk_fall") + text
 
     if player_hp <= 0:
         nm_penalty = max(5, enemy['reward_nm'] * 2)
@@ -1944,7 +1940,7 @@ async def dungeon_escape(callback: CallbackQuery, state: FSMContext):
         slot_items = await _combat_slot_items(user_id, is_boss=True)
         next_step = await dungeon_new_step(state)
         await callback.message.answer(
-            "⚠️ От босса не убежать! Бой продолжается.",
+            _LT("dungeon.boss.no_escape"),
             reply_markup=dungeon_boss_keyboard(enemy['id'], slot_items, next_step)
         )
         return
@@ -1956,7 +1952,7 @@ async def show_boss(message, run, user_id, state: FSMContext):
     enemies = await get_floor_enemies(run['dungeon_id'], run['floor'])
     boss_list = [e for e in enemies if e['is_boss']]
     if not boss_list:
-        await message.answer("❌ Босс не найден.")
+        await message.answer(_LT("dungeon.boss.not_found"))
         return
 
     boss = boss_list[0]
@@ -1972,21 +1968,16 @@ async def show_boss(message, run, user_id, state: FSMContext):
     boss_heal_uses = int(sdata.get('dungeon_heal_uses', 0) or 0)
     if boss_heal_uses >= DUNGEON_HEAL_SOFT_LIMIT:
         bmult = heal_limit_mult(boss_heal_uses)
-        boss_status.append(f"💊 Лекарства: {boss_heal_uses} применений (×{bmult:.0%})")
+        boss_status.append(_LT("dungeon.boss.heal", uses=boss_heal_uses, mult=f"{bmult:.0%}"))
     status_block = "\n".join(boss_status)
     if status_block:
         status_block += "\n"
     bdesc = boss['description'] if 'description' in boss.keys() and boss['description'] else ""
-    boss_name = "КОМНАТА БОССА" if run['floor'] == 2 else "ПРОМЕЖУТОЧНЫЙ БОСС"
-    text = (
-        f"💀 {boss_name}\n"
-        f"Этаж {run['floor']} | БОСС\n"
-        f"❤️ {hp_text}\n"
-        f"{status_block}"
-        f"💀 {boss['name']} (HP: {boss['hp']}, АТК: {boss['attack']}, УКЛ: {boss['dodge'] if 'dodge' in boss.keys() else 0}%)\n\n"
-        f"{bdesc}\n\n"
-        f"⚠️ Это решающий бой! Убежать нельзя!"
-    )
+    boss_name = _LT("dungeon.boss.title_final") if run['floor'] == 2 else _LT("dungeon.boss.title_mid")
+    text = _LT(
+        "dungeon.boss.screen", title=boss_name, floor=run['floor'], hp=hp_text,
+        status=status_block, boss=boss['name'], bhp=boss['hp'], atk=boss['attack'],
+        dodge=boss['dodge'] if 'dodge' in boss.keys() else 0, desc=bdesc)
     await answer_enemy_photo(message, boss, text, reply_markup=dungeon_boss_keyboard(boss['id'], slot_items, step))
     await state.set_state(DungeonFSM.in_boss)
 
@@ -2008,7 +1999,7 @@ async def resv_enter(callback: CallbackQuery, state: FSMContext):
         return
     data = await state.get_data()
     if not (run['floor'] == 1 and data.get('captain_defeated')):
-        await callback.message.answer("⚠️ Водохранилище доступно только после победы над Крысиным капитаном.")
+        await callback.message.answer(_LT("dungeon.resv.locked"))
         return
     await state.set_state(DungeonFSM.in_reservoir)
     await log_activity(user_id, "dungeon_reservoir", "Зашёл в подземное водохранилище")
@@ -2550,23 +2541,23 @@ async def dungeon_exit_confirm(callback: CallbackQuery, state: FSMContext):
     parts.extend(f"🎁 {n} x{q}" for n, q in items)
 
     if parts:
-        text = "📦 Ты выносишь из подземелья:\n" + "\n".join(parts) + "\n\nТы покидаешь подземелье."
+        text = _LT("dungeon.exit.leave", loot="\n".join(parts))
     else:
-        text = "Ты покидаешь подземелье ни с чем."
+        text = _LT("dungeon.exit.empty_leave")
 
     await close_reservoir_window(user_id, callback.bot)
     try:
         await callback.message.delete()
     except Exception:
         pass
-    await callback.message.answer(text + "\n\nВойти снова?", reply_markup=dungeon_start_keyboard())
+    await callback.message.answer(_LT("dungeon.exit.again", text=text), reply_markup=dungeon_start_keyboard())
     await state.clear()
 
 
 @router.callback_query(F.data == "dungeon:exit:cancel")
 async def dungeon_exit_cancel(callback: CallbackQuery, state: FSMContext):
     """Отмена выхода — возврат к текущему экрану подземелья."""
-    await callback.answer("Продолжаем подземелье!", show_alert=False)
+    await callback.answer(_LT("dungeon.exit.continue"), show_alert=False)
     user_id = callback.from_user.id
     run = await get_active_run(user_id)
     if not run:
