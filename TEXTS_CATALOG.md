@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=5e6fc842dbe12d55 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=d49c81bc9cd187ff seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **507** (ru + en).
+Всего строк: **663** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -1430,6 +1430,1054 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   > ⚖️ Твои штрафы
 - EN:
   > ⚖️ Your fines
+
+#### fire · `fire.` (156)
+
+### UI-fire.ach.fisher
+- RU:
+  >
+  >
+  > 🪣 <b>Мини-ачивка: «Рыбак древних»!</b> Все три праздничные рыбы — твои. Премия — доступна у наград, а в награду — рецепт «Предания предков».
+- EN:
+  >
+  >
+  > 🪣 <b>Mini achievement: «Angler of the Ancients»!</b> All three festival fish are yours. The bonus is available in rewards, and the prize is the «Ancestors' Lore» recipe.
+
+### UI-fire.alert.casting
+- RU:
+  > Ты уже закинул удочку — дождись результата!
+- EN:
+  > You've already cast — wait for the result!
+
+### UI-fire.alert.died
+- RU:
+  > 💀 Ты пал в Огненном Лабиринте!
+- EN:
+  > 💀 You fell in the Fire Maze!
+
+### UI-fire.alert.drunk
+- RU:
+  > 🍺 В таком состоянии в Лабиринт не пускают. Загляни, когда пройдёт опьянение.
+- EN:
+  > 🍺 You're not let into the maze in this state. Come back once you've sobered up.
+
+### UI-fire.alert.finished
+- RU:
+  > 🏁 Лабиринт пройден до конца!
+- EN:
+  > 🏁 Maze cleared!
+
+### UI-fire.alert.go_tourist
+- RU:
+  > ⛔ Вход только для граждан Нордхайма и легионеров.
+- EN:
+  > ⛔ Entry only for citizens of Nordheim and legionnaires.
+
+### UI-fire.alert.inside
+- RU:
+  > 🔥 Ты уже внутри лабиринта.
+- EN:
+  > 🔥 You're already inside the maze.
+
+### UI-fire.alert.left
+- RU:
+  > 🚪 Ты покинул лабиринт.
+- EN:
+  > 🚪 You left the maze.
+
+### UI-fire.alert.limit
+- RU:
+  > ❌ Лимит заходов на сегодня исчерпан: {max} в сутки.
+- EN:
+  > ❌ Today's run limit is used up: {max} a day.
+
+### UI-fire.alert.need_items
+- RU:
+  > ❌ Нужно {qty} × {name}.
+- EN:
+  > ❌ You need {qty} × {name}.
+
+### UI-fire.alert.no_ap
+- RU:
+  > ❌ Не хватает ОД: нужно {cost}.
+- EN:
+  > ❌ Not enough AP: you need {cost}.
+
+### UI-fire.alert.no_bait
+- RU:
+  > ❌ Нет такой наживки.
+- EN:
+  > ❌ No such bait.
+
+### UI-fire.alert.no_battle
+- RU:
+  > ❌ Бой не найден — вернись на развилку.
+- EN:
+  > ❌ Fight not found — return to the fork.
+
+### UI-fire.alert.no_exchange
+- RU:
+  > ❌ Нет такого обмена.
+- EN:
+  > ❌ No such exchange.
+
+### UI-fire.alert.no_gift
+- RU:
+  > ❌ Нет такого дара.
+- EN:
+  > ❌ No such gift.
+
+### UI-fire.alert.no_money
+- RU:
+  > ❌ Вход стоит {fee} НМ — не хватает.
+- EN:
+  > ❌ Entry costs {fee} NM — not enough.
+
+### UI-fire.alert.no_path
+- RU:
+  > ❌ Нет такого пути.
+- EN:
+  > ❌ No such path.
+
+### UI-fire.alert.no_rod
+- RU:
+  > ❌ Нужна удочка: «Удочка из орешника» из магазина (категория «Рыбалка»).
+- EN:
+  > ❌ You need a rod: «Hazel rod» from the shop (Fishing category).
+
+### UI-fire.alert.none_left
+- RU:
+  > ❌ Зелий этого вида не осталось.
+- EN:
+  > ❌ No potions of this kind left.
+
+### UI-fire.alert.not_heal
+- RU:
+  > ❌ Это не лечит.
+- EN:
+  > ❌ This doesn't heal.
+
+### UI-fire.alert.not_taken
+- RU:
+  > ❌ Зелья не списалось.
+- EN:
+  > ❌ The potion wasn't used up.
+
+### UI-fire.alert.not_well
+- RU:
+  > 🎣 Колодец остался позади — удочку можно забросить только в нём.
+- EN:
+  > 🎣 You've left the well behind — you can only cast a line from it.
+
+### UI-fire.alert.paid
+- RU:
+  > 🔥 Вход оплачен!
+- EN:
+  > 🔥 Entry paid!
+
+### UI-fire.alert.remove_failed
+- RU:
+  > ❌ Не удалось списать предметы.
+- EN:
+  > ❌ Couldn't take the items.
+
+### UI-fire.alert.shop_closed
+- RU:
+  > 🛍 Лавка ещё не открыта.
+- EN:
+  > 🛍 The shop isn't open yet.
+
+### UI-fire.alert.shop_missing
+- RU:
+  > ⚠️ Товар лавки не заведён. Сообщи хранителю.
+- EN:
+  > ⚠️ The shop item isn't set up. Tell the keeper.
+
+### UI-fire.alert.shop_pilots
+- RU:
+  > ⛔ Лавка — для пилотов.
+- EN:
+  > ⛔ The shop is for pilots.
+
+### UI-fire.alert.slot_empty
+- RU:
+  > ❌ Слот пуст.
+- EN:
+  > ❌ The slot is empty.
+
+### UI-fire.alert.souvenir_tourist
+- RU:
+  > 🔑 Сувенир — для гостей праздника.
+- EN:
+  > 🔑 The souvenir is for festival guests.
+
+### UI-fire.alert.start
+- RU:
+  > ❌ Сначала /start.
+- EN:
+  > ❌ Press /start first.
+
+### UI-fire.alert.stunned
+- RU:
+  > 💫 Ты оглушён: тело не слушается. Зелья будут доступны, когда оглушение пройдёт.
+- EN:
+  > 💫 You're stunned: your body won't obey. Potions become available when it wears off.
+
+### UI-fire.alert.tree_behind
+- RU:
+  > 🌳 Древо осталось позади — жертвовать можно только в его комнате.
+- EN:
+  > 🌳 The tree is behind you — you can only donate in its room.
+
+### UI-fire.alert.tree_gone
+- RU:
+  > 🌳 Древо осталось позади.
+- EN:
+  > 🌳 The tree is behind you.
+
+### UI-fire.alert.tries_out
+- RU:
+  > 🎣 Попытки этого визита исчерпаны — иди дальше.
+- EN:
+  > 🎣 This visit's tries are used up — move on.
+
+### UI-fire.alert.won
+- RU:
+  > 💀 Враг повержен!
+- EN:
+  > 💀 The enemy is down!
+
+### UI-fire.bait.auto
+- RU:
+  > 🔄 Авто (что есть)
+- EN:
+  > 🔄 Auto (whatever you have)
+
+### UI-fire.bait.choose
+- RU:
+  > 🪱 Выбери наживку. Она списывается с каждым забросом.
+  > Без наживки рыба не клюёт, но со дна иногда поднимаются моток проволоки или пучок сена.
+- EN:
+  > 🪱 Pick your bait. It's used up with every cast.
+  > Without bait the fish won't bite, but now and then something surfaces from the bottom: a coil of wire or a bundle of hay.
+
+### UI-fire.bait.chosen
+- RU:
+  > 🪱 Наживка выбрана.
+- EN:
+  > 🪱 Bait chosen.
+
+### UI-fire.bait.combined
+- RU:
+  > 🧪 Комбинированная наживка
+- EN:
+  > 🧪 Combined bait
+
+### UI-fire.bait.none
+- RU:
+  > 🚫 Без наживки
+- EN:
+  > 🚫 No bait
+
+### UI-fire.bait.spider
+- RU:
+  > 🕷 Лапка кристального паука
+- EN:
+  > 🕷 Crystal spider leg
+
+### UI-fire.bait.with
+- RU:
+  > с наживкой «{name}»
+- EN:
+  > with bait «{name}»
+
+### UI-fire.bait.without
+- RU:
+  > без наживки
+- EN:
+  > without bait
+
+### UI-fire.bait.worms
+- RU:
+  > 🪱 Черви
+- EN:
+  > 🪱 Worms
+
+### UI-fire.battle.armor
+- RU:
+  >  • 🛡 Броня: {armor}
+- EN:
+  >  • 🛡 Armor: {armor}
+
+### UI-fire.battle.boss
+- RU:
+  >  👑 БОСС
+- EN:
+  >  👑 BOSS
+
+### UI-fire.battle.text
+- RU:
+  > ⚔️ <b>Бой: {name}</b>{boss}
+  > 💚 Враг: {hp}/{hp_max} HP{armor} • 💨 Укл: {dodge}%
+  > 💙 Ты: {my_hp}/{my_max}
+  > ✨ Твои эффекты:
+  > {fx}
+  > {log}
+- EN:
+  > ⚔️ <b>Fight: {name}</b>{boss}
+  > 💚 Enemy: {hp}/{hp_max} HP{armor} • 💨 Dodge: {dodge}%
+  > 💙 You: {my_hp}/{my_max}
+  > ✨ Your effects:
+  > {fx}
+  > {log}
+
+### UI-fire.bless.boost
+- RU:
+  > 🔥 Благословение усилило удар.
+- EN:
+  > 🔥 The blessing empowers your strike.
+
+### UI-fire.bless.regen
+- RU:
+  > 🌿 Благословение: +{regen} HP
+- EN:
+  > 🌿 Blessing: +{regen} HP
+
+### UI-fire.btn.back
+- RU:
+  > 🔙 Назад
+- EN:
+  > 🔙 Back
+
+### UI-fire.btn.back_entry
+- RU:
+  > 🔙 Назад ко входу
+- EN:
+  > 🔙 Back to entrance
+
+### UI-fire.btn.bait
+- RU:
+  > 🪱 Наживка: {label}
+- EN:
+  > 🪱 Bait: {label}
+
+### UI-fire.btn.city
+- RU:
+  > 🏠 В город
+- EN:
+  > 🏠 To the city
+
+### UI-fire.btn.donate
+- RU:
+  > 🎁 Пожертвовать Древу
+- EN:
+  > 🎁 Donate to the tree
+
+### UI-fire.btn.enter
+- RU:
+  > 🔑 Войти — {fee} НМ
+- EN:
+  > 🔑 Enter — {fee} NM
+
+### UI-fire.btn.fish
+- RU:
+  > 🎣 Ловить ({left})
+- EN:
+  > 🎣 Fish ({left})
+
+### UI-fire.btn.give
+- RU:
+  > 🎁 Сдать «{name}»
+- EN:
+  > 🎁 Give «{name}»
+
+### UI-fire.btn.leave
+- RU:
+  > 🚪 Покинуть лабиринт
+- EN:
+  > 🚪 Leave the maze
+
+### UI-fire.btn.next
+- RU:
+  > 🚶 Идти дальше
+- EN:
+  > 🚶 Move on
+
+### UI-fire.btn.no
+- RU:
+  > ❌ Нет
+- EN:
+  > ❌ No
+
+### UI-fire.btn.potion
+- RU:
+  > 🧪 {name} (x{qty})
+- EN:
+  > 🧪 {name} (x{qty})
+
+### UI-fire.btn.shop
+- RU:
+  > 🛍 Лавка Круговорота
+- EN:
+  > 🛍 Cycle shop
+
+### UI-fire.btn.souvenir
+- RU:
+  > 🎁 Получить сувенир
+- EN:
+  > 🎁 Get a souvenir
+
+### UI-fire.btn.strike
+- RU:
+  > ⚔️ Ударить
+- EN:
+  > ⚔️ Strike
+
+### UI-fire.btn.well_back
+- RU:
+  > 🔙 Назад к колодцу
+- EN:
+  > 🔙 Back to the well
+
+### UI-fire.btn.yes
+- RU:
+  > ✅ Да, применить
+- EN:
+  > ✅ Yes, use it
+
+### UI-fire.cast.text
+- RU:
+  > 🎣 Ты забросил удочку {bait}...
+  > Результат через {delay} секунд. Наберись терпения!
+- EN:
+  > 🎣 You cast your line {bait}...
+  > Result in {delay} seconds. Be patient!
+
+### UI-fire.catch.hit
+- RU:
+  > 🎣 Поплавок подпрыгивает — <b>{fish}</b>!
+- EN:
+  > 🎣 The float bobs — <b>{fish}</b>!
+
+### UI-fire.catch.left
+- RU:
+  >
+  > Осталось попыток: {left}.
+- EN:
+  >
+  > Tries left: {left}.
+
+### UI-fire.catch.lost
+- RU:
+  > 🐟 Что-то поймал, но предмет потерялся. Сообщи хранителю.
+- EN:
+  > 🐟 You caught something, but the item got lost. Tell the keeper.
+
+### UI-fire.catch.miss
+- RU:
+  > 🎣 Поплавок дёрнулся, ты подсекаешь... и вдруг пусто. Сорвалось.
+  > Осталось попыток: {left}.
+- EN:
+  > 🎣 The float jerks, you set the hook... and nothing. It got away.
+  > Tries left: {left}.
+
+### UI-fire.catch.new
+- RU:
+  >  (новый вид!)
+- EN:
+  >  (new species!)
+
+### UI-fire.closed.not_time
+- RU:
+  > 🕯 Не время для Круговорота: праздник ещё не начался или уже отгремел.
+- EN:
+  > 🕯 Not the time for the Cycle: the festival hasn't started yet or is already over.
+
+### UI-fire.closed.soon
+- RU:
+  > 🔥 Дни Пламенного Круговорота ещё готовятся — скоро откроем.
+- EN:
+  > 🔥 The Flaming Cycle days are still being prepared — opening soon.
+
+### UI-fire.died.text
+- RU:
+  > 💀 <b>Ты пал в Огненном Лабиринте.</b>
+  > Пламя погасило твою искру — но Круговорот живуч, и попытка ценна. Заходы за сутки можно продолжать за НМ.
+- EN:
+  > 💀 <b>You fell in the Fire Maze.</b>
+  > The flame snuffed out your spark — but the Cycle endures, and the attempt was worth it. You can keep running the maze for NM today.
+
+### UI-fire.donate.granted
+- RU:
+  > ✨ Древо откликнулось: ты получил талисман памяти!
+- EN:
+  > ✨ The tree answered: you received a memory talisman!
+
+### UI-fire.donate.head
+- RU:
+  > 🌳 <b>Пожертвования Древу Огня</b>
+- EN:
+  > 🌳 <b>Donations to the Tree of Fire</b>
+
+### UI-fire.donate.intro
+- RU:
+  > Древо принимает дары один раз — за все три вида получишь талисман памяти.
+- EN:
+  > The tree accepts each gift once — bring all three kinds for a memory talisman.
+
+### UI-fire.donate.talisman
+- RU:
+  >
+  > ✅ Талисман памяти получен. Больше пожертвовать нельзя.
+- EN:
+  >
+  > ✅ Memory talisman received. No more donations possible.
+
+### UI-fire.dot.bleed
+- RU:
+  > 🩸 Кровотечение
+- EN:
+  > 🩸 Bleeding
+
+### UI-fire.dot.burn
+- RU:
+  > 🔥 Поджиг
+- EN:
+  > 🔥 Burning
+
+### UI-fire.dot.frost
+- RU:
+  > 🧊 Обморожение
+- EN:
+  > 🧊 Frostbite
+
+### UI-fire.dot.generic
+- RU:
+  > DoT
+- EN:
+  > DoT
+
+### UI-fire.dot.poison
+- RU:
+  > ☠️ Отравление
+- EN:
+  > ☠️ Poison
+
+### UI-fire.dot.tick
+- RU:
+  > {name} добирает врага: −{dmg} HP ({hp}/{hp_max})
+- EN:
+  > {name} hits the enemy: −{dmg} HP ({hp}/{hp_max})
+
+### UI-fire.enemy.down
+- RU:
+  > 💀 <b>{name} повержен!</b>{loot}
+  >
+- EN:
+  > 💀 <b>{name} is down!</b>{loot}
+  >
+
+### UI-fire.entry.head
+- RU:
+  > 🪔 <b>Дни Пламенного Круговорота</b>
+  >
+  > Перед тобой вход в Лабиринт из снопов сена — жаркое пламя, смех горожан и запах тыквы.
+  >
+- EN:
+  > 🪔 <b>Days of the Flaming Cycle</b>
+  >
+  > In front of you is the entrance to a maze of hay bales — hot flames, townsfolk laughing and the smell of pumpkin.
+  >
+
+### UI-fire.entry.info
+- RU:
+  > 🔑 Вход: <b>{fee} НМ</b>, до {max} заходов в сутки (сегодня: {used}/{max}).
+  > Лабиринт полон загадок.
+- EN:
+  > 🔑 Entry: <b>{fee} NM</b>, up to {max} runs a day (today: {used}/{max}).
+  > The maze is full of riddles.
+
+### UI-fire.entry.paid
+- RU:
+  > 🔥 <b>Дни Пламенного Круговорота</b>
+  > Вход оплачен: −{fee} НМ в казну (заход {n}/{max} за сутки).
+  >
+- EN:
+  > 🔥 <b>Days of the Flaming Cycle</b>
+  > Entry paid: −{fee} NM to the treasury (run {n}/{max} today).
+  >
+
+### UI-fire.entry.tourist
+- RU:
+  > ⛔ В лабиринт вход только для граждан Нордхайма и легионеров. Туристам — только поглядеть со стороны и получить сувенир.
+- EN:
+  > ⛔ The maze is open only to citizens of Nordheim and legionnaires. Tourists may only look on and take a souvenir.
+
+### UI-fire.finish.text
+- RU:
+  > 🏁 <b>Ты прошёл все {rooms} комнат Огненного Лабиринта!</b>
+  > Пламя памяти остаётся тёплым. Сессия завершена.
+  > Следующий заход — снова за плату (лимит суток тот же).{tier_note}
+- EN:
+  > 🏁 <b>You cleared all {rooms} rooms of the Fire Maze!</b>
+  > The flame of memory stays warm. Session over.
+  > The next run costs a fee again (same daily limit).{tier_note}
+
+### UI-fire.fork.bless
+- RU:
+  >  • 🌳 Благословение активно
+- EN:
+  >  • 🌳 Blessing active
+
+### UI-fire.fork.text
+- RU:
+  > 🪔 <b>Огненный Лабиринт</b>
+  > Ты на развилке №{steps}. Стены полыхают тёплым светом, коридоры уходят вглубь.
+  > 💙 {hp}/{hp_max}{bless}
+  >
+  > Выбери путь:
+- EN:
+  > 🪔 <b>Fire Maze</b>
+  > You're at fork #{steps}. The walls blaze with warm light, corridors lead deeper.
+  > 💙 {hp}/{hp_max}{bless}
+  >
+  > Choose a path:
+
+### UI-fire.fx.blind
+- RU:
+  > 😵 Ослепление: {n}
+- EN:
+  > 😵 Blind: {n}
+
+### UI-fire.fx.burn
+- RU:
+  > 🔥 Поджиг: −{dmg} HP/ход, {rounds} х.
+- EN:
+  > 🔥 Burn: −{dmg} HP/turn, {rounds} turns
+
+### UI-fire.fx.burn_tick
+- RU:
+  > 🔥 Поджиг: −{dmg} HP ({rounds} х. осталось)
+- EN:
+  > 🔥 Burn: −{dmg} HP ({rounds} turns left)
+
+### UI-fire.fx.none
+- RU:
+  >    — нет
+- EN:
+  >    — none
+
+### UI-fire.fx.regen
+- RU:
+  > ♻ Регенерация: +{ticks} HP (тики)
+- EN:
+  > ♻ Regeneration: +{ticks} HP (ticks)
+
+### UI-fire.fx.slow
+- RU:
+  > 🕸 Замедление: {n} х. (-укл, +укл Хуба)
+- EN:
+  > 🕸 Slow: {n} turns (-dodge, +Hub dodge)
+
+### UI-fire.fx.stun
+- RU:
+  > 💫 Оглушение: {n}
+- EN:
+  > 💫 Stun: {n}
+
+### UI-fire.fx_end.apple
+- RU:
+  >
+  > 🍎 Спелое яблоко — ты оглушён!
+- EN:
+  >
+  > 🍎 A ripe apple — you're stunned!
+
+### UI-fire.fx_end.boss
+- RU:
+  >
+  > 🔥 Мистер Тыква поджигает: −2 HP/ход на 3 хода!
+- EN:
+  >
+  > 🔥 Mr. Pumpkin sets you alight: −2 HP/turn for 3 turns!
+
+### UI-fire.fx_end.crow
+- RU:
+  >
+  > 🐦 Ворон ослепил тебя!
+- EN:
+  >
+  > 🐦 The crow blinded you!
+
+### UI-fire.fx_end.hub
+- RU:
+  >
+  > 🕸 Хуб опутывает паутиной: замедление (-укл, +укл Хуба)!
+- EN:
+  >
+  > 🕸 The Hub wraps you in webs: slowed (-dodge, +Hub dodge)!
+
+### UI-fire.fx_end.scarecrow
+- RU:
+  >
+  > 🌾 Сено в лицо — ты ослеплён!
+- EN:
+  >
+  > 🌾 Hay in your face — you're blinded!
+
+### UI-fire.hit.blind_miss
+- RU:
+  > 😵 Ослепление: удар ушёл в пустоту!
+- EN:
+  > 😵 Blind: your strike hits thin air!
+
+### UI-fire.hit.crit
+- RU:
+  > 💥 Крит!
+- EN:
+  > 💥 Crit!
+
+### UI-fire.hit.dealt
+- RU:
+  > 💥 Ты нанёс {eff} урона (враг {hp}/{hp_max})
+- EN:
+  > 💥 You dealt {eff} damage (enemy {hp}/{hp_max})
+
+### UI-fire.hit.enemy_armor
+- RU:
+  > 🛡 Броня врага поглотила удар!
+- EN:
+  > 🛡 The enemy's armor absorbed the strike!
+
+### UI-fire.hit.enemy_dodged
+- RU:
+  > 💨 Враг уклонился!
+- EN:
+  > 💨 The enemy dodged!
+
+### UI-fire.hit.regen
+- RU:
+  > ♻ Регенерация: +{healed} HP
+- EN:
+  > ♻ Regeneration: +{healed} HP
+
+### UI-fire.hit.stun_skip
+- RU:
+  > 💫 Оглушение: ты пропускаешь ход!
+- EN:
+  > 💫 Stunned: you skip your turn!
+
+### UI-fire.left.text
+- RU:
+  > 🚪 Ты покинул Огненный Лабиринт. Пламя остаётся тёплым.
+  > До встречи в следующий заход!
+- EN:
+  > 🚪 You left the Fire Maze. The flame stays warm.
+  > See you on the next run!
+
+### UI-fire.loot.head
+- RU:
+  >
+  >
+  > 🎉 <b>Добыча:</b>
+- EN:
+  >
+  >
+  > 🎉 <b>Loot:</b>
+
+### UI-fire.nobait.empty
+- RU:
+  > 🎣 Без наживки рыба не клюёт — со дна пусто.
+  > Осталось попыток: {left}.
+- EN:
+  > 🎣 Without bait the fish won't bite — nothing from the bottom.
+  > Tries left: {left}.
+
+### UI-fire.nobait.got
+- RU:
+  > 🪝 Без наживки рыба не клюёт, но со дна поднялось: <b>{name}</b>!
+  > Осталось попыток: {left}.
+- EN:
+  > 🪝 Without bait the fish won't bite, but something came up from the bottom: <b>{name}</b>!
+  > Tries left: {left}.
+
+### UI-fire.nobait.lost_item
+- RU:
+  > 🪝 Что-то зацепилось, но предмет не заведён. Сообщи хранителю.
+- EN:
+  > 🪝 Something snagged, but the item isn't set up. Tell the keeper.
+
+### UI-fire.path.L
+- RU:
+  > ⬅️ Налево
+- EN:
+  > ⬅️ Left
+
+### UI-fire.path.R
+- RU:
+  > ➡️ Направо
+- EN:
+  > ➡️ Right
+
+### UI-fire.path.S
+- RU:
+  > ⬆️ Прямо
+- EN:
+  > ⬆️ Straight
+
+### UI-fire.path.go
+- RU:
+  > 🔀 {label}. Двигаемся дальше…
+- EN:
+  > 🔀 {label}. Moving on…
+
+### UI-fire.potion.bonus
+- RU:
+  >  (+{pct}% от экипа и мастерства)
+- EN:
+  >  (+{pct}% from gear and skill)
+
+### UI-fire.potion.cancelled
+- RU:
+  > Отменено.
+- EN:
+  > Cancelled.
+
+### UI-fire.potion.confirm
+- RU:
+  > 🧪 HP уже полное ({hp}/{hp_max}). Точно применить «{name}»? Расходник будет потрачен.
+- EN:
+  > 🧪 HP is already full ({hp}/{hp_max}). Use «{name}» anyway? It will be used up.
+
+### UI-fire.potion.dodge
+- RU:
+  >
+  > 🪁 Уворот +{pct}% на сутки!
+- EN:
+  >
+  > 🪁 Dodge +{pct}% for a day!
+
+### UI-fire.potion.dodge_active
+- RU:
+  >
+  > 🪁 Баф уворота +{pct}% уже активен — не продлевается.
+- EN:
+  >
+  > 🪁 The +{pct}% dodge buff is already active — it doesn't extend.
+
+### UI-fire.potion.log
+- RU:
+  > 🧪 «{name}» (+{heal} HP)
+  > 💙 Ты восстановил: ×{hp}/{hp_max}{bonus}
+- EN:
+  > 🧪 «{name}» (+{heal} HP)
+  > 💙 You restored: ×{hp}/{hp_max}{bonus}
+
+### UI-fire.potion.regen
+- RU:
+  >
+  > ♻ Регенерация: +{ticks} HP на {turns} ходов
+- EN:
+  >
+  > ♻ Regeneration: +{ticks} HP over {turns} turns
+
+### UI-fire.set.regen
+- RU:
+  > 🧥 Праздничный сет: +{regen} HP
+- EN:
+  > 🧥 Festival set: +{regen} HP
+
+### UI-fire.shop.done
+- RU:
+  > 🛍 Обмен готов!
+- EN:
+  > 🛍 Exchange done!
+
+### UI-fire.shop.got
+- RU:
+  > ✅ Получено: {qty} × {name}.
+- EN:
+  > ✅ Received: {qty} × {name}.
+
+### UI-fire.shop.head
+- RU:
+  > 🛍 <b>Лавка Круговорота</b>
+- EN:
+  > 🛍 <b>Cycle shop</b>
+
+### UI-fire.shop.intro
+- RU:
+  > Праздничный сбор на сладости.
+- EN:
+  > A festival collection for sweets.
+
+### UI-fire.shop.row
+- RU:
+  > • {cost} → {qty} × {get} (у тебя: {have})
+- EN:
+  > • {cost} → {qty} × {get} (you have: {have})
+
+### UI-fire.souvenir.ack_again
+- RU:
+  > 🪔 Праздник для гостей.
+- EN:
+  > 🪔 Festival for guests.
+
+### UI-fire.souvenir.ack_fresh
+- RU:
+  > 🎁 Сувенир праздника!
+- EN:
+  > 🎁 Festival souvenir!
+
+### UI-fire.souvenir.again
+- RU:
+  >
+  >
+  > 🎁 Сувенир праздника ты уже получал — он у тебя (или был).
+- EN:
+  >
+  >
+  > 🎁 You've already received the festival souvenir.
+
+### UI-fire.souvenir.fresh
+- RU:
+  >
+  >
+  > 🎁 <b>Сувенир праздника:</b> «Леденец языков пламени» — держи на память о Круговороте!
+- EN:
+  >
+  >
+  > 🎁 <b>Festival souvenir:</b> «Flame-tongue lollipop» — keep it as a memento of the Cycle!
+
+### UI-fire.talisman.regen
+- RU:
+  > 🧿 Талисман памяти: +{treg} HP
+- EN:
+  > 🧿 Memory talisman: +{treg} HP
+
+### UI-fire.tier.up
+- RU:
+  >
+  >
+  > 🔥 <b>Огненное эхо усилилось:</b> Тир {tier} — лабиринт стал сложнее, но награда стала вероятнее! (действует весь праздник)
+- EN:
+  >
+  >
+  > 🔥 <b>The fire echo grew stronger:</b> tier {tier} — the maze is harder, but rewards are more likely! (lasts the whole festival)
+
+### UI-fire.tree.body
+- RU:
+  > Тёплый свет сквозь листву: Древо Огня вспыхивает янтарными жилами и кланяется тебе кроной. Долгое пламя из его коры встаёт тебе в плечи.
+  >
+  > 🔥 Благословение Круговорота (до конца сессии):
+  >    • урон +{pct}%
+  >    • +{regen} HP после каждого твоего удара
+  > 💙 Сейчас: {hp}/{hp_max} HP.
+- EN:
+  > Warm light through the leaves: the Tree of Fire flares with amber veins and bows to you with its crown. A long flame from its bark settles on your shoulders.
+  >
+  > 🔥 Blessing of the Cycle (until the end of the session):
+  >    • damage +{pct}%
+  >    • +{regen} HP after each of your strikes
+  > 💙 Now: {hp}/{hp_max} HP.
+
+### UI-fire.tree.title
+- RU:
+  > 🌳 ДРЕВО ОГНЯ
+- EN:
+  > 🌳 TREE OF FIRE
+
+### UI-fire.turn.absorbed
+- RU:
+  > ⚔️ Враг бьёт на {enemy} — 🛡 броня поглотила удар полностью!
+- EN:
+  > ⚔️ The enemy strikes for {enemy} — 🛡 armor absorbed the whole blow!
+
+### UI-fire.turn.blocked
+- RU:
+  > ⚔️ Враг бьёт на {enemy} — 🛡 броня поглотила {blocked}, −{dmg} HP
+- EN:
+  > ⚔️ The enemy strikes for {enemy} — 🛡 armor absorbed {blocked}, −{dmg} HP
+
+### UI-fire.turn.dodged
+- RU:
+  > 💨 Ты увернулся от удара врага!
+- EN:
+  > 💨 You dodged the enemy's strike!
+
+### UI-fire.turn.hit
+- RU:
+  > ⚔️ Враг бьёт на {dmg} урона
+- EN:
+  > ⚔️ The enemy strikes for {dmg} damage
+
+### UI-fire.turn.pierce
+- RU:
+  > 🗡 Враг пробивает броню! Удар на {dmg} урона
+- EN:
+  > 🗡 The enemy pierces your armor! Strike for {dmg} damage
+
+### UI-fire.wdot.bleed
+- RU:
+  > 🩸 Кровотечение:
+- EN:
+  > 🩸 Bleeding:
+
+### UI-fire.wdot.burn
+- RU:
+  > 🔥 Поджог:
+- EN:
+  > 🔥 Burning:
+
+### UI-fire.wdot.frost
+- RU:
+  > 🧊 Обморожение:
+- EN:
+  > 🧊 Frostbite:
+
+### UI-fire.wdot.line
+- RU:
+  > {word} враг получит −{dmg} HP до удара (3 хода)
+- EN:
+  > {word} the enemy takes −{dmg} HP before the strike (3 turns)
+
+### UI-fire.wdot.poison
+- RU:
+  > ☠️ Отравление:
+- EN:
+  > ☠️ Poison:
+
+### UI-fire.well.body
+- RU:
+  > Звонкий всплеск из глубины: колодец Огненного Круговорота дышит паром, вода тёплая, как из ключа. Ты моешь руки, пьёшь — и тело наполняется силой: +{heal} HP и +{ap} ОД.
+  >
+  > 💙 Сейчас: {hp}/{hp_max} HP.
+  > 🎣 В тёмной воде ходят праздничные рыбы — можно закинуть удочку ({tries} попыток).
+- EN:
+  > A ringing splash from the depths: the well of the Flaming Cycle breathes steam, its water warm as a spring. You wash your hands, drink — and your body fills with strength: +{heal} HP and +{ap} AP.
+  >
+  > 💙 Now: {hp}/{hp_max} HP.
+  > 🎣 Festival fish swim in the dark water — you can cast a line ({tries} tries).
+
+### UI-fire.well.status
+- RU:
+  > 💙 Сейчас: {hp}/{hp_max} HP.
+  > 🎣 Попыток осталось: {left}.
+- EN:
+  > 💙 Now: {hp}/{hp_max} HP.
+  > 🎣 Tries left: {left}.
+
+### UI-fire.well.title
+- RU:
+  > 🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА
+- EN:
+  > 🪣 WELL OF THE FLAMING CYCLE
+
+### UI-fire.well.visit
+- RU:
+  >  (визит {n}/{max})
+- EN:
+  >  (visit {n}/{max})
 
 #### лес · `forest.` (77)
 
@@ -6325,7 +7373,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4725** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4557** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -11822,318 +12870,47 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   Нажми «Продолжить путь» чтобы идти дальше.
 - 💊 Лекарства: {heal_uses} применений (×{mult})
 
-#### `bot/handlers/fire_event.py` (184)
-
-##### `(модуль)`
-
-- ➡️ Направо
-- ⬅️ Налево
-- ⬆️ Прямо
-- 🔄 Авто (что есть)
-- 🔥 Дни Пламенного Круговорота ещё готовятся — скоро откроем!
-- 🕷 Лапка кристального паука
-- 🚫 Без наживки
-- 🧪 Комбинированная наживка
-- 🪱 Черви
+#### `bot/handlers/fire_event.py` (16)
 
 ##### `_after_player_tick`
 
 - Лут с {…}:
-- Ты увернулся
-- ⚔️ Враг бьёт на {eff} урона
-- ⚔️ Враг бьёт на {enemy_dmg} — 🛡 броня поглотила {blocked}, −{eff} HP
-- ⚔️ Враг бьёт на {enemy_dmg} — 🛡 броня поглотила удар полностью!
-- 🌾 Сено в лицо — ты ослеплён!
-- 🍎 Спелое яблоко — ты оглушён!
-- 🎉 <b>Добыча:</b>
-- 🐦 Ворон ослепил тебя!
-- 💀 <b>{…} повержен!</b>{loot_text}
-- 💀 Враг повержен!
-- 💨 Ты увернулся от удара врага!
-- 🔥 Мистер Тыква поджигает: −2 HP/ход на 3 хода!
-- 🔥 Поджиг: −{dmg_burn} HP ({…} х. осталось)
-- 🕸 Хуб опутывает паутиной: замедление (-укл, +укл Хуба)!
-- 🗡 Враг пробивает броню! Удар на {eff} урона
-
-##### `_battle_kb`
-
-- ⚔️ Ударить
-- 🚪 Покинуть лабиринт
-
-##### `_battle_text`
-
-- — нет
-- • 💨 Укл: {…}%
-  💙 Ты: {…}/{…}
-  ✨ Твои эффекты:
-  {fx_line}
-- • 🛡 Броня: {…}
-- ♻ Регенерация: +{…} HP (тики)
-- ⚔️ <b>Бой: {…}</b>
-- 👑 БОСС
-- 💚 Враг: {…}/{…} HP
-- 💫 Оглушение: {…}
-- 🔥 Поджиг: −{…} HP/ход, {…} х.
-- 🕸 Замедление: {…} х. (-укл, +укл Хуба)
-- 😵 Ослепление: {…}
-
-##### `_cont_kb`
-
-- 🚶 Идти дальше
-
-##### `_donate_screen`
-
-- Древо принимает дары один раз — за все три вида получишь талисман памяти.
-- ✅ Талисман памяти получен. Больше пожертвовать нельзя.
-- 🌳 <b>Пожертвования Древу Огня</b>
-- 🎁 Сдать «{name}»
-- 🔙 Назад
-
-##### `_enter_tree`
-
-- Тёплый свет сквозь листву: Древо Огня вспыхивает янтарными жилами и кланяется тебе кроной. Долгое пламя из его коры встаёт тебе в плечи.
-  
-  🔥 Благословение Круговорота (до конца сессии):
-     • урон +{pct}%
-     • +{regen} HP после каждого твоего удара
-  💙 Сейчас: {…}/{…} HP.
-- 🌳 ДРЕВО ОГНЯ
 
 ##### `_enter_well`
 
-- (визит {visits}/{…})
-- Звонкий всплеск из глубины: колодец Огненного Круговорота дышит паром, вода тёплая, как из ключа. Ты моешь руки, пьёшь — и тело наполняется силой: +{heal} HP и +{ap_gain} ОД.
-  
-  💙 Сейчас: {…}/{…} HP.
-  🎣 В тёмной воде ходят праздничные рыбы — можно закинуть удочку ({tries_left} попыток).
 - Колодец Круговорота
-- 🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА
-
-##### `_entry_text`
-
-- ⛔ В лабиринт вход только для граждан Нордхайма и легионеров. Туристам — только поглядеть со стороны и получить сувенир.
-- 🔑 Вход: <b>{fee} НМ</b>, до {max_entries} заходов в сутки (сегодня: {used}/{max_entries}).
-  Лабиринт полон загадок.
-- 🪔 <b>Дни Пламенного Круговорота</b>
-  
-  Перед тобой вход в Лабиринт из снопов сена — жаркое пламя, смех горожан и запах тыквы.
-
-##### `_exchange_screen`
-
-- Праздничный сбор на сладости.
-- • {cost_txt} → {get_qty} × {…} (у тебя: {have_txt})
-- 🔙 Назад ко входу
-- 🛍 <b>Лавка Круговорота</b>
-
-##### `_fork_kb`
-
-- 🚪 Покинуть лабиринт
-
-##### `_fork_text`
-
-- Выбери путь:
-- • 🌳 Благословение активно
-- 🪔 <b>Огненный Лабиринт</b>
-  Ты на развилке №{…}. Стены полыхают тёплым светом, коридоры уходят вглубь.
-  💙 {…}/{…}
 
 ##### `_nobait_result`
 
 - Колодец без наживки: поднял «{name}»
-- 🎣 Без наживки рыба не клюёт — со дна пусто.
-  Осталось попыток: {left_now}.
-- 🪝 Без наживки рыба не клюёт, но со дна поднялось: <b>{…}</b>!
-  Осталось попыток: {left_now}.
-- 🪝 Что-то зацепилось, но предмет не заведён. Сообщи хранителю.
-- 🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА
-
-##### `_paint_well_menu`
-
-- 💙 Сейчас: {…}/{…} HP.
-  🎣 Попыток осталось: {left}.
-- 🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА
-
-##### `_player_death`
-
-- 🏠 В город
-- 💀 <b>Ты пал в Огненном Лабиринте.</b>
-  Пламя погасило твою искру — но Круговорот живуч, и попытка ценна. Заходы за сутки можно продолжать за НМ.
-- 💀 Ты пал в Огненном Лабиринте!
-
-##### `_tree_kb`
-
-- 🎁 Пожертвовать Древу
-
-##### `_well_kb`
-
-- 🎣 Ловить ({left})
-- 🚶 Идти дальше
-- 🪱 Наживка: {label}
-
-##### `fire_event_attack_cb`
-
-- {fx_word} враг получит −{wdmg} HP до удара (3 хода)
-- {…} добирает врага: −{dmg_dot} HP ({…}/{…})
-- ☠️ Отравление
-- ☠️ Отравление:
-- ♻ Регенерация: +{healed} HP
-- ❌ Бой не найден — вернись на развилку.
-- 🌿 Благословение: +{regen} HP
-- 💥 Крит!
-- 💥 Ты нанёс {eff} урона (враг {…}/{…})
-- 💨 Враг уклонился!
-- 💫 Оглушение: ты пропускаешь ход!
-- 🔥 Благословение усилило удар.
-- 🔥 Поджиг
-- 🔥 Поджог:
-- 😵 Ослепление: удар ушёл в пустоту!
-- 🛡 Броня врага поглотила удар!
-- 🧊 Обморожение
-- 🧊 Обморожение:
-- 🧥 Праздничный сет: +{…} HP
-- 🧿 Талисман памяти: +{treg} HP
-- 🩸 Кровотечение
-- 🩸 Кровотечение:
-
-##### `fire_event_bait_cb`
-
-- 🔙 Назад к колодцу
-- 🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА
-- 🪱 Выбери наживку. Она списывается с каждым забросом.
-  Без наживки рыба не клюёт, но со дна иногда поднимаются моток проволоки или пучок сена.
-
-##### `fire_event_baitset_cb`
-
-- ❌ Нет такой наживки.
-- 🪱 Наживка выбрана.
-
-##### `fire_event_closed_text`
-
-- 🔥 Дни Пламенного Круговорота ещё готовятся — скоро откроем.
-- 🕯 Не время для Круговорота: праздник ещё не начался или уже отгремел.
-
-##### `fire_event_dgive_cb`
-
-- ✨ Древо откликнулось: ты получил талисман памяти!
-- ❌ Нет такого дара.
-- 🌳 Древо осталось позади.
-
-##### `fire_event_donate_cb`
-
-- 🌳 Древо осталось позади — жертвовать можно только в его комнате.
-
-##### `fire_event_enter_cb`
-
-- ❌ Сначала /start.
-- 🎁 Получить сувенир
-- 🏠 В город
-- 🔑 Войти — {fee} НМ
-- 🛍 Лавка Круговорота
 
 ##### `fire_event_fishing_cb`
 
-- (новый вид!)
 - Колодец: заброс {bait_desc}, шанс {chance}%
-- Осталось попыток: {left_now}.
 - Праздничная рыбалка: поймал «{fish_name}»
 - Пылающая Душа
 - Скелетная Арована
 - Спектральная Латимерия
-- Ты уже закинул удочку — дождись результата!
 - без наживки
 - заброс удочки (Колодец)
 - с наживкой «{bait_name}»
-- ❌ Не хватает ОД: нужно {ap_cost}.
-- ❌ Нужна удочка: «Удочка из орешника» из магазина (категория «Рыбалка»).
-- 🎣 Колодец остался позади — удочку можно забросить только в нём.
-- 🎣 Поплавок дёрнулся, ты подсекаешь... и вдруг пусто. Сорвалось.
-  Осталось попыток: {left_now}.
-- 🎣 Поплавок подпрыгивает — <b>{…}</b>!
-- 🎣 Попытки этого визита исчерпаны — иди дальше.
-- 🎣 Ты забросил удочку {…}...
-  Результат через {delay} секунд. Наберись терпения!
-- 🐟 Что-то поймал, но предмет потерялся. Сообщи хранителю.
-- 🪣 <b>Мини-ачивка: «Рыбак древних»!</b> Все три праздничные рыбы — твои. Премия — доступна у наград, а в награду — рецепт «Предания предков».
-- 🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА
 
 ##### `fire_event_go_cb`
 
 - Вход в Огненный Лабиринт (заход {…}/{max_entries})
-- ⛔ Вход только для граждан Нордхайма и легионеров.
-- ❌ Вход стоит {fee} НМ — не хватает.
-- ❌ Лимит заходов на сегодня исчерпан: {max_entries} в сутки.
-- ❌ Сначала /start.
-- 🍺 В таком состоянии в Лабиринт не пускают. Загляни, когда пройдёт опьянение.
-- 🔥 <b>Дни Пламенного Круговорота</b>
-  Вход оплачен: −{fee} НМ в казну (заход {n}/{max_entries} за сутки).
-- 🔥 Вход оплачен!
-- 🔥 Ты уже внутри лабиринта.
-
-##### `fire_event_leave_cb`
-
-- 🚪 Ты покинул Огненный Лабиринт. Пламя остаётся тёплым.
-  До встречи в следующий заход!
-- 🚪 Ты покинул лабиринт.
-
-##### `fire_event_potion_cancel_cb`
-
-- Отменено.
 
 ##### `fire_event_potion_cb`
 
-- (+{pct}% от экипа и мастерства)
 - Зелье в бою: «{…}» (+{heal} HP)
-- ♻ Регенерация: +{…} HP на {…} ходов
-- ✅ Да, применить
-- ❌ Зелий этого вида не осталось.
-- ❌ Зелья не списалось.
-- ❌ Нет
-- ❌ Слот пуст.
-- ❌ Это не лечит.
-- 💫 Ты оглушён: тело не слушается. Зелья будут доступны, когда оглушение пройдёт.
-- 🧪 HP уже полное ({…}/{…}). Точно применить «{…}»? Расходник будет потрачен.
-- 🧪 «{…}» (+{heal} HP)
-  💙 Ты восстановил: ×{new_hp}/{…}{bonus_note}
-- 🪁 Баф уворота +{dbuff}% уже активен — не продлевается.
-- 🪁 Уворот +{dbuff}% на сутки!
-
-##### `fire_event_shop_cb`
-
-- ⛔ Лавка — для пилотов.
-- 🛍 Лавка ещё не открыта.
 
 ##### `fire_event_souvenir_cb`
 
 - Леденец языков пламени
 - Сувенир праздника: леденец (туристу, бесплатно)
-- 🎁 <b>Сувенир праздника:</b> «Леденец языков пламени» — держи на память о Круговороте!
-- 🎁 Сувенир праздника ты уже получал — он у тебя (или был).
-- 🎁 Сувенир праздника!
-- 🏠 В город
-- 🔑 Сувенир — для гостей праздника.
-- 🪔 Праздник для гостей.
-
-##### `fire_event_step_cb`
-
-- ❌ Нет такого пути.
-- 🏁 <b>Ты прошёл все {rooms_limit} комнат Огненного Лабиринта!</b>
-  Пламя памяти остаётся тёплым. Сессия завершена.
-  Следующий заход — снова за плату (лимит суток тот же).{tier_note}
-- 🏁 Лабиринт пройден до конца!
-- 🔀 {…}. Двигаемся дальше…
-- 🔥 <b>Огненное эхо усилилось:</b> Тир {new_tier} — лабиринт стал сложнее, но награда стала вероятнее! (действует весь праздник)
 
 ##### `fire_event_xchg_cb`
 
 - Лавка: {paid} → {get_qty} × {get}
-- ⚠️ Товар лавки не заведён. Сообщи хранителю.
-- ⛔ Лавка — для пилотов.
-- ✅ Получено: {get_qty} × {…}.
-- ❌ Не удалось списать предметы.
-- ❌ Нет такого обмена.
-- ❌ Нужно {qty} × {name}.
-- 🛍 Лавка ещё не открыта.
-- 🛍 Обмен готов!
 
 #### `bot/handlers/fishing.py` (74)
 

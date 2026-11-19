@@ -18,6 +18,7 @@ import random
 
 import config
 
+from utils.localization import t as _LT
 from aiogram import Router, F
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -97,10 +98,9 @@ async def _fire_paint(cb: CallbackQuery, *, text: str = None,
 
 # Пока лабиринт закрыт (FIRE_LAB_ENABLED=False), все fireevent:-хендлеры
 # отвечают заглушкой (аналог гварда клан-холла).
-FIRE_EVENT_CLOSED_TEXT = "🔥 Дни Пламенного Круговорота ещё готовятся — скоро откроем!"
 
 # Пути развилки: L = налево, S = прямо, R = направо.
-PATH_LABELS = {"L": "⬅️ Налево", "S": "⬆️ Прямо", "R": "➡️ Направо"}
+PATH_LABELS = {"L": "fire.path.L", "S": "fire.path.S", "R": "fire.path.R"}
 
 # Ключи врагов Огненного Лабиринта (firelab_enemies).
 FIRELAB_ENEMY_KEYS = ("scarecrow", "apple_child", "crow", "hub")
@@ -242,8 +242,8 @@ def _esc(text) -> str:
 def fire_event_closed_text() -> str:
     """Текст события: закрыто флагом vs не время (вне окна дат)."""
     if not getattr(config, "FIRE_EVENT_ENABLED", False):
-        return "🔥 Дни Пламенного Круговорота ещё готовятся — скоро откроем."
-    return "🕯 Не время для Круговорота: праздник ещё не начался или уже отгремел."
+        return _LT("fire.closed.soon")
+    return _LT("fire.closed.not_time")
 
 
 async def fire_event_guard(handler, event, data):
@@ -267,14 +267,9 @@ router.message.middleware(fire_event_guard)
 def _fork_text(session) -> str:
     """Текст комнаты-развилки (шаги считаются по session.steps + 1)."""
     depth = int(session['steps'] or 0)
-    head = (
-        "🪔 <b>Огненный Лабиринт</b>\n"
-        f"Ты на развилке №{depth + 1}. Стены полыхают тёплым светом, "
-        f"коридоры уходят вглубь.\n"
-        f"💙 {session['hp']}/{session['hp_max']}"
-        + (" • 🌳 Благословение активно" if session['blessing'] else "")
-        + "\n\nВыбери путь:"
-    )
+    head = _LT(
+        "fire.fork.text", steps=depth + 1, hp=session['hp'], hp_max=session['hp_max'],
+        bless=_LT("fire.fork.bless") if session['blessing'] else "")
     return head
 
 
@@ -282,9 +277,9 @@ def _fork_kb(session_id: int) -> InlineKeyboardMarkup:
     rows = []
     for pth, label in PATH_LABELS.items():
         rows.append([InlineKeyboardButton(
-            text=label, callback_data=f"fireevent:step:{session_id}:{pth}")])
+            text=_LT(label), callback_data=f"fireevent:step:{session_id}:{pth}")])
     rows.append([InlineKeyboardButton(
-        text="🚪 Покинуть лабиринт", callback_data=f"fireevent:leave:{session_id}")])
+        text=_LT("fire.btn.leave"), callback_data=f"fireevent:leave:{session_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -300,7 +295,7 @@ async def fire_event_step_cb(cb: CallbackQuery):
     parts = cb.data.split(":")
     session_id, path = int(parts[2]), parts[3]
     if path not in PATH_LABELS:
-        await cb.answer("❌ Нет такого пути.", show_alert=True)
+        await cb.answer(_LT("fire.alert.no_path"), show_alert=True)
         return
     session = await _session_of(cb.from_user.id, session_id)
     if not session:
@@ -324,21 +319,14 @@ async def fire_event_step_cb(cb: CallbackQuery):
         new_tier = await db.inc_fire_lab_tier(cb.from_user.id)
         tier_note = ""
         if new_tier > old_tier:
-            tier_note = (f"\n\n🔥 <b>Огненное эхо усилилось:</b> Тир {new_tier} — "
-                         "лабиринт стал сложнее, но награда стала вероятнее! "
-                         "(действует весь праздник)")
-        finish_text = (
-            f"🏁 <b>Ты прошёл все {rooms_limit} комнат Огненного Лабиринта!</b>\n"
-            f"Пламя памяти остаётся тёплым. Сессия завершена.\n"
-            f"Следующий заход — снова за плату (лимит суток тот же)."
-            f"{tier_note}"
-        )
-        await cb.answer("🏁 Лабиринт пройден до конца!", show_alert=True)
+            tier_note = _LT("fire.tier.up", tier=new_tier)
+        finish_text = _LT("fire.finish.text", rooms=rooms_limit, tier_note=tier_note)
+        await cb.answer(_LT("fire.alert.finished"), show_alert=True)
         await _fire_paint(
             cb, text=finish_text,
             kb=await main_menu_kb(cb.from_user.id), **(await _room_kw("fork")))
         return
-    await cb.answer(f"🔀 {PATH_LABELS[path]}. Двигаемся дальше…")
+    await cb.answer(_LT("fire.path.go", label=_LT(PATH_LABELS[path])))
     room = await _roll_room(cb.from_user.id, updated, path, history)
     if room == "empty":
         await _paint_fork(cb, updated, session_id)
@@ -367,7 +355,7 @@ def _cont_kb(session_id: int, back: str = None) -> InlineKeyboardMarkup:
     if back:
         rows.append(back)
     rows.append([InlineKeyboardButton(
-        text="🚶 Идти дальше", callback_data=f"fireevent:cont:{session_id}")])
+        text=_LT("fire.btn.next"), callback_data=f"fireevent:cont:{session_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -398,18 +386,11 @@ async def _enter_well(cb, session, session_id: int):
     visits = await db.bump_fire_lab_room_visit(session_id, "well")
     session = await db.get_active_fire_lab_session(cb.from_user.id)
     tries_left = int(getattr(config, "FIRE_LAB_WELL_FISH_TRIES", 6) or 6)
-    body = (
-        "Звонкий всплеск из глубины: колодец Огненного Круговорота дышит "
-        "паром, вода тёплая, как из ключа. Ты моешь руки, пьёшь — и тело "
-        f"наполняется силой: +{heal} HP и +{ap_gain} ОД.\n\n"
-        f"💙 Сейчас: {int(session['hp'])}/{int(session['hp_max'])} HP.\n"
-        f"🎣 В тёмной воде ходят праздничные рыбы — можно закинуть удочку "
-        f"({tries_left} попыток)."
-    )
-    text = _room_chrome("🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА" +
-                        (f" (визит {visits}/"
-                         f"{int(getattr(config, 'FIRE_LAB_WELL_MAX', 3) or 3)})"
-                         if visits else ""), body)
+    body = _LT("fire.well.body", heal=heal, ap=ap_gain, hp=int(session['hp']),
+               hp_max=int(session['hp_max']), tries=tries_left)
+    text = _room_chrome(_LT("fire.well.title") + (_LT(
+        "fire.well.visit", n=visits, max=int(getattr(config, "FIRE_LAB_WELL_MAX", 3) or 3))
+        if visits else ""), body)
     kb = await _well_kb(cb.from_user.id, session_id, tries_left)
     await _fire_paint(cb, text=text, kb=kb, **(await _room_kw('well')))
 
@@ -430,11 +411,11 @@ async def _room_kw(room_key: str) -> dict:
 
 
 BAIT_CHOICES = (
-    ("worms", "🪱 Черви"),
-    ("spider", "🕷 Лапка кристального паука"),
-    ("combined", "🧪 Комбинированная наживка"),
-    ("auto", "🔄 Авто (что есть)"),
-    ("none", "🚫 Без наживки"),
+    ("worms", "fire.bait.worms"),
+    ("spider", "fire.bait.spider"),
+    ("combined", "fire.bait.combined"),
+    ("auto", "fire.bait.auto"),
+    ("none", "fire.bait.none"),
 )
 
 
@@ -444,11 +425,11 @@ async def _well_kb(uid: int, session_id: int, left: int) -> InlineKeyboardMarkup
     user = await db.get_user(uid) or {}
     label = await fs._bait_label(uid, (user.get('fishing_bait') or "").strip())
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=f"🎣 Ловить ({left})",
+        [InlineKeyboardButton(text=_LT("fire.btn.fish", left=left),
                               callback_data=f"fireevent:fishing:{session_id}")],
-        [InlineKeyboardButton(text=f"🪱 Наживка: {label}",
+        [InlineKeyboardButton(text=_LT("fire.btn.bait", label=label),
                               callback_data=f"fireevent:bait:{session_id}")],
-        [InlineKeyboardButton(text="🚶 Идти дальше",
+        [InlineKeyboardButton(text=_LT("fire.btn.next"),
                               callback_data=f"fireevent:cont:{session_id}")],
     ])
 
@@ -457,10 +438,8 @@ async def _paint_well_menu(cb, session_id: int, uid: int, session) -> None:
     """Экран колодца без нового лечения (после выбора наживки)."""
     cap = int(getattr(config, "FIRE_LAB_WELL_FISH_TRIES", 6) or 6)
     left = max(0, cap - int(session['fish_used'] or 0))
-    text = _room_chrome(
-        "🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА",
-        f"💙 Сейчас: {int(session['hp'])}/{int(session['hp_max'])} HP.\n"
-        f"🎣 Попыток осталось: {left}.")
+    text = _room_chrome(_LT("fire.well.title"), _LT(
+        "fire.well.status", hp=int(session['hp']), hp_max=int(session['hp_max']), left=left))
     await _fire_paint(cb, text=text, kb=await _well_kb(uid, session_id, left),
                       **(await _room_kw('well')))
 
@@ -473,17 +452,14 @@ async def fire_event_bait_cb(cb: CallbackQuery):
     if not session:
         return
     await cb.answer()
-    rows = [[InlineKeyboardButton(text=title,
+    rows = [[InlineKeyboardButton(text=_LT(title),
                                   callback_data=f"fireevent:baitset:{session_id}:{code}")]
             for code, title in BAIT_CHOICES]
-    rows.append([InlineKeyboardButton(text="🔙 Назад к колодцу",
+    rows.append([InlineKeyboardButton(text=_LT("fire.btn.well_back"),
                                       callback_data=f"fireevent:wellback:{session_id}")])
     await _fire_paint(
         cb,
-        text=_room_chrome("🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА",
-                          "🪱 Выбери наживку. Она списывается с каждым забросом.\n"
-                          "Без наживки рыба не клюёт, но со дна иногда поднимаются "
-                          "моток проволоки или пучок сена."),
+        text=_room_chrome(_LT("fire.well.title"), _LT("fire.bait.choose")),
         kb=InlineKeyboardMarkup(inline_keyboard=rows), **(await _room_kw('well')))
 
 
@@ -497,11 +473,11 @@ async def fire_event_baitset_cb(cb: CallbackQuery):
         return
     allowed = {code_ for code_, _ in BAIT_CHOICES}
     if code not in allowed:
-        await cb.answer("❌ Нет такой наживки.", show_alert=True)
+        await cb.answer(_LT("fire.alert.no_bait"), show_alert=True)
         return
     value = "" if code == "auto" else code
     await db.update_user(cb.from_user.id, fishing_bait=value)
-    await cb.answer("🪱 Наживка выбрана.")
+    await cb.answer(_LT("fire.bait.chosen"))
     await _paint_well_menu(cb, session_id, cb.from_user.id, session)
 
 
@@ -518,21 +494,18 @@ async def fire_event_wellback_cb(cb: CallbackQuery):
 async def _nobait_result(uid: int, left_now: int):
     """Без наживки рыба не клюёт; со дна поднимается находка колодца (water_junk, fire_well)."""
     from bot.handlers import fishing as fs
-    title = "🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА"
+    title = _LT("fire.well.title")
     name = await fs._pick_junk("fire_well")
     if not name:
-        return _room_chrome(title, "🎣 Без наживки рыба не клюёт — со дна пусто.\n"
-                                   f"Осталось попыток: {left_now}."), None
+        return _room_chrome(title, _LT("fire.nobait.empty", left=left_now)), None
     item = await db.get_item_by_name(name)
     if not item:
-        return _room_chrome(title, "🪝 Что-то зацепилось, но предмет не заведён. "
-                                   "Сообщи хранителю."), None
+        return _room_chrome(title, _LT("fire.nobait.lost_item")), None
     await db.add_inventory_item(uid, item['id'], 1)
     await db.log_activity(uid, "firelab", f"Колодец без наживки: поднял «{name}»")
     text = _room_chrome(
         title,
-        f"🪝 Без наживки рыба не клюёт, но со дна поднялось: <b>{_esc(name)}</b>!\n"
-        f"Осталось попыток: {left_now}.")
+        _LT("fire.nobait.got", name=_esc(name), left=left_now))
     jphoto = await fs.junk_photo("fire_well", name)
     if jphoto:
         return text, {"photo_id": jphoto}
@@ -563,19 +536,19 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
     if not session:
         return
     if not session['well_open']:
-        await cb.answer("🎣 Колодец остался позади — удочку можно забросить только в нём.",
+        await cb.answer(_LT("fire.alert.not_well"),
                         show_alert=True)
         return
     cap = int(getattr(config, "FIRE_LAB_WELL_FISH_TRIES", 6) or 6)
     if cap - int(session['fish_used'] or 0) <= 0:
-        await cb.answer("🎣 Попытки этого визита исчерпаны — иди дальше.", show_alert=True)
+        await cb.answer(_LT("fire.alert.tries_out"), show_alert=True)
         return
     if uid in fs.FISHING_CASTING:
-        await cb.answer("Ты уже закинул удочку — дождись результата!", show_alert=True)
+        await cb.answer(_LT("fire.alert.casting"), show_alert=True)
         return
     rod = await fs._rod_for(uid)
     if not rod:
-        await cb.answer("❌ Нужна удочка: «Удочка из орешника» из магазина (категория «Рыбалка»).",
+        await cb.answer(_LT("fire.alert.no_rod"),
                         show_alert=True)
         return
     user = await db.get_user(uid)
@@ -583,7 +556,7 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
     bait_name, bait_id = await fs._resolve_bait(uid, chosen)
     ap_cost = int(getattr(config, "FISH_AP_COST", 3) or 3)
     if not await db.remove_ap(uid, ap_cost, reason="заброс удочки (Колодец)"):
-        await cb.answer(f"❌ Не хватает ОД: нужно {ap_cost}.", show_alert=True)
+        await cb.answer(_LT("fire.alert.no_ap", cost=ap_cost), show_alert=True)
         return
 
     fs.FISHING_CASTING.add(uid)
@@ -599,10 +572,9 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
         bait_desc = f"с наживкой «{bait_name}»" if bait_name else "без наживки"
         await db.log_activity(uid, "firelab",
                               f"Колодец: заброс {bait_desc}, шанс {chance}%")
-        cast_text = _room_chrome(
-            "🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА",
-            f"🎣 Ты забросил удочку {_esc(bait_desc)}...\n"
-            f"Результат через {delay} секунд. Наберись терпения!")
+        bait_ui = _LT("fire.bait.with", name=bait_name) if bait_name else _LT("fire.bait.without")
+        cast_text = _room_chrome(_LT("fire.well.title"),
+                                 _LT("fire.cast.text", bait=_esc(bait_ui), delay=delay))
         await _fire_paint(cb, text=cast_text, kb=None, **(await _room_kw('well')))
         await cb.answer()
         await asyncio.sleep(delay)
@@ -611,10 +583,7 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
         if not bait_name:
             text, fish_kw = await _nobait_result(uid, left_now)
         elif random.random() * 100 >= chance:
-            text = _room_chrome(
-                "🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА",
-                "🎣 Поплавок дёрнулся, ты подсекаешь... и вдруг пусто. Сорвалось.\n"
-                f"Осталось попыток: {left_now}.")
+            text = _room_chrome(_LT("fire.well.title"), _LT("fire.catch.miss", left=left_now))
         else:
             pool = await db.get_water_fish_pool("fire_well")
             if pool:
@@ -635,8 +604,7 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
             cur = await conn.execute("SELECT id FROM items WHERE name = ?", (fish_name,))
             row = await cur.fetchone()
             if not row:
-                text = _room_chrome("🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА",
-                                    "🐟 Что-то поймал, но предмет потерялся. Сообщи хранителю.")
+                text = _room_chrome(_LT("fire.well.title"), _LT("fire.catch.lost"))
             else:
                 item_id = int(row['id'])
                 await db.add_inventory_item(uid, item_id, 1)
@@ -644,19 +612,17 @@ async def fire_event_fishing_cb(cb: CallbackQuery):
                 kinds = await db.count_fire_fish_kinds(uid)
                 await db.log_activity(uid, "firelab",
                                       f"Праздничная рыбалка: поймал «{fish_name}»")
-                line = f"🎣 Поплавок подпрыгивает — <b>{_esc(fish_name)}</b>!"
+                line = _LT("fire.catch.hit", fish=_esc(fish_name))
                 if fresh:
-                    line += " (новый вид!)"
-                line += f"\nОсталось попыток: {left_now}."
+                    line += _LT("fire.catch.new")
+                line += _LT("fire.catch.left", left=left_now)
                 ach_note = ""
                 if kinds >= int(getattr(config, "FIRE_FISHER_THRESHOLD", 3) or 3):
                     lvl, _n, _ = await db.set_achievement_progress(
                         uid, getattr(config, "FIRE_FISHER_ACH_KEY", "fire_fisher"), kinds)
                     if lvl:
-                        ach_note = ("\n\n🪣 <b>Мини-ачивка: «Рыбак древних»!</b> "
-                                    "Все три праздничные рыбы — твои. Премия — доступна у наград, "
-                                    "а в награду — рецепт «Предания предков».")
-                text = _room_chrome("🪣 КОЛОДЕЦ ОГНЕННОГО КРУГОВОРОТА", line + ach_note)
+                        ach_note = _LT("fire.ach.fisher")
+                text = _room_chrome(_LT("fire.well.title"), line + ach_note)
                 fish_kw = await _fish_kw(fish_name)
         fish_kb = await _well_kb(uid, session_id, left_now)
         await _fire_paint(cb, text=text, kb=fish_kb, **(fish_kw or await _room_kw('well')))
@@ -681,21 +647,15 @@ async def _enter_tree(cb, session, session_id: int):
     else:
         pct = int(getattr(config, "FIRE_TREE_DMG_BONUS_PCT", 15) or 15)
         regen = int(getattr(config, "FIRE_TREE_REGEN_HP", 1) or 1)
-    body = (
-        "Тёплый свет сквозь листву: Древо Огня вспыхивает янтарными жилами и "
-        "кланяется тебе кроной. Долгое пламя из его коры встаёт тебе в плечи.\n\n"
-        f"🔥 Благословение Круговорота (до конца сессии):\n"
-        f"   • урон +{pct}%\n"
-        f"   • +{regen} HP после каждого твоего удара\n"
-        f"💙 Сейчас: {int(session['hp'])}/{int(session['hp_max'])} HP."
-    )
-    text = _room_chrome("🌳 ДРЕВО ОГНЯ", body)
+    body = _LT("fire.tree.body", pct=pct, regen=regen, hp=int(session['hp']),
+               hp_max=int(session['hp_max']))
+    text = _room_chrome(_LT("fire.tree.title"), body)
     await _fire_paint(cb, text=text, kb=_tree_kb(session_id), **(await _room_kw('tree')))
 
 
 def _tree_kb(session_id: int) -> InlineKeyboardMarkup:
     """Комната древа: пожертвования, затем обычный «дальше»."""
-    rows = [[InlineKeyboardButton(text="🎁 Пожертвовать Древу",
+    rows = [[InlineKeyboardButton(text=_LT("fire.btn.donate"),
                                   callback_data=f"fireevent:donate:{session_id}")]]
     rows.extend(_cont_kb(session_id).inline_keyboard)
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -703,18 +663,17 @@ def _tree_kb(session_id: int) -> InlineKeyboardMarkup:
 
 async def _donate_screen(cb, uid: int, session_id: int, note: str = "") -> None:
     prog = await db.tree_donation_progress(uid)
-    lines = ["🌳 <b>Пожертвования Древу Огня</b>",
-             "Древо принимает дары один раз — за все три вида получишь талисман памяти.", ""]
+    lines = [_LT("fire.donate.head"), _LT("fire.donate.intro"), ""]
     rows = []
     for idx, (name, (done, need)) in enumerate(prog["items"].items()):
         lines.append(f"• {_esc(name)}: {done}/{need}")
         if done < need and not prog["talisman"]:
             rows.append([InlineKeyboardButton(
-                text=f"🎁 Сдать «{name}»",
+                text=_LT("fire.btn.give", name=name),
                 callback_data=f"fireevent:dgive:{session_id}:{idx}")])
     if prog["talisman"]:
-        lines.append("\n✅ Талисман памяти получен. Больше пожертвовать нельзя.")
-    rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"fireevent:backfork:{session_id}")])
+        lines.append(_LT("fire.donate.talisman"))
+    rows.append([InlineKeyboardButton(text=_LT("fire.btn.back"), callback_data=f"fireevent:backfork:{session_id}")])
     if note:
         lines += ["", note]
     await _fire_paint(cb, text="\n".join(lines), kb=InlineKeyboardMarkup(inline_keyboard=rows),
@@ -728,7 +687,7 @@ async def fire_event_donate_cb(cb: CallbackQuery):
     if not session:
         return
     if not session['tree_open']:
-        await cb.answer("🌳 Древо осталось позади — жертвовать можно только в его комнате.",
+        await cb.answer(_LT("fire.alert.tree_behind"),
                         show_alert=True)
         return
     await cb.answer()
@@ -743,19 +702,19 @@ async def fire_event_dgive_cb(cb: CallbackQuery):
     if not session:
         return
     if not session['tree_open']:
-        await cb.answer("🌳 Древо осталось позади.", show_alert=True)
+        await cb.answer(_LT("fire.alert.tree_gone"), show_alert=True)
         return
     names = [name for name, _need in config.FIRE_TREE_DONATION]
     try:
         name = names[int(idx)]
     except (ValueError, IndexError):
-        await cb.answer("❌ Нет такого дара.", show_alert=True)
+        await cb.answer(_LT("fire.alert.no_gift"), show_alert=True)
         return
     ok, msg, granted = await db.tree_donate(cb.from_user.id, name, qty=99)
     await cb.answer(msg, show_alert=not ok)
     note = ""
     if granted:
-        note = "✨ Древо откликнулось: ты получил талисман памяти!"
+        note = _LT("fire.donate.granted")
     await _donate_screen(cb, cb.from_user.id, session_id, note=note)
 
 
@@ -780,10 +739,9 @@ async def fire_event_leave_cb(cb: CallbackQuery):
     if not session:
         return
     await end_fire_lab_session(session_id, 'left')
-    await cb.answer("🚪 Ты покинул лабиринт.", show_alert=True)
+    await cb.answer(_LT("fire.alert.left"), show_alert=True)
     await _fire_paint(
-        cb, text=("🚪 Ты покинул Огненный Лабиринт. Пламя остаётся тёплым.\n"
-                  "До встречи в следующий заход!"),
+        cb, text=_LT("fire.left.text"),
         kb=await main_menu_kb(cb.from_user.id), **(await _room_kw("fork")))
 
 
@@ -796,15 +754,10 @@ async def _session_of(user_id: int, session_id: int):
 
 
 def _entry_text(fee: int, used: int, max_entries: int, tourist: bool) -> str:
-    head = ("🪔 <b>Дни Пламенного Круговорота</b>\n\n"
-            "Перед тобой вход в Лабиринт из снопов сена — жаркое пламя, "
-            "смех горожан и запах тыквы.\n\n")
+    head = _LT("fire.entry.head")
     if tourist:
-        return head + ("⛔ В лабиринт вход только для граждан Нордхайма и легионеров. "
-                       "Туристам — только поглядеть со стороны и получить сувенир.")
-    return head + (f"🔑 Вход: <b>{fee} НМ</b>, до {max_entries} заходов в сутки "
-                   f"(сегодня: {used}/{max_entries}).\n"
-                   f"Лабиринт полон загадок.")
+        return head + _LT("fire.entry.tourist")
+    return head + _LT("fire.entry.info", fee=fee, max=max_entries, used=used)
 
 
 @router.callback_query(F.data == "fireevent:enter")
@@ -813,26 +766,26 @@ async def fire_event_enter_cb(cb: CallbackQuery, state: FSMContext):
     from database.db import get_user, user_is_tourist
     user = await get_user(cb.from_user.id)
     if not user:
-        await cb.answer("❌ Сначала /start.", show_alert=True)
+        await cb.answer(_LT("fire.alert.start"), show_alert=True)
         return
     fee = int(getattr(config, "FIRE_EVENT_LAB_FEE", 32) or 0)
     max_entries = int(getattr(config, "FIRE_EVENT_MAX_ENTRIES_DAY", 4) or 0)
     if await user_is_tourist(cb.from_user.id):
         text = _entry_text(fee, 0, max_entries, tourist=True)
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🎁 Получить сувенир",
+            [InlineKeyboardButton(text=_LT("fire.btn.souvenir"),
                                   callback_data="fireevent:souvenir")],
-            [InlineKeyboardButton(text="🏠 В город", callback_data="city:menu")],
+            [InlineKeyboardButton(text=_LT("fire.btn.city"), callback_data="city:menu")],
         ])
     else:
         used = await get_fire_lab_entries_today(cb.from_user.id, db.today_report_day())
         text = _entry_text(fee, used, max_entries, tourist=False)
-        rows = [[InlineKeyboardButton(text=f"🔑 Войти — {fee} НМ",
+        rows = [[InlineKeyboardButton(text=_LT("fire.btn.enter", fee=fee),
                                       callback_data="fireevent:go")]]
         if getattr(config, "FIRE_EXCHANGE_ENABLED", False):
-            rows.append([InlineKeyboardButton(text="🛍 Лавка Круговорота",
+            rows.append([InlineKeyboardButton(text=_LT("fire.btn.shop"),
                                               callback_data="fireevent:shop")])
-        rows.append([InlineKeyboardButton(text="🏠 В город", callback_data="city:menu")])
+        rows.append([InlineKeyboardButton(text=_LT("fire.btn.city"), callback_data="city:menu")])
         kb = InlineKeyboardMarkup(inline_keyboard=rows)
     await cb.answer()
     await _fire_paint(cb, text=text, kb=kb, **(await _room_kw("entry")))
@@ -843,7 +796,7 @@ async def fire_event_souvenir_cb(cb: CallbackQuery):
     """Туристу — разовый сувенир (леденец) прямо на экране входа."""
     from database.db import user_is_tourist, grant_fire_souvenir, get_item_by_name, add_inventory_item
     if not await user_is_tourist(cb.from_user.id):
-        await cb.answer("🔑 Сувенир — для гостей праздника.", show_alert=True)
+        await cb.answer(_LT("fire.alert.souvenir_tourist"), show_alert=True)
         return
     candy = await get_item_by_name(
         getattr(config, "FIRE_LAB_CANDY_NAME", "Леденец языков пламени"))
@@ -856,13 +809,11 @@ async def fire_event_souvenir_cb(cb: CallbackQuery):
                                   "Сувенир праздника: леденец (туристу, бесплатно)")
     fee = int(getattr(config, "FIRE_EVENT_LAB_FEE", 32) or 0)
     max_entries = int(getattr(config, "FIRE_EVENT_MAX_ENTRIES_DAY", 4) or 0)
-    sweet = ("\n\n🎁 <b>Сувенир праздника:</b> «Леденец языков пламени» — "
-             "держи на память о Круговороте!" if fresh else
-             "\n\n🎁 Сувенир праздника ты уже получал — он у тебя (или был).")
+    sweet = _LT("fire.souvenir.fresh" if fresh else "fire.souvenir.again")
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏠 В город", callback_data="city:menu")],
+        [InlineKeyboardButton(text=_LT("fire.btn.city"), callback_data="city:menu")],
     ])
-    await cb.answer("🎁 Сувенир праздника!" if fresh else "🪔 Праздник для гостей.")
+    await cb.answer(_LT("fire.souvenir.ack_fresh") if fresh else _LT("fire.souvenir.ack_again"))
     await _fire_paint(cb, text=_entry_text(fee, 0, max_entries, tourist=True) + sweet,
                       kb=kb, **(await _room_kw("entry")))
 
@@ -891,7 +842,7 @@ def _offer(idx: int):
 
 async def _exchange_screen(cb, uid: int, note: str = "") -> None:
     rows = []
-    lines = ["🛍 <b>Лавка Круговорота</b>", "Праздничный сбор на сладости.", ""]
+    lines = [_LT("fire.shop.head"), _LT("fire.shop.intro"), ""]
     for idx in range(len(config.FIRE_EXCHANGE_OFFERS)):
         costs, get, get_qty = _offer(idx)
         cost_txt = " + ".join(f"{q} × {_esc(n)}" for n, q in costs)
@@ -899,11 +850,11 @@ async def _exchange_screen(cb, uid: int, note: str = "") -> None:
         for n, q in costs:
             have_parts.append(f"{await _item_qty(uid, n)}/{q}")
         have_txt = ", ".join(have_parts)
-        lines.append(f"• {cost_txt} → {get_qty} × {_esc(get)} (у тебя: {have_txt})")
+        lines.append(_LT("fire.shop.row", cost=cost_txt, qty=get_qty, get=_esc(get), have=have_txt))
         rows.append([InlineKeyboardButton(
             text=" + ".join(f"{q} {n}" for n, q in costs) + f" → {get_qty} {get}",
             callback_data=f"fireevent:xchg:{idx}")])
-    rows.append([InlineKeyboardButton(text="🔙 Назад ко входу", callback_data="fireevent:enter")])
+    rows.append([InlineKeyboardButton(text=_LT("fire.btn.back_entry"), callback_data="fireevent:enter")])
     if note:
         lines += ["", note]
     # картинка лавки из менеджера «Картинки Круговорота»; нет — картинка входа
@@ -917,10 +868,10 @@ async def _exchange_screen(cb, uid: int, note: str = "") -> None:
 @router.callback_query(F.data == "fireevent:shop")
 async def fire_event_shop_cb(cb: CallbackQuery):
     if not getattr(config, "FIRE_EXCHANGE_ENABLED", False):
-        await cb.answer("🛍 Лавка ещё не открыта.", show_alert=True)
+        await cb.answer(_LT("fire.alert.shop_closed"), show_alert=True)
         return
     if await db.user_is_tourist(cb.from_user.id):
-        await cb.answer("⛔ Лавка — для пилотов.", show_alert=True)
+        await cb.answer(_LT("fire.alert.shop_pilots"), show_alert=True)
         return
     await cb.answer()
     await _exchange_screen(cb, cb.from_user.id)
@@ -929,17 +880,17 @@ async def fire_event_shop_cb(cb: CallbackQuery):
 @router.callback_query(F.data.startswith("fireevent:xchg:"))
 async def fire_event_xchg_cb(cb: CallbackQuery):
     if not getattr(config, "FIRE_EXCHANGE_ENABLED", False):
-        await cb.answer("🛍 Лавка ещё не открыта.", show_alert=True)
+        await cb.answer(_LT("fire.alert.shop_closed"), show_alert=True)
         return
     if await db.user_is_tourist(cb.from_user.id):
-        await cb.answer("⛔ Лавка — для пилотов.", show_alert=True)
+        await cb.answer(_LT("fire.alert.shop_pilots"), show_alert=True)
         return
     uid = cb.from_user.id
     try:
         idx = int(cb.data.split(":")[2])
         costs, get, get_qty = _offer(idx)
     except (ValueError, IndexError):
-        await cb.answer("❌ Нет такого обмена.", show_alert=True)
+        await cb.answer(_LT("fire.alert.no_exchange"), show_alert=True)
         return
     get_item = await db.get_item_by_name(get)
     cost_items = []
@@ -949,21 +900,21 @@ async def fire_event_xchg_cb(cb: CallbackQuery):
             item = None
         cost_items.append((name, qty, item))
     if not get_item or any(it is None for _, _, it in cost_items):
-        await cb.answer("⚠️ Товар лавки не заведён. Сообщи хранителю.", show_alert=True)
+        await cb.answer(_LT("fire.alert.shop_missing"), show_alert=True)
         return
     for name, qty, _ in cost_items:
         if await _item_qty(uid, name) < qty:
-            await cb.answer(f"❌ Нужно {qty} × {name}.", show_alert=True)
+            await cb.answer(_LT("fire.alert.need_items", qty=qty, name=name), show_alert=True)
             return
     for name, qty, item in cost_items:
         if not await db.remove_inventory_item(uid, item['id'], qty):
-            await cb.answer("❌ Не удалось списать предметы.", show_alert=True)
+            await cb.answer(_LT("fire.alert.remove_failed"), show_alert=True)
             return
     await db.add_inventory_item(uid, get_item['id'], get_qty)
     paid = ", ".join(f"{q} × {n}" for n, q, _ in cost_items)
     await db.log_activity(uid, "firelab", f"Лавка: {paid} → {get_qty} × {get}")
-    await cb.answer("🛍 Обмен готов!")
-    await _exchange_screen(cb, uid, note=f"✅ Получено: {get_qty} × {_esc(get)}.")
+    await cb.answer(_LT("fire.shop.done"))
+    await _exchange_screen(cb, uid, note=_LT("fire.shop.got", qty=get_qty, name=_esc(get)))
 
 
 @router.callback_query(F.data == "fireevent:go")
@@ -972,33 +923,32 @@ async def fire_event_go_cb(cb: CallbackQuery, state: FSMContext):
     from database.db import get_user, user_is_tourist
     user = await get_user(cb.from_user.id)
     if not user:
-        await cb.answer("❌ Сначала /start.", show_alert=True)
+        await cb.answer(_LT("fire.alert.start"), show_alert=True)
         return
     if await user_is_tourist(cb.from_user.id):
-        await cb.answer("⛔ Вход только для граждан Нордхайма и легионеров.", show_alert=True)
+        await cb.answer(_LT("fire.alert.go_tourist"), show_alert=True)
         return
 
     from utils.states import is_place_blocked
     if await is_place_blocked(cb.from_user.id, "firelab"):
-        await cb.answer("🍺 В таком состоянии в Лабиринт не пускают. "
-                        "Загляни, когда пройдёт опьянение.", show_alert=True)
+        await cb.answer(_LT("fire.alert.drunk"), show_alert=True)
         return
 
     fee = int(getattr(config, "FIRE_EVENT_LAB_FEE", 32) or 0)
     if int(user['nordmarks'] or 0) < fee:
-        await cb.answer(f"❌ Вход стоит {fee} НМ — не хватает.", show_alert=True)
+        await cb.answer(_LT("fire.alert.no_money", fee=fee), show_alert=True)
         return
     already = await get_active_fire_lab_session(cb.from_user.id)
     if already:
         # незакрытая сессия — просто вернёмся в неё, повторно не платим
-        await cb.answer("🔥 Ты уже внутри лабиринта.")
+        await cb.answer(_LT("fire.alert.inside"))
         await _paint_fork(cb, already, already['id'])
         return
     day = db.today_report_day()
     max_entries = int(getattr(config, "FIRE_EVENT_MAX_ENTRIES_DAY", 4) or 0)
     used = await get_fire_lab_entries_today(cb.from_user.id, day)
     if max_entries > 0 and used >= max_entries:
-        await cb.answer(f"❌ Лимит заходов на сегодня исчерпан: {max_entries} в сутки.",
+        await cb.answer(_LT("fire.alert.limit", max=max_entries),
                         show_alert=True)
         return
     from database.db import transfer_to_treasury
@@ -1016,10 +966,8 @@ async def fire_event_go_cb(cb: CallbackQuery, state: FSMContext):
     n = await inc_fire_lab_entries(cb.from_user.id, day)
     session_id = await create_fire_lab_session(cb.from_user.id, hp)
     updated = await get_active_fire_lab_session(cb.from_user.id)
-    await cb.answer("🔥 Вход оплачен!")
-    text = (f"🔥 <b>Дни Пламенного Круговорота</b>\n"
-            f"Вход оплачен: −{fee} НМ в казну (заход {n}/{max_entries} за сутки).\n\n"
-            + _fork_text(updated))
+    await cb.answer(_LT("fire.alert.paid"))
+    text = _LT("fire.entry.paid", fee=fee, n=n, max=max_entries) + _fork_text(updated)
     await _fire_paint(cb, text=text, kb=_fork_kb(session_id), **(await _room_kw("fork")))
 
 
@@ -1108,28 +1056,26 @@ async def _get_enemy_state(session_id: int):
 def _battle_text(session, enemy, effects: dict, log: str = "") -> str:
     fx = []
     if effects.get(FX_BLIND):
-        fx.append(f"😵 Ослепление: {effects[FX_BLIND]}")
+        fx.append(_LT("fire.fx.blind", n=effects[FX_BLIND]))
     if effects.get(FX_STUN):
-        fx.append(f"💫 Оглушение: {effects[FX_STUN]}")
+        fx.append(_LT("fire.fx.stun", n=effects[FX_STUN]))
     if effects.get(FX_SLOW):
-        fx.append(f"🕸 Замедление: {effects[FX_SLOW]} х. (-укл, +укл Хуба)")
+        fx.append(_LT("fire.fx.slow", n=effects[FX_SLOW]))
     if effects.get(FX_BURN):
         burn = effects[FX_BURN]
-        fx.append(f"🔥 Поджиг: −{burn.get('dmg')} HP/ход, {burn.get('rounds')} х.")
+        fx.append(_LT("fire.fx.burn", dmg=burn.get('dmg'), rounds=burn.get('rounds')))
     if effects.get(FX_REGEN):
         rq = effects[FX_REGEN]
-        fx.append(f"♻ Регенерация: +{'/'.join(str(t) for t in rq)} HP (тики)")
-    fx_line = "\n".join("   • " + x for x in fx) or "   — нет"
-    return (
-        f"⚔️ <b>Бой: {_esc(enemy['name'])}</b>"
-        + (" 👑 БОСС" if enemy.get('is_boss') else "") + "\n"
-        f"💚 Враг: {enemy['hp']}/{enemy['hp_max']} HP"
-        + (f" • 🛡 Броня: {enemy['armor']}" if int(enemy.get('armor') or 0) else "")
-        + f" • 💨 Укл: {int(enemy.get('dodge') or 0)}%\n"
-        f"💙 Ты: {int(session['hp'])}/{int(session['hp_max'])}\n"
-        f"✨ Твои эффекты:\n{fx_line}\n"
-        + (f"\n{log}\n" if log else "")
-    )
+        fx.append(_LT("fire.fx.regen", ticks='/'.join(str(t) for t in rq)))
+    fx_line = "\n".join("   • " + x for x in fx) or _LT("fire.fx.none")
+    return _LT(
+        "fire.battle.text", name=_esc(enemy['name']),
+        boss=_LT("fire.battle.boss") if enemy.get('is_boss') else "",
+        hp=enemy['hp'], hp_max=enemy['hp_max'],
+        armor=_LT("fire.battle.armor", armor=enemy['armor']) if int(enemy.get('armor') or 0) else "",
+        dodge=int(enemy.get('dodge') or 0),
+        my_hp=int(session['hp']), my_max=int(session['hp_max']),
+        fx=fx_line, log=(f"\n{log}\n" if log else ""))
 
 
 async def _potions_labels(user_id: int) -> list:
@@ -1153,14 +1099,14 @@ async def _potions_labels(user_id: int) -> list:
 
 async def _battle_kb(user_id: int, session_id: int) -> InlineKeyboardMarkup:
     """Кнопки боя: удар + зелья из слотов (если есть) + выход."""
-    rows = [[InlineKeyboardButton(text="⚔️ Ударить",
+    rows = [[InlineKeyboardButton(text=_LT("fire.btn.strike"),
                                   callback_data=f"fireevent:attack:{session_id}")]]
     for i in range(0, len(labels := await _potions_labels(user_id)), 2):
         rows.append([InlineKeyboardButton(
-            text=f"🧪 {nm} (x{qty})",
+            text=_LT("fire.btn.potion", name=nm, qty=qty),
             callback_data=f"fireevent:potion:{session_id}:{slot}")
             for slot, nm, qty in labels[i:i + 2]])
-    rows.append([InlineKeyboardButton(text="🚪 Покинуть лабиринт",
+    rows.append([InlineKeyboardButton(text=_LT("fire.btn.leave"),
                                       callback_data=f"fireevent:leave:{session_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -1186,7 +1132,7 @@ async def fire_event_attack_cb(cb: CallbackQuery):
         return
     enemy, effects = await _get_enemy_state(session_id)
     if not enemy:
-        await cb.answer("❌ Бой не найден — вернись на развилку.", show_alert=True)
+        await cb.answer(_LT("fire.alert.no_battle"), show_alert=True)
         return
     log_lines = []
     # тик регенерации от расходников (FX_REGEN — очередь затухающих тиков)
@@ -1197,7 +1143,7 @@ async def fire_event_attack_cb(cb: CallbackQuery):
             healed = min(tick, int(session['hp_max']) - int(session['hp']))
             if healed > 0:
                 session['hp'] = int(session['hp']) + healed
-                log_lines.append(f"♻ Регенерация: +{healed} HP")
+                log_lines.append(_LT("fire.hit.regen", healed=healed))
         effects[FX_REGEN] = regen_q[1:]
         if not effects[FX_REGEN]:
             effects.pop(FX_REGEN, None)
@@ -1206,7 +1152,7 @@ async def fire_event_attack_cb(cb: CallbackQuery):
         effects[FX_STUN] = int(effects.get(FX_STUN)) - 1
         if effects.get(FX_STUN, 0) <= 0:
             effects.pop(FX_STUN, None)
-        log_lines.append("💫 Оглушение: ты пропускаешь ход!")
+        log_lines.append(_LT("fire.hit.stun_skip"))
         session['hp'] = int(session['hp'])
         return await _after_player_tick(cb, session, session_id, enemy, effects,
                                         "\n".join(log_lines))
@@ -1216,12 +1162,12 @@ async def fire_event_attack_cb(cb: CallbackQuery):
         if effects.get(FX_BLIND, 0) <= 0:
             effects.pop(FX_BLIND, None)
         if random.random() < 0.5:
-            log_lines.append("😵 Ослепление: удар ушёл в пустоту!")
+            log_lines.append(_LT("fire.hit.blind_miss"))
             return await _after_player_tick(cb, session, session_id, enemy, effects,
                                             "\n".join(log_lines))
     # уклонение врага
     if random.random() * 100 < float(enemy.get('dodge') or 0):
-        log_lines.append("💨 Враг уклонился!")
+        log_lines.append(_LT("fire.hit.enemy_dodged"))
         return await _after_player_tick(cb, session, session_id, enemy, effects,
                                         "\n".join(log_lines))
 
@@ -1237,11 +1183,11 @@ async def fire_event_attack_cb(cb: CallbackQuery):
             dot['rounds'] = int(dot.get('rounds') or 1) - 1
             if dot['rounds'] <= 0:
                 enemy.pop('dot', None)
-            eff_names = {"bleed": "🩸 Кровотечение", "burn": "🔥 Поджиг",
-                         "poison": "☠️ Отравление", "frostbite": "🧊 Обморожение"}
-            log_lines.append(
-                f"{eff_names.get(dot.get('kind'), 'DoT')} добирает врага: "
-                f"−{dmg_dot} HP ({enemy['hp']}/{enemy['hp_max']})")
+            eff_names = {"bleed": "fire.dot.bleed", "burn": "fire.dot.burn",
+                         "poison": "fire.dot.poison", "frostbite": "fire.dot.frost"}
+            log_lines.append(_LT(
+                "fire.dot.tick", name=_LT(eff_names.get(dot.get('kind'), "fire.dot.generic")),
+                dmg=dmg_dot, hp=enemy['hp'], hp_max=enemy['hp_max']))
     lo, hi = st.get('base_dmg') or (0, 0)
     w = st.get('weapon_damage') or 0
     if isinstance(w, tuple):
@@ -1252,7 +1198,7 @@ async def fire_event_attack_cb(cb: CallbackQuery):
     # крит
     if float(st.get('crit_chance') or 0) > 0 and random.random() * 100 < float(st['crit_chance']):
         dmg = int(dmg * float(st.get('crit_mult') or 1.4))
-        log_lines.append("💥 Крит!")
+        log_lines.append(_LT("fire.hit.crit"))
     # благословение: +Х% урона
     if int(session.get('blessing') or 0):
         try:
@@ -1265,26 +1211,26 @@ async def fire_event_attack_cb(cb: CallbackQuery):
             pct = float(getattr(config, "FIRE_TREE_DMG_BONUS_PCT", 15) or 0)
             regen = int(getattr(config, "FIRE_TREE_REGEN_HP", 1) or 0)
         dmg = int(dmg * (1 + pct / 100.0))
-        log_lines.append("🔥 Благословение усилило удар.")
+        log_lines.append(_LT("fire.bless.boost"))
         # реген благословения — на каждом ударе игрока
         session['hp'] = min(int(session['hp_max']), int(session['hp']) + regen)
-        log_lines.append(f"🌿 Благословение: +{regen} HP")
+        log_lines.append(_LT("fire.bless.regen", regen=regen))
     # праздничный сет (3 одежды + оружие): постоянная регенерация за ход
     fire_set = await db.get_fire_set_status(cb.from_user.id)
     treg = await db.get_talisman_regen(cb.from_user.id)
     if treg and int(session['hp']) < int(session['hp_max']):
         session['hp'] = min(int(session['hp_max']), int(session['hp']) + treg)
-        log_lines.append(f"🧿 Талисман памяти: +{treg} HP")
+        log_lines.append(_LT("fire.talisman.regen", treg=treg))
     if fire_set['regen'] and int(session['hp']) < int(session['hp_max']):
         session['hp'] = min(int(session['hp_max']), int(session['hp']) + fire_set['regen'])
-        log_lines.append(f"🧥 Праздничный сет: +{fire_set['regen']} HP")
+        log_lines.append(_LT("fire.set.regen", regen=fire_set['regen']))
     eff = max(0, int(dmg) - int(enemy.get('armor') or 0))
     if eff <= 0:
-        log_lines.append("🛡 Броня врага поглотила удар!")
+        log_lines.append(_LT("fire.hit.enemy_armor"))
         return await _after_player_tick(cb, session, session_id, enemy, effects,
                                         "\n".join(log_lines))
     enemy['hp'] = max(0, int(enemy['hp']) - eff)
-    log_lines.append(f"💥 Ты нанёс {eff} урона (враг {enemy['hp']}/{enemy['hp_max']})")
+    log_lines.append(_LT("fire.hit.dealt", eff=eff, hp=enemy['hp'], hp_max=enemy['hp_max']))
     # оружие: шанс DoT на врага (кровотечение Вил, поджиг Тродce), если враг жив
     if int(enemy['hp']) > 0:
         wep = await db.get_equipped_weapon(cb.from_user.id)
@@ -1294,10 +1240,9 @@ async def fire_event_attack_cb(cb: CallbackQuery):
         if weff in ("bleed", "burn", "poison", "frostbite") and wch and wdmg \
                 and random.randint(1, 100) <= wch:
             enemy['dot'] = {"kind": weff, "dmg": wdmg, "rounds": 3}
-            fx_word = {"bleed": "🩸 Кровотечение:", "burn": "🔥 Поджог:",
-                       "poison": "☠️ Отравление:", "frostbite": "🧊 Обморожение:"}[weff]
-            log_lines.append(
-                f"{fx_word} враг получит −{wdmg} HP до удара (3 хода)")
+            fx_word = _LT({"bleed": "fire.wdot.bleed", "burn": "fire.wdot.burn",
+                           "poison": "fire.wdot.poison", "frostbite": "fire.wdot.frost"}[weff])
+            log_lines.append(_LT("fire.wdot.line", word=fx_word, dmg=wdmg))
     await _after_player_tick(cb, session, session_id, enemy, effects,
                              "\n".join(log_lines))
 
@@ -1316,38 +1261,38 @@ async def fire_event_potion_cb(cb: CallbackQuery, confirmed: bool = False):
     if not blk:
         _enemy_now, fx_now = await _get_enemy_state(session_id)
         if int(fx_now.get(FX_STUN) or 0) > 0:
-            blk = "💫 Ты оглушён: тело не слушается. Зелья будут доступны, когда оглушение пройдёт."
+            blk = _LT("fire.alert.stunned")
     if blk:
         await cb.answer(blk, show_alert=True)
         return
     eq = await db.get_equipment(cb.from_user.id)
     item_id = eq.get(slot)
     if not item_id:
-        await cb.answer("❌ Слот пуст.", show_alert=True)
+        await cb.answer(_LT("fire.alert.slot_empty"), show_alert=True)
         return
     it = await db.get_item(item_id)
     if not it or int(it['heal'] or 0) <= 0:
-        await cb.answer("❌ Это не лечит.", show_alert=True)
+        await cb.answer(_LT("fire.alert.not_heal"), show_alert=True)
         return
     inv = await db.get_inventory_item(cb.from_user.id, item_id)
     if not inv or int(inv['quantity'] or 0) <= 0:
-        await cb.answer("❌ Зелий этого вида не осталось.", show_alert=True)
+        await cb.answer(_LT("fire.alert.none_left"), show_alert=True)
         return
     if not confirmed and int(session['hp']) >= int(session['hp_max']):
         await cb.answer()
         await cb.message.answer(
-            f"🧪 HP уже полное ({int(session['hp'])}/{int(session['hp_max'])}). "
-            f"Точно применить «{_esc(it['name'])}»? Расходник будет потрачен.",
+            _LT("fire.potion.confirm", hp=int(session['hp']), hp_max=int(session['hp_max']),
+                name=_esc(it['name'])),
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="✅ Да, применить",
+                [InlineKeyboardButton(text=_LT("fire.btn.yes"),
                                       callback_data=f"fireevent:potionok:{session_id}:{slot}"),
-                 InlineKeyboardButton(text="❌ Нет",
+                 InlineKeyboardButton(text=_LT("fire.btn.no"),
                                       callback_data="fireevent:potioncancel")],
             ]))
         return
     if not await db.remove_inventory_item(cb.from_user.id, item_id, 1):
-        await cb.answer("❌ Зелья не списалось.", show_alert=True)
+        await cb.answer(_LT("fire.alert.not_taken"), show_alert=True)
         return
     heal_base = int(it['heal'] or 0)
     pct = await db.get_player_heal_bonus_pct(cb.from_user.id)
@@ -1362,7 +1307,7 @@ async def fire_event_potion_cb(cb: CallbackQuery, confirmed: bool = False):
     await conn.commit()
     await db.log_activity(cb.from_user.id, "firelab",
                           f"Зелье в бою: «{it['name']}» (+{heal} HP)")
-    bonus_note = f" (+{pct}% от экипа и мастерства)" if pct else ""
+    bonus_note = _LT("fire.potion.bonus", pct=pct) if pct else ""
     session = await db.get_active_fire_lab_session(cb.from_user.id)
     enemy, effects = await _get_enemy_state(session_id)
     if not enemy:
@@ -1377,21 +1322,20 @@ async def fire_event_potion_cb(cb: CallbackQuery, confirmed: bool = False):
         ticks = regen_amounts(heal, rpct, turns=(rturns or REGEN_TURNS))
         if ticks:
             effects[FX_REGEN] = ticks
-            regen_note = (f"\n♻ Регенерация: +{'/'.join(str(t) for t in ticks)} "
-                          f"HP на {len(ticks)} ходов")
+            regen_note = _LT("fire.potion.regen", ticks='/'.join(str(t) for t in ticks),
+                             turns=len(ticks))
     # суточный баф уворота (items.dodge_buff_pct): первый раз активирует,
     # повторное применение в течение суток НЕ продлевает
     dbuff = int(it['dodge_buff_pct'] or 0) if 'dodge_buff_pct' in it.keys() else 0
     dbuff_note = ""
     if dbuff > 0:
         if await db.activate_dodge_buff(cb.from_user.id, dbuff):
-            dbuff_note = f"\n🪁 Уворот +{dbuff}% на сутки!"
+            dbuff_note = _LT("fire.potion.dodge", pct=dbuff)
         elif await db.dodge_buff_active(cb.from_user.id):
-            dbuff_note = f"\n🪁 Баф уворота +{dbuff}% уже активен — не продлевается."
+            dbuff_note = _LT("fire.potion.dodge_active", pct=dbuff)
     # зелье — это действие: враг отвечает (обычный ход)
-    log = (f"🧪 «{_esc(it['name'])}» (+{heal} HP)\n"
-           f"💙 Ты восстановил: ×{new_hp}/{int(session['hp_max'])}{bonus_note}"
-           + regen_note + dbuff_note)
+    log = _LT("fire.potion.log", name=_esc(it['name']), heal=heal, hp=new_hp,
+              hp_max=int(session['hp_max']), bonus=bonus_note) + regen_note + dbuff_note
     await _after_player_tick(cb, session, session_id, enemy, effects, log)
 
 
@@ -1403,7 +1347,7 @@ async def fire_event_potion_ok_cb(cb: CallbackQuery):
 
 @router.callback_query(F.data == "fireevent:potioncancel")
 async def fire_event_potion_cancel_cb(cb: CallbackQuery):
-    await cb.answer("Отменено.")
+    await cb.answer(_LT("fire.potion.cancelled"))
     try:
         await cb.message.delete()
     except Exception:
@@ -1439,10 +1383,10 @@ async def _after_player_tick(cb, session, session_id: int, enemy, effects, playe
             await db.log_activity(cb.from_user.id, "firelab",
                                   f"Лут с {enemy['name']}: "
                                   + "; ".join(loot_notes))
-        loot_text = ("\n\n🎉 <b>Добыча:</b>\n" + "\n".join(loot_notes)
+        loot_text = (_LT("fire.loot.head") + "\n".join(loot_notes)
                      if loot_notes else "")
-        await cb.answer("💀 Враг повержен!", show_alert=True)
-        text = (f"💀 <b>{_esc(enemy['name'])} повержен!</b>{loot_text}\n\n")
+        await cb.answer(_LT("fire.alert.won"), show_alert=True)
+        text = _LT("fire.enemy.down", name=_esc(enemy['name']), loot=loot_text)
         await _paint_fork(cb, updated, session_id, prefix=text)
         return
     # фиксация врага и эффектов
@@ -1459,12 +1403,13 @@ async def _after_player_tick(cb, session, session_id: int, enemy, effects, playe
     if burn:
         dmg_burn = int(burn.get('dmg') or 2)
         hp_now = max(0, hp_now - dmg_burn)
-        log_lines.append(f"🔥 Поджиг: −{dmg_burn} HP ({burn.get('rounds')} х. осталось)")
+        log_lines.append(_LT("fire.fx.burn_tick", dmg=dmg_burn, rounds=burn.get('rounds')))
         burn['rounds'] = int(burn.get('rounds') or 0) - 1
         if burn['rounds'] <= 0:
             effects.pop(FX_BURN, None)
     # удар врага (с учётом замедления Хуба)
     dodge_player = 0.0
+    dodged_player = False
     st = None
     try:
         from utils.combat_model import pilot_combat_stats
@@ -1476,7 +1421,8 @@ async def _after_player_tick(cb, session, session_id: int, enemy, effects, playe
         dodge_player = max(0.0, dodge_player - float(getattr(config, "FIRE_LAB_HUB_PLAYER_DODGE_PENALTY", 35) or 0))
     # тикаем замедление у игрока (отнимаем в конце хода, после удара врага)
     if random.random() * 100 < dodge_player:
-        log_lines.append("💨 Ты увернулся от удара врага!")
+        dodged_player = True
+        log_lines.append(_LT("fire.turn.dodged"))
     else:
         from utils.combat_model import armor_hit, _enemy_pierce_roll
         enemy_dmg = random.randint(int(enemy.get('dmg_min') or 0), int(enemy.get('dmg_max') or 0))
@@ -1490,26 +1436,26 @@ async def _after_player_tick(cb, session, session_id: int, enemy, effects, playe
         blocked = hit['armor_blocked']
         hp_now = max(0, hp_now - eff)
         if hit['pierced']:
-            log_lines.append(f"🗡 Враг пробивает броню! Удар на {eff} урона")
+            log_lines.append(_LT("fire.turn.pierce", dmg=eff))
         elif blocked > 0:
-            log_lines.append(f"⚔️ Враг бьёт на {enemy_dmg} — 🛡 броня поглотила {blocked}, −{eff} HP")
+            log_lines.append(_LT("fire.turn.blocked", enemy=enemy_dmg, blocked=blocked, dmg=eff))
         else:
-            log_lines.append(f"⚔️ Враг бьёт на {eff} урона")
+            log_lines.append(_LT("fire.turn.hit", dmg=eff))
         if eff <= 0:
-            log_lines[-1] = f"⚔️ Враг бьёт на {enemy_dmg} — 🛡 броня поглотила удар полностью!"
+            log_lines[-1] = _LT("fire.turn.absorbed", enemy=enemy_dmg)
     # фирменные эффекты врага (только если игрок жив)
     fx_end = ""
-    if hp_now > 0 and log_lines and "Ты увернулся" not in log_lines[-1]:
+    if hp_now > 0 and log_lines and not dodged_player:
         key = enemy.get('key')
         if key == "scarecrow" and random.random() < float(getattr(config, "FIRE_LAB_SCARECROW_BLIND_P", 0.15)):
             effects[FX_BLIND] = effects.get(FX_BLIND, 0) + 1
-            fx_end = "\n🌾 Сено в лицо — ты ослеплён!"
+            fx_end = _LT("fire.fx_end.scarecrow")
         if key == "crow" and random.random() < float(getattr(config, "FIRE_LAB_CROW_BLIND_P", 0.15)):
             effects[FX_BLIND] = effects.get(FX_BLIND, 0) + 1
-            fx_end = "\n🐦 Ворон ослепил тебя!"
+            fx_end = _LT("fire.fx_end.crow")
         if key == "apple_child" and random.random() < float(getattr(config, "FIRE_LAB_APPLE_STUN_P", 0.10)):
             effects[FX_STUN] = effects.get(FX_STUN, 0) + 1
-            fx_end = "\n🍎 Спелое яблоко — ты оглушён!"
+            fx_end = _LT("fire.fx_end.apple")
         if key == "hub" and random.random() < float(getattr(config, "FIRE_LAB_HUB_SLOW_P", 0.25)):
             if '_base_dodge' not in enemy:
                 try:
@@ -1525,12 +1471,12 @@ async def _after_player_tick(cb, session, session_id: int, enemy, effects, playe
                 except Exception:
                     pass
                 effects['hub_dodge_on'] = True
-            fx_end = "\n🕸 Хуб опутывает паутиной: замедление (-укл, +укл Хуба)!"
+            fx_end = _LT("fire.fx_end.hub")
         if key == FIRELAB_BOSS_KEY and hp_now > 0 and random.random() < float(
                 getattr(config, "FIRE_LAB_BOSS_BURN_P", 0.25)):
             effects[FX_BURN] = {'dmg': int(getattr(config, "FIRE_LAB_BOSS_BURN_DMG", 2) or 2),
                                 'rounds': int(getattr(config, "FIRE_LAB_BOSS_BURN_ROUNDS", 3) or 3)}
-            fx_end = "\n🔥 Мистер Тыква поджигает: −2 HP/ход на 3 хода!"
+            fx_end = _LT("fire.fx_end.boss")
     # тик замедления
     if int(effects.get(FX_SLOW) or 0) > 0:
         effects[FX_SLOW] = int(effects[FX_SLOW]) - 1
@@ -1552,12 +1498,10 @@ async def _after_player_tick(cb, session, session_id: int, enemy, effects, playe
 
 async def _player_death(cb, session_id: int):
     await db.end_fire_lab_session(session_id, 'dead')
-    await cb.answer("💀 Ты пал в Огненном Лабиринте!", show_alert=True)
-    text = ("💀 <b>Ты пал в Огненном Лабиринте.</b>\n"
-            "Пламя погасило твою искру — но Круговорот живуч, и попытка "
-            "ценна. Заходы за сутки можно продолжать за НМ.")
+    await cb.answer(_LT("fire.alert.died"), show_alert=True)
+    text = _LT("fire.died.text")
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🏠 В город", callback_data="city:menu")],
+        [InlineKeyboardButton(text=_LT("fire.btn.city"), callback_data="city:menu")],
     ])
     await _fire_paint(cb, text=text, kb=kb,
                       media_path=resolve_image(
