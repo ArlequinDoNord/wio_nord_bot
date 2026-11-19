@@ -3,7 +3,7 @@ import random
 import json
 import time
 import asyncio
-from utils.localization import t as _LT
+from utils.localization import t as _LT, t_user
 from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, FSInputFile, InputMediaPhoto
 from aiogram.fsm.context import FSMContext
@@ -1276,7 +1276,8 @@ async def _enemy_defeated(callback, state, bot, run, enemy, player_hp):
             await bump_achievement(user_id, "raider", 1)
             await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_start_keyboard())
             pilot = await get_user(user_id)
-            await notify(bot, f"🏆 {await player_display(pilot)} прошёл подземелье и победил босса «{enemy['name']}»!", user_id)
+            await notify(bot, await t_user(user_id, "dungeon.notify.boss_won",
+                                           who=await player_display(pilot), boss=enemy['name']), user_id)
     else:
         hp_text = _hp_bar(player_hp, run['hp_max'])
         text = _LT("dungeon.enemy.down", name=enemy['name'])

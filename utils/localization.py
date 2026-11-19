@@ -1378,6 +1378,10 @@ STRINGS = {
     },
     "dungeon.escape.run": {"ru": "🏃 Ты успешно убежал от {name}!\n", "en": "🏃 You escaped {name}!\n"},
     # Подземелье: босс, выход (bot/handlers/dungeon.py).
+    "dungeon.notify.boss_won": {
+        "ru": "🏆 {who} прошёл подземелье и победил босса «{boss}»!",
+        "en": "🏆 {who} cleared the dungeon and defeated the boss «{boss}»!",
+    },
     "dungeon.boss.no_escape": {"ru": "⚠️ От босса не убежать! Бой продолжается.", "en": "⚠️ You can't run from the boss! The fight goes on."},
     "dungeon.boss.not_found": {"ru": "❌ Босс не найден.", "en": "❌ Boss not found."},
     "dungeon.boss.heal": {"ru": "💊 Лекарства: {uses} применений (×{mult})", "en": "💊 Medicine: {uses} uses (×{mult})"},
@@ -2018,6 +2022,22 @@ STRINGS = {
     "inv.gear": {"ru": "Снаряжение", "en": "Gear"},
     "inv.catch": {"ru": "Улов", "en": "Catch"},
 }
+
+
+def _apply_text_overrides() -> None:
+    """Правки владельца из TEXTS_EDIT.md (tools/apply_texts.py) поверх STRINGS."""
+    import json
+    import os
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "texts_overrides.json")
+    if not os.path.isfile(path):
+        return
+    with open(path, encoding="utf-8") as f:
+        for key, langs in json.load(f).items():
+            if key in STRINGS:
+                STRINGS[key].update(langs)
+
+
+_apply_text_overrides()
 
 
 def place_name(key: str, ru_name: str) -> str:
