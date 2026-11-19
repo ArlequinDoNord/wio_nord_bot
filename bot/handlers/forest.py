@@ -548,18 +548,18 @@ async def forest_cast(callback: CallbackQuery):
         return
 
     if user_id in FOREST_CASTING:
-        await callback.answer("Ты уже ищешь грибы — дождись результата!", show_alert=True)
+        await callback.answer(_LT("forest.alert.busy_mush"), show_alert=True)
         return
 
     FOREST_CASTING.add(user_id)
     try:
         if await get_active_run(user_id):
-            await callback.answer("⛔ Ты в подземелье — по лесу гулять нельзя!", show_alert=True)
+            await callback.answer(_LT("forest.alert.dungeon"), show_alert=True)
             return
 
         user = await get_user(user_id)
         if not user:
-            await callback.answer("Сначала нажми /start", show_alert=True)
+            await callback.answer(_LT("forest.alert.no_start"), show_alert=True)
             return
 
         zone = await get_forest_zone(area)
@@ -572,10 +572,8 @@ async def forest_cast(callback: CallbackQuery):
             return
 
         delay = random.randint(*FOREST_RESULT_DELAY)
-        cast_text = (
-            f"{area_emoji} Ты {'оглядываешь опушку' if area == 'glade' else 'идёшь по тропе к поляне'}...\n"
-            f"Результат через {delay} секунд. {'Здесь тихо.' if area == 'glade' else 'Не шуми — прислушивайся!'}"
-        )
+        cast_text = _LT("forest.cast.glade" if area == "glade" else "forest.cast.clearing",
+                        emoji=area_emoji, delay=delay)
         await _glade_paint(callback, text=cast_text, kb=None, area=area)
         await log_activity(user_id, "forest", f"Поиск грибов: {area_name} ({ap_cost} ОД)")
         await asyncio.sleep(delay)
@@ -631,27 +629,23 @@ async def forest_cast(callback: CallbackQuery):
         fresh = await get_user(user_id) or {}
         _ap = fresh.get('ap', 0) or 0
         _ap_max = fresh.get('ap_max', _ap) or _ap
-        ap_line = f"⚡ ОД: {_ap}/{_ap_max}"
+        ap_line = _LT("forest.ap_line", ap=_ap, ap_max=_ap_max)
         if _ap < ap_cost:
-            ap_line += f" — на следующий поиск не хватит ({ap_cost} ОД)"
+            ap_line += _LT("forest.ap_next_short", cost=ap_cost)
         else:
-            ap_line += f" — можно искать ещё"
+            ap_line += _LT("forest.ap_next_ok")
         ap_block = f"\n\n{ap_line}"
         head = f"{area_emoji} {FOREST_AREA_NAME[area]}"
         result_kb = await _result_markup(FOREST_TOKEN.get(user_id, ""), area, user_id)
 
         if row is None:
-            text = (
-                f"{head}\n\n"
-                "Ты обошёл несколько полян, заглянул под каждую ёлку — "
-                "а грибов и нет. Бывает. Попробуй ещё раз!"
-            ) + ap_block
+            text = _LT("forest.mush.empty", head=head) + ap_block
             await _glade_paint(callback, text=text, kb=result_kb, area=area)
             return
 
         item = await get_item(row['item_id'])
         if not item:
-            text = (f"{head}\n\n🍄 Что-то нашёл, но предмет потерялся. Сообщи хранителю.") + ap_block
+            text = _LT("forest.mush.lost", head=head) + ap_block
             await _glade_paint(callback, text=text, kb=result_kb, area=area)
             return
 
@@ -660,21 +654,16 @@ async def forest_cast(callback: CallbackQuery):
         await tree_record_collect(user_id, item['name'])
         await log_activity(user_id, "forest", f"Нашёл «{item['name']}» ({area_name})")
         await bump_achievement(user_id, "mushrooms", 1)
-        kind_label = "☠ Ядовитый гриб!" if (row.get('kind') or 'edible') == "toxic" else "🍄"
+        kind_label = _LT("forest.mush.toxic") if (row.get('kind') or 'edible') == "toxic" else "🍄"
         sell_line = ""
         if item['sell_price'] > 0:
-            sell_line = (
-                f"\nПродать можно за {item['sell_price']} "
-                f"{plural_nordmark(item['sell_price'])}."
-            )
+            sell_line = _LT("forest.mush.sell", price=item['sell_price'],
+                            money=plural_nordmark(item['sell_price']))
         heal_line = ""
         if item['heal'] and item['heal'] > 0:
-            heal_line = f" Сырым восстанавливает {item['heal']} HP в бою."
-        text = (
-            f"{head}\n\n"
-            f"{kind_label} Ты нашёл: «{item['name']}»!\n\n"
-            f"🎒 Гриб положен в инвентарь.{heal_line}{sell_line}"
-        ) + ap_block
+            heal_line = _LT("forest.mush.heal", heal=item['heal'])
+        text = _LT("forest.mush.found", head=head, kind=kind_label, name=item['name'],
+                   heal_line=heal_line, sell_line=sell_line) + ap_block
         if row.get('photo_file_id'):
             await _paint(callback, text=text, photo_id=row['photo_file_id'], kb=result_kb)
             return
@@ -747,10 +736,10 @@ async def forest_berry(callback: CallbackQuery):
     FOREST_CASTING.add(user_id)
     try:
         if await get_active_run(user_id):
-            await callback.answer("⛔ Ты в подземелье — по лесу гулять нельзя!", show_alert=True)
+            await callback.answer(_LT("forest.alert.dungeon"), show_alert=True)
             return
         if not await get_user(user_id):
-            await callback.answer("Сначала нажми /start", show_alert=True)
+            await callback.answer(_LT("forest.alert.no_start"), show_alert=True)
             return
 
         zone = await get_forest_zone(area)

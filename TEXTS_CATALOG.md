@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=15ec2b76cbcfad7c seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=3ad8306943167274 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **386** (ru + en).
+Всего строк: **399** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -943,13 +943,31 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   > ⚖️ Your fines
 
-#### лес · `forest.` (25)
+#### лес · `forest.` (38)
+
+### UI-forest.alert.busy_mush
+- RU:
+  > Ты уже ищешь грибы — дождись результата!
+- EN:
+  > You're already searching — wait for the result!
 
 ### UI-forest.alert.closed
 - RU:
   > Сюда пока не пускают.
 - EN:
   > Entry is closed for now.
+
+### UI-forest.alert.dungeon
+- RU:
+  > ⛔ Ты в подземелье — по лесу гулять нельзя!
+- EN:
+  > ⛔ You're in a dungeon — no wandering the forest!
+
+### UI-forest.alert.no_start
+- RU:
+  > Сначала нажми /start
+- EN:
+  > Press /start first
 
 ### UI-forest.alert.tourist
 - RU:
@@ -962,6 +980,18 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   > ⚡ ОД: {ap}/{ap_max}
 - EN:
   > ⚡ AP: {ap}/{ap_max}
+
+### UI-forest.ap_next_ok
+- RU:
+  >  — можно искать ещё
+- EN:
+  >  — you can search again
+
+### UI-forest.ap_next_short
+- RU:
+  >  — на следующий поиск не хватит ({cost} ОД)
+- EN:
+  >  — not enough for the next search ({cost} AP)
 
 ### UI-forest.ap_short
 - RU:
@@ -1011,6 +1041,22 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   > To the glade
 
+### UI-forest.cast.clearing
+- RU:
+  > {emoji} Ты идёшь по тропе к поляне...
+  > Результат через {delay} секунд. Не шуми — прислушивайся!
+- EN:
+  > {emoji} You follow the trail toward the clearing...
+  > Result in {delay} seconds. Keep quiet — listen!
+
+### UI-forest.cast.glade
+- RU:
+  > {emoji} Ты оглядываешь опушку...
+  > Результат через {delay} секунд. Здесь тихо.
+- EN:
+  > {emoji} You scan the glade...
+  > Result in {delay} seconds. It's quiet here.
+
 ### UI-forest.deny.clearing
 - RU:
   > Дальше — только настоящим пилотам Нордхайма. Прогалина за опушкой раскинулась на десятки вёрст, а тропы между лесами незнакомые: чужой здесь легко заблудиться. Туристов сюда не пускают — и правильно.
@@ -1030,6 +1076,60 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   > ⛔ You're in a dungeon right now — no wandering through the forest.
   > Leave the dungeon, then head to the {where}.
+
+### UI-forest.mush.empty
+- RU:
+  > {head}
+  >
+  > Ты обошёл несколько полян, заглянул под каждую ёлку — а грибов и нет. Бывает. Попробуй ещё раз!
+- EN:
+  > {head}
+  >
+  > You crossed a few clearings and peeked under every spruce — no mushrooms at all. It happens. Try again!
+
+### UI-forest.mush.found
+- RU:
+  > {head}
+  >
+  > {kind} Ты нашёл: «{name}»!
+  >
+  > 🎒 Гриб положен в инвентарь.{heal_line}{sell_line}
+- EN:
+  > {head}
+  >
+  > {kind} You found: «{name}»!
+  >
+  > 🎒 The mushroom is in your inventory.{heal_line}{sell_line}
+
+### UI-forest.mush.heal
+- RU:
+  >  Сырым восстанавливает {heal} HP в бою.
+- EN:
+  >  Eaten raw, it restores {heal} HP in battle.
+
+### UI-forest.mush.lost
+- RU:
+  > {head}
+  >
+  > 🍄 Что-то нашёл, но предмет потерялся. Сообщи хранителю.
+- EN:
+  > {head}
+  >
+  > 🍄 You found something, but the item got lost. Tell the keeper.
+
+### UI-forest.mush.sell
+- RU:
+  >
+  > Продать можно за {price} {money}.
+- EN:
+  >
+  > Can be sold for {price} {money}.
+
+### UI-forest.mush.toxic
+- RU:
+  > ☠ Ядовитый гриб!
+- EN:
+  > ☠ Poisonous mushroom!
 
 ### UI-forest.tourist_safe
 - RU:
@@ -5435,7 +5535,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4845** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4830** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -11567,7 +11667,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 - (находок со дна нет)
 
-#### `bot/handlers/forest.py` (72)
+#### `bot/handlers/forest.py` (57)
 
 ##### `(модуль)`
 
@@ -11695,41 +11795,17 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   
   🫐 Что-то нашёл, но предмет потерялся. Сообщи хранителю.
 - Поиск ягод: {area_name} ({ap_cost} ОД)
-- Сначала нажми /start
 - Собрал «{…}» ({area_name})
 - Ты уже что-то ищешь — дождись результата!
 - поиск ягод ({area_name})
 - ⚡ ОД: {ap_now}/{…}
-- ⛔ Ты в подземелье — по лесу гулять нельзя!
 - 🌲 Сюда туристов не пускают.
 
 ##### `forest_cast`
 
-- {area_emoji} Ты {…}...
-  Результат через {delay} секунд. {…}
-- {head}
-  
-  {kind_label} Ты нашёл: «{…}»!
-  
-  🎒 Гриб положен в инвентарь.{heal_line}{sell_line}
-- {head}
-  
-  Ты обошёл несколько полян, заглянул под каждую ёлку — а грибов и нет. Бывает. Попробуй ещё раз!
-- {head}
-  
-  🍄 Что-то нашёл, но предмет потерялся. Сообщи хранителю.
 - Нашёл «{…}» ({area_name})
 - Поиск грибов: {area_name} ({ap_cost} ОД)
-- Продать можно за {…} {…}.
-- Сначала нажми /start
-- Сырым восстанавливает {…} HP в бою.
-- Ты уже ищешь грибы — дождись результата!
 - поиск грибов ({area_name})
-- — можно искать ещё
-- — на следующий поиск не хватит ({ap_cost} ОД)
-- ☠ Ядовитый гриб!
-- ⚡ ОД: {_ap}/{_ap_max}
-- ⛔ Ты в подземелье — по лесу гулять нельзя!
 
 #### `bot/handlers/housing.py` (169)
 

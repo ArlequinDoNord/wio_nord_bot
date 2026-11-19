@@ -457,6 +457,35 @@ STRINGS = {
     "forest.btn.berry": {"ru": "🫐 Искать ягоды", "en": "🫐 Search berries"},
     "forest.btn.log": {"ru": "🪓 Лесозаготовка", "en": "🪓 Logging camp"},
     "forest.btn.city": {"ru": "🔙 В город", "en": "🔙 To the city"},
+    # Лес: поиск грибов (bot/handlers/forest.py).
+    "forest.alert.busy_mush": {"ru": "Ты уже ищешь грибы — дождись результата!", "en": "You're already searching — wait for the result!"},
+    "forest.alert.dungeon": {"ru": "⛔ Ты в подземелье — по лесу гулять нельзя!", "en": "⛔ You're in a dungeon — no wandering the forest!"},
+    "forest.alert.no_start": {"ru": "Сначала нажми /start", "en": "Press /start first"},
+    "forest.cast.glade": {
+        "ru": "{emoji} Ты оглядываешь опушку...\nРезультат через {delay} секунд. Здесь тихо.",
+        "en": "{emoji} You scan the glade...\nResult in {delay} seconds. It's quiet here.",
+    },
+    "forest.cast.clearing": {
+        "ru": "{emoji} Ты идёшь по тропе к поляне...\nРезультат через {delay} секунд. Не шуми — прислушивайся!",
+        "en": "{emoji} You follow the trail toward the clearing...\nResult in {delay} seconds. Keep quiet — listen!",
+    },
+    "forest.ap_next_short": {"ru": " — на следующий поиск не хватит ({cost} ОД)", "en": " — not enough for the next search ({cost} AP)"},
+    "forest.ap_next_ok": {"ru": " — можно искать ещё", "en": " — you can search again"},
+    "forest.mush.empty": {
+        "ru": "{head}\n\nТы обошёл несколько полян, заглянул под каждую ёлку — а грибов и нет. Бывает. Попробуй ещё раз!",
+        "en": "{head}\n\nYou crossed a few clearings and peeked under every spruce — no mushrooms at all. It happens. Try again!",
+    },
+    "forest.mush.lost": {
+        "ru": "{head}\n\n🍄 Что-то нашёл, но предмет потерялся. Сообщи хранителю.",
+        "en": "{head}\n\n🍄 You found something, but the item got lost. Tell the keeper.",
+    },
+    "forest.mush.toxic": {"ru": "☠ Ядовитый гриб!", "en": "☠ Poisonous mushroom!"},
+    "forest.mush.sell": {"ru": "\nПродать можно за {price} {money}.", "en": "\nCan be sold for {price} {money}."},
+    "forest.mush.heal": {"ru": " Сырым восстанавливает {heal} HP в бою.", "en": " Eaten raw, it restores {heal} HP in battle."},
+    "forest.mush.found": {
+        "ru": "{head}\n\n{kind} Ты нашёл: «{name}»!\n\n🎒 Гриб положен в инвентарь.{heal_line}{sell_line}",
+        "en": "{head}\n\n{kind} You found: «{name}»!\n\n🎒 The mushroom is in your inventory.{heal_line}{sell_line}",
+    },
     "logging.bat.expired": {"ru": "⏳ Бой устарел.", "en": "⏳ The fight is out of date."},
     "logging.bat.miss.snake": {
         "ru": "Ты бьёшь — но змея уходит в сторону, словно сквозь тень.\n\n",
