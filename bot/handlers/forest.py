@@ -22,6 +22,7 @@ import random
 
 import config
 
+from utils.localization import t as _LT
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, FSInputFile
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -70,11 +71,7 @@ def _beast_emoji(enemy: dict | None) -> str:
 
 # Почему туристам закрыта поляна: не местные, легко заблудиться.
 AREA_DENY_TEXT = {
-    "clearing": (
-        "Дальше — только настоящим пилотам Нордхайма. Прогалина за опушкой "
-        "раскинулась на десятки вёрст, а тропы между лесами незнакомые: "
-        "чужой здесь легко заблудиться. Туристов сюда не пускают — и правильно."
-    ),
+    "clearing": "forest.deny.clearing",
 }
 
 # Доля «ничего не нашёл» на 1 попытку. Остальное (100 − эта доля) делят грибы
@@ -342,10 +339,9 @@ async def _open_zone_window(callback: CallbackQuery, area: str):
     await callback.answer()
 
     if await get_active_run(callback.from_user.id):
-        where = "опушку" if area == FOREST_HOME_AREA else "прогалину"
+        where = _LT("forest.where.glade" if area == FOREST_HOME_AREA else "forest.where.clearing")
         await callback.message.answer(
-            "⛔ Ты сейчас проходишь подземелье — бродить по лесу нельзя.\n"
-            f"Выйди из подземелья, а потом иди на {where}."
+            _LT("forest.dungeon_block", where=where)
         )
         return
 
@@ -386,27 +382,25 @@ async def _show_area(callback: CallbackQuery, area: str, prefix: str = ""):
 
     # Зона выключена админом.
     if not zone.get("enabled"):
-        text = (
-            f"{prefix}{emoji} {title}\n\n"
-            "Сейчас сюда не пускают — зона закрыта. Загляни позже."
-        )
+        text = _LT("forest.zone.head", prefix=prefix, emoji=emoji, title=title,
+                   body=_LT("forest.zone.closed"))
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🌿 К опушке", callback_data=f"forest:area:{token}:glade")],
-            [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
+            [InlineKeyboardButton(text=_LT("forest.btn.to_glade", emoji=FOREST_AREA_EMOJI["glade"]),
+                                  callback_data=f"forest:area:{token}:glade")],
+            [InlineKeyboardButton(text=_LT("forest.btn.city"), callback_data="city:menu")],
         ])
         await _glade_paint(callback, text=text, kb=kb, area=area)
         return
 
     # Турист в зоне без туристов.
     if await user_is_tourist(callback.from_user.id) and not zone.get("allow_tourists"):
-        text = (
-            f"{prefix}{emoji} {title}\n\n"
-            f"{AREA_DENY_TEXT.get(area, 'Сюда туристов не пускают.')}\n\n"
-            "Зато на опушке грибы собирают и туристы — там безопасно."
-        )
+        text = _LT("forest.zone.head", prefix=prefix, emoji=emoji, title=title,
+                   body=_LT(AREA_DENY_TEXT.get(area, "forest.deny.default"))
+                   + "\n\n" + _LT("forest.tourist_safe"))
         kb = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🌿 К опушке", callback_data=f"forest:area:{token}:glade")],
-            [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")],
+            [InlineKeyboardButton(text=_LT("forest.btn.to_glade", emoji=FOREST_AREA_EMOJI["glade"]),
+                                  callback_data=f"forest:area:{token}:glade")],
+            [InlineKeyboardButton(text=_LT("forest.btn.city"), callback_data="city:menu")],
         ])
         await _glade_paint(callback, text=text, kb=kb, area=area)
         return
@@ -414,17 +408,13 @@ async def _show_area(callback: CallbackQuery, area: str, prefix: str = ""):
     user = await get_user(callback.from_user.id) or {}
     ap = user.get('ap', 0) or 0
     ap_max = user.get('ap_max', ap) or ap
-    ap_line = f"⚡ ОД: {ap}/{ap_max}"
+    ap_line = _LT("forest.ap_line", ap=ap, ap_max=ap_max)
     if ap < ap_cost:
-        ap_line += f" — не хватит на поиск ({ap_cost} ОД), придёт с новыми сутками"
+        ap_line += _LT("forest.ap_short", cost=ap_cost)
 
     limit = await _treasury_limit()
     if area == "glade":
-        desc = (
-            "Тёмный еловый лес начинается прямо за городской окраиной. На "
-            "опушке — только самое простое: обычные грибы у дороги и изредка "
-            "бледная поганка. Здесь спокойно, сюда пускают и туристов."
-        )
+        desc = _LT("forest.zone.glade_desc")
     else:
         boar_line = ""
         if zone.get("boar_enabled"):
@@ -433,24 +423,16 @@ async def _show_area(callback: CallbackQuery, area: str, prefix: str = ""):
             chance = int(zone.get("boar_chance") or 0) or float((boar or {}).get("chance") or 0)
             parts = []
             if chance:
-                parts.append(f"шанс встречи {chance:g}%")
+                parts.append(_LT("forest.zone.boar_chance", chance=f"{chance:g}"))
             if every:
-                parts.append(f"не чаще одного раза на {every} попыток")
+                parts.append(_LT("forest.zone.boar_every", every=every))
             if parts:
-                boar_line = "Здесь водятся звери: " + ", ".join(parts) + "."
-        desc = (
-            "За опушкой начинается настоящий лес. Прогалина тянется далеко, и "
-            "растут здесь все грибы, какие только есть в Нордхайме — от "
-            "опёнка до ежовика гребенчатого." + (f"\n\n{boar_line}" if boar_line else "")
-        )
+                boar_line = _LT("forest.zone.beasts", parts=", ".join(parts))
+        desc = _LT("forest.zone.clearing_desc") + (f"\n\n{boar_line}" if boar_line else "")
 
-    text = (
-        f"{prefix}{emoji} {title}\n\n{desc}\n\n"
-        f"{ap_line}\n\n"
-        f"Поиск стоит {ap_cost} ОД, результат через 5–10 секунд.\n\n"
-        f"🧺 Казна покупает грибы не больше {limit} НМ в сутки — "
-        "остальное можно продать на рынке игроков."
-    )
+    text = _LT("forest.zone.head", prefix=prefix, emoji=emoji, title=title,
+               body=_LT("forest.zone.screen", desc=desc, ap_line=ap_line,
+                        cost=ap_cost, limit=limit))
     await _glade_paint(callback, text=text, kb=await _area_markup(token, area), area=area)
 
 
@@ -473,9 +455,9 @@ async def forest_area_switch(callback: CallbackQuery):
     if not await _area_allowed(area, callback.from_user.id):
         zone = await get_forest_zone(area)
         if not zone.get("enabled"):
-            await callback.answer("Сюда пока не пускают.", show_alert=True)
+            await callback.answer(_LT("forest.alert.closed"), show_alert=True)
         else:
-            await callback.answer("🌲 Сюда туристов не пускают.", show_alert=True)
+            await callback.answer(_LT("forest.alert.tourist"), show_alert=True)
         return
     await _show_area(callback, area)
 
@@ -487,21 +469,21 @@ async def _area_markup(token: str, area: str):
     вход кнопкой в отдельное окно рубки деревьев.
     """
     rows = [[InlineKeyboardButton(
-        text=f"{FOREST_AREA_EMOJI[area]} Искать грибы",
+        text=_LT("forest.btn.cast", emoji=FOREST_AREA_EMOJI[area]),
         callback_data=f"forest:cast:{token}:{area}")],
         [InlineKeyboardButton(
-            text="🫐 Искать ягоды",
+            text=_LT("forest.btn.berry"),
             callback_data=f"forest:berry:{token}:{area}")]]
     other = "clearing" if area == "glade" else "glade"
     if await _zone_open(other):
         rows.append([InlineKeyboardButton(
             text=(f"{FOREST_AREA_EMOJI[other]} "
-                  + ("Углубиться в лес" if other == "clearing" else "К опушке")),
+                  + (_LT("forest.btn.deeper") if other == "clearing" else _LT("forest.btn.to_glade_plain"))),
             callback_data=f"forest:area:{token}:{other}")])
     if area == "clearing":
-        rows.append([InlineKeyboardButton(text="🪓 Лесозаготовка",
+        rows.append([InlineKeyboardButton(text=_LT("forest.btn.log"),
                                           callback_data="logsite:enter")])
-    rows.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
+    rows.append([InlineKeyboardButton(text=_LT("forest.btn.city"), callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -541,7 +523,7 @@ def _simple_markup(token: str, area: str = "glade"):
     if area == "clearing":
         rows.append([InlineKeyboardButton(text="🪓 Лесозаготовка",
                                           callback_data="logsite:enter")])
-    rows.append([InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")])
+    rows.append([InlineKeyboardButton(text=_LT("forest.btn.city"), callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -559,9 +541,9 @@ async def forest_cast(callback: CallbackQuery):
     if not await _area_allowed(area, user_id):
         zone = await get_forest_zone(area)
         if not zone.get("enabled"):
-            await callback.answer("Сюда пока не пускают.", show_alert=True)
+            await callback.answer(_LT("forest.alert.closed"), show_alert=True)
         else:
-            await callback.answer("🌲 Сюда туристов не пускают.", show_alert=True)
+            await callback.answer(_LT("forest.alert.tourist"), show_alert=True)
         await _show_area(callback, area)
         return
 

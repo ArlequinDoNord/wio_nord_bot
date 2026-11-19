@@ -404,6 +404,59 @@ STRINGS = {
     "logging.btn.fire_all": {"ru": "🪓 Всё ({cnt} дров)", "en": "🪓 All ({cnt} firewood)"},
     "logging.btn.hit": {"ru": "⚔️ Ударить", "en": "⚔️ Strike"},
     "logging.btn.flee": {"ru": "🏃 Сбежать", "en": "🏃 Run away"},
+    # Лес: зоны, вход и переходы (bot/handlers/forest.py).
+    "forest.deny.clearing": {
+        "ru": "Дальше — только настоящим пилотам Нордхайма. Прогалина за опушкой раскинулась на десятки вёрст, а тропы между лесами незнакомые: чужой здесь легко заблудиться. Туристов сюда не пускают — и правильно.",
+        "en": "Only real Nordheim pilots go further. The clearing beyond the glade stretches for dozens of versts, and the paths between the woods are unfamiliar: a stranger gets lost easily here. Tourists aren't let in — and rightly so.",
+    },
+    "forest.deny.default": {"ru": "Сюда туристов не пускают.", "en": "Tourists aren't allowed here."},
+    "forest.dungeon_block": {
+        "ru": "⛔ Ты сейчас проходишь подземелье — бродить по лесу нельзя.\nВыйди из подземелья, а потом иди на {where}.",
+        "en": "⛔ You're in a dungeon right now — no wandering through the forest.\nLeave the dungeon, then head to the {where}.",
+    },
+    "forest.where.glade": {"ru": "опушку", "en": "glade"},
+    "forest.where.clearing": {"ru": "прогалину", "en": "clearing"},
+    "forest.zone.head": {"ru": "{prefix}{emoji} {title}\n\n{body}", "en": "{prefix}{emoji} {title}\n\n{body}"},
+    "forest.zone.closed": {
+        "ru": "Сейчас сюда не пускают — зона закрыта. Загляни позже.",
+        "en": "Entry is closed right now. Come back later.",
+    },
+    "forest.tourist_safe": {
+        "ru": "Зато на опушке грибы собирают и туристы — там безопасно.",
+        "en": "But mushrooms are gathered on the glade, and tourists are welcome there — it's safe.",
+    },
+    "forest.ap_line": {"ru": "⚡ ОД: {ap}/{ap_max}", "en": "⚡ AP: {ap}/{ap_max}"},
+    "forest.ap_short": {
+        "ru": " — не хватит на поиск ({cost} ОД), придёт с новыми сутками",
+        "en": " — not enough for a search ({cost} AP), it comes back with the new day",
+    },
+    "forest.zone.glade_desc": {
+        "ru": "Тёмный еловый лес начинается прямо за городской окраиной. На опушке — только самое простое: обычные грибы у дороги и изредка бледная поганка. Здесь спокойно, сюда пускают и туристов.",
+        "en": "The dark spruce forest begins right past the city edge. The glade has only the simplest finds: common mushrooms by the road and the occasional death cap. It's calm here, and tourists are welcome.",
+    },
+    "forest.zone.clearing_desc": {
+        "ru": "За опушкой начинается настоящий лес. Прогалина тянется далеко, и растут здесь все грибы, какие только есть в Нордхайме — от опёнка до ежовика гребенчатого.",
+        "en": "Past the glade the real forest begins. The clearing stretches far, and every mushroom Nordheim has grows here — from honey fungus to hericium.",
+    },
+    "forest.zone.beasts": {"ru": "Здесь водятся звери: {parts}.", "en": "Beasts live here: {parts}."},
+    "forest.zone.boar_chance": {"ru": "шанс встречи {chance}%", "en": "encounter chance {chance}%"},
+    "forest.zone.boar_every": {
+        "ru": "не чаще одного раза на {every} попыток",
+        "en": "at most once every {every} searches",
+    },
+    "forest.zone.screen": {
+        "ru": "{desc}\n\n{ap_line}\n\nПоиск стоит {cost} ОД, результат через 5–10 секунд.\n\n🧺 Казна покупает грибы не больше {limit} НМ в сутки — остальное можно продать на рынке игроков.",
+        "en": "{desc}\n\n{ap_line}\n\nA search costs {cost} AP, result in 5–10 seconds.\n\n🧺 The treasury buys mushrooms up to {limit} NM a day — the rest can be sold on the players' market.",
+    },
+    "forest.alert.closed": {"ru": "Сюда пока не пускают.", "en": "Entry is closed for now."},
+    "forest.alert.tourist": {"ru": "🌲 Сюда туристов не пускают.", "en": "🌲 Tourists aren't allowed here."},
+    "forest.btn.to_glade": {"ru": "{emoji} К опушке", "en": "{emoji} To the glade"},
+    "forest.btn.to_glade_plain": {"ru": "К опушке", "en": "To the glade"},
+    "forest.btn.deeper": {"ru": "Углубиться в лес", "en": "Go deeper"},
+    "forest.btn.cast": {"ru": "{emoji} Искать грибы", "en": "{emoji} Search mushrooms"},
+    "forest.btn.berry": {"ru": "🫐 Искать ягоды", "en": "🫐 Search berries"},
+    "forest.btn.log": {"ru": "🪓 Лесозаготовка", "en": "🪓 Logging camp"},
+    "forest.btn.city": {"ru": "🔙 В город", "en": "🔙 To the city"},
     "logging.bat.expired": {"ru": "⏳ Бой устарел.", "en": "⏳ The fight is out of date."},
     "logging.bat.miss.snake": {
         "ru": "Ты бьёшь — но змея уходит в сторону, словно сквозь тень.\n\n",

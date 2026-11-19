@@ -20,9 +20,9 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=f7f318dabab7711d seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=15ec2b76cbcfad7c seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
-_Снимок: 2026-11-18 · источник: прод-БД + сиды_
+_Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Содержание
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **361** (ru + en).
+Всего строк: **386** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -942,6 +942,176 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   > ⚖️ Твои штрафы
 - EN:
   > ⚖️ Your fines
+
+#### лес · `forest.` (25)
+
+### UI-forest.alert.closed
+- RU:
+  > Сюда пока не пускают.
+- EN:
+  > Entry is closed for now.
+
+### UI-forest.alert.tourist
+- RU:
+  > 🌲 Сюда туристов не пускают.
+- EN:
+  > 🌲 Tourists aren't allowed here.
+
+### UI-forest.ap_line
+- RU:
+  > ⚡ ОД: {ap}/{ap_max}
+- EN:
+  > ⚡ AP: {ap}/{ap_max}
+
+### UI-forest.ap_short
+- RU:
+  >  — не хватит на поиск ({cost} ОД), придёт с новыми сутками
+- EN:
+  >  — not enough for a search ({cost} AP), it comes back with the new day
+
+### UI-forest.btn.berry
+- RU:
+  > 🫐 Искать ягоды
+- EN:
+  > 🫐 Search berries
+
+### UI-forest.btn.cast
+- RU:
+  > {emoji} Искать грибы
+- EN:
+  > {emoji} Search mushrooms
+
+### UI-forest.btn.city
+- RU:
+  > 🔙 В город
+- EN:
+  > 🔙 To the city
+
+### UI-forest.btn.deeper
+- RU:
+  > Углубиться в лес
+- EN:
+  > Go deeper
+
+### UI-forest.btn.log
+- RU:
+  > 🪓 Лесозаготовка
+- EN:
+  > 🪓 Logging camp
+
+### UI-forest.btn.to_glade
+- RU:
+  > {emoji} К опушке
+- EN:
+  > {emoji} To the glade
+
+### UI-forest.btn.to_glade_plain
+- RU:
+  > К опушке
+- EN:
+  > To the glade
+
+### UI-forest.deny.clearing
+- RU:
+  > Дальше — только настоящим пилотам Нордхайма. Прогалина за опушкой раскинулась на десятки вёрст, а тропы между лесами незнакомые: чужой здесь легко заблудиться. Туристов сюда не пускают — и правильно.
+- EN:
+  > Only real Nordheim pilots go further. The clearing beyond the glade stretches for dozens of versts, and the paths between the woods are unfamiliar: a stranger gets lost easily here. Tourists aren't let in — and rightly so.
+
+### UI-forest.deny.default
+- RU:
+  > Сюда туристов не пускают.
+- EN:
+  > Tourists aren't allowed here.
+
+### UI-forest.dungeon_block
+- RU:
+  > ⛔ Ты сейчас проходишь подземелье — бродить по лесу нельзя.
+  > Выйди из подземелья, а потом иди на {where}.
+- EN:
+  > ⛔ You're in a dungeon right now — no wandering through the forest.
+  > Leave the dungeon, then head to the {where}.
+
+### UI-forest.tourist_safe
+- RU:
+  > Зато на опушке грибы собирают и туристы — там безопасно.
+- EN:
+  > But mushrooms are gathered on the glade, and tourists are welcome there — it's safe.
+
+### UI-forest.where.clearing
+- RU:
+  > прогалину
+- EN:
+  > clearing
+
+### UI-forest.where.glade
+- RU:
+  > опушку
+- EN:
+  > glade
+
+### UI-forest.zone.beasts
+- RU:
+  > Здесь водятся звери: {parts}.
+- EN:
+  > Beasts live here: {parts}.
+
+### UI-forest.zone.boar_chance
+- RU:
+  > шанс встречи {chance}%
+- EN:
+  > encounter chance {chance}%
+
+### UI-forest.zone.boar_every
+- RU:
+  > не чаще одного раза на {every} попыток
+- EN:
+  > at most once every {every} searches
+
+### UI-forest.zone.clearing_desc
+- RU:
+  > За опушкой начинается настоящий лес. Прогалина тянется далеко, и растут здесь все грибы, какие только есть в Нордхайме — от опёнка до ежовика гребенчатого.
+- EN:
+  > Past the glade the real forest begins. The clearing stretches far, and every mushroom Nordheim has grows here — from honey fungus to hericium.
+
+### UI-forest.zone.closed
+- RU:
+  > Сейчас сюда не пускают — зона закрыта. Загляни позже.
+- EN:
+  > Entry is closed right now. Come back later.
+
+### UI-forest.zone.glade_desc
+- RU:
+  > Тёмный еловый лес начинается прямо за городской окраиной. На опушке — только самое простое: обычные грибы у дороги и изредка бледная поганка. Здесь спокойно, сюда пускают и туристов.
+- EN:
+  > The dark spruce forest begins right past the city edge. The glade has only the simplest finds: common mushrooms by the road and the occasional death cap. It's calm here, and tourists are welcome.
+
+### UI-forest.zone.head
+- RU:
+  > {prefix}{emoji} {title}
+  >
+  > {body}
+- EN:
+  > {prefix}{emoji} {title}
+  >
+  > {body}
+
+### UI-forest.zone.screen
+- RU:
+  > {desc}
+  >
+  > {ap_line}
+  >
+  > Поиск стоит {cost} ОД, результат через 5–10 секунд.
+  >
+  > 🧺 Казна покупает грибы не больше {limit} НМ в сутки — остальное можно продать на рынке игроков.
+- EN:
+  > {desc}
+  >
+  > {ap_line}
+  >
+  > A search costs {cost} AP, result in 5–10 seconds.
+  >
+  > 🧺 The treasury buys mushrooms up to {limit} NM a day — the rest can be sold on the players' market.
 
 #### инвентарь · `inv.` (2)
 
@@ -5265,7 +5435,7 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4872** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4845** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -11397,22 +11567,12 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 
 - (находок со дна нет)
 
-#### `bot/handlers/forest.py` (99)
+#### `bot/handlers/forest.py` (72)
 
 ##### `(модуль)`
 
-- Дальше — только настоящим пилотам Нордхайма. Прогалина за опушкой раскинулась на десятки вёрст, а тропы между лесами незнакомые: чужой здесь легко заблудиться. Туристов сюда не пускают — и правильно.
 - ОПУШКА ЛЕСА
 - ПРОГАЛИНА
-
-##### `_area_markup`
-
-- {…} Искать грибы
-- К опушке
-- Углубиться в лес
-- 🔙 В город
-- 🪓 Лесозаготовка
-- 🫐 Искать ягоды
 
 ##### `_battle_markup`
 
@@ -11432,42 +11592,6 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - лес: устаревшее окно
 - ⏳ Это окно леса устарело — открой опушку заново (Город → Лес на окраине).
 
-##### `_open_zone_window`
-
-- опушку
-- прогалину
-- ⛔ Ты сейчас проходишь подземелье — бродить по лесу нельзя.
-  Выйди из подземелья, а потом иди на {where}.
-
-##### `_show_area`
-
-- {prefix}{emoji} {title}
-  
-  {desc}
-  
-  {ap_line}
-  
-  Поиск стоит {ap_cost} ОД, результат через 5–10 секунд.
-  
-  🧺 Казна покупает грибы не больше {limit} НМ в сутки — остальное можно продать на рынке игроков.
-- {prefix}{emoji} {title}
-  
-  {…}
-  
-  Зато на опушке грибы собирают и туристы — там безопасно.
-- {prefix}{emoji} {title}
-  
-  Сейчас сюда не пускают — зона закрыта. Загляни позже.
-- За опушкой начинается настоящий лес. Прогалина тянется далеко, и растут здесь все грибы, какие только есть в Нордхайме — от опёнка до ежовика гребенчатого.
-- Здесь водятся звери:
-- Тёмный еловый лес начинается прямо за городской окраиной. На опушке — только самое простое: обычные грибы у дороги и изредка бледная поганка. Здесь спокойно, сюда пускают и туристов.
-- не чаще одного раза на {every} попыток
-- шанс встречи {chance}%
-- — не хватит на поиск ({ap_cost} ОД), придёт с новыми сутками
-- ⚡ ОД: {ap}/{ap_max}
-- 🌿 К опушке
-- 🔙 В город
-
 ##### `_show_battle`
 
 - {prefix}{emoji} {…}
@@ -11484,7 +11608,6 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 ##### `_simple_markup`
 
 - {emoji} Поискать ещё
-- 🔙 В город
 - 🪓 Лесозаготовка
 
 ##### `_white_wolf_defeat`
@@ -11510,11 +11633,6 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
   • +10% к уклонению
   • +5% к эффективности лечения
   • −3% к ценам в магазинах
-
-##### `forest_area_switch`
-
-- Сюда пока не пускают.
-- 🌲 Сюда туристов не пускают.
 
 ##### `forest_battle_flee`
 
@@ -11605,7 +11723,6 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - Продать можно за {…} {…}.
 - Сначала нажми /start
 - Сырым восстанавливает {…} HP в бою.
-- Сюда пока не пускают.
 - Ты уже ищешь грибы — дождись результата!
 - поиск грибов ({area_name})
 - — можно искать ещё
@@ -11613,7 +11730,6 @@ _Снимок: 2026-11-18 · источник: прод-БД + сиды_
 - ☠ Ядовитый гриб!
 - ⚡ ОД: {_ap}/{_ap_max}
 - ⛔ Ты в подземелье — по лесу гулять нельзя!
-- 🌲 Сюда туристов не пускают.
 
 #### `bot/handlers/housing.py` (169)
 
