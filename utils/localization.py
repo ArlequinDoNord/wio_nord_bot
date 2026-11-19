@@ -482,6 +482,109 @@ STRINGS = {
     "forest.mush.toxic": {"ru": "☠ Ядовитый гриб!", "en": "☠ Poisonous mushroom!"},
     "forest.mush.sell": {"ru": "\nПродать можно за {price} {money}.", "en": "\nCan be sold for {price} {money}."},
     "forest.mush.heal": {"ru": " Сырым восстанавливает {heal} HP в бою.", "en": " Eaten raw, it restores {heal} HP in battle."},
+    # Лес: ягоды, бой со зверем, Белый Волк (bot/handlers/forest.py).
+    "forest.alert.busy_any": {"ru": "Ты уже что-то ищешь — дождись результата!", "en": "You're already searching — wait for the result!"},
+    "forest.berry.wait": {
+        "ru": "{head}\n\n🫐 Ты пробираешься в кусты за ягодами...\nРезультат через {delay} секунд.",
+        "en": "{head}\n\n🫐 You push into the bushes for berries...\nResult in {delay} seconds.",
+    },
+    "forest.berry.empty": {
+        "ru": "{head}\n\nКусты пусты — ягод в этот раз не нашлось.",
+        "en": "{head}\n\nThe bushes are bare — no berries this time.",
+    },
+    "forest.berry.lost": {
+        "ru": "{head}\n\n🫐 Что-то нашёл, но предмет потерялся. Сообщи хранителю.",
+        "en": "{head}\n\n🫐 You found something, but the item got lost. Tell the keeper.",
+    },
+    "forest.berry.got": {
+        "ru": "{head}\n\n🫐 Ты собрал: «{name}» — горсть положена в инвентарь.",
+        "en": "{head}\n\n🫐 You gathered: «{name}» — a handful is in your inventory.",
+    },
+    "forest.btn.hit": {"ru": "⚔️ Ударить", "en": "⚔️ Strike"},
+    "forest.btn.flee": {"ru": "🏃 Сбежать", "en": "🏃 Run away"},
+    "forest.battle.lost": {"ru": "❌ Бой потерян.\n\n", "en": "❌ The fight is lost.\n\n"},
+    "forest.battle.stale": {"ru": "⏳ Бой со зверем устарел.\n\n", "en": "⏳ The beast fight is out of date.\n\n"},
+    "forest.battle.fled": {
+        "ru": "🏃 Ты вырвался из чащи — зверь остался позади.\n\n",
+        "en": "🏃 You break out of the thicket — the beast is left behind.\n\n",
+    },
+    "forest.battle.intro": {
+        "ru": "Кусты позади взрываются хрустом — на тебя несётся взбешённый зверь!",
+        "en": "Bushes crack open behind you — a furious beast charges at you!",
+    },
+    "forest.battle.beast_hp": {"ru": "Зверь   HP", "en": "Beast  HP"},
+    "forest.battle.you_hp": {"ru": "Ты     HP", "en": "You    HP"},
+    "forest.battle.round": {
+        "ru": "Ход {round}. Ударь зверя — или уноси ноги.",
+        "en": "Turn {round}. Strike the beast — or run.",
+    },
+    "forest.battle.title": {"ru": "{emoji} БОЙ С ЗВЕРЕМ", "en": "{emoji} BEAST FIGHT"},
+    "forest.battle.won": {
+        "ru": "Зверь споткнулся и рухнул — тишина снова принадлежит лесу.\n\n",
+        "en": "The beast stumbles and drops — the silence belongs to the forest again.\n\n",
+    },
+    "forest.battle.bled": {
+        "ru": "Ты истёк кровью и теряешь сознание.\n\nЗверь уходит, оставив тебя в чаще (−{removed} ОД).",
+        "en": "You bleed out and pass out.\n\nThe beast leaves you in the thicket (−{removed} AP).",
+    },
+    "forest.battle.faint": {"ru": "Ты теряешь сознание.\n\n", "en": "You pass out.\n\n"},
+    "forest.battle.after": {
+        "ru": "Очнулся ты {where} весь в ссадинах — зверь ушёл в чащу. Победа досталась ему ценой твоих сил: −{removed} ОД.",
+        "en": "You come to {where}, bruised all over — the beast slipped back into the thicket. It won at the cost of your strength: −{removed} AP.",
+    },
+    "forest.where_loc.glade": {"ru": "на опушке леса", "en": "at the forest glade"},
+    "forest.where_loc.clearing": {"ru": "на прогалине", "en": "on the clearing"},
+    "forest.loot.got": {
+        "ru": "Из поверженного зверя ты добыл:\n{loot}\n\nПоложено в инвентарь.",
+        "en": "From the fallen beast you gained:\n{loot}\n\nAdded to your inventory.",
+    },
+    "forest.loot.lost": {
+        "ru": "Зверь повержен, но добыча потерялась. Сообщи хранителю.",
+        "en": "The beast is down, but the loot got lost. Tell the keeper.",
+    },
+    "forest.loot.none": {
+        "ru": "Зверь повержен, но ничего ценного на этот раз не нашлось.",
+        "en": "The beast is down, but there was nothing valuable this time.",
+    },
+    "forest.hit.dodged": {
+        "ru": "Ты замахнулся — но зверь увернулся в последний миг.\n\n",
+        "en": "You swing — but the beast dodges at the last moment.\n\n",
+    },
+    "forest.hit.armor": {"ru": "🛡️ Шкура зверя поглотила {amount}. ", "en": "🛡️ The beast's hide absorbed {amount}. "},
+    "forest.hit.crit": {"ru": "💥 crit! ", "en": "💥 crit! "},
+    "forest.hit.hit": {
+        "ru": "Ты бьёшь наотмашь: −{dmg} HP по зверю! {extra}\n\n",
+        "en": "You strike hard: −{dmg} HP to the beast! {extra}\n\n",
+    },
+    "forest.counter.dodged": {
+        "ru": "💨 Ты уклонился от рывка зверя! (−0 HP)\n\n",
+        "en": "💨 You dodge the beast's lunge! (−0 HP)\n\n",
+    },
+    "forest.counter.armor": {"ru": "🛡️ Броня поглотила {amount}. ", "en": "🛡️ Armor absorbed {amount}. "},
+    "forest.counter.hit": {
+        "ru": "Зверь бьёт: −{dmg} HP. {extra}\n\n",
+        "en": "The beast strikes: −{dmg} HP. {extra}\n\n",
+    },
+    "forest.ww.title": {"ru": "{emoji} БЕЛЫЙ ВОЛК СЕВЕРА", "en": "{emoji} WHITE WOLF OF THE NORTH"},
+    "forest.ww.defeat": {
+        "ru": "Снег взрывается белой тенью — ты не успеваешь даже замахнуться. Морозные клыки смыкаются, и сознание гаснет...\n\nОчнулся ты в сугробе. Волк сидит рядом и смотрит прямо в душу.\n\n",
+        "en": "Snow bursts into a white shadow — you don't even get to swing. Frozen fangs close in, and consciousness fades...\n\nYou come to in a snowdrift. The wolf sits nearby, staring straight into your soul.\n\n",
+    },
+    "forest.ww.tail": {"ru": "−{removed} ОД.", "en": "−{removed} AP."},
+    "forest.ww.bless_big": {
+        "ru": "🌟 Волк не тронул тебя — он признал достойного. БЛАГОСЛОВЕНИЕ СЕВЕРА снизошло на тебя на сутки:\n• +10% к атаке\n• +10% к уклонению\n• +5% к эффективности лечения\n• −3% к ценам в магазинах",
+        "en": "🌟 The wolf didn't touch you — it deemed you worthy. The BLESSING OF THE NORTH falls on you for a day:\n• +10% attack\n• +10% dodge\n• +5% healing efficiency\n• −3% shop prices",
+    },
+    "forest.ww.bless_small": {
+        "ru": "❄️ Волк отпускает тебя, но ты чувствуешь на себе его взгляд. ВНИМАНИЕ СЕВЕРА с тобой на сутки:\n• +5% к урону\n• +5% к уклонению",
+        "en": "❄️ The wolf lets you go, but you feel its gaze on you. The WARNING OF THE NORTH stays with you for a day:\n• +5% damage\n• +5% dodge",
+    },
+    "forest.ww.enrage": {
+        "ru": "🐺 {name} припадает к земле — рана на боку затягивается, в глазах вспыхивает северное сияние. Зверь словно стал больше и страшнее!\n\n",
+        "en": "🐺 {name} crouches low — the wound on its flank knits shut, northern lights flare in its eyes. The beast seems bigger and more terrible!\n\n",
+    },
+    "forest.btn.again": {"ru": "{emoji} Поискать ещё", "en": "{emoji} Search again"},
+    "forest.regen": {"ru": "♻ Регенерация: +{heal} HP.\n\n", "en": "♻ Regeneration: +{heal} HP.\n\n"},
     "forest.mush.found": {
         "ru": "{head}\n\n{kind} Ты нашёл: «{name}»!\n\n🎒 Гриб положен в инвентарь.{heal_line}{sell_line}",
         "en": "{head}\n\n{kind} You found: «{name}»!\n\n🎒 The mushroom is in your inventory.{heal_line}{sell_line}",

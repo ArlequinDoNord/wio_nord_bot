@@ -20,7 +20,7 @@
 > источников ниже. Изменили текст в коде или сиде — перегенерируйте каталог
 > (проверка встроена в `tools/docs_check_sync.py` и `tools/release_bump.py`).
 
-<!-- texts-catalog: code=3ad8306943167274 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
+<!-- texts-catalog: code=81fe1733a58da9c7 seeds=33f1222699494779 db=c7c04436d4f9b39d -->
 
 _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
@@ -42,7 +42,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Интерфейс и кнопки
 
-Всего строк: **399** (ru + en).
+Всего строк: **438** (ru + en).
 
 > `{...}` — подстановки (`{name}`, `{qty}`, `{price}` и т.п.). Их нельзя удалять или переименовывать — только переставлять.
 > Кнопки ловятся по ключу, поэтому менять сам текст кнопки безопасно.
@@ -943,7 +943,13 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   > ⚖️ Your fines
 
-#### лес · `forest.` (38)
+#### лес · `forest.` (77)
+
+### UI-forest.alert.busy_any
+- RU:
+  > Ты уже что-то ищешь — дождись результата!
+- EN:
+  > You're already searching — wait for the result!
 
 ### UI-forest.alert.busy_mush
 - RU:
@@ -999,6 +1005,140 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   >  — not enough for a search ({cost} AP), it comes back with the new day
 
+### UI-forest.battle.after
+- RU:
+  > Очнулся ты {where} весь в ссадинах — зверь ушёл в чащу. Победа досталась ему ценой твоих сил: −{removed} ОД.
+- EN:
+  > You come to {where}, bruised all over — the beast slipped back into the thicket. It won at the cost of your strength: −{removed} AP.
+
+### UI-forest.battle.beast_hp
+- RU:
+  > Зверь   HP
+- EN:
+  > Beast  HP
+
+### UI-forest.battle.bled
+- RU:
+  > Ты истёк кровью и теряешь сознание.
+  >
+  > Зверь уходит, оставив тебя в чаще (−{removed} ОД).
+- EN:
+  > You bleed out and pass out.
+  >
+  > The beast leaves you in the thicket (−{removed} AP).
+
+### UI-forest.battle.faint
+- RU:
+  > Ты теряешь сознание.
+  >
+- EN:
+  > You pass out.
+  >
+
+### UI-forest.battle.fled
+- RU:
+  > 🏃 Ты вырвался из чащи — зверь остался позади.
+  >
+- EN:
+  > 🏃 You break out of the thicket — the beast is left behind.
+  >
+
+### UI-forest.battle.intro
+- RU:
+  > Кусты позади взрываются хрустом — на тебя несётся взбешённый зверь!
+- EN:
+  > Bushes crack open behind you — a furious beast charges at you!
+
+### UI-forest.battle.lost
+- RU:
+  > ❌ Бой потерян.
+  >
+- EN:
+  > ❌ The fight is lost.
+  >
+
+### UI-forest.battle.round
+- RU:
+  > Ход {round}. Ударь зверя — или уноси ноги.
+- EN:
+  > Turn {round}. Strike the beast — or run.
+
+### UI-forest.battle.stale
+- RU:
+  > ⏳ Бой со зверем устарел.
+  >
+- EN:
+  > ⏳ The beast fight is out of date.
+  >
+
+### UI-forest.battle.title
+- RU:
+  > {emoji} БОЙ С ЗВЕРЕМ
+- EN:
+  > {emoji} BEAST FIGHT
+
+### UI-forest.battle.won
+- RU:
+  > Зверь споткнулся и рухнул — тишина снова принадлежит лесу.
+  >
+- EN:
+  > The beast stumbles and drops — the silence belongs to the forest again.
+  >
+
+### UI-forest.battle.you_hp
+- RU:
+  > Ты     HP
+- EN:
+  > You    HP
+
+### UI-forest.berry.empty
+- RU:
+  > {head}
+  >
+  > Кусты пусты — ягод в этот раз не нашлось.
+- EN:
+  > {head}
+  >
+  > The bushes are bare — no berries this time.
+
+### UI-forest.berry.got
+- RU:
+  > {head}
+  >
+  > 🫐 Ты собрал: «{name}» — горсть положена в инвентарь.
+- EN:
+  > {head}
+  >
+  > 🫐 You gathered: «{name}» — a handful is in your inventory.
+
+### UI-forest.berry.lost
+- RU:
+  > {head}
+  >
+  > 🫐 Что-то нашёл, но предмет потерялся. Сообщи хранителю.
+- EN:
+  > {head}
+  >
+  > 🫐 You found something, but the item got lost. Tell the keeper.
+
+### UI-forest.berry.wait
+- RU:
+  > {head}
+  >
+  > 🫐 Ты пробираешься в кусты за ягодами...
+  > Результат через {delay} секунд.
+- EN:
+  > {head}
+  >
+  > 🫐 You push into the bushes for berries...
+  > Result in {delay} seconds.
+
+### UI-forest.btn.again
+- RU:
+  > {emoji} Поискать ещё
+- EN:
+  > {emoji} Search again
+
 ### UI-forest.btn.berry
 - RU:
   > 🫐 Искать ягоды
@@ -1022,6 +1162,18 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   > Углубиться в лес
 - EN:
   > Go deeper
+
+### UI-forest.btn.flee
+- RU:
+  > 🏃 Сбежать
+- EN:
+  > 🏃 Run away
+
+### UI-forest.btn.hit
+- RU:
+  > ⚔️ Ударить
+- EN:
+  > ⚔️ Strike
 
 ### UI-forest.btn.log
 - RU:
@@ -1057,6 +1209,28 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   > {emoji} You scan the glade...
   > Result in {delay} seconds. It's quiet here.
 
+### UI-forest.counter.armor
+- RU:
+  > 🛡️ Броня поглотила {amount}. 
+- EN:
+  > 🛡️ Armor absorbed {amount}. 
+
+### UI-forest.counter.dodged
+- RU:
+  > 💨 Ты уклонился от рывка зверя! (−0 HP)
+  >
+- EN:
+  > 💨 You dodge the beast's lunge! (−0 HP)
+  >
+
+### UI-forest.counter.hit
+- RU:
+  > Зверь бьёт: −{dmg} HP. {extra}
+  >
+- EN:
+  > The beast strikes: −{dmg} HP. {extra}
+  >
+
 ### UI-forest.deny.clearing
 - RU:
   > Дальше — только настоящим пилотам Нордхайма. Прогалина за опушкой раскинулась на десятки вёрст, а тропы между лесами незнакомые: чужой здесь легко заблудиться. Туристов сюда не пускают — и правильно.
@@ -1076,6 +1250,58 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   > ⛔ You're in a dungeon right now — no wandering through the forest.
   > Leave the dungeon, then head to the {where}.
+
+### UI-forest.hit.armor
+- RU:
+  > 🛡️ Шкура зверя поглотила {amount}. 
+- EN:
+  > 🛡️ The beast's hide absorbed {amount}. 
+
+### UI-forest.hit.crit
+- RU:
+  > 💥 crit! 
+- EN:
+  > 💥 crit! 
+
+### UI-forest.hit.dodged
+- RU:
+  > Ты замахнулся — но зверь увернулся в последний миг.
+  >
+- EN:
+  > You swing — but the beast dodges at the last moment.
+  >
+
+### UI-forest.hit.hit
+- RU:
+  > Ты бьёшь наотмашь: −{dmg} HP по зверю! {extra}
+  >
+- EN:
+  > You strike hard: −{dmg} HP to the beast! {extra}
+  >
+
+### UI-forest.loot.got
+- RU:
+  > Из поверженного зверя ты добыл:
+  > {loot}
+  >
+  > Положено в инвентарь.
+- EN:
+  > From the fallen beast you gained:
+  > {loot}
+  >
+  > Added to your inventory.
+
+### UI-forest.loot.lost
+- RU:
+  > Зверь повержен, но добыча потерялась. Сообщи хранителю.
+- EN:
+  > The beast is down, but the loot got lost. Tell the keeper.
+
+### UI-forest.loot.none
+- RU:
+  > Зверь повержен, но ничего ценного на этот раз не нашлось.
+- EN:
+  > The beast is down, but there was nothing valuable this time.
 
 ### UI-forest.mush.empty
 - RU:
@@ -1131,6 +1357,14 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 - EN:
   > ☠ Poisonous mushroom!
 
+### UI-forest.regen
+- RU:
+  > ♻ Регенерация: +{heal} HP.
+  >
+- EN:
+  > ♻ Regeneration: +{heal} HP.
+  >
+
 ### UI-forest.tourist_safe
 - RU:
   > Зато на опушке грибы собирают и туристы — там безопасно.
@@ -1148,6 +1382,74 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
   > опушку
 - EN:
   > glade
+
+### UI-forest.where_loc.clearing
+- RU:
+  > на прогалине
+- EN:
+  > on the clearing
+
+### UI-forest.where_loc.glade
+- RU:
+  > на опушке леса
+- EN:
+  > at the forest glade
+
+### UI-forest.ww.bless_big
+- RU:
+  > 🌟 Волк не тронул тебя — он признал достойного. БЛАГОСЛОВЕНИЕ СЕВЕРА снизошло на тебя на сутки:
+  > • +10% к атаке
+  > • +10% к уклонению
+  > • +5% к эффективности лечения
+  > • −3% к ценам в магазинах
+- EN:
+  > 🌟 The wolf didn't touch you — it deemed you worthy. The BLESSING OF THE NORTH falls on you for a day:
+  > • +10% attack
+  > • +10% dodge
+  > • +5% healing efficiency
+  > • −3% shop prices
+
+### UI-forest.ww.bless_small
+- RU:
+  > ❄️ Волк отпускает тебя, но ты чувствуешь на себе его взгляд. ВНИМАНИЕ СЕВЕРА с тобой на сутки:
+  > • +5% к урону
+  > • +5% к уклонению
+- EN:
+  > ❄️ The wolf lets you go, but you feel its gaze on you. The WARNING OF THE NORTH stays with you for a day:
+  > • +5% damage
+  > • +5% dodge
+
+### UI-forest.ww.defeat
+- RU:
+  > Снег взрывается белой тенью — ты не успеваешь даже замахнуться. Морозные клыки смыкаются, и сознание гаснет...
+  >
+  > Очнулся ты в сугробе. Волк сидит рядом и смотрит прямо в душу.
+  >
+- EN:
+  > Snow bursts into a white shadow — you don't even get to swing. Frozen fangs close in, and consciousness fades...
+  >
+  > You come to in a snowdrift. The wolf sits nearby, staring straight into your soul.
+  >
+
+### UI-forest.ww.enrage
+- RU:
+  > 🐺 {name} припадает к земле — рана на боку затягивается, в глазах вспыхивает северное сияние. Зверь словно стал больше и страшнее!
+  >
+- EN:
+  > 🐺 {name} crouches low — the wound on its flank knits shut, northern lights flare in its eyes. The beast seems bigger and more terrible!
+  >
+
+### UI-forest.ww.tail
+- RU:
+  > −{removed} ОД.
+- EN:
+  > −{removed} AP.
+
+### UI-forest.ww.title
+- RU:
+  > {emoji} БЕЛЫЙ ВОЛК СЕВЕРА
+- EN:
+  > {emoji} WHITE WOLF OF THE NORTH
 
 ### UI-forest.zone.beasts
 - RU:
@@ -5535,7 +5837,7 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ## Тексты в коде (приложение)
 
-Всего текстов: **4830** (уникальные вхождения по файлам и функциям).
+Всего текстов: **4796** (уникальные вхождения по файлам и функциям).
 
 > Эти строки пока живут прямо в коде (не в `utils/localization.py`). Раздел нужен для
 > полноты: по нему видно всё, что игрок может увидеть. Новые тексты лучше сразу
@@ -11667,17 +11969,12 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 - (находок со дна нет)
 
-#### `bot/handlers/forest.py` (57)
+#### `bot/handlers/forest.py` (23)
 
 ##### `(модуль)`
 
 - ОПУШКА ЛЕСА
 - ПРОГАЛИНА
-
-##### `_battle_markup`
-
-- ⚔️ Ударить
-- 🏃 Сбежать
 
 ##### `_boar_fallback`
 
@@ -11694,112 +11991,32 @@ _Снимок: 2026-11-19 · источник: прод-БД + сиды_
 
 ##### `_show_battle`
 
-- {prefix}{emoji} {…}
-  
-  Кусты позади взрываются хрустом — на тебя несётся взбешённый зверь!
-  
-  {emoji} Зверь   HP {…} {…}/{boar_hp_max}
-  🧑 Ты     HP {…} {…}/{…}{effects_line}
-  
-  Ход {…}. Ударь зверя — или уноси ноги.
 - Дикий кабан
-- ❌ Бой потерян.
-
-##### `_simple_markup`
-
-- {emoji} Поискать ещё
-- 🪓 Лесозаготовка
 
 ##### `_white_wolf_defeat`
 
-- {emoji} БЕЛЫЙ ВОЛК СЕВЕРА
-  
-  {prefix}Снег взрывается белой тенью — ты не успеваешь даже замахнуться. Морозные клыки смыкаются, и сознание гаснет...
-  
-  Очнулся ты в сугробе. Волк сидит рядом и смотрит прямо в душу.
-  
-  {bless_line}
-  
-  −{removed} ОД.
 - Белый Волк Севера
 - Благословение Севера
 - Внимание Севера
 - Поражение от Белого Волка Севера (−{removed} ОД), {log_tail}
-- ❄️ Волк отпускает тебя, но ты чувствуешь на себе его взгляд. ВНИМАНИЕ СЕВЕРА с тобой на сутки:
-  • +5% к урону
-  • +5% к уклонению
-- 🌟 Волк не тронул тебя — он признал достойного. БЛАГОСЛОВЕНИЕ СЕВЕРА снизошло на тебя на сутки:
-  • +10% к атаке
-  • +10% к уклонению
-  • +5% к эффективности лечения
-  • −3% к ценам в магазинах
 
 ##### `forest_battle_flee`
 
 - Сбежал от зверя в лесу
-- ⏳ Бой со зверем устарел.
-- 🏃 Ты вырвался из чащи — зверь остался позади.
 
 ##### `forest_battle_hit`
 
-- {emoji} БОЙ С ЗВЕРЕМ
-  
-  {dot_note}{regen_note}{hit_line}{counter_line}Ты теряешь сознание.
-  
-  Очнулся ты на {…} весь в ссадинах — зверь ушёл в чащу. Победа досталась ему ценой твоих сил: −{removed} ОД.
-- {emoji} БОЙ С ЗВЕРЕМ
-  
-  {dot_note}{regen_note}{hit_line}Зверь споткнулся и рухнул — тишина снова принадлежит лесу.
-  
-  {result_line}
-- {emoji} БОЙ С ЗВЕРЕМ
-  
-  {dot_note}Ты истёк кровью и теряешь сознание.
-  
-  Зверь уходит, оставив тебя в чаще (−{removed} ОД).
-- {head}
-  {loot_list}
-  
-  Положено в инвентарь.
 - Белый Волк Севера
 - Добыча: {loot}
 - Зверь
-- Зверь бьёт: −{boar_hit} HP. {extra}
-- Зверь повержен, но добыча потерялась. Сообщи хранителю.
-- Зверь повержен, но ничего ценного на этот раз не нашлось.
-- Из поверженного зверя ты добыл:
 - Победил зверя в лесу
 - Проиграл зверю в лесу (−{removed} ОД)
-- Ты бьёшь наотмашь: −{player_hit} HP по зверю! {extra}
-- Ты замахнулся — но зверь увернулся в последний миг.
-- ⏳ Бой со зверем устарел.
-- ♻ Регенерация: +{heal} HP.
-- 🐺 {beast_name} припадает к земле — рана на боку затягивается, в глазах вспыхивает северное сияние. Зверь словно стал больше и страшнее!
-- 💨 Ты уклонился от рывка зверя! (−0 HP)
-- 🛡️ Броня поглотила {…}.
-- 🛡️ Шкура зверя поглотила {…}.
 
 ##### `forest_berry`
 
-- {head}
-  
-  Кусты пусты — ягод в этот раз не нашлось.
-- {head}
-  
-  🫐 Ты пробираешься в кусты за ягодами...
-  Результат через {delay} секунд.
-- {head}
-  
-  🫐 Ты собрал: «{…}» — горсть положена в инвентарь.
-- {head}
-  
-  🫐 Что-то нашёл, но предмет потерялся. Сообщи хранителю.
 - Поиск ягод: {area_name} ({ap_cost} ОД)
 - Собрал «{…}» ({area_name})
-- Ты уже что-то ищешь — дождись результата!
 - поиск ягод ({area_name})
-- ⚡ ОД: {ap_now}/{…}
-- 🌲 Сюда туристов не пускают.
 
 ##### `forest_cast`
 

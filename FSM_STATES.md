@@ -1086,8 +1086,8 @@
 - `fishuse:`: `bot/handlers/inventory.py:1360`
 - `forest:add:`: `bot/handlers/admin.py:8804`
 - `forest:area:\d+:(glade|clearing)$`: `bot/handlers/forest.py:448`
-- `forest:battle:flee:\d+$`: `bot/handlers/forest.py:1209`
-- `forest:battle:hit:\d+$`: `bot/handlers/forest.py:1001`
+- `forest:battle:flee:\d+$`: `bot/handlers/forest.py:1187`
+- `forest:battle:hit:\d+$`: `bot/handlers/forest.py:986`
 - `forest:berry:\d+:(glade|clearing)$`: `bot/handlers/forest.py:718`
 - `forest:card:`: `bot/handlers/admin.py:8718`
 - `forest:cast:\d+(?::(glade|clearing))?$`: `bot/handlers/forest.py:532`

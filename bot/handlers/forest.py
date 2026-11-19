@@ -518,10 +518,10 @@ async def _result_markup(token: str, area: str = "glade", user_id: int = None):
 def _simple_markup(token: str, area: str = "glade"):
     emoji = FOREST_AREA_EMOJI.get(area, "🌲")
     rows = [
-        [InlineKeyboardButton(text=f"{emoji} Поискать ещё", callback_data=f"forest:cast:{token}:{area}")],
+        [InlineKeyboardButton(text=_LT("forest.btn.again", emoji=emoji), callback_data=f"forest:cast:{token}:{area}")],
     ]
     if area == "clearing":
-        rows.append([InlineKeyboardButton(text="🪓 Лесозаготовка",
+        rows.append([InlineKeyboardButton(text=_LT("forest.btn.log"),
                                           callback_data="logsite:enter")])
     rows.append([InlineKeyboardButton(text=_LT("forest.btn.city"), callback_data="city:menu")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -726,11 +726,11 @@ async def forest_berry(callback: CallbackQuery):
     user_id = callback.from_user.id
     area = callback.data.split(":")[3]
     if not await _area_allowed(area, user_id):
-        await callback.answer("🌲 Сюда туристов не пускают.", show_alert=True)
+        await callback.answer(_LT("forest.alert.tourist"), show_alert=True)
         await _show_area(callback, area)
         return
     if user_id in FOREST_CASTING:
-        await callback.answer("Ты уже что-то ищешь — дождись результата!", show_alert=True)
+        await callback.answer(_LT("forest.alert.busy_any"), show_alert=True)
         return
 
     FOREST_CASTING.add(user_id)
@@ -753,8 +753,7 @@ async def forest_berry(callback: CallbackQuery):
         delay = random.randint(*FOREST_RESULT_DELAY)
         await _glade_paint(
             callback,
-            text=f"{head}\n\n🫐 Ты пробираешься в кусты за ягодами...\n"
-                 f"Результат через {delay} секунд.",
+            text=_LT("forest.berry.wait", head=head, delay=delay),
             kb=None, area=area)
         await log_activity(user_id, "forest", f"Поиск ягод: {area_name} ({ap_cost} ОД)")
         await asyncio.sleep(delay)
@@ -767,7 +766,7 @@ async def forest_berry(callback: CallbackQuery):
         token = FOREST_TOKEN.get(user_id, "")
         fresh = await get_user(user_id) or {}
         ap_now = int(fresh.get('ap', 0) or 0)
-        ap_line = f"\n\n⚡ ОД: {ap_now}/{int(fresh.get('ap_max', ap_now) or ap_now)}"
+        ap_line = "\n\n" + _LT("forest.ap_line", ap=ap_now, ap_max=int(fresh.get('ap_max', ap_now) or ap_now))
 
         if outcome == "bear":
             bear = await get_source_enemy_by_key("forest", "bear")
@@ -785,7 +784,7 @@ async def forest_berry(callback: CallbackQuery):
         if outcome is None:
             await _glade_paint(
                 callback,
-                text=f"{head}\n\nКусты пусты — ягод в этот раз не нашлось." + ap_line,
+                text=_LT("forest.berry.empty", head=head) + ap_line,
                 kb=await _berry_markup(token, area), area=area)
             return
 
@@ -793,7 +792,7 @@ async def forest_berry(callback: CallbackQuery):
         if not item:
             await _glade_paint(
                 callback,
-                text=f"{head}\n\n🫐 Что-то нашёл, но предмет потерялся. Сообщи хранителю." + ap_line,
+                text=_LT("forest.berry.lost", head=head) + ap_line,
                 kb=await _berry_markup(token, area), area=area)
             return
         await add_inventory_item(user_id, item['id'], 1)
@@ -803,7 +802,7 @@ async def forest_berry(callback: CallbackQuery):
         await log_activity(user_id, "forest", f"Собрал «{item['name']}» ({area_name})")
         await _glade_paint(
             callback,
-            text=f"{head}\n\n🫐 Ты собрал: «{item['name']}» — горсть положена в инвентарь."
+            text=_LT("forest.berry.got", head=head, name=item['name'])
                  + ap_line,
             kb=await _berry_markup(token, area), area=area)
     finally:
@@ -916,8 +915,8 @@ def white_wolf_after_hit(hp: int, damage: int, autowin_hp: int) -> tuple:
 
 def _battle_markup(token: str):
     rows = [
-        [InlineKeyboardButton(text="⚔️ Ударить", callback_data=f"forest:battle:hit:{token}")],
-        [InlineKeyboardButton(text="🏃 Сбежать", callback_data=f"forest:battle:flee:{token}")],
+        [InlineKeyboardButton(text=_LT("forest.btn.hit"), callback_data=f"forest:battle:hit:{token}")],
+        [InlineKeyboardButton(text=_LT("forest.btn.flee"), callback_data=f"forest:battle:flee:{token}")],
     ]
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -925,7 +924,7 @@ def _battle_markup(token: str):
 async def _show_battle(callback: CallbackQuery, prefix: str = ""):
     battle = FOREST_BATTLE.get(callback.from_user.id)
     if not battle:
-        await _show_area(callback, FOREST_HOME_AREA, prefix="❌ Бой потерян.\n\n")
+        await _show_area(callback, FOREST_HOME_AREA, prefix=_LT("forest.battle.lost"))
         return
     player_hp = battle['player_hp']
     boar_hp = battle['boar_hp']
@@ -936,11 +935,11 @@ async def _show_battle(callback: CallbackQuery, prefix: str = ""):
     effects_line = f"\n{effects_line}" if effects_line else ""
     text = (
         f"{prefix}{emoji} {boar_name.upper()}\n\n"
-        f"Кусты позади взрываются хрустом — на тебя несётся взбешённый зверь!\n\n"
-        f"{emoji} Зверь   HP {_hp_bar(boar_hp, boar_hp_max)} {max(0, boar_hp)}/{boar_hp_max}\n"
-        f"🧑 Ты     HP {_hp_bar(player_hp, battle['player_hp_max'])} "
-        f"{max(0, player_hp)}/{battle['player_hp_max']}{effects_line}\n\n"
-        f"Ход {battle['round']}. Ударь зверя — или уноси ноги."
+        + _LT("forest.battle.intro") + "\n\n"
+        + f"{emoji} {_LT('forest.battle.beast_hp')} {_hp_bar(boar_hp, boar_hp_max)} {max(0, boar_hp)}/{boar_hp_max}\n"
+        + f"🧑 {_LT('forest.battle.you_hp')} {_hp_bar(player_hp, battle['player_hp_max'])} "
+        + f"{max(0, player_hp)}/{battle['player_hp_max']}{effects_line}\n\n"
+        + _LT("forest.battle.round", round=battle['round'])
     )
     await _boar_paint(callback, text=text,
                  kb=_battle_markup(battle['token']))
@@ -962,36 +961,22 @@ async def _white_wolf_defeat(callback, user_id, battle, *, big: bool, prefix: st
     emoji = battle.get('emoji') or "🐺"
     if big:
         state_key = FOREST_WHITE_WOLF_BIG_BLESSING
-        bless_line = (
-            "🌟 Волк не тронул тебя — он признал достойного. "
-            "БЛАГОСЛОВЕНИЕ СЕВЕРА снизошло на тебя на сутки:\n"
-            "• +10% к атаке\n"
-            "• +10% к уклонению\n"
-            "• +5% к эффективности лечения\n"
-            "• −3% к ценам в магазинах"
-        )
+        bless_line = _LT("forest.ww.bless_big")
         log_tail = "Благословение Севера"
     else:
         state_key = FOREST_WHITE_WOLF_SMALL_BLESSING
-        bless_line = (
-            "❄️ Волк отпускает тебя, но ты чувствуешь на себе его взгляд. "
-            "ВНИМАНИЕ СЕВЕРА с тобой на сутки:\n"
-            "• +5% к урону\n"
-            "• +5% к уклонению"
-        )
+        bless_line = _LT("forest.ww.bless_small")
         log_tail = "Внимание Севера"
     await apply_state_to(user_id, state_key, caused_by=user_id,
                          reason="Белый Волк Севера")
     await log_activity(user_id, "forest",
                        f"Поражение от Белого Волка Севера (−{removed} ОД), {log_tail}")
     text = (
-        f"{emoji} БЕЛЫЙ ВОЛК СЕВЕРА\n\n"
-        f"{prefix}"
-        "Снег взрывается белой тенью — ты не успеваешь даже замахнуться. "
-        "Морозные клыки смыкаются, и сознание гаснет...\n\n"
-        "Очнулся ты в сугробе. Волк сидит рядом и смотрит прямо в душу.\n\n"
-        f"{bless_line}\n\n"
-        f"−{removed} ОД."
+        _LT("forest.ww.title", emoji=emoji) + "\n\n"
+        + prefix
+        + _LT("forest.ww.defeat")
+        + f"{bless_line}\n\n"
+        + _LT("forest.ww.tail", removed=removed)
     )
     await _glade_paint(callback, text=text,
                        kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area, user_id),
@@ -1005,7 +990,7 @@ async def forest_battle_hit(callback: CallbackQuery):
     user_id = callback.from_user.id
     battle = FOREST_BATTLE.get(user_id)
     if not battle:
-        await _show_area(callback, FOREST_HOME_AREA, prefix="⏳ Бой со зверем устарел.\n\n")
+        await _show_area(callback, FOREST_HOME_AREA, prefix=_LT("forest.battle.stale"))
         return
     await callback.answer()
     emoji = battle.get('emoji') or "🐗"
@@ -1029,10 +1014,9 @@ async def forest_battle_hit(callback: CallbackQuery):
                 user_id, int(battle.get('loss_ap') or FOREST_BOAR_LOSS_AP))
             await log_activity(user_id, "forest", f"Проиграл зверю в лесу (−{removed} ОД)")
             text = (
-                f"{emoji} БОЙ С ЗВЕРЕМ\n\n"
-                f"{dot_note}"
-                "Ты истёк кровью и теряешь сознание.\n\n"
-                f"Зверь уходит, оставив тебя в чаще (−{removed} ОД)."
+                _LT("forest.battle.title", emoji=emoji) + "\n\n"
+                + dot_note
+                + _LT("forest.battle.bled", removed=removed)
             )
             await _glade_paint(callback, text=text,
                          kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area, user_id),
@@ -1046,7 +1030,7 @@ async def forest_battle_hit(callback: CallbackQuery):
         heal = min(battle['player_hp_max'] - battle['player_hp'], ach_regen)
         if heal > 0:
             battle['player_hp'] += heal
-            regen_note = f"♻ Регенерация: +{heal} HP.\n\n"
+            regen_note = _LT("forest.regen", heal=heal)
 
     # Твой удар: считается от ТВОЕГО оружия, наград и состояний.
     # Зверь может увернуться; его броня поглощает часть урона.
@@ -1073,24 +1057,20 @@ async def forest_battle_hit(callback: CallbackQuery):
         battle['boar_hp'], ww_autowin = white_wolf_after_hit(
             prev_boar_hp, player_hit, FOREST_WHITE_WOLF_AUTOWIN_HP)
     if res['dodged']:
-        hit_line = "Ты замахнулся — но зверь увернулся в последний миг.\n\n"
+        hit_line = _LT("forest.hit.dodged")
     else:
         extra = ""
         if res['armor_blocked']:
-            extra += f"🛡️ Шкура зверя поглотила {res['armor_blocked']}. "
+            extra += _LT("forest.hit.armor", amount=res['armor_blocked'])
         if res['crit']:
-            extra += "💥 crit! "
-        hit_line = f"Ты бьёшь наотмашь: −{player_hit} HP по зверю! {extra}\n\n"
+            extra += _LT("forest.hit.crit")
+        hit_line = _LT("forest.hit.hit", dmg=player_hit, extra=extra)
 
     # Белый Волк Севера: доведённый до AUTOWIN HP, он ярится (силы, броня и
     # здоровье словно возвращаются) и добивает пилота следующим ударом.
     if is_white_wolf and ww_autowin:
         beast_name = battle.get('boar_name') or "Белый Волк Севера"
-        enrage_note = (
-            f"🐺 {beast_name} припадает к земле — рана на боку затягивается, "
-            "в глазах вспыхивает северное сияние. Зверь словно стал больше и "
-            "страшнее!\n\n"
-        )
+        enrage_note = _LT("forest.ww.enrage", name=beast_name)
         await _white_wolf_defeat(callback, user_id, battle, big=True,
                                  prefix=f"{dot_note}{regen_note}{hit_line}{enrage_note}")
         return
@@ -1112,18 +1092,16 @@ async def forest_battle_hit(callback: CallbackQuery):
         await bump_achievement(user_id, "hunter", 1)
         if got:
             loot_list = "\n".join(f"• «{name}»" for name in got)
-            head = "Из поверженного зверя ты добыл:" if len(got) > 1 \
-                else "Из поверженного зверя ты добыл:"
-            result_line = f"{head}\n{loot_list}\n\nПоложено в инвентарь."
+            result_line = _LT("forest.loot.got", loot=loot_list)
         elif loot_names:
-            result_line = "Зверь повержен, но добыча потерялась. Сообщи хранителю."
+            result_line = _LT("forest.loot.lost")
         else:
-            result_line = "Зверь повержен, но ничего ценного на этот раз не нашлось."
+            result_line = _LT("forest.loot.none")
         text = (
-            f"{emoji} БОЙ С ЗВЕРЕМ\n\n"
-            f"{dot_note}{regen_note}{hit_line}"
-            "Зверь споткнулся и рухнул — тишина снова принадлежит лесу.\n\n"
-            f"{result_line}"
+            _LT("forest.battle.title", emoji=emoji) + "\n\n"
+            + f"{dot_note}{regen_note}{hit_line}"
+            + _LT("forest.battle.won")
+            + result_line
         )
         await _glade_paint(callback, text=text,
                      kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area, user_id),
@@ -1141,15 +1119,15 @@ async def forest_battle_hit(callback: CallbackQuery):
     })
     boar_hit = eres['damage']
     if eres['dodged']:
-        counter_line = "💨 Ты уклонился от рывка зверя! (−0 HP)\n\n"
+        counter_line = _LT("forest.counter.dodged")
         boar_hit = 0
     else:
         extra = ""
         if eres['armor_blocked']:
-            extra += f"🛡️ Броня поглотила {eres['armor_blocked']}. "
+            extra += _LT("forest.counter.armor", amount=eres['armor_blocked'])
         if eres['crit']:
-            extra += "💥 crit! "
-        counter_line = f"Зверь бьёт: −{boar_hit} HP. {extra}\n\n"
+            extra += _LT("forest.hit.crit")
+        counter_line = _LT("forest.counter.hit", dmg=boar_hit, extra=extra)
     battle['player_hp'] -= boar_hit
     lifesteal_line = ""
     if not eres['dodged'] and boar_hit > 0 and battle['boar_hp'] > 0:
@@ -1175,11 +1153,11 @@ async def forest_battle_hit(callback: CallbackQuery):
         removed = await remove_ap_or_floor(user_id, int(battle.get('loss_ap') or FOREST_BOAR_LOSS_AP))
         await log_activity(user_id, "forest", f"Проиграл зверю в лесу (−{removed} ОД)")
         text = (
-            f"{emoji} БОЙ С ЗВЕРЕМ\n\n"
-            f"{dot_note}{regen_note}{hit_line}"
-            f"{counter_line}Ты теряешь сознание.\n\n"
-            f"Очнулся ты на {FOREST_AREA_NAME[battle_area].lower()} весь в ссадинах — "
-            f"зверь ушёл в чащу. Победа досталась ему ценой твоих сил: −{removed} ОД."
+            _LT("forest.battle.title", emoji=emoji) + "\n\n"
+            + f"{dot_note}{regen_note}{hit_line}{counter_line}"
+            + _LT("forest.battle.faint")
+            + _LT("forest.battle.after", where=_LT("forest.where_loc." + battle_area),
+                  removed=removed)
         )
         await _glade_paint(callback, text=text,
                      kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area, user_id),
@@ -1214,11 +1192,11 @@ async def forest_battle_flee(callback: CallbackQuery):
     stale = FOREST_BATTLE.pop(user_id, None)
     onhit.unregister(user_id)
     if not stale:
-        await _show_area(callback, FOREST_HOME_AREA, prefix="⏳ Бой со зверем устарел.\n\n")
+        await _show_area(callback, FOREST_HOME_AREA, prefix=_LT("forest.battle.stale"))
         return
     flee_area = stale.get('area') or FOREST_HOME_AREA
     await callback.answer()
     await log_activity(user_id, "forest", "Сбежал от зверя в лесу")
     await _show_area(
         callback, flee_area,
-        prefix=f"🏃 Ты вырвался из чащи — зверь остался позади.\n\n")
+        prefix=_LT("forest.battle.fled"))
