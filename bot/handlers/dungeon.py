@@ -1352,7 +1352,7 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     user_id = callback.from_user.id
     run = await get_active_run(user_id)
     if not run:
-        await callback.message.answer("❌ Подземелье не найдено.")
+        await callback.message.answer(_LT("dungeon.msg.not_found"))
         await state.clear()
         return
 
@@ -1690,7 +1690,7 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
 
     run = await get_active_run(user_id)
     if not run:
-        await callback.message.answer("❌ Подземелье не найдено.")
+        await callback.message.answer(_LT("dungeon.msg.not_found"))
         await state.clear()
         return
 
@@ -2079,7 +2079,7 @@ async def resv_enter(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     if parts[2] != str(await dungeon_current_step(state)):
         await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
-        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        await callback.message.answer(_LT("resv.alert.stale_btn"))
         return
     run = await get_active_run(user_id)
     if not run:
@@ -2103,7 +2103,7 @@ async def resv_menu(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     if parts[2] != str(await dungeon_current_step(state)):
         await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
-        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        await callback.message.answer(_LT("resv.alert.stale_btn"))
         return
     await state.set_state(DungeonFSM.in_reservoir)
     await show_reservoir(callback.message, user_id, state)
@@ -2117,10 +2117,10 @@ async def resv_bait_menu(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     if parts[2] != str(await dungeon_current_step(state)):
         await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
-        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        await callback.message.answer(_LT("resv.alert.stale_btn"))
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
-        await callback.message.answer("❌ Ты больше не в водохранилище.")
+        await callback.message.answer(_LT("resv.msg.not_here"))
         return
 
     user = await get_user(user_id) or {}
@@ -2142,17 +2142,10 @@ async def resv_bait_menu(callback: CallbackQuery, state: FSMContext):
         "worms": WORMS_NAME,
         "spider": SPIDER_LEG_NAME,
         "combined": COMBINED_BAIT_NAME,
-        "none": "Без наживки",
-        "": "Авто (что есть)",
+        "none": _LT("resv.bait.none_plain"),
+        "": _LT("resv.bait.auto_plain"),
     }.get(chosen, "")
-    text = (
-        "🪱 НАЖИВКА (ВОДОХРАНИЛИЩЕ)\n\n"
-        f"Сейчас: {selected or chosen}\n"
-        "Наживка расходуется при каждом забросе.\n"
-        "«Авто»: сначала черви, затем лапка, затем комбинированная.\n\n"
-        f"⚠️ Без наживки рыба не клюёт: со дна только мусор "
-        f"{await junk_hint('reservoir')}."
-    )
+    text = _LT("resv.bait.screen", selected=selected or chosen, junk=await junk_hint('reservoir'))
     await _resv_answer(user_id, callback.message, text, _reservoir_bait_markup(
         chosen, worms_qty, spider_qty, combined_qty, step=int(parts[2])))
 
@@ -2166,10 +2159,10 @@ async def resv_bait_set(callback: CallbackQuery, state: FSMContext):
     step, value = parts[3], parts[4]
     if step != str(await dungeon_current_step(state)):
         await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
-        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        await callback.message.answer(_LT("resv.alert.stale_btn"))
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
-        await callback.message.answer("❌ Ты больше не в водохранилище.")
+        await callback.message.answer(_LT("resv.msg.not_here"))
         return
     await update_user(user_id, fishing_bait=value)
     await state.set_state(DungeonFSM.in_reservoir)
@@ -2184,13 +2177,13 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     if parts[2] != str(await dungeon_current_step(state)):
         await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
-        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        await callback.message.answer(_LT("resv.alert.stale_btn"))
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
-        await callback.message.answer("❌ Ты больше не в водохранилище.")
+        await callback.message.answer(_LT("resv.msg.not_here"))
         return
     if user_id in FISHING_CASTING:
-        await callback.answer("🎣 Ты уже ждёшь улов — дождись результата!", show_alert=True)
+        await callback.answer(_LT("resv.alert.busy"), show_alert=True)
         return
     # Лок ставим сразу, до первого await: иначе двойной тап проходит
     # проверку дважды и игрок забрасывает удочку многократно подряд.
@@ -2198,7 +2191,7 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
     try:
         run = await get_active_run(user_id)
         if not run:
-            await callback.message.answer("❌ Подземелье не найдено.")
+            await callback.message.answer(_LT("dungeon.msg.not_found"))
             await state.clear()
             return
 
@@ -2208,20 +2201,17 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
 
         rod = await _rod_for(user_id)
         if not rod:
-            await callback.message.answer(
-                "❌ У тебя нет удочки. Купи «Удочка из орешника» в магазине (категория «Рыбалка»)."
-            )
+            await callback.message.answer(_LT("resv.msg.no_rod"))
             return
 
         if user['ap'] < RESERVOIR_AP_COST:
             await callback.message.answer(
-                f"❌ Не хватает ОД: нужно {RESERVOIR_AP_COST}, у тебя {user['ap']}.\n"
-                f"⚡ ОД восстанавливаются раз в сутки."
+                _LT("resv.msg.no_ap", cost=RESERVOIR_AP_COST, ap=user['ap'])
             )
             return
         ok = await remove_ap(user_id, RESERVOIR_AP_COST, reason="рыбалка в водохранилище")
         if not ok:
-            await callback.message.answer("❌ Не удалось списать ОД.")
+            await callback.message.answer(_LT("resv.msg.ap_fail"))
             return
 
         chosen = (user.get('fishing_bait') or "").strip()
@@ -2234,14 +2224,13 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
 
         # Пока идёт ожидание улова — держим лок: выйти, продолжить путь и
         # повторный заброс блокируются (middleware FishingActiveLock + гарды ниже).
-        bait_part = f" с наживкой «{bait_name}»" if bait_name else " без наживки"
+        bait_part = _LT("resv.bait.with", name=bait_name) if bait_name else _LT("resv.bait.without")
         cast_photo = _reservoir_photo()
         if cast_photo and not os.path.isfile(cast_photo):
             cast_photo = None
         await _resv_answer(
             user_id, callback.message,
-            f"🎣 Ты забрасываешь удочку{bait_part} в тёмную воду подземного водохранилища...\n"
-            "Поплавок замер неподвижно. Ждёшь...",
+            _LT("resv.cast.wait", bait=bait_part),
             _reservoir_wait_markup(),
             photo=cast_photo)
 
@@ -2263,9 +2252,7 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                 pass
             try:
                 await _resv_answer(user_id, callback.message,
-                                   "🌊 Вода в водохранилище снова гладкая…\n\n"
-                                   "Заброс прервался (подземелье закрылось или бот "
-                                   "перезапускался). Вернись в водохранилище и попробуй снова.",
+                                   _LT("resv.cast.lost"),
                                    _reservoir_wait_markup())
             except Exception:
                 pass
@@ -2274,11 +2261,11 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
         fresh = await get_user(user_id) or {}
         _ap = fresh.get('ap', 0) or 0
         _ap_max = fresh.get('ap_max', _ap) or _ap
-        ap_line = f"⚡ ОД: {_ap}/{_ap_max}"
+        ap_line = _LT("forest.ap_line", ap=_ap, ap_max=_ap_max)
         if _ap < RESERVOIR_AP_COST:
-            ap_line += f" — на следующий заброс не хватит ({RESERVOIR_AP_COST} ОД)"
+            ap_line += _LT("resv.ap_next_short", cost=RESERVOIR_AP_COST)
         else:
-            ap_line += f" — можно забрасывать"
+            ap_line += _LT("resv.ap_next_ok")
         bait = await _bait_line(user_id, chosen)
         ap_block = f"\n\n{ap_line}\n{bait}"
 
@@ -2295,7 +2282,7 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                 fish_name = await _pick_reservoir_fish()
                 item = await get_item_by_name(fish_name)
                 if not item:
-                    result = "❌ Ошибка: рыба не определена."
+                    result = _LT("resv.catch.error")
                 else:
                     weight_idx = _roll_fish_weight()
                     tier = fish_weight_tier(weight_idx)
@@ -2307,19 +2294,15 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                     if kind == "fish":
                         await bump_achievement(user_id, "fishing", 1)
                     if fish_name == "Светящаяся форель":
-                        name_line = "\n✨ СВЕТЯЩАЯСЯ ФОРЕЛЬ! Секретный улов, о котором шепчутся в Нордхайме!"
+                        name_line = _LT("resv.catch.glow")
                     elif fish_name == "Искрящийся угорь":
-                        name_line = "\n🐡 Искрящийся угорь! Редкий улов."
+                        name_line = _LT("resv.catch.eel")
                     else:
-                        name_line = "\n🐟 Мерцающий сом. Обычный, но вкусный."
-                    result = (
-                        f"🎣 ПОКЛЁВКА!\n"
-                        f"{RESERVOIR_EMOJI.get(fish_name, '🐟')} Ты поймал: «{fish_name}» — "
-                        f"{tier['label'].lower()}!\n"
-                        f"{name_line}\n\n"
-                        f"🎒 Улов записан в «Улов» (Рыба). Раз в 4 дня сырая рыба портится.\n"
-                        f"Вес влияет на цену: продажа за {sell} {plural_nordmark(sell)}."
-                    ) + ap_block
+                        name_line = _LT("resv.catch.catfish")
+                    result = _LT(
+                        "resv.catch.hit", emoji=RESERVOIR_EMOJI.get(fish_name, '🐟'), fish=fish_name,
+                        tier=tier['label'].lower(), name_line=name_line, sell=sell,
+                        money=plural_nordmark(sell)) + ap_block
                     wf_photo = await get_water_fish_photo_by_name("reservoir", fish_name)
                     local_photo = item_local_photo(fish_name) if not wf_photo else None
                     await _resv_answer(user_id, callback.message, result, _reservoir_result_markup(next_step),
@@ -2335,12 +2318,7 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                         await add_fish_catch(user_id, sea['id'], 1, kind=kind or "resource")
                         await log_activity(user_id, "dungeon_reservoir_fish",
                                            "Промах с наживкой, выловил «Кусочек водорослей»")
-                        result = (
-                            "🎣 РЫБАЛКА\n\n"
-                            "Поплавок дёрнулся, ты подсекаешь... и вдруг пусто.\n"
-                            "Зато на крючке что-то зацепилось: «Кусочек водорослей»!\n\n"
-                            "🎒 Улов записан в «Улов»."
-                        ) + ap_block
+                        result = _LT("resv.seaweed.hit") + ap_block
                         jphoto = await junk_photo("reservoir", "Кусочек водорослей")
                         if jphoto:
                             await _resv_answer(user_id, callback.message, result,
@@ -2357,11 +2335,7 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                                            _reservoir_result_markup(next_step),
                                            photo=_reservoir_photo())
                         return
-                result = (
-                    "🎣 РЫБАЛКА\n\n"
-                    "Поплавок дёрнулся, ты подсекаешь... и вдруг пусто.\n"
-                    "Сорвалось. Но рыба никуда не денется — пробуй ещё!"
-                )
+                result = _LT("resv.catch.miss")
         else:
             # Без наживки рыба не клюёт — из глубины достаётся только мусор.
             junk_name = await _pick_junk("reservoir")
@@ -2372,16 +2346,9 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                     await log_activity(user_id, "dungeon_reservoir_fish", f"Выловил «{junk_name}»")
                     sell_line = ""
                     if junk_item['sell_price'] > 0:
-                        sell_line = (
-                            f"\nПродать можно за {junk_item['sell_price']} "
-                            f"{plural_nordmark(junk_item['sell_price'])}."
-                        )
-                    result = (
-                        f"🎣 РЫБАЛКА\n\n"
-                        f"Поплавок дёрнулся, ты подсекаешь...\n"
-                        f"Из тёмной воды появляется: «{junk_name}»!\n\n"
-                        f"🎒 Улов записан в «Улов».{sell_line}"
-                    ) + ap_block
+                        sell_line = _LT("resv.junk.sell", price=junk_item['sell_price'],
+                                        money=plural_nordmark(junk_item['sell_price']))
+                    result = _LT("resv.junk.hit", junk=junk_name, sell_line=sell_line) + ap_block
                     jphoto = await junk_photo("reservoir", junk_name)
                     if jphoto:
                         await _resv_answer(user_id, callback.message, result, _reservoir_result_markup(next_step),
@@ -2397,13 +2364,9 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                                            photo=_reservoir_photo())
                     return
                 else:
-                    result = "🎣 Рыбалка\n\n👢 Что-то выловил, но предмет потерялся. Сообщи хранителю."
+                    result = _LT("resv.junk.lost")
             else:
-                result = (
-                    "🎣 РЫБАЛКА\n\n"
-                    "Поплавок даже не дрогнул. Без наживки рыба не клюёт — "
-                    "с дна достаётся только мусор. Попробуй с наживкой!"
-                )
+                result = _LT("resv.junk.none")
         result += ap_block
         await _resv_answer(user_id, callback.message, result,
                            _reservoir_result_markup(next_step),
@@ -2422,7 +2385,7 @@ async def resv_recover(callback: CallbackQuery, state: FSMContext):
     """
     user_id = callback.from_user.id
     if user_id in FISHING_CASTING:
-        await callback.answer("🎣 Результат ещё в пути — подожди пару секунд.",
+        await callback.answer(_LT("resv.alert.pending"),
                               show_alert=True)
         return
     await callback.answer()
@@ -2430,16 +2393,14 @@ async def resv_recover(callback: CallbackQuery, state: FSMContext):
     if not run:
         await state.clear()
         await callback.message.answer(
-            "❌ Активное подземелье не найдено — забег закрыт.\n"
-            "Вернись к списку контрактов и начни новый."
+            _LT("resv.recover.no_run")
         )
         return
     if await state.get_state() == DungeonFSM.in_reservoir.state:
         await show_reservoir(callback.message, user_id, state)
         return
     await callback.message.answer(
-        "❌ Ты уже не в водохранилище.\n"
-        "Продолжи путь кнопкой «🏃 Продолжить путь» в окне подземелья."
+        _LT("resv.recover.gone")
     )
 
 
@@ -2451,18 +2412,18 @@ async def resv_deeper(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     if parts[2] != str(await dungeon_current_step(state)):
         await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
-        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        await callback.message.answer(_LT("resv.alert.stale_btn"))
         return
     if user_id in FISHING_CASTING:
         await callback.answer(_LT("resv.alert.wait"), show_alert=True)
         return
     run = await get_active_run(user_id)
     if not run:
-        await callback.message.answer("❌ Подземелье не найдено.")
+        await callback.message.answer(_LT("dungeon.msg.not_found"))
         await state.clear()
         return
     if run['floor'] >= 2:
-        await callback.message.answer("⚠️ Ты уже на самом нижнем этаже.")
+        await callback.message.answer(_LT("resv.deeper.bottom"))
         return
     await advance_floor(run['id'], 2)
     await state.update_data(captain_defeated=None)
@@ -2471,9 +2432,7 @@ async def resv_deeper(callback: CallbackQuery, state: FSMContext):
     await log_activity(user_id, "dungeon_floor", "Спустился на 2-й этаж (лог Короля крыс)")
     await close_reservoir_window(user_id, callback.bot)
     await callback.message.answer(
-        "⬇️ Ты спускаешься по скрипучей лестнице во мрак. Здесь пахнет сыростью, "
-        "плесенью и старой королевской гордостью.\n"
-        "🏰 ЭТАЖ 2 | ЛОГОВО КОРОЛЯ КРЫС"
+        _LT("resv.deeper.stairs"),
     )
     await show_room(callback.message, run, user_id, state)
 
@@ -2486,10 +2445,10 @@ async def resv_eq(callback: CallbackQuery, state: FSMContext):
     parts = callback.data.split(":")
     if parts[2] != str(await dungeon_current_step(state)):
         await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
-        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        await callback.message.answer(_LT("resv.alert.stale_btn"))
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
-        await callback.message.answer("❌ Ты больше не в водохранилище.")
+        await callback.message.answer(_LT("resv.msg.not_here"))
         return
     await _resv_eq_view(callback.message, user_id, state)
 
@@ -2498,20 +2457,15 @@ async def _resv_eq_view(where, user_id: int, state: FSMContext):
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     eq = await get_equipment(user_id)
     step = await dungeon_new_step(state)
-    lines = [
-        "🎒 СНАРЯЖЕНИЕ (водохранилище)",
-        "",
-        "Здесь нет врагов — можно спокойно сменить расходники в активных слотах.",
-        "",
-    ]
+    lines = [_LT("resv.eq.head"), "", _LT("resv.eq.intro"), ""]
     for slot in ('potion1', 'potion2'):
         item_id = eq.get(slot)
         it = await get_item(item_id) if item_id else None
         lines.append(f"⚗️ {EQUIPMENT_SLOT_LABELS[slot]}: {it['name'] if it else '—'}")
     rows = [
-        [InlineKeyboardButton(text="🔄 Слот 1", callback_data=f"resv:eqslot:potion1:{step}")],
-        [InlineKeyboardButton(text="🔄 Слот 2", callback_data=f"resv:eqslot:potion2:{step}")],
-        [InlineKeyboardButton(text="🔙 К водохранилищу", callback_data=f"resv:menu:{step}")],
+        [InlineKeyboardButton(text=_LT("resv.eq.slot1"), callback_data=f"resv:eqslot:potion1:{step}")],
+        [InlineKeyboardButton(text=_LT("resv.eq.slot2"), callback_data=f"resv:eqslot:potion2:{step}")],
+        [InlineKeyboardButton(text=_LT("resv.eq.back"), callback_data=f"resv:menu:{step}")],
     ]
     await _resv_answer(user_id, where, "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows))
 
@@ -2525,10 +2479,10 @@ async def resv_eqslot(callback: CallbackQuery, state: FSMContext):
     slot = parts[2]
     if parts[3] != str(await dungeon_current_step(state)):
         await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
-        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        await callback.message.answer(_LT("resv.alert.stale_btn"))
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
-        await callback.message.answer("❌ Ты больше не в водохранилище.")
+        await callback.message.answer(_LT("resv.msg.not_here"))
         return
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
@@ -2538,27 +2492,27 @@ async def resv_eqslot(callback: CallbackQuery, state: FSMContext):
     candidates = [it for it in items if item_fits_slot(it, slot)]
     step = await dungeon_new_step(state)
 
-    text = f"🎒 СНАРЯЖЕНИЕ → {EQUIPMENT_SLOT_LABELS[slot]}\n\n"
+    text = _LT("resv.eqslot.head", slot=EQUIPMENT_SLOT_LABELS[slot])
     if equipped_id:
         it = await get_item(equipped_id)
-        text += f"Поставлено: {it['name'] if it else equipped_id}\n"
+        text += _LT("resv.eqslot.set", name=it['name'] if it else equipped_id)
     else:
-        text += "Слот пуст.\n"
+        text += _LT("resv.eqslot.empty")
     if candidates:
-        text += "\nПодходит из инвентаря:"
+        text += _LT("resv.eqslot.fits")
     else:
-        text += "\nВ инвентаре нет подходящих расходников."
+        text += _LT("resv.eqslot.none")
 
     rows = []
     if equipped_id:
-        rows.append([InlineKeyboardButton(text="✖️ Снять из слота",
+        rows.append([InlineKeyboardButton(text=_LT("resv.eqslot.clear"),
                                           callback_data=f"resv:eqclear:{slot}:{step}")])
     for it in candidates:
         marker = "✅ " if it['id'] == equipped_id else ""
         rows.append([InlineKeyboardButton(
             text=f"{marker}{it['name']} x{it['quantity']}",
             callback_data=f"resv:eqset:{slot}:{it['id']}:{step}")])
-    rows.append([InlineKeyboardButton(text="🔙 К снаряжению", callback_data=f"resv:eq:{step}")])
+    rows.append([InlineKeyboardButton(text=_LT("resv.eq.back_gear"), callback_data=f"resv:eq:{step}")])
     await _resv_answer(user_id, callback.message, text, InlineKeyboardMarkup(inline_keyboard=rows))
 
 
@@ -2571,18 +2525,17 @@ async def resv_eqset(callback: CallbackQuery, state: FSMContext):
     slot, item_id = parts[2], int(parts[3])
     if parts[4] != str(await dungeon_current_step(state)):
         await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
-        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        await callback.message.answer(_LT("resv.alert.stale_btn"))
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
-        await callback.message.answer("❌ Ты больше не в водохранилище.")
+        await callback.message.answer(_LT("resv.msg.not_here"))
         return
     item = await get_item(item_id)
     if not item:
-        await callback.message.answer("❌ Предмет не найден.")
+        await callback.message.answer(_LT("resv.eqset.no_item"))
         return
     await set_equipment_slot(user_id, slot, item_id)
-    await callback.message.answer(f"⚗️ {item['name']} поставлен в активный слот.\n"
-                                  f"Используется в бою подземелья кнопкой слота.")
+    await callback.message.answer(_LT("resv.eqset.done", name=item['name']))
     await _resv_eq_view(callback.message, user_id, state)
 
 
@@ -2595,17 +2548,17 @@ async def resv_eqclear(callback: CallbackQuery, state: FSMContext):
     slot = parts[2]
     if parts[3] != str(await dungeon_current_step(state)):
         await _log_stale(callback, "данж: устаревшая кнопка водохранилища")
-        await callback.message.answer("⚠️ Это устаревшая кнопка.")
+        await callback.message.answer(_LT("resv.alert.stale_btn"))
         return
     if await state.get_state() != DungeonFSM.in_reservoir.state:
-        await callback.message.answer("❌ Ты больше не в водохранилище.")
+        await callback.message.answer(_LT("resv.msg.not_here"))
         return
     eq = await get_equipment(user_id)
     item_id = eq.get(slot)
     if item_id:
         await clear_equipment_slot(user_id, slot)
         it = await get_item(item_id)
-        await callback.message.answer(f"✖️ {it['name'] if it else 'Предмет'} снят из активного слота.")
+        await callback.message.answer(_LT("resv.eqclear.done", name=it['name'] if it else _LT("resv.eqclear.item")))
     await _resv_eq_view(callback.message, user_id, state)
 
 
@@ -2618,8 +2571,7 @@ async def dungeon_exit(callback: CallbackQuery, state: FSMContext):
     # Во время боя с боссом покинуть подземелье нельзя.
     if await state.get_state() == DungeonFSM.in_boss.state:
         await callback.message.answer(
-            "⚠️ Идёт бой с боссом! Убежать нельзя — это решающий бой.\n"
-            "Продолжай бой кнопками последнего сообщения."
+            _LT("dungeon.exit.boss"),
         )
         return
 
@@ -2630,7 +2582,7 @@ async def dungeon_exit(callback: CallbackQuery, state: FSMContext):
 
     run = await get_active_run(user_id)
     if not run:
-        await callback.message.answer("❌ Подземелье не найдено.")
+        await callback.message.answer(_LT("dungeon.msg.not_found"))
         await state.clear()
         return
 
@@ -2639,19 +2591,16 @@ async def dungeon_exit(callback: CallbackQuery, state: FSMContext):
 
     parts = []
     if loot_nm > 0:
-        parts.append(f"💰 {loot_nm} Нордмарок")
+        parts.append(_LT("dungeon.exit.nm", nm=loot_nm))
     parts.extend(f"🎁 {n} x{q}" for n, q in run_items)
-    loot_text = "\n".join(parts) if parts else "Ничего."
+    loot_text = "\n".join(parts) if parts else _LT("dungeon.exit.nothing")
 
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
     await callback.message.answer(
-        f"🚪 ПОКИНУТЬ ПОДЗЕМЕЛЬЕ?\n\n"
-        f"Ты уверен, что хочешь покинуть подземелье?\n\n"
-        f"📦 Ты выносишь:\n{loot_text}\n\n"
-        f"Вернуться в забег с этого момента будет нельзя.",
+        _LT("dungeon.exit.confirm", loot=loot_text),
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Да, выйти", callback_data="dungeon:exit:confirm")],
-            [InlineKeyboardButton(text="↩️ Нет, остаться", callback_data="dungeon:exit:cancel")],
+            [InlineKeyboardButton(text=_LT("dungeon.exit.yes"), callback_data="dungeon:exit:confirm")],
+            [InlineKeyboardButton(text=_LT("dungeon.exit.no"), callback_data="dungeon:exit:cancel")],
         ])
     )
 
@@ -2663,7 +2612,7 @@ async def dungeon_exit_confirm(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     run = await get_active_run(user_id)
     if not run:
-        await callback.message.answer("❌ Подземелье не найдено.")
+        await callback.message.answer(_LT("dungeon.msg.not_found"))
         await state.clear()
         return
 
@@ -2677,7 +2626,7 @@ async def dungeon_exit_confirm(callback: CallbackQuery, state: FSMContext):
 
     parts = []
     if loot_nm > 0:
-        parts.append(f"💰 {loot_nm} Нордмарок")
+        parts.append(_LT("dungeon.exit.nm", nm=loot_nm))
     parts.extend(f"🎁 {n} x{q}" for n, q in items)
 
     if parts:
@@ -2701,7 +2650,7 @@ async def dungeon_exit_cancel(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     run = await get_active_run(user_id)
     if not run:
-        await callback.message.answer("❌ Подземелье не найдено.")
+        await callback.message.answer(_LT("dungeon.msg.not_found"))
         await state.clear()
         return
     # Промежуточный запрос на выход больше не нужен — убираем его, чтобы
