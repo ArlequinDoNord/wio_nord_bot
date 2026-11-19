@@ -1126,7 +1126,7 @@ async def dungeon_continue(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     run = await get_active_run(user_id)
     if not run:
-        await callback.message.answer("❌ Активное подземелье не найдено.")
+        await callback.message.answer(_LT("dungeon.msg.not_found_active"))
         await state.clear()
         return
 
@@ -1181,9 +1181,9 @@ async def show_room(message, run, user_id, state: FSMContext):
     heal_line = ""
     if heal_uses >= DUNGEON_HEAL_SOFT_LIMIT:
         mult = heal_limit_mult(heal_uses)
-        heal_line = f"💊 Лекарства: {heal_uses} применений (×{mult:.0%})\n"
+        heal_line = _LT("dungeon.room.heal", uses=heal_uses, mult=f"{mult:.0%}")
 
-    room_header = f"Этаж {run['floor']} | Комната {run['room_number']}/{rooms_total}"
+    room_header = _LT("dungeon.room.header", floor=run['floor'], room=run['room_number'], total=rooms_total)
     status_text = status_lines(sdata)
     status_text.append(heal_line.strip())
     status_block = "\n".join(s for s in status_text if s)
@@ -1203,16 +1203,11 @@ async def show_room(message, run, user_id, state: FSMContext):
             if enemy is None:
                 enemy = random.choice(non_boss) if non_boss else random.choice(enemies)
 
-        text = (
-            f"🏰 {dungeon['name']}\n"
-            f"{room_header}\n"
-            f"❤️ {hp_text}\n"
-            f"{status_block}"
-            f"⚠️ Ты входишь в комнату и видишь врага!\n"
-            f"👾 {enemy['name']} (HP: {enemy['hp']}, АТК: {enemy['attack']}, УКЛ: {enemy['dodge'] if 'dodge' in enemy.keys() else 0}%)\n\n"
-            f"{enemy['description'] if 'description' in enemy.keys() and enemy['description'] else ''}\n"
-            f"Что делаешь?"
-        )
+        text = _LT(
+            "dungeon.room.enemy", name=dungeon['name'], header=room_header, hp=hp_text,
+            status=status_block, enemy=enemy['name'], ehp=enemy['hp'], atk=enemy['attack'],
+            dodge=enemy['dodge'] if 'dodge' in enemy.keys() else 0,
+            desc=enemy['description'] if 'description' in enemy.keys() and enemy['description'] else '')
         await answer_enemy_photo(message, enemy, text, reply_markup=dungeon_combat_keyboard(enemy['id'], slot_items, step))
 
     elif room_type == "resource":
@@ -1223,26 +1218,13 @@ async def show_room(message, run, user_id, state: FSMContext):
             nm = sdata.get('dungeon_room_nm', resource_amount(run['floor']))
         await state.update_data(dungeon_room_nm=nm)
 
-        text = (
-            f"🏰 {dungeon['name']}\n"
-            f"{room_header}\n"
-            f"❤️ {hp_text}\n"
-            f"{status_block}"
-            f"📦 Ты нашёл хранилище с припасами!\n"
-            f"+{nm} Нордмарок (заберёшь при выходе)\n\n"
-            f"Нажми «Продолжить путь» чтобы идти дальше."
-        )
+        text = _LT("dungeon.room.resource", name=dungeon['name'], header=room_header, hp=hp_text,
+                   status=status_block, nm=nm)
         await message.answer(text, reply_markup=dungeon_main_keyboard(step))
 
     else:
-        text = (
-            f"🏰 {dungeon['name']}\n"
-            f"{room_header}\n"
-            f"❤️ {hp_text}\n"
-            f"{status_block}"
-            f"🪨 Комната пуста. Здесь ничего нет.\n\n"
-            f"Нажми «Продолжить путь» чтобы идти дальше."
-        )
+        text = _LT("dungeon.room.empty", name=dungeon['name'], header=room_header, hp=hp_text,
+                   status=status_block)
         await message.answer(text, reply_markup=dungeon_main_keyboard(step))
 
 
@@ -1278,18 +1260,13 @@ async def _enemy_defeated(callback, state, bot, run, enemy, player_hp):
 
             transferred = await transfer_run_items_to_inventory(user_id, run['id'])
 
-            text = (
-                f"🏆 БОСС ПОБЕЖДЁН!\n"
-                f"💀 {enemy['name']} повержен!\n\n"
-                f"🎉 Поздравляем! Ты прошёл подземелье до конца!\n\n"
-                f"📦 Ты выносишь из подземелья:\n"
-            )
+            text = _LT("dungeon.boss.won", enemy=enemy['name'])
             if loot_nm > 0:
-                text += f"💰 {loot_nm} Нордмарок\n"
+                text += _LT("dungeon.exit.nm", nm=loot_nm) + "\n"
             for name, qty in transferred:
                 text += f"🎁 {name} x{qty}\n"
             if loot_nm <= 0 and not transferred:
-                text += "… пусто."
+                text += _LT("dungeon.boss.empty")
 
             await end_run(run['id'], 0)
             await state.clear()
@@ -1302,18 +1279,16 @@ async def _enemy_defeated(callback, state, bot, run, enemy, player_hp):
             await notify(bot, f"🏆 {await player_display(pilot)} прошёл подземелье и победил босса «{enemy['name']}»!", user_id)
     else:
         hp_text = _hp_bar(player_hp, run['hp_max'])
-        text = (
-            f"🏆 {enemy['name']} повержен!\n"
-        )
+        text = _LT("dungeon.enemy.down", name=enemy['name'])
 
         dropped = await roll_enemy_drops(run['id'], enemy)
         if dropped:
-            text += "\n🎁 Лут:\n" + "\n".join(f"• {name} x{qty}" for name, qty in dropped) + "\n\n"
+            text += _LT("dungeon.room.loot_head") + "\n".join(f"• {name} x{qty}" for name, qty in dropped) + "\n\n"
         else:
             text += "\n"
 
         text += f"❤️ {hp_text}\n"
-        text += f"Нажми «Продолжить путь» чтобы идти дальше."
+        text += _LT("dungeon.room.next_hint")
         await clear_dungeon_regen(state)
         next_step = await dungeon_new_step(state)
         await answer_enemy_photo(callback.message, enemy, text, reply_markup=dungeon_main_keyboard(next_step))
@@ -1338,11 +1313,11 @@ async def dungeon_attack(callback: CallbackQuery, state: FSMContext, bot: Bot):
     data = await state.get_data()
     if encoded_step != await dungeon_current_step(state):
         await _log_stale(callback, "данж: устаревшая кнопка атаки")
-        await callback.message.answer("⚠️ Это устаревшая кнопка. Используй кнопки из последнего сообщения боя.")
+        await callback.message.answer(_LT("dungeon.alert.stale_fight"))
         return
     current_enemy_id = data.get('current_enemy_id')
     if current_enemy_id is not None and current_enemy_id != enemy_id:
-        await callback.message.answer("⚠️ Этого врага уже нет в текущей комнате.")
+        await callback.message.answer(_LT("dungeon.msg.enemy_gone"))
         return
 
     conn = await get_db()
@@ -1658,7 +1633,7 @@ async def dungeon_use_slot(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     if encoded_step != await dungeon_current_step(state):
         await _log_stale(callback, "данж: устаревшая кнопка слота")
-        await callback.message.answer("⚠️ Это устаревшая кнопка. Используй кнопки из последнего сообщения боя.")
+        await callback.message.answer(_LT("dungeon.alert.stale_fight"))
         return
 
     run = await get_active_run(user_id)
@@ -1919,12 +1894,12 @@ async def _do_dungeon_escape(where, state, user_id: int, run, enemy,
             text = (
                 f"💨 Ты взрываешь дымовую шашку — едкий дым застилает комнату!\n"
                 f"🏃 Пока враг мечется в пелене дыма, ты успешно убежал от {enemy['name']}!\n"
-                f"Нажми «Продолжить путь» чтобы идти дальше."
+                + _LT("dungeon.room.next_hint")
             )
         else:
             text = (
                 f"🏃 Ты успешно убежал от {enemy['name']}!\n"
-                f"Нажми «Продолжить путь» чтобы идти дальше."
+                + _LT("dungeon.room.next_hint")
             )
         if drunk_escape:
             text = f"🥴 Ты едва держишься на ногах, но удача не покинула тебя!\n\n" + text
@@ -1980,11 +1955,11 @@ async def dungeon_escape(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     if encoded_step != await dungeon_current_step(state):
         await _log_stale(callback, "данж: устаревшая кнопка побега")
-        await callback.message.answer("⚠️ Это устаревшая кнопка. Используй кнопки из последнего сообщения боя.")
+        await callback.message.answer(_LT("dungeon.alert.stale_fight"))
         return
     current_enemy_id = data.get('current_enemy_id')
     if current_enemy_id is not None and current_enemy_id != enemy_id:
-        await callback.message.answer("⚠️ Этого врага уже нет в текущей комнате.")
+        await callback.message.answer(_LT("dungeon.msg.enemy_gone"))
         return
 
     conn = await get_db()
@@ -2056,7 +2031,7 @@ async def resv_enter(callback: CallbackQuery, state: FSMContext):
         return
     run = await get_active_run(user_id)
     if not run:
-        await callback.message.answer("❌ Активное подземелье не найдено.")
+        await callback.message.answer(_LT("dungeon.msg.not_found_active"))
         await state.clear()
         return
     data = await state.get_data()

@@ -1263,6 +1263,35 @@ STRINGS = {
         "ru": "🎫 Контракт использован! ⚡ −30 AP за вход\n🏰 {name}\nЭтаж 1 | Комната 0/{rooms}\n❤️ {bar}\n\nТы входишь в подземелье...",
         "en": "🎫 Contract used! ⚡ −30 AP for entry\n🏰 {name}\nFloor 1 | Room 0/{rooms}\n❤️ {bar}\n\nYou enter the dungeon...",
     },
+    # Подземелье: экраны комнат, победы, устаревших кнопок (bot/handlers/dungeon.py).
+    "dungeon.room.heal": {"ru": "💊 Лекарства: {uses} применений (×{mult})\n", "en": "💊 Medicine: {uses} uses (×{mult})\n"},
+    "dungeon.room.header": {"ru": "Этаж {floor} | Комната {room}/{total}", "en": "Floor {floor} | Room {room}/{total}"},
+    "dungeon.room.enemy": {
+        "ru": "🏰 {name}\n{header}\n❤️ {hp}\n{status}⚠️ Ты входишь в комнату и видишь врага!\n👾 {enemy} (HP: {ehp}, АТК: {atk}, УКЛ: {dodge}%)\n\n{desc}\nЧто делаешь?",
+        "en": "🏰 {name}\n{header}\n❤️ {hp}\n{status}⚠️ You enter the room and see an enemy!\n👾 {enemy} (HP: {ehp}, ATK: {atk}, DODGE: {dodge}%)\n\n{desc}\nWhat do you do?",
+    },
+    "dungeon.room.resource": {
+        "ru": "🏰 {name}\n{header}\n❤️ {hp}\n{status}📦 Ты нашёл хранилище с припасами!\n+{nm} Нордмарок (заберёшь при выходе)\n\nНажми «Продолжить путь» чтобы идти дальше.",
+        "en": "🏰 {name}\n{header}\n❤️ {hp}\n{status}📦 You found a supply cache!\n+{nm} Nordmarks (you'll take them on the way out)\n\nPress «Keep going» to move on.",
+    },
+    "dungeon.room.empty": {
+        "ru": "🏰 {name}\n{header}\n❤️ {hp}\n{status}🪨 Комната пуста. Здесь ничего нет.\n\nНажми «Продолжить путь» чтобы идти дальше.",
+        "en": "🏰 {name}\n{header}\n❤️ {hp}\n{status}🪨 The room is empty. There's nothing here.\n\nPress «Keep going» to move on.",
+    },
+    "dungeon.boss.won": {
+        "ru": "🏆 БОСС ПОБЕЖДЁН!\n💀 {enemy} повержен!\n\n🎉 Поздравляем! Ты прошёл подземелье до конца!\n\n📦 Ты выносишь из подземелья:\n",
+        "en": "🏆 BOSS DEFEATED!\n💀 {enemy} is down!\n\n🎉 Congratulations! You cleared the dungeon to the end!\n\n📦 You take out of the dungeon:\n",
+    },
+    "dungeon.boss.empty": {"ru": "… пусто.", "en": "… nothing."},
+    "dungeon.enemy.down": {"ru": "🏆 {name} повержен!\n", "en": "🏆 {name} is down!\n"},
+    "dungeon.room.loot_head": {"ru": "\n🎁 Лут:\n", "en": "\n🎁 Loot:\n"},
+    "dungeon.room.next_hint": {"ru": "Нажми «Продолжить путь» чтобы идти дальше.", "en": "Press «Keep going» to move on."},
+    "dungeon.alert.stale_fight": {
+        "ru": "⚠️ Это устаревшая кнопка. Используй кнопки из последнего сообщения боя.",
+        "en": "⚠️ This button is out of date. Use the buttons from the last fight message.",
+    },
+    "dungeon.msg.enemy_gone": {"ru": "⚠️ Этого врага уже нет в текущей комнате.", "en": "⚠️ That enemy is no longer in this room."},
+    "dungeon.msg.not_found_active": {"ru": "❌ Активное подземелье не найдено.", "en": "❌ No active dungeon found."},
     "forest.mush.found": {
         "ru": "{head}\n\n{kind} Ты нашёл: «{name}»!\n\n🎒 Гриб положен в инвентарь.{heal_line}{sell_line}",
         "en": "{head}\n\n{kind} You found: «{name}»!\n\n🎒 The mushroom is in your inventory.{heal_line}{sell_line}",
