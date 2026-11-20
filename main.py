@@ -342,6 +342,13 @@ async def scheduled_jobs(bot: Bot):
         except Exception as e:
             logger.error(f"Ошибка окладов за должности: {e}", exc_info=True)
         try:
+            from utils.market_contracts import expire_contracts
+            expired = await expire_contracts()
+            if expired:
+                logger.info(f"Истекло контрактов на поставку: {expired}")
+        except Exception as e:
+            logger.error(f"Ошибка снятия истёкших контрактов: {e}", exc_info=True)
+        try:
             # v0.41.2 Ф4б: Лампа Круговорота — генератор Пламени Памяти
             # (раз в 5 суток, не привязан к празднику; начисление по графику).
             granted_count = 0

@@ -50,8 +50,13 @@ async def run():
         print("\n2. Обработчики меню")
         names = {h.callback.__name__ for h in MH.router.callback_query.handlers}
         for n in ("contracts_menu", "contracts_mine", "contract_view", "contract_close",
-                  "contract_cancel", "contract_new", "contract_pick", "contract_confirm"):
+                  "contract_cancel", "contract_new", "contract_new_cat", "contract_pick",
+                  "contract_confirm"):
             check(f"обработчик {n}", n in names)
+
+        print("\n3. Авто-снятие истёкших контрактов подключено")
+        src = open("main.py", encoding="utf-8").read()
+        check("expire_contracts вызывается в суточном цикле", "expire_contracts()" in src)
     finally:
         await close_db()
 

@@ -5240,6 +5240,22 @@
 - ✏️ НОВЫЙ EN:
 
 
+### mine.l2.broadcast
+
+- ТЕКУЩИЙ RU: `"📡 Приказ командира эскадрильи\n\nВыработка в шахтах достигла {target} единиц руды. Открыт второй уровень шахт!\nСпуск — в меню копи."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"📡 Squadron commander's order\n\nMine output has reached {target} ore units. The second mine level is open!\nDescend from the mine menu."`
+- ✏️ НОВЫЙ EN:
+
+
+### mine.l2.chat
+
+- ТЕКУЩИЙ RU: `"⛏ В шахтах вскрыт второй уровень: выработка достигла {target} единиц руды."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"⛏ The second mine level is open: output has reached {target} ore units."`
+- ✏️ НОВЫЙ EN:
+
+
 ### mine.level.dig_hint
 
 - ТЕКУЩИЙ RU: `"Бей породу — авось блеснёт руда. А может, что и пострашнее."`
@@ -5301,6 +5317,14 @@
 - ТЕКУЩИЙ RU: `"{head}\n\nКирка звонко высекает искру — из породы выкалывается кусок руды!\n\n🎒 Добыча: «{name}» — в инвентарь.{sell_line}"`
 - ✏️ НОВЫЙ RU:
 - ТЕКУЩИЙ EN: `"{head}\n\nThe pick strikes a spark — a lump of ore breaks out of the rock!\n\n🎒 Loot: «{name}» — added to your inventory.{sell_line}"`
+- ✏️ НОВЫЙ EN:
+
+
+### mine.progress
+
+- ТЕКУЩИЙ RU: `"⛏ Выработка шахт: {cur} / {target} ед. руды (второй уровень откроется при {target})"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"⛏ Mine output: {cur} / {target} ore (the second level opens at {target})"`
 - ✏️ НОВЫЙ EN:
 
 

@@ -18,37 +18,38 @@
 | 5 | `admin_router` | `bot/handlers/admin.py` |
 | 6 | `admin_recipes_router` | `bot/handlers/admin_recipes.py` |
 | 7 | `shop_router` | `bot/handlers/shop.py` |
-| 8 | `inventory_router` | `bot/handlers/inventory.py` |
-| 9 | `reports_router` | `bot/handlers/reports.py` |
-| 10 | `dungeon_router` | `bot/handlers/dungeon.py` |
-| 11 | `pilots_router` | `bot/handlers/pilots.py` |
-| 12 | `polls_router` | `bot/handlers/polls.py` |
-| 13 | `poll_archive_router` | `bot/handlers/poll_archive.py` |
-| 14 | `representative_router` | `bot/handlers/representative.py` |
-| 15 | `library_router` | `bot/handlers/library.py` |
-| 16 | `locations_router` | `bot/handlers/locations.py` |
-| 17 | `park_router` | `bot/handlers/park.py` |
-| 18 | `fishing_router` | `bot/handlers/fishing.py` |
-| 19 | `forest_router` | `bot/handlers/forest.py` |
-| 20 | `mine_router` | `bot/handlers/mine.py` |
-| 21 | `logging_site_router` | `bot/handlers/logging_site.py` |
-| 22 | `storage_router` | `bot/handlers/storage.py` |
-| 23 | `housing_router` | `bot/handlers/housing.py` |
-| 24 | `news_router` | `bot/handlers/news.py` |
-| 25 | `kvp_router` | `bot/handlers/kvp.py` |
-| 26 | `wall_router` | `bot/handlers/wall.py` |
-| 27 | `hq_router` | `bot/handlers/hq.py` |
-| 28 | `clans_router` | `bot/handlers/clans.py` |
-| 29 | `clan_hall_router` | `bot/handlers/clan_hall.py` |
-| 30 | `admin_shop_clan_router` | `bot/handlers/admin_shop_clan.py` |
-| 31 | `admin_clanphotos_router` | `bot/handlers/admin_clanphotos.py` |
-| 32 | `admin_firephotos_router` | `bot/handlers/admin_firephotos.py` |
-| 33 | `admin_berries_router` | `bot/handlers/admin_berries.py` |
-| 34 | `fire_event_router` | `bot/handlers/fire_event.py` |
-| 35 | `nii_router` | `bot/handlers/nii.py` |
-| 36 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
-| 37 | `duel_router` | `bot/handlers/duel.py` |
-| 38 | `mvd_router` | `bot/handlers/mvd.py` |
+| 8 | `market_contracts_router` | `bot/handlers/market_contracts.py` |
+| 9 | `inventory_router` | `bot/handlers/inventory.py` |
+| 10 | `reports_router` | `bot/handlers/reports.py` |
+| 11 | `dungeon_router` | `bot/handlers/dungeon.py` |
+| 12 | `pilots_router` | `bot/handlers/pilots.py` |
+| 13 | `polls_router` | `bot/handlers/polls.py` |
+| 14 | `poll_archive_router` | `bot/handlers/poll_archive.py` |
+| 15 | `representative_router` | `bot/handlers/representative.py` |
+| 16 | `library_router` | `bot/handlers/library.py` |
+| 17 | `locations_router` | `bot/handlers/locations.py` |
+| 18 | `park_router` | `bot/handlers/park.py` |
+| 19 | `fishing_router` | `bot/handlers/fishing.py` |
+| 20 | `forest_router` | `bot/handlers/forest.py` |
+| 21 | `mine_router` | `bot/handlers/mine.py` |
+| 22 | `logging_site_router` | `bot/handlers/logging_site.py` |
+| 23 | `storage_router` | `bot/handlers/storage.py` |
+| 24 | `housing_router` | `bot/handlers/housing.py` |
+| 25 | `news_router` | `bot/handlers/news.py` |
+| 26 | `kvp_router` | `bot/handlers/kvp.py` |
+| 27 | `wall_router` | `bot/handlers/wall.py` |
+| 28 | `hq_router` | `bot/handlers/hq.py` |
+| 29 | `clans_router` | `bot/handlers/clans.py` |
+| 30 | `clan_hall_router` | `bot/handlers/clan_hall.py` |
+| 31 | `admin_shop_clan_router` | `bot/handlers/admin_shop_clan.py` |
+| 32 | `admin_clanphotos_router` | `bot/handlers/admin_clanphotos.py` |
+| 33 | `admin_firephotos_router` | `bot/handlers/admin_firephotos.py` |
+| 34 | `admin_berries_router` | `bot/handlers/admin_berries.py` |
+| 35 | `fire_event_router` | `bot/handlers/fire_event.py` |
+| 36 | `nii_router` | `bot/handlers/nii.py` |
+| 37 | `tourist_booklet_router` | `bot/handlers/tourist_booklet.py` |
+| 38 | `duel_router` | `bot/handlers/duel.py` |
+| 39 | `mvd_router` | `bot/handlers/mvd.py` |
 
 ## Сводка по модулям
 
@@ -61,6 +62,7 @@
 | `admin.py` | Админ-панель: управление магазином, финансами, отчётами, ролями и логами. | `router` | 100 | 245 | `\d+$:`, `act:`, `addreq:`, `admin:`, `aw:`, `aw_comment:`, `aw_confirm:`, `aw_del:`, `aw_edit:`, `aw_ei:`, `aw_kind:`, `aw_pick:`, `awr_grant:`, `back:`, `cancel:`, `cat:`, `confirm_del_photo:`, `del_item:`, `drinksel:`, `dungeon:`, `eddrop:`, `eddrop_del:`, `eddrop_desc:`, `eddrop_photo:`, `eddrop_set_ch:`, `eddrop_set_q:`, `eddrop_stat:`, `eddrop_stats:`, `eddrop_weff:`, `eddrop_weff_set:`, `edit_item:`, `editem_add:`, `editem_new:`, `editem_pick:`, `editset:`, `enemy:`, `enemy_drops:`, `enemy_field:`, `eqpart:`, `field:`, `field_req:`, `fin:`, `fines:`, `finh:`, `finuser:`, `fishing:`, `fishing_field:`, `fishing_j:`, `fishing_jx:`, `forest:`, `forest_field:`, `loc:`, `locstat:`, `lootonly:`, `marketok:`, `news:`, `noop:`, `pickuser:`, `prod:`, `rank_pick:`, `rank_promote:`, `rar:`, `rep:`, `rep_fix:`, `rep_no:`, `rep_ok:`, `rep_rej_del:`, `rep_rej_del_ok:`, `rep_rej_list:`, `rep_rej_view:`, `role:`, `rolop:`, `salary:`, `shop_admin:`, `shop_del:`, `shop_edit:`, `st:`, `st_del:`, `st_key:`, `st_op:`, `st_pick:`, `st_rev:`, `storage:`, `treasury:`, `weff:`, `wing_set:` | `AdminAddItem`, `AdminSaleTax`, `AdminSpecialCode`, `AdminEditItem`, `AdminFinance`, `AdminTreasury`, `AdminStorageRestock`, `AdminRestockAuto`, `AdminShopLimit`, `AdminStorageDelete`, `AdminTax`, `AdminReportAutoApprove`, `AdminReportPayCap`, `AdminReportFix`, `AdminReportReject`, `AdminRoles`, `AdminStatuses`, `AdminAwards`, `AdminFishing`, `AdminForest`, `AdminEnemy`, `AdminCallsign`, `AdminWing`, `AdminStates`, `AdminPlayerLog`, `AdminSalary`, `AdminLocation`, `AdminCityPhoto`, `AdminDungeon`, `AdminFine` |
 | `admin_recipes.py` | Менеджер рецептов крафта (v0.22.13): создание, правка и удаление рецептов. | `router` | 19 | 44 | `recadm:` | `RecipeManager` |
 | `shop.py` | Магазин: каталог по категориям, покупка за Нордмарки и AP. | `router` | 3 | 14 | `buy5_nord:`, `buy_housing:`, `buy_housing_cancel:`, `buy_nord:`, `fishbuy:`, `fishoffer:`, `itembuy:`, `itemoffer:`, `offercancel:`, `shop:`, `shopcat:`, `shopitem:` | `SpecialDeptBuy` |
+| `market_contracts.py` | Меню контрактов на поставку (рынок → «📜 Контракты на поставку»). | `router` | 2 | 9 | `\d{1,4}$:`, `\d{1,7}$:`, `mkt:` | `ContractNew` |
 | `inventory.py` | Инвентарь: просмотр, использование расходников, продажа и передача предметов. | `router` | 4 | 29 | `eqequip:`, `eqlock:`, `eqslot:`, `equnequip:`, `fishcatch:`, `fishgo:`, `fishmarket:`, `fishprice:`, `fishsell:`, `fishuse:`, `inv_equip:`, `inv_sell:`, `inv_sell_ask:`, `inv_sell_keep1:`, `inv_sell_ok:`, `inv_sellall:`, `inv_sellmore:`, `inv_slot:`, `inv_transfer:`, `inv_unequip:`, `inv_unslot:`, `inv_use:`, `inventory:`, `invitem:`, `itemgo:`, `itemmarket:`, `itemprice:` | `TransferItem` |
 | `reports.py` | — | `router` | 9 | 5 | `\d+$:`, `\d{1,7}$:`, `report:` | `ReportSubmit` |
 | `dungeon.py` | — | `router` | 0 | 25 | `city:`, `contract:`, `contracts:`, `dungeon:`, `mollusk:`, `resv:` | `DungeonFSM` |
@@ -145,6 +147,14 @@
 - FSM: `SpecialDeptBuy`
 - `F.data.startswith`: `buy5_nord:`, `buy_housing:`, `buy_housing_cancel:`, `buy_nord:`, `fishbuy:`, `fishoffer:`, `itembuy:`, `itemoffer:`, `offercancel:fish:`, `offercancel:item:`, `shopcat:[^:]+$`, `shopcat:[^:]+:\d+$`, `shopitem:`
 - `F.data ==`: `shop:catalog`
+
+### `market_contracts.py` — Меню контрактов на поставку (рынок → «📜 Контракты на поставку»).
+
+- Роутеры: `router`
+- Хендлеры: message=2, callback_query=9
+- FSM: `ContractNew`
+- `F.data.startswith`: `\d{1,4}$`, `\d{1,7}$`, `mkt:cancel:\d+$`, `mkt:close:\d+$`, `mkt:newcat:[^:]+:\d+$`, `mkt:pick:\d+$`, `mkt:view:\d+$`
+- `F.data ==`: `mkt:confirm`, `mkt:contracts`, `mkt:mine`, `mkt:new`
 
 ### `inventory.py` — Инвентарь: просмотр, использование расходников, продажа и передача предметов.
 

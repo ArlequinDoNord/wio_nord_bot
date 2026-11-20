@@ -6,7 +6,7 @@
 > Назначение: единый обзор всех `StatesGroup`, где они ставятся и где ловятся,
 > а также реестр `callback_data` — чтобы не допускать конфликтов меню/хендлеров.
 
-Всего классов состояний: **58**; полей-состояний: **244**; уникальных `callback_data`: **280**.
+Всего классов состояний: **59**; полей-состояний: **247**; уникальных `callback_data`: **284**.
 
 ## 1. Классы состояний по модулям
 
@@ -440,15 +440,15 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `target` | `bot/handlers/inventory.py:1721` `inv_transfer_start` | `bot/handlers/inventory.py:1730` `inv_transfer_target` |
-| `amount` | `bot/handlers/inventory.py:1737` `inv_transfer_target` | `bot/handlers/inventory.py:1745` `inv_transfer_amount` |
-| `message` | `bot/handlers/inventory.py:1777` `inv_transfer_amount` | `bot/handlers/inventory.py:1786` `inv_transfer_message` |
+| `target` | `bot/handlers/inventory.py:1727` `inv_transfer_start` | `bot/handlers/inventory.py:1736` `inv_transfer_target` |
+| `amount` | `bot/handlers/inventory.py:1743` `inv_transfer_target` | `bot/handlers/inventory.py:1751` `inv_transfer_amount` |
+| `message` | `bot/handlers/inventory.py:1783` `inv_transfer_amount` | `bot/handlers/inventory.py:1792` `inv_transfer_message` |
 
 ### `KvpFSM` — `bot/handlers/kvp.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `in_course` | `bot/handlers/kvp.py:292` `kvp_start`<br>`bot/handlers/kvp.py:316` `kvp_resume` | — |
+| `in_course` | `bot/handlers/kvp.py:293` `kvp_start`<br>`bot/handlers/kvp.py:317` `kvp_resume` | — |
 
 ### `AdminAddBook` — `bot/handlers/library.py`
 
@@ -460,6 +460,14 @@
 | `description` | `bot/handlers/library.py:317` `book_author` | `bot/handlers/library.py:322` `book_description` |
 | `cover` | `bot/handlers/library.py:324` `book_description` | `bot/handlers/library.py:333` `book_cover` |
 | `content` | `bot/handlers/library.py:343` `book_cover` | `bot/handlers/library.py:351` `book_content` |
+
+### `ContractNew` — `bot/handlers/market_contracts.py`
+
+| Состояние | Ставится (`set_state`) | Ловится (хендлер) |
+|---|---|---|
+| `qty` | `bot/handlers/market_contracts.py:212` `contract_pick` | `bot/handlers/market_contracts.py:219` `contract_qty` |
+| `price` | `bot/handlers/market_contracts.py:229` `contract_qty` | `bot/handlers/market_contracts.py:237` `contract_price` |
+| `confirm` | `bot/handlers/market_contracts.py:246` `contract_price` | `bot/handlers/market_contracts.py:260` `contract_confirm` |
 
 ### `NewsWrite` — `bot/handlers/news.py`
 
@@ -536,7 +544,7 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `code` | `bot/handlers/shop.py:529` `_start_special_dept_buy` | `bot/handlers/shop.py:541` `special_dept_enter_code` |
+| `code` | `bot/handlers/shop.py:531` `_start_special_dept_buy` | `bot/handlers/shop.py:543` `special_dept_enter_code` |
 
 ### `WallWrite` — `bot/handlers/wall.py`
 
@@ -593,6 +601,7 @@
 | `logsite:` | 2 | `logsite:back`, `logsite:enter` |
 | `lootonly:` | 2 | `lootonly:no`, `lootonly:yes` |
 | `marketok:` | 2 | `marketok:no`, `marketok:yes` |
+| `mkt:` | 4 | `mkt:confirm`, `mkt:contracts`, `mkt:mine`, `mkt:new` |
 | `mvd:` | 2 | `mvd:archive:0`, `mvd:menu` |
 | `news:` | 5 | `news:archive`, `news:no_photo`, `news:off`, `news:tab`, `news:write` |
 | `nii:` | 5 | `nii:all`, `nii:menu_back`, `nii:mine`, `nii:no_photo`, `nii:write` |
@@ -736,9 +745,9 @@
 - `hq:wings`: `bot/handlers/hq.py:1032`
 - `inventory:eq`: `bot/handlers/inventory.py:515`
 - `inventory:list`: `bot/handlers/inventory.py:609`
-- `kvp:exit`: `bot/handlers/kvp.py:753`
-- `kvp:resume`: `bot/handlers/kvp.py:303`
-- `kvp:start`: `bot/handlers/kvp.py:263`
+- `kvp:exit`: `bot/handlers/kvp.py:754`
+- `kvp:resume`: `bot/handlers/kvp.py:304`
+- `kvp:start`: `bot/handlers/kvp.py:264`
 - `lib:menu`: `bot/handlers/library.py:141`
 - `lib:no_access`: `bot/handlers/library.py:136`
 - `libadmin:add`: `bot/handlers/library.py:288`
@@ -769,6 +778,10 @@
 - `loc:storage_set`: `bot/handlers/admin.py:9936`
 - `logsite:back`: `bot/handlers/logging_site.py:448`
 - `logsite:enter`: `bot/handlers/logging_site.py:399`
+- `mkt:confirm`: `bot/handlers/market_contracts.py:259`
+- `mkt:contracts`: `bot/handlers/market_contracts.py:56`
+- `mkt:mine`: `bot/handlers/market_contracts.py:80`
+- `mkt:new`: `bot/handlers/market_contracts.py:160`
 - `mvd:menu`: `bot/handlers/mvd.py:29`
 - `news:archive`: `bot/handlers/news.py:135`
 - `news:no_photo`: `bot/handlers/news.py:353`
@@ -862,7 +875,8 @@
 ### По префиксу (`F.data.startswith("...")`)
 
 - `\d+$`: `bot/handlers/admin.py:1568`; `bot/handlers/admin.py:5918`; `bot/handlers/admin.py:8632`; `bot/handlers/reports.py:200`
-- `\d{1,7}$`: `bot/handlers/reports.py:135`; `bot/handlers/reports.py:164`
+- `\d{1,4}$`: `bot/handlers/market_contracts.py:218`
+- `\d{1,7}$`: `bot/handlers/market_contracts.py:236`; `bot/handlers/reports.py:135`; `bot/handlers/reports.py:164`
 - `act:`: `bot/handlers/admin.py:5712`
 - `addreq:`: `bot/handlers/admin.py:1767`
 - `aw_del:`: `bot/handlers/admin.py:4254`
@@ -882,10 +896,10 @@
 - `berry:pick:(glade|clearing):\d+$`: `bot/handlers/admin_berries.py:135`
 - `berry:row:(glade|clearing):.+$`: `bot/handlers/admin_berries.py:63`
 - `berry:zone:(glade|clearing)$`: `bot/handlers/admin_berries.py:54`
-- `buy5_nord:`: `bot/handlers/shop.py:496`
-- `buy_housing:`: `bot/handlers/shop.py:1134`
-- `buy_housing_cancel:`: `bot/handlers/shop.py:1125`
-- `buy_nord:`: `bot/handlers/shop.py:486`
+- `buy5_nord:`: `bot/handlers/shop.py:498`
+- `buy_housing:`: `bot/handlers/shop.py:1137`
+- `buy_housing_cancel:`: `bot/handlers/shop.py:1128`
+- `buy_nord:`: `bot/handlers/shop.py:488`
 - `cat:`: `bot/handlers/admin.py:1489`
 - `city/`: `bot/handlers/locations.py:91`
 - `city:pilots:list:`: `bot/handlers/pilots.py:135`
@@ -1059,9 +1073,9 @@
 - `fish:bait:set:\d+:[a-z]+$`: `bot/handlers/fishing.py:563`
 - `fish:cast:\d+$`: `bot/handlers/fishing.py:573`
 - `fish:lake:\d+$`: `bot/handlers/fishing.py:500`
-- `fishbuy:`: `bot/handlers/shop.py:837`
-- `fishcatch:`: `bot/handlers/inventory.py:1352`
-- `fishgo:`: `bot/handlers/inventory.py:1603`
+- `fishbuy:`: `bot/handlers/shop.py:839`
+- `fishcatch:`: `bot/handlers/inventory.py:1358`
+- `fishgo:`: `bot/handlers/inventory.py:1609`
 - `fishing:addfish:`: `bot/handlers/admin.py:8051`
 - `fishing:addlist:`: `bot/handlers/admin.py:8021`
 - `fishing:del:`: `bot/handlers/admin.py:8074`
@@ -1079,11 +1093,11 @@
 - `fishing_jx:new:`: `bot/handlers/admin.py:7804`
 - `fishing_jx:pick:`: `bot/handlers/admin.py:7756`
 - `fishing_jx:pool:`: `bot/handlers/admin.py:7727`
-- `fishmarket:`: `bot/handlers/inventory.py:1505`
-- `fishoffer:`: `bot/handlers/shop.py:762`
-- `fishprice:`: `bot/handlers/inventory.py:1585`
-- `fishsell:`: `bot/handlers/inventory.py:1661`
-- `fishuse:`: `bot/handlers/inventory.py:1360`
+- `fishmarket:`: `bot/handlers/inventory.py:1511`
+- `fishoffer:`: `bot/handlers/shop.py:764`
+- `fishprice:`: `bot/handlers/inventory.py:1591`
+- `fishsell:`: `bot/handlers/inventory.py:1667`
+- `fishuse:`: `bot/handlers/inventory.py:1366`
 - `forest:add:`: `bot/handlers/admin.py:8804`
 - `forest:area:\d+:(glade|clearing)$`: `bot/handlers/forest.py:448`
 - `forest:battle:flee:\d+$`: `bot/handlers/forest.py:1187`
@@ -1140,20 +1154,20 @@
 - `inv_sellall:`: `bot/handlers/inventory.py:978`
 - `inv_sellmore:`: `bot/handlers/inventory.py:1198`
 - `inv_slot:`: `bot/handlers/inventory.py:887`
-- `inv_transfer:`: `bot/handlers/inventory.py:1693`
+- `inv_transfer:`: `bot/handlers/inventory.py:1699`
 - `inv_unequip:`: `bot/handlers/inventory.py:863`
 - `inv_unslot:`: `bot/handlers/inventory.py:922`
 - `inv_use:`: `bot/handlers/inventory.py:944`
 - `inventory:cat:[^:]+$`: `bot/handlers/inventory.py:628`
 - `invitem:`: `bot/handlers/inventory.py:826`
-- `itembuy:`: `bot/handlers/shop.py:966`
+- `itembuy:`: `bot/handlers/shop.py:968`
 - `itemgo:`: `bot/handlers/inventory.py:1296`
 - `itemmarket:`: `bot/handlers/inventory.py:1206`
-- `itemoffer:`: `bot/handlers/shop.py:898`
+- `itemoffer:`: `bot/handlers/shop.py:900`
 - `itemprice:`: `bot/handlers/inventory.py:1285`
-- `kvp:attack:`: `bot/handlers/kvp.py:531`
-- `kvp:attempt:`: `bot/handlers/kvp.py:456`
-- `kvp:continue:`: `bot/handlers/kvp.py:425`
+- `kvp:attack:`: `bot/handlers/kvp.py:532`
+- `kvp:attempt:`: `bot/handlers/kvp.py:457`
+- `kvp:continue:`: `bot/handlers/kvp.py:426`
 - `libadmin_del:`: `bot/handlers/library.py:409`
 - `libadmin_sec:`: `bot/handlers/library.py:297`
 - `libbook:`: `bot/handlers/library.py:204`
@@ -1180,12 +1194,17 @@
 - `logsite:plank:(1|all):\d+$`: `bot/handlers/logging_site.py:647`
 - `lootonly:`: `bot/handlers/admin.py:1742`
 - `marketok:`: `bot/handlers/admin.py:1720`
-- `mine:battle:flee:\d+$`: `bot/handlers/mine.py:728`
-- `mine:battle:hit:\d+$`: `bot/handlers/mine.py:577`
-- `mine:deeper:\d+$`: `bot/handlers/mine.py:388`
-- `mine:dig:\d+$`: `bot/handlers/mine.py:397`
+- `mine:battle:flee:\d+$`: `bot/handlers/mine.py:734`
+- `mine:battle:hit:\d+$`: `bot/handlers/mine.py:583`
+- `mine:deeper:\d+$`: `bot/handlers/mine.py:391`
+- `mine:dig:\d+$`: `bot/handlers/mine.py:400`
 - `mine:level:\d+$`: `bot/handlers/mine.py:359`
 - `mine:menu:\d+$`: `bot/handlers/mine.py:352`
+- `mkt:cancel:\d+$`: `bot/handlers/market_contracts.py:145`
+- `mkt:close:\d+$`: `bot/handlers/market_contracts.py:134`
+- `mkt:newcat:[^:]+:\d+$`: `bot/handlers/market_contracts.py:175`
+- `mkt:pick:\d+$`: `bot/handlers/market_contracts.py:203`
+- `mkt:view:\d+$`: `bot/handlers/market_contracts.py:102`
 - `mollusk:flee:\d+$`: `bot/handlers/dungeon.py:488`
 - `mollusk:hit:\d+$`: `bot/handlers/dungeon.py:372`
 - `mvd:arch:`: `bot/handlers/mvd.py:95`
@@ -1198,8 +1217,8 @@
 - `news:view:`: `bot/handlers/news.py:199`
 - `nii:set:`: `bot/handlers/nii.py:319`
 - `nii:view:`: `bot/handlers/nii.py:284`
-- `offercancel:fish:`: `bot/handlers/shop.py:1017`
-- `offercancel:item:`: `bot/handlers/shop.py:1022`
+- `offercancel:fish:`: `bot/handlers/shop.py:1020`
+- `offercancel:item:`: `bot/handlers/shop.py:1025`
 - `page`: `bot/handlers/admin.py:439`
 - `park:admin:del:`: `bot/handlers/park.py:390`
 - `park:admin:delyes:`: `bot/handlers/park.py:410`
@@ -1274,8 +1293,8 @@
 - `shop_del:cat:`: `bot/handlers/admin.py:1984`
 - `shop_edit:cat:`: `bot/handlers/admin.py:1969`
 - `shopcat:[^:]+$`: `bot/handlers/shop.py:253`
-- `shopcat:[^:]+:\d+$`: `bot/handlers/shop.py:341`
-- `shopitem:`: `bot/handlers/shop.py:352`
+- `shopcat:[^:]+:\d+$`: `bot/handlers/shop.py:343`
+- `shopitem:`: `bot/handlers/shop.py:354`
 - `st_del:`: `bot/handlers/admin.py:3638`
 - `st_key:`: `bot/handlers/admin.py:5903`
 - `st_op:`: `bot/handlers/admin.py:5870`

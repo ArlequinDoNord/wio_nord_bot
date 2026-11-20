@@ -21,11 +21,24 @@ class ContractNew(StatesGroup):
     confirm = State()
 
 
-async def _market_items():
+CONTRACT_CATS = {
+    "resource": "🪨 Ресурсы",
+    "consumable": "🧪 Расходники",
+}
+_PER_PAGE = 8
+
+
+async def _market_items(category: str, page: int = 0):
     conn = await get_db()
+    offset = page * _PER_PAGE
     cur = await conn.execute(
-        "SELECT id, name, sell_price FROM items WHERE market_ok = 1 ORDER BY name LIMIT 12")
-    return await cur.fetchall()
+        "SELECT id, name, sell_price FROM items "
+        "WHERE category = ? AND (loot_only = 0 OR loot_only IS NULL) AND sell_price > 0 "
+        "ORDER BY name LIMIT ? OFFSET ?",
+        (category, _PER_PAGE + 1, offset))
+    rows = await cur.fetchall()
+    has_more = len(rows) > _PER_PAGE
+    return rows[:_PER_PAGE], has_more
 
 
 def _money(n: int) -> str:
@@ -152,14 +165,38 @@ async def contract_new(callback: CallbackQuery, state: FSMContext):
         await callback.message.answer("⛔ Контракты доступны только гражданам.")
         return
     await state.clear()
-    items = await _market_items()
-    if not items:
-        await callback.message.answer("В каталоге пока нет товаров для контрактов.")
+    buttons = [[InlineKeyboardButton(text=label, callback_data=f"mkt:newcat:{cat}:0")]
+               for cat, label in CONTRACT_CATS.items()]
+    buttons.append([InlineKeyboardButton(text="🔙 Контракты", callback_data="mkt:contracts")])
+    await _screen(callback, "➕ Выставить контракт\n\nВыбери категорию товаров:",
+                  InlineKeyboardMarkup(inline_keyboard=buttons))
+
+
+@router.callback_query(F.data.regexp(r"^mkt:newcat:[^:]+:\d+$"))
+async def contract_new_cat(callback: CallbackQuery, state: FSMContext):
+    await callback.answer()
+    _, _, cat, page_s = callback.data.split(":")
+    if cat not in CONTRACT_CATS:
+        await callback.message.answer("❌ Неизвестная категория.")
+        return
+    page = int(page_s)
+    items, has_more = await _market_items(cat, page)
+    if not items and page == 0:
+        await _screen(callback, "В этой категории пока нет товаров для контрактов.",
+                      InlineKeyboardMarkup(inline_keyboard=[
+                          [InlineKeyboardButton(text="🔙 Назад", callback_data="mkt:new")]]))
         return
     buttons = [[InlineKeyboardButton(text=f"📦 {it['name']} (казна {it['sell_price']} НМ)",
                                      callback_data=f"mkt:pick:{it['id']}")] for it in items]
-    buttons.append([InlineKeyboardButton(text="🔙 Контракты", callback_data="mkt:contracts")])
-    await _screen(callback, "➕ Выставить контракт\n\nВыбери товар:",
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"mkt:newcat:{cat}:{page - 1}"))
+    if has_more:
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"mkt:newcat:{cat}:{page + 1}"))
+    if nav:
+        buttons.append(nav)
+    buttons.append([InlineKeyboardButton(text="🔙 Категории", callback_data="mkt:new")])
+    await _screen(callback, f"➕ {CONTRACT_CATS[cat]}\n\nВыбери товар (стр. {page + 1}):",
                   InlineKeyboardMarkup(inline_keyboard=buttons))
 
 
