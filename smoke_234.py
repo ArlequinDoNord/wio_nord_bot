@@ -53,11 +53,12 @@ async def run():
         await log_activity(801, "mine", f"Добыл «{MINE_ORE_NAME}»")
         await log_activity(802, "mine", f"Добыл «{FIRE_ORE_NAME}»")
         await log_activity(802, "mine", "Добыча руды: удар киркой (12 ОД)")
-        check("журнал даёт 3 руды (удары не считаются)", await M.get_ore_total() == 3)
+        check("журнал даёт 2 руды: пламенная не считается, удары тоже",
+              await M.get_ore_total() == 2)
         check("второй уровень ещё закрыт", not await M.is_level2_open())
 
         print("\n2. Открытие ровно на пороге")
-        need = MINE_LEVEL2_ORE_TARGET - 3
+        need = MINE_LEVEL2_ORE_TARGET - 2
         opened_before = await M.add_ore(need - 1)
         check("до порога не открывается", not opened_before and not await M.is_level2_open())
         opened_now = await M.add_ore(1)
