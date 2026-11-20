@@ -1720,6 +1720,18 @@ STRINGS = {
         "ru": "🪜 Спуск на второй уровень ещё не обустроен — работы идут.",
         "en": "🪜 The second level isn't ready yet — work is in progress.",
     },
+    "mine.progress": {
+        "ru": "⛏ Выработка шахт: {cur} / {target} ед. руды (второй уровень откроется при {target})",
+        "en": "⛏ Mine output: {cur} / {target} ore (the second level opens at {target})",
+    },
+    "mine.l2.chat": {
+        "ru": "⛏ В шахтах вскрыт второй уровень: выработка достигла {target} единиц руды.",
+        "en": "⛏ The second mine level is open: output has reached {target} ore units.",
+    },
+    "mine.l2.broadcast": {
+        "ru": "📡 Приказ командира эскадрильи\n\nВыработка в шахтах достигла {target} единиц руды. Открыт второй уровень шахт!\nСпуск — в меню копи.",
+        "en": "📡 Squadron commander's order\n\nMine output has reached {target} ore units. The second mine level is open!\nDescend from the mine menu.",
+    },
     "mine.alert.tourist": {"ru": "⛔ В копи не пускают туристов.", "en": "⛔ Tourists aren't allowed in the mine."},
     "mine.alert.busy": {
         "ru": "Ты уже замахнулся киркой — дождись результата!",

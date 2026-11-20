@@ -381,6 +381,9 @@ async def mine_level_cb(callback: CallbackQuery):
     caption = _tl1("mine.level.screen", pickaxe_line=pickaxe_line, dig_line=dig_line,
                    cost=ap_cost, lo=MINE_RESULT_DELAY[0], hi=MINE_RESULT_DELAY[1],
                    ap_line=await _ap_line(user_id))
+    from utils.mine_progress import get_ore_total
+    from config import MINE_LEVEL2_ORE_TARGET
+    caption += "\n\n" + _tl1("mine.progress", cur=await get_ore_total(), target=MINE_LEVEL2_ORE_TARGET)
     await _level_paint(callback, text=caption,
                        kb=_level_markup(MINE_TOKEN.get(user_id, "")))
 
@@ -489,6 +492,9 @@ async def mine_dig(callback: CallbackQuery):
             await add_inventory_item(user_id, flame['id'], 1)
             await tree_record_collect(user_id, FIRE_ORE_NAME)
             await log_activity(user_id, "mine", f"Добыл «{flame['name']}»")
+            from utils.mine_progress import add_ore, start_announce
+            if await add_ore(1):
+                start_announce(callback.bot)
             text = _tmd("mine.flame_found", head=head, name=flame['name']) + ap_block
         elif await _mine_card(user_id, chance) == "ore":
             ore = await get_item_by_name(MINE_ORE_NAME)
@@ -496,6 +502,9 @@ async def mine_dig(callback: CallbackQuery):
                 await add_inventory_item(user_id, ore['id'], 1)
                 await bump_achievement(user_id, "mining", 1)
                 await log_activity(user_id, "mine", f"Добыл «{ore['name']}»")
+                from utils.mine_progress import add_ore, start_announce
+                if await add_ore(1):
+                    start_announce(callback.bot)
                 sell_line = ""
                 if ore['sell_price'] > 0:
                     sell_line = (f"\nКазна выкупает руду по {ore['sell_price']} "
