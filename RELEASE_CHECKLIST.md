@@ -5,7 +5,7 @@
 ## 1) Предрелиз
 - [ ] **Синхронизация доков**: `.\.venv\Scripts\python.exe tools\docs_check_sync.py --fix` — все `UP TO DATE`
 - [ ] **Смоуки**: `.\.venv\Scripts\python.exe tools\run_smokes.py` (по умолчанию в 4 потока, либо точечно `tools\run_smokes.py --last 10` / `146 158-159`) → **0 failed**
-- [ ] **Каталог текстов актуален**: `.\.venv\Scripts\python.exe tools\export_texts.py --check --db <снимок прод-БД>` → «актуален». Если «устарел» — перегенерировать (`tools\export_texts.py --db <снимок>`), проверить правки глазами и закоммитить `TEXTS_CATALOG.md`. Свежий снимок прод-БД: `.\.venv\Scripts\python.exe tools\fetch_prod_db.py` (только чтение, кладёт `data/nordmark.db`, папка `data/` в .gitignore). Гейт встроен в `tools/release_bump.py` (без `--skip-texts` релиз не пройдёт).
+- [ ] **Тексты актуальны**: `.\.venv\Scripts\python.exe tools\apply_texts.py --check` → «актуален». Если есть неприменённые правки в `TEXTS_EDIT.md` — `tools\apply_texts.py`, затем `tools\apply_texts.py --export`, закоммитить. Гейт встроен в `tools/release_bump.py` (без `--skip-texts` релиз не пройдёт). БД не нужна.
 - [ ] **Код компилируется** (быстрая проверка): `.\.venv\Scripts\python.exe -m py_compile config.py main.py database/db.py` (либо по затронутым модулям)
 - [ ] **Уточнить у владельца**: явный спойлер в анонсе или неявный намёк (см. [AGENTS.md](AGENTS.md) «Предрелизный вопрос»)
 

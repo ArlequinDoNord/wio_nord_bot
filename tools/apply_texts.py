@@ -1,8 +1,9 @@
 """TEXTS_EDIT.md <-> utils/texts_overrides.json: правки текстов интерфейса владельцем.
 
-Два режима:
+Режимы:
   python tools/apply_texts.py --export   # перезаписать TEXTS_EDIT.md из текущих текстов
   python tools/apply_texts.py            # применить блоки «✏️ НОВЫЙ» в texts_overrides.json
+  python tools/apply_texts.py --check    # гейт: нет неприменённых правок и файл актуален
 
 Правила:
 - Источник базы — utils/localization.py (STRINGS). Файл texts_overrides.json читается
@@ -16,6 +17,7 @@
 """
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -50,7 +52,6 @@ def _load_strings():
 
 def _base_strings():
     """STRINGS с наложенным texts_overrides.json: ТЕКУЩИЙ = то, что видит игрок."""
-    import copy
     from utils import localization
     strings = copy.deepcopy(localization.STRINGS)
     if os.path.isfile(OVERRIDES_PATH):
@@ -74,12 +75,8 @@ def _decode(raw: str):
     return json.loads(text)
 
 
-def _read_pending_edits() -> dict:
-    """Введённые, но не применённые «✏️ НОВЫЙ» из текущего TEXTS_EDIT.md."""
-    if not os.path.isfile(EDIT_PATH):
-        return {}
-    with open(EDIT_PATH, encoding="utf-8") as f:
-        text = f.read()
+def _parse_pending(text: str) -> dict:
+    """{key: {lang: raw}} — введённые, но не применённые «✏️ НОВЫЙ»."""
     pending = {}
     blocks = list(BLOCK_RE.finditer(text))
     for i, m in enumerate(blocks):
@@ -91,9 +88,15 @@ def _read_pending_edits() -> dict:
     return pending
 
 
-def export_edit_file(keep_pending: bool = True) -> int:
+def _read_pending_edits() -> dict:
+    if not os.path.isfile(EDIT_PATH):
+        return {}
+    with open(EDIT_PATH, encoding="utf-8") as f:
+        return _parse_pending(f.read())
+
+
+def render_edit(pending: dict) -> str:
     strings = _base_strings()
-    pending = _read_pending_edits() if keep_pending else {}
     out = [HEADER]
     for key in sorted(strings):
         entry = strings[key]
@@ -104,10 +107,33 @@ def export_edit_file(keep_pending: bool = True) -> int:
             new_raw = pending.get(key, {}).get(lang, "")
             out.append(f"- ✏️ НОВЫЙ {label}:{(' ' + new_raw.strip()) if new_raw else ''}")
         out.append("")
+    return "\n".join(out)
+
+
+def export_edit_file(keep_pending: bool = True) -> int:
+    pending = _read_pending_edits() if keep_pending else {}
+    text = render_edit(pending)
     with open(EDIT_PATH, "w", encoding="utf-8", newline="\n") as f:
-        f.write("\n".join(out))
-    print(f"TEXTS_EDIT.md: {len(strings)} ключей, введённые правки сохранены: {sum(len(v) for v in pending.values())}")
+        f.write(text)
+    print(f"TEXTS_EDIT.md: {len(_base_strings())} ключей, введённые правки сохранены: "
+          f"{sum(len(v) for v in pending.values())}")
     return 0
+
+
+def check_edit_file() -> list:
+    """Проблемы для гейта релиза; пустой список — всё в порядке."""
+    if not os.path.isfile(EDIT_PATH):
+        return ["TEXTS_EDIT.md не найден (запустите apply_texts.py --export)"]
+    with open(EDIT_PATH, encoding="utf-8") as f:
+        text = f.read()
+    problems = []
+    pending = _parse_pending(text)
+    if pending:
+        problems.append(f"есть неприменённые правки в TEXTS_EDIT.md ({len(pending)} ключ.): "
+                        "запустите apply_texts.py")
+    if render_edit(pending) != text:
+        problems.append("TEXTS_EDIT.md не совпадает с текущими текстами: запустите apply_texts.py --export")
+    return problems
 
 
 def _collect_new() -> dict:
@@ -123,10 +149,8 @@ def _collect_new() -> dict:
         for fm in FIELD_RE.finditer(text[m.end():end]):
             if fm.group("label") != "✏️ НОВЫЙ":
                 continue
-            raw = fm.group("body")
-            value = None
             try:
-                value = _decode(raw)
+                value = _decode(fm.group("body"))
             except json.JSONDecodeError as e:
                 raise SystemExit(f"{key} {fm.group('lang')}: не разобрана строка ({e})")
             if value is None:
@@ -168,7 +192,15 @@ def apply_edits() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Правки текстов через TEXTS_EDIT.md")
     parser.add_argument("--export", action="store_true", help="перезаписать TEXTS_EDIT.md")
+    parser.add_argument("--check", action="store_true", help="гейт: проверить актуальность файла")
     args = parser.parse_args()
+    if args.check:
+        problems = check_edit_file()
+        for p in problems:
+            print(f"TEXTS_EDIT.md: {p}")
+        if not problems:
+            print("TEXTS_EDIT.md актуален (правок нет, файл совпадает с текстами)")
+        return 1 if problems else 0
     return export_edit_file() if args.export else apply_edits()
 
 

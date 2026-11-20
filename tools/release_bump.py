@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 VERSION_FILE = ROOT / "version.py"
 CHANGELOG = ROOT / "CHANGELOG.md"
 EXPORT_CONFIG = ROOT / "tools" / "export_config.py"
-EXPORT_TEXTS = ROOT / "tools" / "export_texts.py"
+APPLY_TEXTS = ROOT / "tools" / "apply_texts.py"
 
 
 def run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
@@ -170,9 +170,8 @@ def main() -> int:
     )
     parser.add_argument("--changelog", help="Описание для CHANGELOG.md и сообщения коммита")
     parser.add_argument("--yes", "-y", action="store_true", help="Без интерактивного подтверждения")
-    parser.add_argument("--texts-db", help="снимок прод-БД для проверки TEXTS_CATALOG.md (разделы сущностей)")
     parser.add_argument("--skip-texts", action="store_true",
-                        help="не проверять TEXTS_CATALOG.md (только по явному решению владельца)")
+                        help="не проверять TEXTS_EDIT.md (только по явному решению владельца)")
     args = parser.parse_args()
 
     print("=== RELEASE BUMP ===")
@@ -220,14 +219,13 @@ def main() -> int:
     print(f"VERSION_NOTES: {vn}")
 
     if not args.skip_texts:
-        texts_cmd = [sys.executable, str(EXPORT_TEXTS), "--check"]
-        if args.texts_db:
-            texts_cmd += ["--db", args.texts_db]
+        texts_cmd = [sys.executable, str(APPLY_TEXTS), "--check"]
         texts_ok = subprocess.run(texts_cmd, cwd=str(ROOT), env={**os.environ, "PYTHONIOENCODING": "utf-8"}).returncode == 0
         if not texts_ok:
-            print("\nTEXTS_CATALOG.md не актуален — перед релизом перегенерируйте каталог:")
-            print("  .venv\\Scripts\\python.exe tools\\export_texts.py --db <снимок прод-БД>")
-            print("  (или --skip-texts, если владелец явно разрешил релиз без каталога)")
+            print("\nTEXTS_EDIT.md не актуален — перед релизом примените правки и обновите файл:")
+            print("  .venv\\Scripts\\python.exe tools\\apply_texts.py")
+            print("  .venv\\Scripts\\python.exe tools\\apply_texts.py --export")
+            print("  (или --skip-texts, если владелец явно разрешил релиз без проверки текстов)")
             return 1
 
     if args.changelog:
