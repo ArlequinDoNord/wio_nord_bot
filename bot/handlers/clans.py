@@ -18,7 +18,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from database.db import (
-    get_user, get_all_users, get_clan, get_clans, create_clan, update_clan,
+    get_user, get_all_users, get_clan, get_clans, create_clan, update_clan, set_clan_leader,
     delete_clan, get_clan_members, get_clan_member_ids, get_clan_member_roles,
     get_clan_member_role, set_clan_member_role, get_clan_pending_requests,
     is_clan_member, add_clan_member, remove_clan_member, get_user_clan,
@@ -677,7 +677,7 @@ async def clan_leader_set_cb(callback: CallbackQuery):
         await remove_user_role(old_leader, 'clan_leader')
     await remove_clan_request(clan['id'], uid)
     await add_clan_member(clan['id'], uid)
-    await update_clan(clan['id'], leader_id=uid)
+    await set_clan_leader(clan['id'], uid)
     await add_user_role(uid, 'clan_leader', granted_by=callback.from_user.id)
     await log_action(callback.from_user.id, 'clan_set_leader', uid, f"clan_id={clan['id']}")
     u = await get_user(uid)
@@ -704,7 +704,7 @@ async def clan_leader_unset_cb(callback: CallbackQuery):
     if not old:
         await callback.message.answer("ℹ️ У объединения уже нет главы.")
         return
-    await update_clan(clan['id'], leader_id=None)
+    await set_clan_leader(clan['id'], None)
     await remove_user_role(old, 'clan_leader')
     await log_action(callback.from_user.id, 'clan_unset_leader', old, f"clan_id={clan['id']}")
     await notify_user_t(callback.bot, old, "pers.clan.leader_unset",
