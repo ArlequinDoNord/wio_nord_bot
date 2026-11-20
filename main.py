@@ -46,6 +46,7 @@ from bot.handlers.bank import router as bank_router
 from bot.handlers.admin import router as admin_router
 from bot.handlers.admin_recipes import router as admin_recipes_router
 from bot.handlers.shop import router as shop_router
+from bot.handlers.market_contracts import router as market_contracts_router
 from bot.handlers.inventory import router as inventory_router
 from bot.handlers.reports import router as reports_router
 from bot.handlers.dungeon import router as dungeon_router
@@ -653,6 +654,7 @@ async def main():
     dp.include_router(admin_router)
     dp.include_router(admin_recipes_router)
     dp.include_router(shop_router)
+    dp.include_router(market_contracts_router)
     dp.include_router(inventory_router)
     dp.include_router(reports_router)
     dp.include_router(dungeon_router)
@@ -696,7 +698,7 @@ async def main():
               storage_router, housing_router, news_router, kvp_router,
               wall_router, hq_router, clans_router, clan_hall_router, nii_router,
               admin_shop_clan_router, admin_clanphotos_router, admin_firephotos_router, admin_berries_router, fire_event_router,
-              tourist_booklet_router, duel_router, mvd_router):
+              tourist_booklet_router, duel_router, mvd_router, market_contracts_router):
         r.message.middleware(ChatGuard())
         r.message.middleware(FishingActiveLock())
         r.message.middleware(MainMenuFSMReset())

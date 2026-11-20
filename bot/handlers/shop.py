@@ -316,6 +316,8 @@ async def items_page_markup(items, category, page: int, user_id: int = None):
     if nav:
         buttons.append(nav)
 
+    if category == "market":
+        buttons.append([InlineKeyboardButton(text="📜 Контракты на поставку", callback_data="mkt:contracts")])
     buttons.append([InlineKeyboardButton(text="🔙 В каталог", callback_data="shop:catalog")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
