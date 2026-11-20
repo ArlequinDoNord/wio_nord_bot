@@ -1330,20 +1330,26 @@ async def item_market_confirm(callback: CallbackQuery):
             f"❌ «{item['name']}» используется в снаряжении — сначала сними его.")
         return
 
+    from config import MARKET_PACK_SIZES
+    pack = MARKET_PACK_SIZES.get(item['name'], 1)
     inv = await get_inventory_item(user_id, item_id)
-    if not inv or inv['quantity'] < 1:
-        await callback.message.answer("❌ Предмета уже нет в инвентаре.")
+    if not inv or inv['quantity'] < pack:
+        await callback.message.answer(
+            f"❌ Для пака нужно {pack} шт. «{item['name']}» в инвентаре."
+            if pack > 1 else "❌ Предмета уже нет в инвентаре.")
         return
 
-    await remove_inventory_item(user_id, item_id, 1)
-    await place_item_offer(user_id, item_id, price)
+    total = price * pack
+    await remove_inventory_item(user_id, item_id, pack)
+    await place_item_offer(user_id, item_id, total, qty=pack)
     await bump_achievement(user_id, "trader", 1)
     await log_activity(user_id, "shop_sale",
-                       f"Выставил «{item['name']}» на рынок за {price} НМ (база {base})")
+                       f"Выставил «{item['name']}» ×{pack} на рынок за {total} НМ (база {base})")
+    pack_line = f" ×{pack}" if pack > 1 else ""
     await callback.message.answer(
-        f"🏪 «{item['name']}» выставлен на продажу за "
-        f"{price} {plural_nordmark(price)}!\n\n"
-        f"📊 База (скупщик): {base} НМ | Твоя: {price} НМ\n"
+        f"🏪 «{item['name']}»{pack_line} выставлен на продажу за "
+        f"{total} {plural_nordmark(total)}!\n\n"
+        f"📊 База (скупщик): {base} НМ за шт. | Твоя: {price} НМ за шт.\n"
         f"💰 Нордмарки придут после покупки (за вычетом налога)."
     )
     await _render_item_card(callback.message, user_id, item_id)

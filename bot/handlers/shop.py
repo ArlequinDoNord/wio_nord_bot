@@ -169,7 +169,7 @@ def item_offer_items(offers) -> list:
             "__offer_type__": "item",
             "id": o["id"],
             "seller_id": o["seller_id"],
-            "name": o["name"],
+            "name": o["name"] + (f" ×{o['qty']}" if (o['qty'] or 1) > 1 else ""),
             "rarity": o["rarity"],
             "price": o["price"],
             "damage": 0,
@@ -991,7 +991,8 @@ async def item_buy(callback: CallbackQuery):
 
     await remove_nordmarks(user_id, price, "shop_purchase",
                            f"Покупка с рынка: {offer['name']}")
-    await add_inventory_item(user_id, offer['item_id'], 1)
+    lot_qty = int(offer['qty'] or 1)
+    await add_inventory_item(user_id, offer['item_id'], lot_qty)
 
     sale_tax = await get_sale_tax_percent()
     tax_amount = int(price * sale_tax / 100)
@@ -1007,7 +1008,7 @@ async def item_buy(callback: CallbackQuery):
     await log_activity(offer['seller_id'], "shop_sale",
                        f"Продан с рынка «{offer['name']}» за {price} НМ")
     await callback.message.answer(
-        f"✅ Куплено: {offer['name']} за {price} {plural_nordmark(price)}!\n"
+        f"✅ Куплено: {offer['name']}{f' ×{lot_qty}' if lot_qty > 1 else ''} за {price} {plural_nordmark(price)}!\n"
         f"🎒 Предмет уже в твоём инвентаре."
     )
 
@@ -1048,7 +1049,7 @@ async def _cancel_offer(callback: CallbackQuery, kind: str, offer_id: int):
 
     if kind == "item":
         await remove_item_offer(offer_id)
-        await add_inventory_item(user_id, offer['item_id'], 1)
+        await add_inventory_item(user_id, offer['item_id'], int(offer['qty'] or 1))
         back_line = "🎒 Предмет вернулся в инвентарь."
         rows.append([InlineKeyboardButton(
             text="🎒 Посмотреть предмет", callback_data=f"invitem:{offer['item_id']}")])

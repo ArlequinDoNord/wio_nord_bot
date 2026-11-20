@@ -1598,6 +1598,7 @@ async def init_db():
     await _ensure_column(conn, "market_fish", "base_price", "INTEGER DEFAULT 0")
     await _ensure_column(conn, "player_housing", "tax_last_check", "TEXT DEFAULT NULL")
     await _ensure_column(conn, "player_housing", "tax_unpaid_months", "INTEGER DEFAULT 0")
+    await _ensure_column(conn, "market_items", "qty", "INTEGER DEFAULT 1")
     # v0.12.0: расширение Крысиного Подвала — 2 этажа, кровотечение и обморожение.
     # Кровотечение (bleed): урон каждый ход, спадает через N ходов. Обморожение:
     # снижает лечение, снимается напитками (cure_frostbite) или само через N ходов.
@@ -9033,12 +9034,15 @@ async def get_fish_offers():
 
 # ──────────────── Рынок: обычные предметы (market_items) ────────────────
 
-async def place_item_offer(seller_id: int, item_id: int, price: int) -> int:
-    """Выставляет обычный предмет на рыночную витрину. Возвращает id объявления."""
+async def place_item_offer(seller_id: int, item_id: int, price: int, qty: int = 1) -> int:
+    """Выставляет обычный предмет на рыночную витрину. Возвращает id объявления.
+
+    qty — сколько единиц в одном лоте (пак руды = 5). price — цена за весь лот.
+    """
     conn = await get_db()
     cursor = await conn.execute(
-        "INSERT INTO market_items (seller_id, item_id, price) VALUES (?, ?, ?)",
-        (seller_id, item_id, price)
+        "INSERT INTO market_items (seller_id, item_id, price, qty) VALUES (?, ?, ?, ?)",
+        (seller_id, item_id, price, max(1, int(qty)))
     )
     await conn.commit()
     return cursor.lastrowid
@@ -9048,7 +9052,7 @@ async def get_item_offers():
     """Активные объявления обычных предметов на рынке (со сведениями о предмете)."""
     conn = await get_db()
     cursor = await conn.execute("""
-        SELECT mi.id, mi.seller_id, mi.item_id, mi.price,
+        SELECT mi.id, mi.seller_id, mi.item_id, mi.price, mi.qty,
                i.name, i.rarity, i.sell_price
         FROM market_items mi
         JOIN items i ON i.id = mi.item_id
