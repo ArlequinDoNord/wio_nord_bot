@@ -691,6 +691,24 @@ async def init_db():
         );
         CREATE INDEX IF NOT EXISTS idx_market_items ON market_items(created_at);
 
+        CREATE TABLE IF NOT EXISTS market_contracts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            buyer_id INTEGER NOT NULL,
+            item_id INTEGER NOT NULL,
+            qty INTEGER NOT NULL,
+            unit_price INTEGER NOT NULL,
+            total INTEGER NOT NULL,
+            tax INTEGER NOT NULL,
+            status TEXT NOT NULL DEFAULT 'open',
+            supplier_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMP NOT NULL,
+            closed_at TIMESTAMP,
+            FOREIGN KEY (buyer_id) REFERENCES users(user_id),
+            FOREIGN KEY (item_id) REFERENCES items(id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_market_contracts_status ON market_contracts(status);
+
         CREATE TABLE IF NOT EXISTS statuses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL UNIQUE,
