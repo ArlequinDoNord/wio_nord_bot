@@ -30,6 +30,7 @@ from utils.combat import (
     calculate_attack, calculate_enemy_damage, roll_dodge, _hp_bar,
     get_enemy_bar, get_enemy_attack_text,
 )
+from utils import onhit
 from utils.states import get_state_info, combat_multipliers
 from utils.notify import notify, player_display, notify_award
 from bot.handlers.dungeon import (
