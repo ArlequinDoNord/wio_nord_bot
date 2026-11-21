@@ -24,6 +24,7 @@ from database.db import (
     grant_status, revoke_status, get_user_statuses, citizen_user_ids,
     get_status_by_tag, is_legioner, set_legioner, LEGIONER_ACCESS_TAG,
     get_users_for_rank_promotion, promote_user_rank, get_user,
+    is_stale_reserve_pilot,
     get_daily_spent, add_daily_spent,
     get_treasury_balance, transfer_from_treasury, get_treasury_stats,
     get_report_tax_percent, set_report_tax_percent,
@@ -381,10 +382,14 @@ async def pilot_picker_markup(next_step: str, mark_tourists: bool = False, touri
     page, per_page — пагинация (по умолчанию 10 на страницу, как запрошено 8–10).
     """
     from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from config import RESERVE_STALE_ICON
+    from utils.localization import t
     users = await get_all_users()
     # 🎫 — тот же бейдж, что в списке пилотов Ратуши (bot/handlers/pilots.py).
+    # ⚪ — пилот Резерва, который не заходил в бота больше недели (либо никогда).
     citizens = (await citizen_user_ids()) if (mark_tourists or tourists_top) else None
     rows = []
+    has_stale = False
     if users:
         # Сортировка: туристы вверху, если запрошено
         items = list(users)
@@ -410,9 +415,17 @@ async def pilot_picker_markup(next_step: str, mark_tourists: bool = False, touri
                 label += f" (@{u['username']})"
             if citizens is not None and u['user_id'] not in citizens:
                 label += " 🎫"
+            if is_stale_reserve_pilot(u):
+                label += f" {RESERVE_STALE_ICON}"
+                has_stale = True
             rows.append([InlineKeyboardButton(
                 text=label,
                 callback_data=f"pickuser:{next_step}:{u['user_id']}"
+            )])
+        if has_stale:
+            rows.append([InlineKeyboardButton(
+                text=t("hq.stale_legend", icon=RESERVE_STALE_ICON),
+                callback_data="noop",
             )])
         # навигация
         nav = []

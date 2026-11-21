@@ -2079,6 +2079,16 @@ STRINGS = {
     "shop.sell": {"ru": "Продать товар", "en": "Sell an item"},
     "inv.gear": {"ru": "Снаряжение", "en": "Gear"},
     "inv.catch": {"ru": "Улов", "en": "Catch"},
+    # Резерв ВВС: метка пилотов, давно не заходивших в бота.
+    "hq.reserve_line": {"ru": "Резерв: {total}", "en": "Reserve: {total}"},
+    "hq.reserve_stale_tail": {
+        "ru": " ({icon} {n} — не заходили больше недели)",
+        "en": " ({icon} {n} — inactive for over a week)",
+    },
+    "hq.stale_legend": {
+        "ru": "{icon} — не заходил в бота больше недели",
+        "en": "{icon} — has not opened the bot for over a week",
+    },
 }
 
 

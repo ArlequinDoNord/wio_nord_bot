@@ -25,7 +25,10 @@ from database.db import (
     get_region_stats, recompute_region_stats,
     citizen_user_ids,
     create_wing, update_wing, delete_wing, get_wing_rows, get_wing_row,
+    is_stale_reserve_pilot, is_reserve_wing,
 )
+from config import RESERVE_STALE_ICON
+from utils.localization import t
 from utils.permissions import has_permission, log_action
 from utils.wings import wing_label, wing_short, wing_display, all_wings
 from utils.notify import player_display, notify_user, notify_user_t
@@ -251,7 +254,12 @@ async def hq_wing_cb(callback: CallbackQuery):
         if key == 'reserve':
             continue
         lines.append(f"{wing_short(key)}: {grouped.get(key, 0)}")
-    lines.append(f"Резерв: {grouped.get('reserve', 0)}")
+    reserve_total = sum(1 for u in users if is_reserve_wing(u['wing']))
+    reserve_line = t("hq.reserve_line", total=reserve_total)
+    stale = sum(1 for u in users if is_stale_reserve_pilot(u))
+    if stale:
+        reserve_line += t("hq.reserve_stale_tail", icon=RESERVE_STALE_ICON, n=stale)
+    lines.append(reserve_line)
     lines.append(f"\nВсего пилотов: {len(users)}\n")
     lines.append("🛡 Командиры формирований:")
     for key, label in all_wings().items():
@@ -315,10 +323,15 @@ async def _pilot_picker(callback: CallbackQuery, page: int, page_base: str,
     page = max(0, min(page, pages - 1))
     chunk = users[page * ROSTER_PAGE_SIZE:(page + 1) * ROSTER_PAGE_SIZE]
     rows = []
+    has_stale = False
     for u in chunk:
         wing = u['wing'] if 'wing' in u.keys() and u['wing'] else None
+        label = f"{await player_display(u)} — {wing_display(wing)}"
+        if is_stale_reserve_pilot(u):
+            label = f"{RESERVE_STALE_ICON} {label}"
+            has_stale = True
         rows.append([InlineKeyboardButton(
-            text=f"{await player_display(u)} — {wing_display(wing)}",
+            text=label,
             callback_data=f"{assign_prefix}:{u['user_id']}",
         )])
     nav = []
@@ -330,8 +343,9 @@ async def _pilot_picker(callback: CallbackQuery, page: int, page_base: str,
     if nav:
         rows.append(nav)
     rows.append([InlineKeyboardButton(text="🔙 Назад", callback_data=back)])
+    legend = ("\n" + t("hq.stale_legend", icon=RESERVE_STALE_ICON)) if has_stale else ""
     await callback.message.answer(
-        f"{caption} ({total} всего):",
+        f"{caption} ({total} всего):{legend}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=rows)
     )
 

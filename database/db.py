@@ -6982,7 +6982,7 @@ def _citizens_sql(user_id_expr: str = "users.user_id") -> str:
 async def get_all_users(citizens_only: bool = False):
     """Все пользователи; citizens_only=True — только гражданские (sort_order >= 1)."""
     conn = await get_db()
-    sql = "SELECT user_id, username, first_name, last_name, wing FROM users"
+    sql = "SELECT user_id, username, first_name, last_name, wing, last_active FROM users"
     if citizens_only:
         sql += " WHERE " + _citizens_sql()
     cursor = await conn.execute(sql)
@@ -7819,7 +7819,7 @@ async def get_unassigned_pilots(limit: int = None, offset: int = 0,
     Старые NULL/'' трактуем как Резерв тоже (переходный период до миграции).
     """
     conn = await get_db()
-    sql = ("SELECT user_id, username, first_name, last_name, wing FROM users "
+    sql = ("SELECT user_id, username, first_name, last_name, wing, last_active FROM users "
            "WHERE (wing IS NULL OR wing = '' OR wing = 'none' OR wing = 'reserve')")
     if citizens_only:
         sql += " AND " + _citizens_sql()
@@ -7830,6 +7830,33 @@ async def get_unassigned_pilots(limit: int = None, offset: int = 0,
         params = [limit, offset]
     cursor = await conn.execute(sql, tuple(params))
     return await cursor.fetchall()
+
+
+def is_reserve_wing(wing) -> bool:
+    """Крыло/пул Резерва: старые NULL/''/'none' и CURRENT 'reserve'."""
+    return wing in (None, "", "none", "reserve")
+
+
+def is_stale_reserve_pilot(user, now=None) -> bool:
+    """Пилот Резерва, не заходивший в бота дольше RESERVE_STALE_DAYS.
+
+    users.last_active = 0/NULL/отсутствует → никогда не было активности:
+    такой пилот тоже помечается. Вне Резерва метка не ставится.
+    """
+    if user is None:
+        return False
+    keys = user.keys() if hasattr(user, "keys") else ()
+    wing = user["wing"] if "wing" in keys else None
+    if not is_reserve_wing(wing):
+        return False
+    try:
+        last = float(user["last_active"] if "last_active" in keys else 0)
+    except (TypeError, ValueError):
+        last = 0.0
+    if last <= 0:
+        return True
+    moment = time.time() if now is None else now
+    return moment - last > config.RESERVE_STALE_DAYS * 86400
 
 
 async def get_wing_member_rows(wing: str, limit: int = None, offset: int = 0) -> list:

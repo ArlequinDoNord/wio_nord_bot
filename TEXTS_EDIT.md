@@ -4352,6 +4352,30 @@
 - ✏️ НОВЫЙ EN:
 
 
+### hq.reserve_line
+
+- ТЕКУЩИЙ RU: `"Резерв: {total}"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Reserve: {total}"`
+- ✏️ НОВЫЙ EN:
+
+
+### hq.reserve_stale_tail
+
+- ТЕКУЩИЙ RU: `" ({icon} {n} — не заходили больше недели)"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `" ({icon} {n} — inactive for over a week)"`
+- ✏️ НОВЫЙ EN:
+
+
+### hq.stale_legend
+
+- ТЕКУЩИЙ RU: `"{icon} — не заходил в бота больше недели"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"{icon} — has not opened the bot for over a week"`
+- ✏️ НОВЫЙ EN:
+
+
 ### inv.catch
 
 - ТЕКУЩИЙ RU: `"Улов"`

@@ -94,7 +94,8 @@ async def main():
     check("рекрут без метки", any("Гражданин Петр" in t and "🎫" not in t for t in texts))
     check("ветеран без метки", any("Ветеран Вася" in t and "🎫" not in t for t in texts))
     check("хранитель без метки", any("Хранитель Хоз" in t and "🎫" not in t for t in texts))
-    check("метка в конце имени", any(t.strip().endswith("🎫") for t in texts))
+    check("метка в конце имени",
+          any(t.strip().endswith("🎫") or t.strip().endswith("🎫 ⚪") for t in texts))
     check("служебные кнопки на месте",
           any("Ввести вручную" in t for t in texts) and any("Отмена" in t for t in texts))
 
