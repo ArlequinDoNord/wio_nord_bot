@@ -82,6 +82,7 @@ from utils.permissions import (
     can_grant_status, can_view_status_panel, is_citizen_gate_status,
 )
 from utils.helpers import plural_nordmark, is_main_menu_text
+from config import REPORT_TAX_MIN_PERCENT
 from config import (RARITY_LEVELS, RARITY_EMOJI, ITEM_CATEGORIES, get_effective_rank,
                     VERSION, DRINK_EFFECT_LABELS, AWARD_MAX_SHOP_DISCOUNT, AWARD_MIN_REPORT_TAX,
                     ON_HIT_EFFECTS, ON_HIT_STATE_ROUNDS,
@@ -2662,7 +2663,7 @@ async def admin_tax_view(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
         f"📊 НАЛОГ НА ОТЧЁТЫ\n\n"
         f"Текущая ставка: {current}%\n\n"
-        f"Введи новую ставку налога (0–100) для всех граждан:",
+        f"Введи новую ставку налога ({REPORT_TAX_MIN_PERCENT}–100) для всех граждан:",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 В финансы", callback_data="admin:finance")]
         ])
@@ -2674,10 +2675,10 @@ async def admin_tax_set(message: Message, state: FSMContext):
     try:
         percent = int(message.text.strip())
     except ValueError:
-        await message.answer("❌ Введи целое число от 0 до 100:")
+        await message.answer(f"❌ Введи целое число от {REPORT_TAX_MIN_PERCENT} до 100:")
         return
-    if not 0 <= percent <= 100:
-        await message.answer("❌ Ставка должна быть от 0 до 100:")
+    if not REPORT_TAX_MIN_PERCENT <= percent <= 100:
+        await message.answer(t("admin.tax_min_error", minimum=REPORT_TAX_MIN_PERCENT))
         return
     await set_report_tax_percent(percent)
     await log_action(message.from_user.id, 'set_tax', None, f"percent={percent}")

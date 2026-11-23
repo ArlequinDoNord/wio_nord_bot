@@ -2089,6 +2089,42 @@ STRINGS = {
         "ru": "{icon} — не заходил в бота больше недели",
         "en": "{icon} — has not opened the bot for over a week",
     },
+    # Банк: сводка действующих налоговых ставок.
+    "bank.taxes_btn": {"ru": "📋 Налоги и ставки", "en": "📋 Taxes and rates"},
+    "bank.taxes_title": {
+        "ru": "🧾 СТАВКИ НАЛОГОВ\n\nДействуют сейчас:",
+        "en": "🧾 TAX RATES\n\nCurrently in effect:",
+    },
+    "bank.taxes_report": {
+        "ru": "📊 Налог с отчётов: {base}% (удерживается из каждой выплаты в казну)",
+        "en": "📊 Report tax: {base}% (taken from each payout into the treasury)",
+    },
+    "bank.taxes_report_personal": {
+        "ru": "🎖 Твоя ставка с отчётов: {pct}% (снижена наградами, но не ниже {minimum}%)",
+        "en": "🎖 Your report tax: {pct}% (reduced by awards, but not below {minimum}%)",
+    },
+    "bank.taxes_sale": {
+        "ru": "🛒 Налог с продаж: {pct}% (удерживается из выручки продавца)",
+        "en": "🛒 Sales tax: {pct}% (taken from the seller's proceeds)",
+    },
+    "bank.taxes_contract": {
+        "ru": "📜 Налог с контракта на поставку: {pct}% (платит тот, кто размещает контракт)",
+        "en": "📜 Supply contract tax: {pct}% (paid by whoever places the contract)",
+    },
+    "bank.taxes_housing_title": {
+        "ru": "🏠 Налог на жильё (НМ в месяц):",
+        "en": "🏠 Housing tax (NM per month):",
+    },
+    "bank.taxes_housing_line": {"ru": "• {name}: {rate} НМ", "en": "• {name}: {rate} NM"},
+    "bank.taxes_housing_free": {"ru": "• {name}: без налога", "en": "• {name}: no tax"},
+    "bank.taxes_footer": {
+        "ru": "Ставки меняет владелец. Изменения видны здесь сразу.",
+        "en": "Rates are set by the owner. Changes show up here right away.",
+    },
+    "admin.tax_min_error": {
+        "ru": "❌ Ставка налога на отчёты не ниже {minimum}% (и не выше 100%). Введи другое значение:",
+        "en": "❌ The report tax can't go below {minimum}% (and not above 100%). Enter another value:",
+    },
 }
 
 

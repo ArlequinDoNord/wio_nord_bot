@@ -128,6 +128,14 @@
 - ✏️ НОВЫЙ EN:
 
 
+### admin.tax_min_error
+
+- ТЕКУЩИЙ RU: `"❌ Ставка налога на отчёты не ниже {minimum}% (и не выше 100%). Введи другое значение:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"❌ The report tax can't go below {minimum}% (and not above 100%). Enter another value:"`
+- ✏️ НОВЫЙ EN:
+
+
 ### bank.back
 
 - ТЕКУЩИЙ RU: `"🔙 В банк"`
@@ -197,6 +205,86 @@
 - ТЕКУЩИЙ RU: `"Старее ▶️"`
 - ✏️ НОВЫЙ RU:
 - ТЕКУЩИЙ EN: `"Older ▶️"`
+- ✏️ НОВЫЙ EN:
+
+
+### bank.taxes_btn
+
+- ТЕКУЩИЙ RU: `"📋 Налоги и ставки"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"📋 Taxes and rates"`
+- ✏️ НОВЫЙ EN:
+
+
+### bank.taxes_contract
+
+- ТЕКУЩИЙ RU: `"📜 Налог с контракта на поставку: {pct}% (платит тот, кто размещает контракт)"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"📜 Supply contract tax: {pct}% (paid by whoever places the contract)"`
+- ✏️ НОВЫЙ EN:
+
+
+### bank.taxes_footer
+
+- ТЕКУЩИЙ RU: `"Ставки меняет владелец. Изменения видны здесь сразу."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Rates are set by the owner. Changes show up here right away."`
+- ✏️ НОВЫЙ EN:
+
+
+### bank.taxes_housing_free
+
+- ТЕКУЩИЙ RU: `"• {name}: без налога"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"• {name}: no tax"`
+- ✏️ НОВЫЙ EN:
+
+
+### bank.taxes_housing_line
+
+- ТЕКУЩИЙ RU: `"• {name}: {rate} НМ"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"• {name}: {rate} NM"`
+- ✏️ НОВЫЙ EN:
+
+
+### bank.taxes_housing_title
+
+- ТЕКУЩИЙ RU: `"🏠 Налог на жильё (НМ в месяц):"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🏠 Housing tax (NM per month):"`
+- ✏️ НОВЫЙ EN:
+
+
+### bank.taxes_report
+
+- ТЕКУЩИЙ RU: `"📊 Налог с отчётов: {base}% (удерживается из каждой выплаты в казну)"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"📊 Report tax: {base}% (taken from each payout into the treasury)"`
+- ✏️ НОВЫЙ EN:
+
+
+### bank.taxes_report_personal
+
+- ТЕКУЩИЙ RU: `"🎖 Твоя ставка с отчётов: {pct}% (снижена наградами, но не ниже {minimum}%)"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🎖 Your report tax: {pct}% (reduced by awards, but not below {minimum}%)"`
+- ✏️ НОВЫЙ EN:
+
+
+### bank.taxes_sale
+
+- ТЕКУЩИЙ RU: `"🛒 Налог с продаж: {pct}% (удерживается из выручки продавца)"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🛒 Sales tax: {pct}% (taken from the seller's proceeds)"`
+- ✏️ НОВЫЙ EN:
+
+
+### bank.taxes_title
+
+- ТЕКУЩИЙ RU: `"🧾 СТАВКИ НАЛОГОВ\n\nДействуют сейчас:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🧾 TAX RATES\n\nCurrently in effect:"`
 - ✏️ НОВЫЙ EN:
 
 

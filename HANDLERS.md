@@ -58,7 +58,7 @@
 | `start.py` | — | `router` | 4 | 1 | `city:` | — |
 | `changelog.py` | Команда /changelog — «что нового» в боте. | `router` | 1 | 0 | — | — |
 | `profile.py` | — | `router` | 5 | 20 | `prof:`, `prof_sel_status:`, `profile:` | `ProfileStates` |
-| `bank.py` | — | `router` | 6 | 12 | `bank:`, `fine:` | `BankStates` |
+| `bank.py` | — | `router` | 6 | 13 | `bank:`, `fine:` | `BankStates` |
 | `admin.py` | Админ-панель: управление магазином, финансами, отчётами, ролями и логами. | `router` | 100 | 245 | `\d+$:`, `act:`, `addreq:`, `admin:`, `aw:`, `aw_comment:`, `aw_confirm:`, `aw_del:`, `aw_edit:`, `aw_ei:`, `aw_kind:`, `aw_pick:`, `awr_grant:`, `back:`, `cancel:`, `cat:`, `confirm_del_photo:`, `del_item:`, `drinksel:`, `dungeon:`, `eddrop:`, `eddrop_del:`, `eddrop_desc:`, `eddrop_photo:`, `eddrop_set_ch:`, `eddrop_set_q:`, `eddrop_stat:`, `eddrop_stats:`, `eddrop_weff:`, `eddrop_weff_set:`, `edit_item:`, `editem_add:`, `editem_new:`, `editem_pick:`, `editset:`, `enemy:`, `enemy_drops:`, `enemy_field:`, `eqpart:`, `field:`, `field_req:`, `fin:`, `fines:`, `finh:`, `finuser:`, `fishing:`, `fishing_field:`, `fishing_j:`, `fishing_jx:`, `forest:`, `forest_field:`, `loc:`, `locstat:`, `lootonly:`, `marketok:`, `news:`, `noop:`, `pickuser:`, `prod:`, `rank_pick:`, `rank_promote:`, `rar:`, `rep:`, `rep_fix:`, `rep_no:`, `rep_ok:`, `rep_rej_del:`, `rep_rej_del_ok:`, `rep_rej_list:`, `rep_rej_view:`, `role:`, `rolop:`, `salary:`, `shop_admin:`, `shop_del:`, `shop_edit:`, `st:`, `st_del:`, `st_key:`, `st_op:`, `st_pick:`, `st_rev:`, `storage:`, `treasury:`, `weff:`, `wing_set:` | `AdminAddItem`, `AdminSaleTax`, `AdminSpecialCode`, `AdminEditItem`, `AdminFinance`, `AdminTreasury`, `AdminStorageRestock`, `AdminRestockAuto`, `AdminShopLimit`, `AdminStorageDelete`, `AdminTax`, `AdminReportAutoApprove`, `AdminReportPayCap`, `AdminReportFix`, `AdminReportReject`, `AdminRoles`, `AdminStatuses`, `AdminAwards`, `AdminFishing`, `AdminForest`, `AdminEnemy`, `AdminCallsign`, `AdminWing`, `AdminStates`, `AdminPlayerLog`, `AdminSalary`, `AdminLocation`, `AdminCityPhoto`, `AdminDungeon`, `AdminFine` |
 | `admin_recipes.py` | Менеджер рецептов крафта (v0.22.13): создание, правка и удаление рецептов. | `router` | 19 | 44 | `recadm:` | `RecipeManager` |
 | `shop.py` | Магазин: каталог по категориям, покупка за Нордмарки и AP. | `router` | 3 | 14 | `buy5_nord:`, `buy_housing:`, `buy_housing_cancel:`, `buy_nord:`, `fishbuy:`, `fishoffer:`, `itembuy:`, `itemoffer:`, `offercancel:`, `shop:`, `shopcat:`, `shopitem:` | `SpecialDeptBuy` |
@@ -119,10 +119,10 @@
 ### `bank.py` — —
 
 - Роутеры: `router`
-- Хендлеры: message=6, callback_query=12
+- Хендлеры: message=6, callback_query=13
 - FSM: `BankStates`
 - `F.data.startswith`: `bank:history`, `bank:pickrecipient:`, `bank:transfer:list:`, `fine:part:`, `fine:payall:`
-- `F.data ==`: `bank:balance`, `bank:fines`, `bank:menu`, `bank:noop`, `bank:transfer`, `bank:transfer_manual`, `bank:treasury`
+- `F.data ==`: `bank:balance`, `bank:fines`, `bank:menu`, `bank:noop`, `bank:taxes`, `bank:transfer`, `bank:transfer_manual`, `bank:treasury`
 
 ### `admin.py` — Админ-панель: управление магазином, финансами, отчётами, ролями и логами.
 

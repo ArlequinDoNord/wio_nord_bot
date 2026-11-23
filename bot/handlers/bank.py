@@ -3,8 +3,10 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from database.db import get_user, transfer_nordmarks, get_transactions_history, get_all_users, transfer_to_treasury, get_treasury_balance, log_activity, user_is_tourist
-from config import TOURIST_BALANCE_LIMIT
+from database.db import get_report_tax_percent, report_tax_percent_for, get_sale_tax_percent, HOUSING_TYPES, HOUSING_ORDER
+from config import TOURIST_BALANCE_LIMIT, HOUSING_TAX, AWARD_MIN_REPORT_TAX
 from keyboards.keyboards import bank_keyboard, cancel_keyboard, main_menu_kb
+from utils import market_contracts as MC
 from utils.helpers import format_amount, plural_nordmark, is_main_menu_text
 from utils.localization import t
 
@@ -200,6 +202,42 @@ async def bank_menu_cb(callback: CallbackQuery):
     await callback.message.answer(
         await bank_menu_text(callback.from_user.id),
         reply_markup=bank_keyboard()
+    )
+
+
+async def bank_taxes_text(user_id: int) -> str:
+    """Все действующие налоговые ставки: отчёты (с личной скидкой), продажи, контракты, жильё."""
+    base = await get_report_tax_percent()
+    personal = await report_tax_percent_for(user_id)
+    lines = [t("bank.taxes_title"), "", t("bank.taxes_report", base=base)]
+    if personal != base:
+        lines.append(t("bank.taxes_report_personal", pct=personal, minimum=AWARD_MIN_REPORT_TAX))
+    lines.append(t("bank.taxes_sale", pct=await get_sale_tax_percent()))
+    lines.append(t("bank.taxes_contract", pct=MC.TAX_PERCENT))
+    lines.append("")
+    lines.append(t("bank.taxes_housing_title"))
+    for key in HOUSING_ORDER:
+        name = HOUSING_TYPES[key]["name"]
+        rate = HOUSING_TAX.get(key, 0)
+        if rate:
+            lines.append(t("bank.taxes_housing_line", name=name, rate=rate))
+        else:
+            lines.append(t("bank.taxes_housing_free", name=name))
+    lines.append("")
+    lines.append(t("bank.taxes_footer"))
+    return "\n".join(lines)
+
+
+@router.callback_query(F.data == "bank:taxes")
+async def bank_taxes(callback: CallbackQuery):
+    await callback.answer()
+    if not await get_user(callback.from_user.id):
+        return
+    await callback.message.answer(
+        await bank_taxes_text(callback.from_user.id),
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text=t("bank.back"), callback_data="bank:menu")],
+        ]),
     )
 
 

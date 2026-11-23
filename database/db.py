@@ -268,6 +268,8 @@ async def init_db():
         );
 
         INSERT OR IGNORE INTO settings (key, value) VALUES ('report_tax_percent', '15');
+        -- минимум 5% (config.REPORT_TAX_MIN_PERCENT): ниже ставку не опускаем
+        UPDATE settings SET value = '5' WHERE key = 'report_tax_percent' AND CAST(value AS INTEGER) < 5;
         INSERT OR IGNORE INTO settings (key, value) VALUES ('sale_tax_percent', '15');
         INSERT OR IGNORE INTO settings (key, value) VALUES ('report_auto_approve_troops', '100');
 
@@ -4619,7 +4621,9 @@ async def get_report_tax_percent() -> int:
 
 
 async def set_report_tax_percent(percent: int):
+    """Базовая ставка налога с отчётов: не ниже config.REPORT_TAX_MIN_PERCENT."""
     conn = await get_db()
+    percent = max(config.REPORT_TAX_MIN_PERCENT, min(100, int(percent)))
     await conn.execute(
         "INSERT INTO settings (key, value) VALUES ('report_tax_percent', ?) "
         "ON CONFLICT(key) DO UPDATE SET value = excluded.value",

@@ -164,6 +164,7 @@ def bank_keyboard():
         [InlineKeyboardButton(text=t("bank.transfer_btn"), callback_data="bank:transfer")],
         [InlineKeyboardButton(text=t("bank.to_treasury"), callback_data="bank:treasury")],
         [InlineKeyboardButton(text=t("bank.history_btn"), callback_data="bank:history")],
+        [InlineKeyboardButton(text=t("bank.taxes_btn"), callback_data="bank:taxes")],
         [InlineKeyboardButton(text=t("bank.fines_btn"), callback_data="bank:fines")],
         [InlineKeyboardButton(text=t("bank.back_to_city"), callback_data="city:menu")],
     ])
