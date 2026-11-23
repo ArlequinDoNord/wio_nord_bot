@@ -215,6 +215,7 @@ LOCATION_BUTTON_EMOJI = {
     "mine": "⛏️",
     "storage": "📦",
     "mvd": "🚔",
+    "kgb": "🕵️",
     "library": "📚",
     "park": "🌳",
     "gossmi": "📰",
@@ -225,11 +226,11 @@ LOCATION_BUTTON_EMOJI = {
 
 # Русские надписи подменю берём из STRINGS (en — перевод в place_name).
 _LOC_RU = {key: STRINGS[f"loc.{key}"]["ru"]
-           for key in ("bank", "townhall", "hq", "mvd", "library", "park", "gossmi",
+           for key in ("bank", "townhall", "hq", "mvd", "kgb", "library", "park", "gossmi",
                        "contracts", "duel_house", "nii", "storage", "forest", "mine")}
 
 # Здания, вынесенные из общего списка города в подменю «Административный квартал».
-ADMIN_QUARTER_KEYS = ("townhall", "bank", "hq", "mvd")
+ADMIN_QUARTER_KEYS = ("townhall", "bank", "hq", "mvd", "kgb")
 ADMIN_QUARTER_TEXT = "🏢 Административный квартал"
 
 # Здания, вынесенные в подменю «Деловой квартал».
@@ -320,6 +321,7 @@ def admin_quarter_keyboard():
         ("townhall", "🏛"),
         ("hq", "🎖️"),
         ("mvd", "🚔"),
+        ("kgb", "🕵️"),
     )
     buttons = [[InlineKeyboardButton(text=f"{emoji} {place_name(key, _LOC_RU[key])}",
                                      callback_data=f"location:preview:{key}")]

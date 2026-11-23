@@ -492,6 +492,12 @@ AWARD_MIN_REPORT_TAX = 5
 # Минимум базовой ставки налога с отчётов, которую может выставить минфин (раздел «Финансы»).
 REPORT_TAX_MIN_PERCENT = 5
 
+# ── КГБ и паспорта ──
+# Паспорт — персональный документ: один предмет на категорию «documents», данные пилота
+# хранятся в таблице passports. Предмет не продаётся и не передаётся.
+PASSPORT_ITEM_NAME = "Паспорт Нордхайма"
+PASSPORT_CATEGORY = "documents"
+
 RANK_STATUS_TAGS = {
     "Ефрейтор": "pilot2",
     "Старший Сержант": "pilot1",
@@ -608,6 +614,7 @@ RARITY_EMOJI = {
 }
 
 ITEM_CATEGORIES = {
+    "documents": "Документы",
     "weapon": "Оружие",
     "consumable": "Расходники",
     "building": "Недвижимость",

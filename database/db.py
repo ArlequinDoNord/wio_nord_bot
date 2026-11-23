@@ -210,6 +210,24 @@ async def init_db():
 
         INSERT OR IGNORE INTO treasury (id, balance) VALUES (1, 0);
 
+        CREATE TABLE IF NOT EXISTS passports (
+            user_id INTEGER PRIMARY KEY,
+            series TEXT NOT NULL,
+            number TEXT NOT NULL,
+            full_name TEXT NOT NULL,
+            position TEXT NOT NULL,
+            rank TEXT NOT NULL,
+            sex TEXT NOT NULL,
+            marital_status TEXT NOT NULL,
+            birth_date TEXT NOT NULL,
+            issue_date TEXT NOT NULL,
+            distinguishing_marks TEXT NOT NULL,
+            photo_file_id TEXT,
+            issued_by INTEGER,
+            issued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (series, number)
+        );
+
         CREATE TABLE IF NOT EXISTS award_monthly_paid (
             user_id INTEGER NOT NULL,
             award_id INTEGER NOT NULL,
@@ -1980,6 +1998,9 @@ async def seed_locations(conn):
         # Представителя/Хранителя либо статус «Хранитель» (keeper).
         ("mvd", "Здание МВД", "Здание Министерства внутренних дел Нордхайма. Здесь хранится архив сданных отчётов и ведётся проверка пилотской отчётности.",
          "all", None, ["пьян"], "city/mvd"),
+        # Вход — хардкодом в location_enter (глава КГБ и Хранитель), как у МВД.
+        ("kgb", "Здание КГБ", "Служба государственной безопасности Нордхайма. Здесь ведётся учёт личных дел пилотов и выдаются паспорта.",
+         "all", None, ["пьян"], "city/kgb"),
     ]
     for key, name, desc, mode, req_status, blocking, preview in base:
         await conn.execute(
@@ -12044,7 +12065,7 @@ KVP_OD_COST = 5  # стоимость прохождения препятств�
 # босса: её можно продать скупщику (sell_price), но нельзя ни отдать, ни выставить
 # на рынок. Проверка идёт по названию, а не по флагу loot_only: лут (кабан, моллюск)
 # игроками передаётся свободно.
-UNTRANSFERABLE_ITEMS = frozenset({KVP_CANE_NAME})
+UNTRANSFERABLE_ITEMS = frozenset({KVP_CANE_NAME, config.PASSPORT_ITEM_NAME})
 
 # Враги курса: (name, hp, atk, reward, is_boss, drops, image, poison_chance, poison_dmg, dodge, description)
 KVP_ENEMIES = [
@@ -12463,6 +12484,61 @@ async def ensure_tourist_booklet():
         (config.TOURIST_BOOKLET_REWARD_NM, config.TOURIST_BOOKLET_AWARD)
     )
     await conn.commit()
+
+
+async def ensure_passport_item():
+    """Создаёт предмет «Паспорт Нордхайма» (категория «Документы»), если его нет.
+
+    Предмет не продаётся, не выставляется на рынок и не показывается в магазине
+    (is_available = 0): паспорт появляется у пилота только при выдаче главой КГБ.
+    """
+    item = await get_item_by_name(config.PASSPORT_ITEM_NAME)
+    if not item:
+        await add_item(
+            name=config.PASSPORT_ITEM_NAME,
+            description="Личный документ пилота Нордхайма. Не продаётся и не передаётся.",
+            price=0, sell_price=0, rarity=2, category=config.PASSPORT_CATEGORY,
+            stock=-1, added_by=0, ap_cost=0, damage=0, heal=0, armor=0,
+            drink_effect=None, weapon_effect=None, loot_only=0,
+        )
+        item = await get_item_by_name(config.PASSPORT_ITEM_NAME)
+    if item and item['is_available']:
+        await update_item(item['id'], is_available=0)
+
+
+async def get_passport(user_id: int):
+    conn = await get_db()
+    cursor = await conn.execute("SELECT * FROM passports WHERE user_id = ?", (user_id,))
+    return await cursor.fetchone()
+
+
+async def passport_number_taken(series: str, number: str, exclude_user: int = None) -> bool:
+    """Занята ли пара серия+номер другим пилотом (при выдаче своему же — не занята)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT user_id FROM passports WHERE series = ? AND number = ?", (series, number))
+    row = await cursor.fetchone()
+    return bool(row) and (exclude_user is None or int(row['user_id']) != int(exclude_user))
+
+
+async def issue_passport(user_id: int, data: dict, issued_by: int) -> None:
+    """Сохраняет паспорт пилота (перевыдача заменяет данные) и кладёт предмет в инвентарь."""
+    conn = await get_db()
+    await conn.execute(
+        """INSERT OR REPLACE INTO passports
+           (user_id, series, number, full_name, position, rank, sex, marital_status,
+            birth_date, issue_date, distinguishing_marks, photo_file_id, issued_by, issued_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))""",
+        (user_id, data['series'], data['number'], data['full_name'], data['position'],
+         data['rank'], data['sex'], data['marital_status'], data['birth_date'],
+         data['issue_date'], data['distinguishing_marks'], data.get('photo_file_id'),
+         issued_by))
+    await conn.commit()
+    item = await get_item_by_name(config.PASSPORT_ITEM_NAME)
+    if item:
+        inv = await get_inventory_item(user_id, item['id'])
+        if not inv or (inv['quantity'] or 0) < 1:
+            await add_inventory_item(user_id, item['id'], 1)
 
 
 async def has_booklet(user_id: int) -> bool:

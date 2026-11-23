@@ -63,6 +63,13 @@ async def _profile_caption(user_id: int, owner: bool = True):
         f"🪪 Пилот: {_pilot_name(user)}\n"
         f"📡 Позывной: {_callsign(user)}\n"
     )
+    from database.db import get_passport
+    from utils.localization import t
+    passport = await get_passport(user_id)
+    if passport:
+        caption += t("profile.passport", series=passport['series'], number=passport['number']) + "\n"
+    else:
+        caption += t("profile.passport_none") + "\n"
     if is_pilot:
         xp = user['xp_balance'] if 'xp_balance' in user.keys() and user['xp_balance'] else 0
         caption += f"⭐ Звание: {rank}\n"

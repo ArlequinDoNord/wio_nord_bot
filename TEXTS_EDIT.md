@@ -848,6 +848,14 @@
 - ✏️ НОВЫЙ EN:
 
 
+### cat.documents
+
+- ТЕКУЩИЙ RU: `"Документы"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Documents"`
+- ✏️ НОВЫЙ EN:
+
+
 ### cat.duel_card
 
 - ТЕКУЩИЙ RU: `"🎫 Клубные карты"`
@@ -4480,6 +4488,406 @@
 - ✏️ НОВЫЙ EN:
 
 
+### kgb.ask_birth
+
+- ТЕКУЩИЙ RU: `"Дата рождения, ДД.ММ.ГГГГ:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Date of birth, DD.MM.YYYY:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.ask_full_name
+
+- ТЕКУЩИЙ RU: `"Имя пилота:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Pilot's name:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.ask_issue
+
+- ТЕКУЩИЙ RU: `"Дата выдачи, ДД.ММ.ГГГГ (или «сегодня»):"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Issue date, DD.MM.YYYY (or «today»):"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.ask_marital
+
+- ТЕКУЩИЙ RU: `"Семейное положение (например: холост, женат, в разводе):"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Marital status (e.g. single, married, divorced):"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.ask_marks
+
+- ТЕКУЩИЙ RU: `"Особые приметы (или «нет»):"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Distinguishing marks (or «none»):"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.ask_number
+
+- ТЕКУЩИЙ RU: `"Номер паспорта — 6 цифр:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Passport number — 6 digits:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.ask_photo
+
+- ТЕКУЩИЙ RU: `"📷 Пришли фото для паспорта. Или нажми «Без фото»."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"📷 Send a photo for the passport, or press «No photo»."`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.ask_position
+
+- ТЕКУЩИЙ RU: `"Должность:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Position:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.ask_rank
+
+- ТЕКУЩИЙ RU: `"Звание:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Rank:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.ask_series
+
+- ТЕКУЩИЙ RU: `"Серия паспорта — 4 цифры:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Passport series — 4 digits:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.ask_sex
+
+- ТЕКУЩИЙ RU: `"Пол:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Sex:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.back_docs
+
+- ТЕКУЩИЙ RU: `"🔙 К документам"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🔙 To documents"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.bad_date
+
+- ТЕКУЩИЙ RU: `"❌ Дата в формате ДД.ММ.ГГГГ, например 05.03.1990. Попробуй ещё раз:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"❌ Use the DD.MM.YYYY format, e.g. 05.03.1990. Try again:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.bad_number
+
+- ТЕКУЩИЙ RU: `"❌ Номер — ровно 6 цифр. Попробуй ещё раз:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"❌ Number must be exactly 6 digits. Try again:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.bad_series
+
+- ТЕКУЩИЙ RU: `"❌ Серия — ровно 4 цифры. Попробуй ещё раз:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"❌ Series must be exactly 4 digits. Try again:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.bad_text
+
+- ТЕКУЩИЙ RU: `"❌ Поле не может быть пустым и должно быть не длиннее 64 символов. Попробуй ещё раз:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"❌ The field can't be empty and must be at most 64 characters. Try again:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.btn_back
+
+- ТЕКУЩИЙ RU: `"🔙 В квартал"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🔙 To the quarter"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.btn_cancel
+
+- ТЕКУЩИЙ RU: `"❌ Отмена"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"❌ Cancel"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.btn_confirm
+
+- ТЕКУЩИЙ RU: `"✅ Выдать паспорт"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"✅ Issue passport"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.btn_issue
+
+- ТЕКУЩИЙ RU: `"🛂 Выдать паспорт"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🛂 Issue passport"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.btn_sex_f
+
+- ТЕКУЩИЙ RU: `"Женский"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Female"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.btn_sex_m
+
+- ТЕКУЩИЙ RU: `"Мужской"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Male"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.btn_skip_photo
+
+- ТЕКУЩИЙ RU: `"⏭ Без фото"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"⏭ No photo"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.cancelled
+
+- ТЕКУЩИЙ RU: `"Выдача паспорта отменена."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Passport issue cancelled."`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.card_title
+
+- ТЕКУЩИЙ RU: `"🛂 ПАСПОРТ НОРДХАЙМА"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🛂 NORDHEIM PASSPORT"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.exists_warn
+
+- ТЕКУЩИЙ RU: `"⚠️ У пилота уже есть паспорт (№ {series} {number}). Новая выдача заменит его данные.\n\n"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"⚠️ The pilot already has a passport (No. {series} {number}). A new issue replaces its data.\n\n"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.f_birth
+
+- ТЕКУЩИЙ RU: `"Дата рождения"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Date of birth"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.f_issue
+
+- ТЕКУЩИЙ RU: `"Дата выдачи"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Issue date"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.f_marital
+
+- ТЕКУЩИЙ RU: `"Семейное положение"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Marital status"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.f_marks
+
+- ТЕКУЩИЙ RU: `"Особые приметы"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Distinguishing marks"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.f_name
+
+- ТЕКУЩИЙ RU: `"Имя"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Name"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.f_number
+
+- ТЕКУЩИЙ RU: `"Номер"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Number"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.f_position
+
+- ТЕКУЩИЙ RU: `"Должность"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Position"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.f_rank
+
+- ТЕКУЩИЙ RU: `"Звание"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Rank"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.f_series
+
+- ТЕКУЩИЙ RU: `"Серия"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Series"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.f_sex
+
+- ТЕКУЩИЙ RU: `"Пол"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Sex"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.head_only
+
+- ТЕКУЩИЙ RU: `"⛔ Паспорта выдаёт только глава КГБ."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"⛔ Only the KGB head issues passports."`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.inv_hint
+
+- ТЕКУЩИЙ RU: `"Документ нельзя продать или передать."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"This document can't be sold or transferred."`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.issued
+
+- ТЕКУЩИЙ RU: `"✅ Паспорт выдан: {name}. Серия {series} № {number}."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"✅ Passport issued to {name}. Series {series} No. {number}."`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.issued_pilot
+
+- ТЕКУЩИЙ RU: `"🛂 Тебе выдан паспорт Нордхайма. Он в инвентаре, в разделе «📄 Документы». Серия {series} № {number}."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🛂 You have been issued a Nordheim passport. It's in your inventory, under «📄 Documents». Series {series} No. {number}."`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.menu_title
+
+- ТЕКУЩИЙ RU: `"🕵️ ЗДАНИЕ КГБ\n────────────────\nСлужба государственной безопасности Нордхайма. Здесь ведётся учёт личных дел пилотов и выдаются паспорта."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🕵️ KGB BUILDING\n────────────────\nThe State Security Service of Nordheim. Personnel files are kept here and passports are issued."`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.no_access
+
+- ТЕКУЩИЙ RU: `"⛔ Вход в здание КГБ — только для сотрудников КГБ."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"⛔ The KGB building is for KGB staff only."`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.no_passport
+
+- ТЕКУЩИЙ RU: `"У тебя пока нет паспорта. Его выдаёт глава КГБ."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"You don't have a passport yet. The KGB head issues them."`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.number_taken
+
+- ТЕКУЩИЙ RU: `"❌ Такая серия и номер уже у другого пилота. Введи номер заново:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"❌ This series and number already belong to another pilot. Enter the number again:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.photo_only
+
+- ТЕКУЩИЙ RU: `"❌ Нужна картинка. Пришли фото или нажми «Без фото»."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"❌ Send a picture, or press «No photo»."`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.pick_empty
+
+- ТЕКУЩИЙ RU: `"Пилотов для выдачи нет."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"No pilots to issue to."`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.pick_title
+
+- ТЕКУЩИЙ RU: `"🛂 Кому выдать паспорт? Выбери пилота:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🛂 Who gets the passport? Pick a pilot:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.preview
+
+- ТЕКУЩИЙ RU: `"Проверь данные паспорта:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"Check the passport details:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.sex_f
+
+- ТЕКУЩИЙ RU: `"женский"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"female"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.sex_m
+
+- ТЕКУЩИЙ RU: `"мужской"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"male"`
+- ✏️ НОВЫЙ EN:
+
+
 ### lang.switched_en
 
 - ТЕКУЩИЙ RU: `"🌐 Язык: English"`
@@ -4541,6 +4949,14 @@
 - ТЕКУЩИЙ RU: `"Штаб ВВС"`
 - ✏️ НОВЫЙ RU:
 - ТЕКУЩИЙ EN: `"Air Force HQ"`
+- ✏️ НОВЫЙ EN:
+
+
+### loc.kgb
+
+- ТЕКУЩИЙ RU: `"Здание КГБ"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"KGB Building"`
 - ✏️ НОВЫЙ EN:
 
 
@@ -5877,6 +6293,22 @@
 - ТЕКУЩИЙ RU: `"Выбрать статус"`
 - ✏️ НОВЫЙ RU:
 - ТЕКУЩИЙ EN: `"Choose status"`
+- ✏️ НОВЫЙ EN:
+
+
+### profile.passport
+
+- ТЕКУЩИЙ RU: `"🛂 Паспорт: серия {series} № {number}"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🛂 Passport: series {series} No. {number}"`
+- ✏️ НОВЫЙ EN:
+
+
+### profile.passport_none
+
+- ТЕКУЩИЙ RU: `"🛂 Паспорт: не выдан"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"🛂 Passport: not issued"`
 - ✏️ НОВЫЙ EN:
 
 

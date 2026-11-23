@@ -18,7 +18,8 @@ from database.db import (
     location_photo_for_tod,
 )
 from utils.helpers import resolve_image, resolve_image_seasonal, time_of_day_key, season_key
-from utils.permissions import has_permission, is_admin, can_enter_mvd
+from utils.permissions import has_permission, is_admin, can_enter_mvd, can_enter_kgb
+from utils.localization import t
 from keyboards.keyboards import (
     admin_quarter_keyboard, business_quarter_keyboard, countryside_keyboard,
 )
@@ -34,6 +35,7 @@ LOCATION_ACCESS_LINES = {
     "storage": "📦 Вход: с «Пилота 1 класса»",
     "duel_house": "🥊 Вход: с пилота второго класса",
     "mvd": "🚔 Вход: сотрудникам МВД, Представителю, Хранителю и администрации",
+    "kgb": "🕵️ Вход: только сотрудникам КГБ (глава КГБ и Хранитель)",
 }
 
 
@@ -164,6 +166,16 @@ async def location_enter(callback: CallbackQuery, state: FSMContext):
                 ])
             )
             return
+    elif key == "kgb":
+        if not await can_enter_kgb(callback.from_user.id):
+            await callback.message.answer(
+                f"{t('kgb.no_access')}\n\n"
+                f"Здесь ведётся учёт личных дел пилотов и выдаются паспорта.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="🔙 В город", callback_data="city:menu")]
+                ])
+            )
+            return
     elif key == "mvd":
         # Архив отчётов — служебное дело: пускаем только МВД (модератор),
         # Вице-доминуса, Представителя, Хранителя и владельца (.env).
@@ -221,6 +233,9 @@ async def location_enter(callback: CallbackQuery, state: FSMContext):
     elif key == "mvd":
         from bot.handlers.mvd import mvd_menu
         await mvd_menu(callback)
+    elif key == "kgb":
+        from bot.handlers.kgb import kgb_menu
+        await kgb_menu(callback)
     elif key == "duel_house":
         from bot.handlers.duel import duel_house_menu
         await duel_house_menu(callback)
@@ -238,8 +253,8 @@ async def city_admin_quarter(callback: CallbackQuery):
     text = (
         "🏢 АДМИНИСТРАТИВНЫЙ КВАРТАЛ\n"
         "────────────────\n"
-        "Здесь решаются деньги, порядок и приказы: банк, ратуша, штаб ВВС "
-        "и здание МВД."
+        "Здесь решаются деньги, порядок и приказы: банк, ратуша, штаб ВВС, "
+        "здание МВД и здание КГБ."
     )
     await callback.message.answer(text, reply_markup=admin_quarter_keyboard())
 

@@ -159,7 +159,7 @@ async def main():
     # ── 7. правка прав в ROLES ничего не сломала ───────────────────
     print("\n=== 7. Целостность модели ролей ===")
     perms = {k for r in P.ROLES.values() for k in r if k != "level"}
-    check("все 33 права ещё объявлены", len(perms) == 33)
+    check("все 34 права ещё объявлены", len(perms) == 34)
     unused = [p for p in perms if not any(r.get(p) for r in P.ROLES.values())]
     check("мёртвых прав больше нет", not unused)
     if unused:

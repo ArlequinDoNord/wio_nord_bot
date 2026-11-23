@@ -25,7 +25,7 @@ from database.db import (
     cleanup_mojibake_duel_items, expire_stale_duels, repair_mojibake_entities,
     ensure_item_rarity_unified,
     ensure_achievements,
-    ensure_tourist_booklet,
+    ensure_tourist_booklet, ensure_passport_item,
     ensure_water_fish, migrate_legacy_junk,
     ensure_forest_items, ensure_forest_mushrooms, ensure_forest_zones,
     ensure_forest_enemies, ensure_fishing_enemies, ensure_mollusk_items,
@@ -78,6 +78,7 @@ from bot.handlers.nii import router as nii_router
 from bot.handlers.tourist_booklet import router as tourist_booklet_router
 from bot.handlers.duel import router as duel_router
 from bot.handlers.mvd import router as mvd_router
+from bot.handlers.kgb import router as kgb_router
 from bot.handlers.changelog import router as changelog_router
 
 load_dotenv()
@@ -588,6 +589,7 @@ async def main():
     logger.info("Достижения (награды-уровни из ACHIEVEMENTS_DEF) проверены")
 
     await ensure_tourist_booklet()
+    await ensure_passport_item()
     logger.info("Буклет туриста (предмет и награда) проверены")
 
     fixed = await repair_mojibake_entities()
@@ -693,6 +695,7 @@ async def main():
     dp.include_router(tourist_booklet_router)
     dp.include_router(duel_router)
     dp.include_router(mvd_router)
+    dp.include_router(kgb_router)
 
     from utils.localization import LangMiddleware
     dp.update.outer_middleware(LangMiddleware())
@@ -705,7 +708,7 @@ async def main():
               storage_router, housing_router, news_router, kvp_router,
               wall_router, hq_router, clans_router, clan_hall_router, nii_router,
               admin_shop_clan_router, admin_clanphotos_router, admin_firephotos_router, admin_berries_router, fire_event_router,
-              tourist_booklet_router, duel_router, mvd_router, market_contracts_router):
+              tourist_booklet_router, duel_router, mvd_router, kgb_router, market_contracts_router):
         r.message.middleware(ChatGuard())
         r.message.middleware(FishingActiveLock())
         r.message.middleware(MainMenuFSMReset())

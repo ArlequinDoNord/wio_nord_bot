@@ -117,6 +117,10 @@ ROLES = {
     },
     'clan_leader': {  # Глава клана/партии — управляет только своим объединением
         'level': 60
+    },
+    'kgb_head': {  # Глава КГБ — вход в здание КГБ и выдача паспортов Нордхайма
+        'can_issue_passports': True,
+        'level': 60
     }
 }
 
@@ -135,6 +139,7 @@ ROLE_LABELS = {
     'journalist': 'Журналист ГосСМИ',
     'editor': 'Редактор ГосСМИ',
     'clan_leader': 'Глава клана/партии',
+    'kgb_head': 'Глава КГБ',
 }
 
 
@@ -243,6 +248,21 @@ async def can_enter_mvd(telegram_id: int) -> bool:
     if roles & MVD_ACCESS_ROLES:
         return True
     return await user_has_status_tag(telegram_id, MVD_ACCESS_STATUS_TAG)
+
+
+# Здание КГБ: вход — глава КГБ и Хранитель. Выдача паспортов — только глава КГБ
+# (роль через get_user_role: владелец из ADMIN_IDS там «super_admin», не «kgb_head»).
+KGB_ACCESS_ROLES = {'kgb_head', 'super_admin'}
+
+
+async def can_enter_kgb(telegram_id: int) -> bool:
+    """Пускают ли в здание КГБ: глава КГБ и Хранитель."""
+    return bool(set(await get_user_role(telegram_id)) & KGB_ACCESS_ROLES)
+
+
+async def is_kgb_head(telegram_id: int) -> bool:
+    """Глава КГБ — единственный, кто выдаёт паспорта (Хранитель — только вход)."""
+    return 'kgb_head' in await get_user_role(telegram_id)
 
 
 # Роли, которые умеет назначать не только суперадмин, а профильный руководитель.

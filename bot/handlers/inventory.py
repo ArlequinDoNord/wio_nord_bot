@@ -31,7 +31,7 @@ from utils.helpers import (
     row_get,
 )
 from keyboards.keyboards import cancel_keyboard, main_menu_kb
-from config import TOURIST_BOOKLET_NAME
+from config import TOURIST_BOOKLET_NAME, PASSPORT_CATEGORY
 from utils.localization import t
 
 router = Router()
@@ -72,7 +72,7 @@ def _fish_groups(catches):
 INV_CATEGORIES = [
     "weapon", "equipment", "consumable",     "resource", "seeds",
     "fishing", "mining", "housing", "furniture", "special", "souvenirs",
-    "library_card", "building", "recipes",
+    "library_card", "building", "recipes", "documents",
 ]
 FISH_ALL_KEY = "__fish__"
 
@@ -101,7 +101,7 @@ def inv_categories_markup(items, catches):
                  "resource": "⛏️", "seeds": "🌱", "fishing": "🎣",
                  "housing": "🏠", "furniture": "🪑", "special": "💎",
                  "souvenirs": "🏺", "library_card": "📚", "building": "🏗️",
-                 "recipes": "📜"}.get(cat, "📦")
+                 "recipes": "📜", "documents": "📄"}.get(cat, "📦")
         rows.append([InlineKeyboardButton(
             text=f"{emoji} {label} — {counts[cat]}",
             callback_data=f"inventory:cat:{cat}")])
@@ -670,6 +670,10 @@ async def _render_item_card(message, user_id: int, item_id: int, note: str = "")
     inv = await get_inventory_item(user_id, item_id)
     if not item or not inv:
         await edit_or_replace(message, "Предмет не найден.", None)
+        return
+    if item['category'] == PASSPORT_CATEGORY:
+        from bot.handlers.kgb import render_passport_card
+        await render_passport_card(message, user_id)
         return
 
     eq = await get_equipment(user_id)
