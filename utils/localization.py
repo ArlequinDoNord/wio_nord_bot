@@ -425,6 +425,11 @@ STRINGS = {
         "ru": "Зато на опушке грибы собирают и туристы — там безопасно.",
         "en": "But mushrooms are gathered on the glade, and tourists are welcome there — it's safe.",
     },
+    "activity_xp.gain": {"ru": "✨ +{n} XP", "en": "✨ +{n} XP"},
+    "activity_xp.limit": {
+        "ru": "⚠️ Лимит усвоения опыта достигнут.",
+        "en": "⚠️ Experience intake limit reached.",
+    },
     "forest.ap_line": {"ru": "⚡ ОД: {ap}/{ap_max}", "en": "⚡ AP: {ap}/{ap_max}"},
     "forest.ap_short": {
         "ru": " — не хватит на поиск ({cost} ОД), придёт с новыми сутками",

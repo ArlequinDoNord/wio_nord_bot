@@ -488,11 +488,14 @@ async def mine_dig(callback: CallbackQuery):
                 and random.random() * 100 < FIRE_ORE_CHANCE):
             flame = await get_item_by_name(FIRE_ORE_NAME)
         from utils.localization import t as _tmd
+        from config import ACTIVITY_XP_MINE_ORE
+        from utils.activity_xp import activity_xp_line
         if flame:
             await add_inventory_item(user_id, flame['id'], 1)
             await tree_record_collect(user_id, FIRE_ORE_NAME)
             await log_activity(user_id, "mine", f"Добыл «{flame['name']}»")
-            text = _tmd("mine.flame_found", head=head, name=flame['name']) + ap_block
+            xp = await activity_xp_line(user_id, ACTIVITY_XP_MINE_ORE)
+            text = _tmd("mine.flame_found", head=head, name=flame['name']) + ap_block + xp
         elif await _mine_card(user_id, chance) == "ore":
             ore = await get_item_by_name(MINE_ORE_NAME)
             if ore:
@@ -506,8 +509,9 @@ async def mine_dig(callback: CallbackQuery):
                 if ore['sell_price'] > 0:
                     sell_line = (f"\nКазна выкупает руду по {ore['sell_price']} "
                                  f"{plural_nordmark(ore['sell_price'])} за кусок.")
+                xp = await activity_xp_line(user_id, ACTIVITY_XP_MINE_ORE)
                 text = _tmd("mine.ore_found", head=head, name=ore['name'],
-                            sell_line=sell_line) + ap_block
+                            sell_line=sell_line) + ap_block + xp
             else:
                 text = _tmd("mine.item_lost", head=head) + ap_block
         else:

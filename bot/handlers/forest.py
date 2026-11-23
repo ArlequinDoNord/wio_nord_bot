@@ -662,8 +662,11 @@ async def forest_cast(callback: CallbackQuery):
         heal_line = ""
         if item['heal'] and item['heal'] > 0:
             heal_line = _LT("forest.mush.heal", heal=item['heal'])
+        from config import ACTIVITY_XP_FOREST_FIND
+        from utils.activity_xp import activity_xp_line
+        xp = await activity_xp_line(user_id, ACTIVITY_XP_FOREST_FIND)
         text = _LT("forest.mush.found", head=head, kind=kind_label, name=item['name'],
-                   heal_line=heal_line, sell_line=sell_line) + ap_block
+                   heal_line=heal_line, sell_line=sell_line) + ap_block + xp
         if row.get('photo_file_id'):
             await _paint(callback, text=text, photo_id=row['photo_file_id'], kb=result_kb)
             return
@@ -800,10 +803,13 @@ async def forest_berry(callback: CallbackQuery):
         from database.db import tree_record_collect
         await tree_record_collect(user_id, item['name'])
         await log_activity(user_id, "forest", f"Собрал «{item['name']}» ({area_name})")
+        from config import ACTIVITY_XP_FOREST_FIND
+        from utils.activity_xp import activity_xp_line
+        xp = await activity_xp_line(user_id, ACTIVITY_XP_FOREST_FIND)
         await _glade_paint(
             callback,
             text=_LT("forest.berry.got", head=head, name=item['name'])
-                 + ap_line,
+                 + ap_line + xp,
             kb=await _berry_markup(token, area), area=area)
     finally:
         FOREST_CASTING.discard(user_id)

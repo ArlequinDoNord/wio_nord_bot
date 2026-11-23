@@ -632,6 +632,15 @@ async def init_db():
             FOREIGN KEY (user_id) REFERENCES users(user_id)
         );
 
+        CREATE TABLE IF NOT EXISTS activity_xp_daily (
+            user_id INTEGER NOT NULL,
+            day TEXT NOT NULL,
+            amount INTEGER DEFAULT 0,
+            limit_notified INTEGER DEFAULT 0,
+            PRIMARY KEY (user_id, day),
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
+        );
+
         CREATE TABLE IF NOT EXISTS nii_reports (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -6181,6 +6190,58 @@ async def _apply_report_payout(conn, user_id: int, report_ids: list, troops_tota
         'total_troops': u['troops'] if u else troops_total,
         'total_nordmarks': u['nordmarks'] if u else nordmarks,
     }
+
+
+async def grant_activity_xp(user_id: int, amount: int) -> dict:
+    """Опыт за обычные активности: звание (troops) и xp_balance одновременно.
+
+    Ограничения: суточный лимит ACTIVITY_XP_DAILY_CAP на все активности вместе
+    (сутки — игровые, как у отчётов), потолок MAX_SELF_RANK_TROOPS (выше опыт
+    за активности не растёт), туристам опыт не начисляется. Отчёты эти ограничения
+    не касаются. Возвращает {'granted': N, 'limit_hit': bool}; limit_hit=True
+    только первый раз за сутки, чтобы сообщение о лимите не повторялось.
+    """
+    from config import ACTIVITY_XP_DAILY_CAP, MAX_SELF_RANK_TROOPS
+    empty = {'granted': 0, 'limit_hit': False}
+    amount = int(amount or 0)
+    if amount <= 0 or await user_is_tourist(user_id):
+        return empty
+    conn = await get_db()
+    cur = await conn.execute("SELECT troops, promoted_rank FROM users WHERE user_id = ?", (user_id,))
+    u = await cur.fetchone()
+    if not u:
+        return empty
+    day = today_report_day()
+    cur = await conn.execute(
+        "SELECT amount, limit_notified FROM activity_xp_daily WHERE user_id = ? AND day = ?",
+        (user_id, day))
+    d = await cur.fetchone()
+    today_amount = d['amount'] if d else 0
+    notified = bool(d['limit_notified']) if d else False
+
+    granted = min(amount,
+                  max(0, ACTIVITY_XP_DAILY_CAP - today_amount),
+                  max(0, MAX_SELF_RANK_TROOPS - (u['troops'] or 0)))
+    limit_hit = granted < amount
+    if granted > 0:
+        await conn.execute(
+            "UPDATE users SET troops = troops + ?, xp_balance = COALESCE(xp_balance, 0) + ? "
+            "WHERE user_id = ?", (granted, granted, user_id))
+        await conn.execute(
+            "INSERT INTO activity_xp_daily (user_id, day, amount) VALUES (?, ?, ?) "
+            "ON CONFLICT(user_id, day) DO UPDATE SET amount = amount + excluded.amount",
+            (user_id, day, granted))
+        rank = get_effective_rank((u['troops'] or 0) + granted, u['promoted_rank'])
+        await grant_all_rank_statuses(user_id, rank)
+
+    show_limit = limit_hit and not notified
+    if show_limit:
+        await conn.execute(
+            "INSERT INTO activity_xp_daily (user_id, day, amount, limit_notified) VALUES (?, ?, 0, 1) "
+            "ON CONFLICT(user_id, day) DO UPDATE SET limit_notified = 1",
+            (user_id, day))
+    await conn.commit()
+    return {'granted': granted, 'limit_hit': show_limit}
 
 
 async def payout_reports() -> list:

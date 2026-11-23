@@ -950,10 +950,10 @@ async def roll_enemy_drops(run_id: int, enemy) -> list:
     return dropped
 
 
-async def post_captain_menu(where, run, state: FSMContext):
+async def post_captain_menu(where, run, state: FSMContext, prefix: str = ""):
     """Экран после победы над Крысиным капитаном: водохранилище или этаж 2."""
     loot_nm = run['loot_nm'] or 0
-    text = _LT("resv.captain.text")
+    text = prefix + _LT("resv.captain.text")
     if loot_nm > 0:
         text += _LT("resv.captain.loot", nm=loot_nm)
     text += _LT("resv.captain.tail")
@@ -1250,7 +1250,10 @@ async def _enemy_defeated(callback, state, bot, run, enemy, player_hp):
             await log_activity(user_id, "dungeon_boss",
                                f"Победил промежуточного босса «{enemy['name']}» на 1 этаже")
             run = await get_active_run(user_id)
-            await post_captain_menu(callback.message, run, state)
+            from config import ACTIVITY_XP_DUNGEON_BOSS
+            from utils.activity_xp import activity_xp_line
+            xp = (await activity_xp_line(user_id, ACTIVITY_XP_DUNGEON_BOSS)).strip()
+            await post_captain_menu(callback.message, run, state, prefix=f"{xp}\n\n" if xp else "")
         else:
             # Финальный босс «Король крыс» (этаж 2): полная зачистка.
             run = await get_active_run(user_id)
@@ -1261,6 +1264,10 @@ async def _enemy_defeated(callback, state, bot, run, enemy, player_hp):
             transferred = await transfer_run_items_to_inventory(user_id, run['id'])
 
             text = _LT("dungeon.boss.won", enemy=enemy['name'])
+            from config import ACTIVITY_XP_DUNGEON_BOSS
+            from utils.activity_xp import activity_xp_line
+            text += await activity_xp_line(user_id, ACTIVITY_XP_DUNGEON_BOSS)
+            text += "\n"
             if loot_nm > 0:
                 text += _LT("dungeon.exit.nm", nm=loot_nm) + "\n"
             for name, qty in transferred:
@@ -1281,6 +1288,9 @@ async def _enemy_defeated(callback, state, bot, run, enemy, player_hp):
     else:
         hp_text = _hp_bar(player_hp, run['hp_max'])
         text = _LT("dungeon.enemy.down", name=enemy['name'])
+        from config import ACTIVITY_XP_DUNGEON_ENEMY
+        from utils.activity_xp import activity_xp_line
+        text += await activity_xp_line(user_id, ACTIVITY_XP_DUNGEON_ENEMY)
 
         dropped = await roll_enemy_drops(run['id'], enemy)
         if dropped:
@@ -2211,10 +2221,13 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                         name_line = _LT("resv.catch.eel")
                     else:
                         name_line = _LT("resv.catch.catfish")
+                    from config import ACTIVITY_XP_FISH_CATCH
+                    from utils.activity_xp import activity_xp_line
+                    xp = await activity_xp_line(user_id, ACTIVITY_XP_FISH_CATCH)
                     result = _LT(
                         "resv.catch.hit", emoji=RESERVOIR_EMOJI.get(fish_name, '🐟'), fish=fish_name,
                         tier=tier['label'].lower(), name_line=name_line, sell=sell,
-                        money=plural_nordmark(sell)) + ap_block
+                        money=plural_nordmark(sell)) + ap_block + xp
                     wf_photo = await get_water_fish_photo_by_name("reservoir", fish_name)
                     local_photo = item_local_photo(fish_name) if not wf_photo else None
                     await _resv_answer(user_id, callback.message, result, _reservoir_result_markup(next_step),

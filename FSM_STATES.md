@@ -407,11 +407,11 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `in_dungeon` | `bot/handlers/dungeon.py:890` `contract_enter_confirm`<br>`bot/handlers/dungeon.py:961` `post_captain_menu`<br>`bot/handlers/dungeon.py:2342` `resv_deeper` | — |
+| `in_dungeon` | `bot/handlers/dungeon.py:890` `contract_enter_confirm`<br>`bot/handlers/dungeon.py:961` `post_captain_menu`<br>`bot/handlers/dungeon.py:2355` `resv_deeper` | — |
 | `in_combat` | — | — |
-| `in_boss` | `bot/handlers/dungeon.py:1983` `show_boss` | — |
+| `in_boss` | `bot/handlers/dungeon.py:1993` `show_boss` | — |
 | `confirm_enter` | `bot/handlers/dungeon.py:825` `contract_enter` | — |
-| `in_reservoir` | `bot/handlers/dungeon.py:2005` `resv_enter`<br>`bot/handlers/dungeon.py:2020` `resv_menu`<br>`bot/handlers/dungeon.py:2080` `resv_bait_set` | — |
+| `in_reservoir` | `bot/handlers/dungeon.py:2015` `resv_enter`<br>`bot/handlers/dungeon.py:2030` `resv_menu`<br>`bot/handlers/dungeon.py:2090` `resv_bait_set` | — |
 
 ### `HqOrder` — `bot/handlers/hq.py`
 
@@ -721,9 +721,9 @@
 - `duel:list`: `bot/handlers/duel.py:261`
 - `duel:menu`: `bot/handlers/duel.py:212`
 - `duel:top`: `bot/handlers/duel.py:281`
-- `dungeon:exit`: `bot/handlers/dungeon.py:2477`
-- `dungeon:exit:cancel`: `bot/handlers/dungeon.py:2558`
-- `dungeon:exit:confirm`: `bot/handlers/dungeon.py:2520`
+- `dungeon:exit`: `bot/handlers/dungeon.py:2490`
+- `dungeon:exit:cancel`: `bot/handlers/dungeon.py:2571`
+- `dungeon:exit:confirm`: `bot/handlers/dungeon.py:2533`
 - `dungeon:photos`: `bot/handlers/admin.py:6197`
 - `dungeon:photos:clear`: `bot/handlers/admin.py:6241`
 - `enemy:fi`: `bot/handlers/admin.py:10343`
@@ -866,7 +866,7 @@
 - `report:menu`: `bot/handlers/reports.py:52`
 - `report:my_reports`: `bot/handlers/reports.py:404`
 - `report:submit`: `bot/handlers/reports.py:62`
-- `resv:recover`: `bot/handlers/dungeon.py:2290`
+- `resv:recover`: `bot/handlers/dungeon.py:2303`
 - `salary:choose`: `bot/handlers/admin.py:6016`
 - `salary:pay`: `bot/handlers/admin.py:6028`
 - `shop:catalog`: `bot/handlers/shop.py:233`
@@ -1014,14 +1014,14 @@
 - `duel:def:`: `bot/handlers/duel.py:525`
 - `duel:invite:`: `bot/handlers/duel.py:299`
 - `duel:leave:`: `bot/handlers/duel.py:432`
-- `dungeon:attack:`: `bot/handlers/dungeon.py:1298`
+- `dungeon:attack:`: `bot/handlers/dungeon.py:1308`
 - `dungeon:continue:`: `bot/handlers/dungeon.py:1123`
 - `dungeon:edit:`: `bot/handlers/admin.py:6134`
 - `dungeon:enemies`: `bot/handlers/admin.py:6432`
 - `dungeon:enemy:`: `bot/handlers/admin.py:6468`
-- `dungeon:escape:`: `bot/handlers/dungeon.py:1909`
+- `dungeon:escape:`: `bot/handlers/dungeon.py:1919`
 - `dungeon:photo_set:`: `bot/handlers/admin.py:6206`
-- `dungeon:use_slot:`: `bot/handlers/dungeon.py:1618`
+- `dungeon:use_slot:`: `bot/handlers/dungeon.py:1628`
 - `eddrop:`: `bot/handlers/admin.py:7154`
 - `eddrop_del:`: `bot/handlers/admin.py:7240`
 - `eddrop_desc:`: `bot/handlers/admin.py:7312`
@@ -1124,9 +1124,9 @@
 - `fishuse:`: `bot/handlers/inventory.py:1370`
 - `forest:add:`: `bot/handlers/admin.py:8818`
 - `forest:area:\d+:(glade|clearing)$`: `bot/handlers/forest.py:448`
-- `forest:battle:flee:\d+$`: `bot/handlers/forest.py:1187`
-- `forest:battle:hit:\d+$`: `bot/handlers/forest.py:986`
-- `forest:berry:\d+:(glade|clearing)$`: `bot/handlers/forest.py:718`
+- `forest:battle:flee:\d+$`: `bot/handlers/forest.py:1193`
+- `forest:battle:hit:\d+$`: `bot/handlers/forest.py:992`
+- `forest:berry:\d+:(glade|clearing)$`: `bot/handlers/forest.py:721`
 - `forest:card:`: `bot/handlers/admin.py:8732`
 - `forest:cast:\d+(?::(glade|clearing))?$`: `bot/handlers/forest.py:532`
 - `forest:del:`: `bot/handlers/admin.py:8837`
@@ -1212,17 +1212,17 @@
 - `location:enter:`: `bot/handlers/locations.py:113`
 - `location:preview:`: `bot/handlers/locations.py:42`
 - `locstat:`: `bot/handlers/admin.py:5785`
-- `logsite:battle:flee:\d+$`: `bot/handlers/logging_site.py:1048`
-- `logsite:battle:hit:\d+$`: `bot/handlers/logging_site.py:853`
+- `logsite:battle:flee:\d+$`: `bot/handlers/logging_site.py:1051`
+- `logsite:battle:hit:\d+$`: `bot/handlers/logging_site.py:856`
 - `logsite:chop:\d+$`: `bot/handlers/logging_site.py:456`
-- `logsite:fire:(1|all):\d+$`: `bot/handlers/logging_site.py:707`
+- `logsite:fire:(1|all):\d+$`: `bot/handlers/logging_site.py:710`
 - `logsite:menu:\d+$`: `bot/handlers/logging_site.py:441`
-- `logsite:mill:\d+$`: `bot/handlers/logging_site.py:594`
-- `logsite:plank:(1|all):\d+$`: `bot/handlers/logging_site.py:647`
+- `logsite:mill:\d+$`: `bot/handlers/logging_site.py:597`
+- `logsite:plank:(1|all):\d+$`: `bot/handlers/logging_site.py:650`
 - `lootonly:`: `bot/handlers/admin.py:1756`
 - `marketok:`: `bot/handlers/admin.py:1734`
-- `mine:battle:flee:\d+$`: `bot/handlers/mine.py:734`
-- `mine:battle:hit:\d+$`: `bot/handlers/mine.py:583`
+- `mine:battle:flee:\d+$`: `bot/handlers/mine.py:738`
+- `mine:battle:hit:\d+$`: `bot/handlers/mine.py:587`
 - `mine:deeper:\d+$`: `bot/handlers/mine.py:391`
 - `mine:dig:\d+$`: `bot/handlers/mine.py:400`
 - `mine:level:\d+$`: `bot/handlers/mine.py:359`
@@ -1305,16 +1305,16 @@
 - `rep_rej_view:`: `bot/handlers/admin.py:4926`
 - `report:my:`: `bot/handlers/reports.py:399`
 - `report:view:`: `bot/handlers/reports.py:411`
-- `resv:bait:\d+$`: `bot/handlers/dungeon.py:2024`
-- `resv:bait:set:\d+:[a-z]+$`: `bot/handlers/dungeon.py:2065`
-- `resv:cast:\d+$`: `bot/handlers/dungeon.py:2084`
-- `resv:deeper:\d+$`: `bot/handlers/dungeon.py:2319`
-- `resv:enter:\d+$`: `bot/handlers/dungeon.py:1986`
-- `resv:eq:\d+$`: `bot/handlers/dungeon.py:2352`
-- `resv:eqclear:[a-z0-9_]+:\d+$`: `bot/handlers/dungeon.py:2454`
-- `resv:eqset:[a-z0-9_]+:\d+:\d+$`: `bot/handlers/dungeon.py:2431`
-- `resv:eqslot:[a-z0-9_]+:\d+$`: `bot/handlers/dungeon.py:2385`
-- `resv:menu:\d+$`: `bot/handlers/dungeon.py:2010`
+- `resv:bait:\d+$`: `bot/handlers/dungeon.py:2034`
+- `resv:bait:set:\d+:[a-z]+$`: `bot/handlers/dungeon.py:2075`
+- `resv:cast:\d+$`: `bot/handlers/dungeon.py:2094`
+- `resv:deeper:\d+$`: `bot/handlers/dungeon.py:2332`
+- `resv:enter:\d+$`: `bot/handlers/dungeon.py:1996`
+- `resv:eq:\d+$`: `bot/handlers/dungeon.py:2365`
+- `resv:eqclear:[a-z0-9_]+:\d+$`: `bot/handlers/dungeon.py:2467`
+- `resv:eqset:[a-z0-9_]+:\d+:\d+$`: `bot/handlers/dungeon.py:2444`
+- `resv:eqslot:[a-z0-9_]+:\d+$`: `bot/handlers/dungeon.py:2398`
+- `resv:menu:\d+$`: `bot/handlers/dungeon.py:2020`
 - `role:`: `bot/handlers/admin.py:3358`
 - `rolop:`: `bot/handlers/admin.py:3309`
 - `shop_del:cat:`: `bot/handlers/admin.py:1998`
@@ -1348,7 +1348,7 @@
 - `wall:page:\d+$`: `bot/handlers/wall.py:159`
 - `weff:`: `bot/handlers/admin.py:1627`
 - `wing_set:`: `bot/handlers/admin.py:876`
-- `Испорченн`: `bot/handlers/dungeon.py:1825`
+- `Испорченн`: `bot/handlers/dungeon.py:1835`
 - `⛔`: `bot/handlers/wall.py:179`
 
 ## 4. ⚠️ Возможные конфликты
