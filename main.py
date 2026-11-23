@@ -36,6 +36,7 @@ from database.db import (
     log_activity, prune_activity_log, prune_location_visits, recompute_region_stats,
     maybe_archive_wall_weekly, maintain_polls, touch_user_active,
     resolve_due_clan_buildings, get_clan,
+    get_setting, set_setting, today_report_day,
 )
 from utils.notify import notify_treasury_shortage
 from utils.chat_guard import ChatGuard
@@ -238,7 +239,74 @@ def _seconds_until_payout() -> float:
     return (target - local).total_seconds()
 
 
+CORE_DAY_SETTING = "daily_core_day"
+
+
+async def _run_daily_core(bot: Bot, reason: str) -> bool:
+    """Восстановление ОД и выплата отчётов за игровые сутки.
+
+    Идемпотентно по игровым суткам: daily_ap_recovery пропускает тех, у кого
+    ap_recovery_day уже сегодня, payout_reports платит только approved+paid=0.
+    Поэтому можно безопасно догнать пропущенный цикл. Отметка суток пишется
+    только если оба шага прошли без ошибок.
+    """
+    ok = True
+    try:
+        await daily_ap_recovery()
+        logger.info(f"Суточное восстановление AP выполнено ({reason})")
+    except Exception as e:
+        ok = False
+        logger.error(f"Ошибка восстановления AP: {e}", exc_info=True)
+    try:
+        payouts = await payout_reports()
+        if payouts:
+            for p in payouts:
+                try:
+                    await bot.send_message(
+                        p['user_id'],
+                        "💰 ОПЛАТА ЗА ОТЧЁТЫ\n\n"
+                        f"Одобрено отчётов: {p['count']}\n"
+                        f"⚔️ Войска: +{p['troops']}\n"
+                        f"✨ Опыт (накопительный): +{p['xp']} "
+                        f"(всего {p['xp_balance']}, без налога)\n"
+                        f"💰 Нордмарки: +{p['nordmarks']} (налог {p['tax']} НМ в казну)\n"
+                        f"──────────────\n"
+                        f"Итого у тебя: {p['total_troops']} войск, {p['total_nordmarks']} нордмарок"
+                    )
+                except Exception:
+                    pass
+            logger.info(f"Оплата отчётов: выплачено игрокам {len(payouts)} ({reason})")
+    except Exception as e:
+        ok = False
+        logger.error(f"Ошибка выплаты по отчётам: {e}", exc_info=True)
+    if ok:
+        await set_setting(CORE_DAY_SETTING, today_report_day())
+    return ok
+
+
+async def _catchup_daily_core(bot: Bot, now: datetime = None) -> bool:
+    """Догон: бот стартовал после планового 10:00 МСК, а сутки ещё не отмечены.
+
+    Так было 23.11: деплой закончился ровно в 10:00:10, _seconds_until_payout ушёл
+    на следующий день, и ОД и отчёты за сутки не начислились. Возвращает True, если
+    догон выполнялся.
+    """
+    try:
+        local = now or datetime.now(MSK)
+        scheduled = local.replace(hour=PAYOUT_HOUR_MSK, minute=PAYOUT_MINUTE_MSK,
+                                  second=10, microsecond=0)
+        if local < scheduled or await get_setting(CORE_DAY_SETTING) == today_report_day():
+            return False
+        logger.warning("Сегодняшний суточный цикл не отмечен — догоняю ОД и выплату отчётов")
+        await _run_daily_core(bot, "догон после рестарта")
+        return True
+    except Exception as e:
+        logger.error(f"Ошибка догона суточного цикла: {e}", exc_info=True)
+        return False
+
+
 async def scheduled_jobs(bot: Bot):
+    await _catchup_daily_core(bot)
     while True:
         wait = _seconds_until_payout()
         logger.info(
@@ -251,11 +319,7 @@ async def scheduled_jobs(bot: Bot):
         # «в 22:00» вместо 10:00 — время плыло при каждом перезапуске.
         if wait > 0:
             await asyncio.sleep(wait)
-        try:
-            await daily_ap_recovery()
-            logger.info("Суточное восстановление AP выполнено")
-        except Exception as e:
-            logger.error(f"Ошибка восстановления AP: {e}", exc_info=True)
+        await _run_daily_core(bot, "плановый цикл")
         try:
             from database.db import run_weekly_restock
             restocked = await run_weekly_restock()
@@ -364,27 +428,6 @@ async def scheduled_jobs(bot: Bot):
                             granted_count)
         except Exception as e:
             logger.error(f"Ошибка генерации Пламени Памяти: {e}", exc_info=True)
-        try:
-            payouts = await payout_reports()
-            if payouts:
-                for p in payouts:
-                    try:
-                        await bot.send_message(
-                            p['user_id'],
-                            "💰 ОПЛАТА ЗА ОТЧЁТЫ\n\n"
-                            f"Одобрено отчётов: {p['count']}\n"
-                            f"⚔️ Войска: +{p['troops']}\n"
-                            f"✨ Опыт (накопительный): +{p['xp']} "
-                            f"(всего {p['xp_balance']}, без налога)\n"
-                            f"💰 Нордмарки: +{p['nordmarks']} (налог {p['tax']} НМ в казну)\n"
-                            f"──────────────\n"
-                            f"Итого у тебя: {p['total_troops']} войск, {p['total_nordmarks']} нордмарок"
-                        )
-                    except Exception:
-                        pass
-                logger.info(f"Оплата отчётов: выплачено игрокам {len(payouts)}")
-        except Exception as e:
-            logger.error(f"Ошибка выплаты по отчётам: {e}", exc_info=True)
         # Статистика регионов = сумма показаний пилотов из их последних одобренных
         # отчётов, поэтому пересчитывается после выплаты: к этому моменту одобрены все
         # вчерашние сдачи. Раньше считалась только по кнопке админа и на проде
