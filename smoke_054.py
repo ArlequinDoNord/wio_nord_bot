@@ -113,7 +113,7 @@ async def run():
     check("форель: sell_price=450", flare and flare["sell_price"] == 450)
     check("форель: price=900", flare and flare["price"] == 900)
     fried = await get_item_by_name("Жареный форель")
-    check("жареная форель: sell_price=600", fried and fried["sell_price"] == 600)
+    check("жареная форель: sell_price=450 (как сырая, v0.43.30)", fried and fried["sell_price"] == 450)
     check("жареная форель: price=1200", fried and fried["price"] == 1200)
 
     # ── 3b. Веса пула водохранилища (сом 70 / угорь 25 / форель 5) ──

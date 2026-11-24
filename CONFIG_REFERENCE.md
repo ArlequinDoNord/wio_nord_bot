@@ -7,7 +7,7 @@
 > (комментариям-разделителям `# ── … ──`). Длинные значения усечены `…`;
 > точное значение — в `config.py` по строке из первой колонки.
 
-Всего констант: **375**; разделов: **12**.
+Всего констант: **378**; разделов: **12**.
 
 ## Буклет туриста
 
@@ -184,205 +184,208 @@
 | `MAX_SELF_RANK_TROOPS` | `4040` |  | :480 |
 | `ACTIVITY_XP_DAILY_CAP` | `50` |  | :485 |
 | `ACTIVITY_XP_LIGHT_CUTOFF_RANK` | `'Старший Сержант'` |  | :488 |
-| `ACTIVITY_XP_MINE_ORE` | `2` | удачный удар киркой (руда, огненная руда), лёгкое | :489 |
-| `ACTIVITY_XP_LOGGING_WOOD` | `2` | удачная рубка (бревно), сильное | :490 |
-| `ACTIVITY_XP_FOREST_FIND` | `1` | найденный гриб или ягода, лёгкое | :491 |
-| `ACTIVITY_XP_FISH_CATCH` | `1` | удачная поклёвка в озере и водохранилище, лёгкое | :492 |
-| `ACTIVITY_XP_DUNGEON_ENEMY` | `1` | обычный враг в подземелье, сильное | :493 |
-| `ACTIVITY_XP_DUNGEON_BOSS` | `2` | капитан или король в подземелье, сильное | :494 |
-| `ACTIVITY_XP_BEASTS` | `{'boar': (1, False), 'white_wolf': (1, False), 'bear': (2, False), 'mollusk': (1, True), 'bat': (1, True), 'snake': (1, True), 'owl': (1, True)}` |  | :497 |
-| `AUTO_RANK_NAMES` | `('Рекрут', 'Рядовой', 'Ефрейтор', 'Капрал', 'Сержант', 'Старший Сержант', 'Лейтенант', 'Старший Лейтенант')` |  | :508 |
-| `AWARD_MAX_SHOP_DISCOUNT` | `40` |  | :515 |
-| `AWARD_MIN_REPORT_TAX` | `5` |  | :516 |
-| `REPORT_TAX_MIN_PERCENT` | `5` |  | :518 |
-| `PASSPORT_CATEGORY` | `'documents'` |  | :524 |
-| `RANK_STATUS_TAGS` | `{'Ефрейтор': 'pilot2', 'Старший Сержант': 'pilot1', 'Старший Лейтенант': 'veteran', 'Майор': 'master_pilot', 'Полковник': 'ace'}` |  | :526 |
-| `LEGIONER_ACCESS_CAP_ORDER` | `5` |  | :539 |
-| `RANK_DAMAGE_TIERS` | `{'ace': (4, 8), 'master_pilot': (3, 5), 'veteran': (2, 4), 'pilot1': (1, 3), 'pilot2': (1, 2), 'recruit': (1, 1), 'tourist': (0, 1)}` |  | :545 |
-| `RANK_CRIT_CHANCE` | `{'ace': 7.5, 'master_pilot': 6.0, 'veteran': 4.5, 'pilot1': 3.0, 'pilot2': 1.5, 'recruit': 0.0, 'tourist': 0.0}` |  | :563 |
-| `PILOT_CRIT_MULT` | `1.4` |  | :577 |
-| `PILOT_NO_WEAPON_DMG` | `(1, 1)` |  | :580 |
-| `DUEL_ZONE_LABELS` | `{'head': 'Голова', 'body': 'Тело', 'hands': 'Руки', 'legs': 'Ноги'}` |  | :587 |
-| `DUEL_ZONE_EMOJI` | `{'head': '🧠', 'body': '🫀', 'hands': '✊', 'legs': '🦵'}` |  | :593 |
-| `DUEL_AP_COST` | `15` | списывается с обоих при старте боя | :599 |
-| `DUEL_RATING_WIN` | `2` | рейтинг за победу | :600 |
-| `DUEL_RATING_LOSS` | `-3` | рейтинг за поражение | :601 |
-| `DUEL_RATING_DRAW` | `0` | рейтинг за ничью | :602 |
-| `DUEL_RATING_FORFEIT` | `-1` | рейтинг тому, кто покинул бой («Покинуть дуэль») | :603 |
-| `DUEL_RATING_FORFEIT_WIN` | `1` | рейтинг сопернику, если противник покинул бой (меньше чистой победы) | :604 |
-| `DUEL_MIN_DAMAGE` | `1` | минимум урона за попавший (не уклонённый) удар | :605 |
-| `DUEL_GUARD_REDUCTION` | `0.5` | доля урона, остающаяся при угаданной зоне защиты | :606 |
-| `DUEL_HEAL_BETWEEN` | `0` | восстановление HP между раундами (пока нет) | :607 |
-| `DUEL_CHALLENGE_TIMEOUT_SEC` | `120` | сколько живёт неотвеченный вызов | :608 |
-| `DUEL_STALE_SEC` | `1800` | зависшая дуэль авто-завершается как void | :609 |
-| `DUEL_GLOVES_NAME` | `'Дуэльные перчатки'` |  | :610 |
-| `DUEL_GLOVES_DAMAGE` | `7` |  | :611 |
-| `DUEL_GLOVES_PRICE` | `200` |  | :612 |
-| `DUEL_GLOVES_SELL` | `100` |  | :613 |
-| `DUEL_CLUB_CARD_NAME` | `'Клубная карта «Дом Дуэлей»'` |  | :614 |
-| `DUEL_CLUB_CARD_PRICE` | `150` |  | :615 |
-| `DUEL_CLUB_CARD_SELL` | `75` |  | :616 |
-| `DUEL_CLUB_CARD_DAYS` | `30` |  | :617 |
-| `DUEL_ACCESS_TAG` | `'pilot2'` |  | :620 |
-| `RARITY_LEVELS` | `{1: 'Обычный', 2: 'Качественный', 3: 'Редкий', 4: 'Шедевр', 5: 'Легендарный'}` |  | :622 |
-| `SALE_CONFIRM_MIN_RARITY` | `3` |  | :631 |
-| `RARITY_EMOJI` | `{1: '⬜', 2: '🟩', 3: '🟦', 4: '🟪', 5: '🟧'}` |  | :633 |
-| `ITEM_CATEGORIES` | `{'documents': 'Документы', 'weapon': 'Оружие', 'consumable': 'Расходники', 'building': 'Недвижимость', 'housing': 'Жильё', 'furniture': 'Мебель и расширения', 'seeds': 'Семена', 'equipment': 'Одежд…` |  | :641 |
-| `MARKET_LICENSE_SLOTS` | `2` | доп. слоты при активной лицензии | :666 |
-| `MARKET_LICENSE_DAYS` | `30` | срок действия лицензии (дней) | :667 |
-| `MARKET_LICENSE_PRICE` | `500` | цена лицензии в НМ | :668 |
-| `DUNGEON_HEAL_HARD_LIMIT` | `10` | после этого — ×1/2 | :685 |
-| `DUNGEON_HEAL_SOFT_MULT` | `2 / 3` |  | :686 |
-| `DUNGEON_HEAL_HARD_MULT` | `1 / 2` |  | :687 |
-| `ESCAPE_HP_BONUS` | `20` |  | :702 |
-| `DUNGEON_SMOKE_ESCAPE` | `95` |  | :703 |
-| `DUNGEON_SMOKE_MAX` | `2` |  | :704 |
-| `DUNGEON_ESCAPE_DRUNK_MULT` | `0.5` |  | :707 |
-| `AP_MAX` | `150` |  | :709 |
-| `AP_DAILY_RECOVERY` | `100` |  | :710 |
-| `AP_BONUS_FROM_CONSUMABLE` | `50` |  | :711 |
-| `AP_DAILY_RESTORE_LIMIT` | `150` |  | :716 |
-| `AP_EXHAUSTED_MINUTES` | `2880` | 2 суток | :717 |
-| `AP_EXHAUSTED_DAILY_RECOVERY` | `75` | суточное восстановление в «истощении» | :718 |
-| `AP_EXHAUSTED_MAX_AP` | `90` | максимум ОД в «истощении» | :719 |
-| `FIRE_LANTERN_EXHAUST_REDUCE_PCT` | `50` |  | :721 |
-| `SEAWEED_DAILY_LIMIT` | `6` |  | :724 |
-| `DIGESTIVE_UPSET_MINUTES` | `1440` | 24 часа | :725 |
-| `ALCOHOL_WEAK_DRUNK_LIMIT` | `3` |  | :730 |
-| `ALCOHOL_WEAK_VERY_DRUNK_LIMIT` | `6` |  | :731 |
-| `ALCOHOL_STRONG_DRUNK_LIMIT` | `1` |  | :733 |
-| `ALCOHOL_STRONG_VERY_DRUNK_LIMIT` | `2` |  | :734 |
-| `DRUNK_MINUTES` | `60` |  | :735 |
-| `VERY_DRUNK_MINUTES` | `360` | 6 часов | :736 |
-| `DRINK_EFFECT_LABELS` | `{'alcohol_weak': '🍺 Слабоалкогольный: 3 шт/сутки — «пьян», 6 — «очень пьян»', 'alcohol_strong': '🥃 Крепкий алкоголь: 1 шт — «пьян», 2 — «очень пьян»', 'indigestion': '🤢 Вызывает «несварение» на сут…` |  | :739 |
-| `SPECIAL_DEPT_CODE_MIN_LEN` | `4` |  | :750 |
-| `SPECIAL_DEPT_CODE_MAX_LEN` | `8` |  | :751 |
-| `SPECIAL_DEPT_ATTEMPTS_LIMIT` | `3` | ошибок кода подряд | :752 |
-| `SPECIAL_DEPT_BLOCK_MINUTES` | `1440` | бан на 24 часа после 3 ошибок | :753 |
-| `FISH_AP_COST` | `3` | стоимость одного заброса удочки | :756 |
-| `FISH_BAIT_MISS_SEAWEED_CHANCE` | `8` | % шанс вытащить водоросли при промахе с наживкой | :757 |
-| `RESERVOIR_AP_COST` | `5` |  | :762 |
-| `FISH_WEIGHTS` | `[{'key': 'small', 'label': 'Мелкая', 'mult': 1.0, 'chance': 40}, {'key': 'medium', 'label': 'Средняя', 'mult': 1.15, 'chance': 40}, {'key': 'large', 'label': 'Большая', 'mult': 1.25, 'chance': 20}]` |  | :767 |
-| `FISH_TREASURY_SALE_MULT` | `0.5` |  | :775 |
-| `FISH_TREASURY_DAILY_LIMIT` | `300` |  | :780 |
-| `FOREST_AP_COST` | `4` | запасной цена поиска, если у зоны нет ap_cost в БД | :783 |
-| `FOREST_RESULT_DELAY` | `(5, 10)` | результат поиска через 5–10 секунд | :786 |
-| `FOREST_SOLD_DAILY_LIMIT` | `250` |  | :791 |
-| `FOREST_ALLOW_TOURISTS` | `False` |  | :796 |
-| `FOREST_BOAR_PITY_TARGET` | `12` |  | :799 |
-| `FOREST_BOAR_CHANCE` | `4.0` |  | :803 |
-| `CALLSIGN_PRICE` | `500` |  | :805 |
-| `PILOT_BASE_HP` | `100` |  | :807 |
-| `FOREST_BOAR_HP` | `40` |  | :812 |
-| `FOREST_BOAR_DMG` | `(4, 7)` |  | :813 |
-| `FOREST_BOAR_DODGE` | `15` |  | :814 |
-| `FOREST_BOAR_LOSS_AP` | `10` |  | :816 |
-| `FOREST_BOAR_LOOT` | `[('Мясо кабана', 50), ('Шкура кабана', 20), ('Клык кабана', 10), ('', 20)]` |  | :818 |
-| `FOREST_WHITE_WOLF_HP` | `120` |  | :830 |
-| `FOREST_WHITE_WOLF_DMG` | `(7, 12)` |  | :831 |
-| `FOREST_WHITE_WOLF_DODGE` | `20` |  | :832 |
-| `FOREST_WHITE_WOLF_LOSS_AP` | `15` |  | :834 |
-| `FOREST_WHITE_WOLF_CHANCE` | `2.0` |  | :835 |
-| `FOREST_WHITE_WOLF_PITY_TARGET` | `36` |  | :838 |
-| `FOREST_WHITE_WOLF_BLEED_CHANCE` | `30` |  | :840 |
-| `FOREST_WHITE_WOLF_BLEED_DMG` | `3` |  | :841 |
-| `FOREST_WHITE_WOLF_AUTOWIN_HP` | `20` |  | :843 |
-| `FOREST_WHITE_WOLF_SMALL_BLESSING` | `'внимание севера'` |  | :845 |
-| `FOREST_WHITE_WOLF_BIG_BLESSING` | `'благословение севера'` |  | :846 |
-| `FOREST_BOAR_SEED` | `{'key': 'boar', 'spot': 'forest', 'name': 'Дикий кабан', 'hp': FOREST_BOAR_HP, 'dmg_min': FOREST_BOAR_DMG[0], 'dmg_max': FOREST_BOAR_DMG[1], 'dodge': FOREST_BOAR_DODGE, 'loss_ap': FOREST_BOAR_LOSS_…` |  | :853 |
-| `FOREST_WHITE_WOLF_SEED` | `{'key': 'white_wolf', 'spot': 'forest', 'name': 'Белый Волк Севера', 'hp': FOREST_WHITE_WOLF_HP, 'dmg_min': FOREST_WHITE_WOLF_DMG[0], 'dmg_max': FOREST_WHITE_WOLF_DMG[1], 'dodge': FOREST_WHITE_WOLF…` |  | :878 |
-| `FOREST_BERRY_BLUEBERRY` | `'Горсть черники'` |  | :906 |
-| `FOREST_BERRY_RASPBERRY` | `'Горсть малины'` |  | :907 |
-| `FOREST_BERRY_STRAWBERRY` | `'Горсть земляники'` |  | :908 |
-| `FOREST_BEAR_SKIN_NAME` | `'Шкура медведя'` |  | :909 |
-| `FOREST_BERRY_TABLE` | `{'glade': ((FOREST_BERRY_BLUEBERRY, 50),), 'clearing': ((FOREST_BERRY_BLUEBERRY, 40), (FOREST_BERRY_RASPBERRY, 25), (FOREST_BERRY_STRAWBERRY, 20), ('bear', 5), (FIRE_BERRY_NAME, 10))}` |  | :912 |
-| `FOREST_BEAR_SEED` | `{'key': 'bear', 'spot': 'forest', 'name': 'Медведь', 'hp': round(FOREST_BOAR_HP * 1.5), 'dmg_min': round(FOREST_BOAR_DMG[0] * 1.5), 'dmg_max': round(FOREST_BOAR_DMG[1] * 1.5), 'dodge': FOREST_BOAR_…` |  | :919 |
-| `CLAN_CAPE_NAME` | `'Клановая накидка'` |  | :941 |
-| `CLAN_CAPE_DODGE` | `2` | +% уклонения, пока накидка надета | :942 |
-| `MOLLUSK_SEED` | `{'key': 'mollusk', 'spot': 'reservoir', 'name': 'Мутировавший моллюск', 'hp': 24, 'dmg_min': 5, 'dmg_max': 9, 'dodge': 20, 'loss_ap': 12, 'chance': 4, 'pity_target': 0, 'reward_nm': 0, 'photo_key':…` |  | :945 |
-| `MOLLUSK_ITEM_SEEDS` | `[('Мясо моллюска', 'Плотное мясо мутировавшего моллюска. В сыром виде есть нельзя — прожарь на кухне.', 120, 60, 2, 'resource', 0), ('Жемчужина', 'Редчайшая жемчужина из раковины мутировавшего молл…` |  | :968 |
-| `MOLLUSK_ENEMY_DROPS` | `('Мясо моллюска', 'Жемчужина')` |  | :983 |
-| `MINE_AP_COST` | `12` | стоимость одной попытки добычи | :992 |
-| `MINE_BASE_CHANCE` | `30` | базовый шанс успеха без бонуса кирки | :993 |
-| `MINE_PICKAXE_BONUS_PER_RANK` | `15` | надбавка к шансу за ступень кирки (ранг 1 → +15%) | :994 |
-| `MINE_CHANCE_CAP` | `90` | потолок шанса успеха | :995 |
-| `MINE_RESULT_DELAY` | `(7, 15)` | результат добычи через 7–15 секунд | :996 |
-| `MINE_REQUIRED_STATUS` | `'pilot1'` | вход в копь — с «Пилота 1 класса» | :997 |
-| `MINE_GEM_CAP` | `1` | из самоцветов за бой выпадает не больше одного | :998 |
-| `MINE_PICKAXE_NAME` | `'Кирка'` |  | :999 |
-| `MINE_ORE_NAME` | `'Железная руда'` |  | :1000 |
-| `MINE_LEVEL2_ORE_TARGET` | `1000` |  | :1002 |
-| `MARKET_PACK_SIZES` | `{MINE_ORE_NAME: 5}` |  | :1010 |
-| `MINE_BAT_KEY` | `'bat'` |  | :1013 |
-| `MINE_BAT_SPOT` | `'iron'` |  | :1014 |
-| `MINE_BAT_CHANCE` | `7.0` |  | :1015 |
-| `MINE_BAT_PITY_TARGET` | `12` |  | :1016 |
-| `MINE_BAT_SEED` | `{'key': MINE_BAT_KEY, 'spot': MINE_BAT_SPOT, 'name': 'Летучая мышь', 'hp': 22, 'dmg_min': 3, 'dmg_max': 7, 'dodge': 35, 'loss_ap': 15, 'chance': MINE_BAT_CHANCE, 'pity_target': MINE_BAT_PITY_TARGET…` |  | :1021 |
-| `MINE_ITEM_SEEDS` | `[(MINE_PICKAXE_NAME, 'Простая кирка шахтёра: без неё в штольню не сунешься, а с ней порода поддаётся легче. Повышает шанс успешной добычи руды.', 300, 150, 1, 'mining', 0), (MINE_ORE_NAME, 'Кусок ж…` |  | :1047 |
-| `MINE_SHOP_ITEMS` | `(MINE_PICKAXE_NAME,)` |  | :1068 |
-| `MINE_ENEMY_DROPS` | `('Изумруд', 'Рубин', 'Сапфир')` |  | :1071 |
-| `ON_HIT_EFFECTS` | `{'bleed': {'emoji': '🩸', 'title': 'Кровотечение', 'until_battle_end': True, 'params': (('chance', 'Шанс наложить, %', 'percent'), ('dmg', 'Урон, HP за ход', 'int')), 'hint': 'Раны сочатся кровью ка…` |  | :1080 |
-| `ON_HIT_KIND_ORDER` | `('bleed', 'poison', 'frostbite', 'state', 'lifesteal', 'armor_pierce')` |  | :1144 |
-| `ON_HIT_STATE_ROUNDS` | `{'оглушён': 3, 'ослеплён': 4}` |  | :1146 |
-| `CLAN_ROLES` | `{'leader': '👑 Глава клана', 'seneschal': '🛡 Сенешаль клана', 'banner': '🚩 Знаменосец клана', 'elder': '⭐ Старшина', 'member': '▪️ Пилот клана'}` |  | :1152 |
-| `CLAN_ROLE_ORDER` | `('leader', 'seneschal', 'banner', 'elder', 'member')` |  | :1159 |
-| `LOGGING_AP_COST` | `12` | стоимость одной попытки рубки | :1165 |
-| `LOGGING_BASE_CHANCE` | `35` | базовый шанс успеха без бонуса топора | :1166 |
-| `LOGGING_AXE_BONUS_PER_RANK` | `15` | надбавка к шансу за ступень топора | :1167 |
-| `LOGGING_CHANCE_CAP` | `90` | потолок шанса успеха | :1168 |
-| `GATHER_BAG_SIZE` | `100` |  | :1171 |
-| `LOGGING_AXE_SLIP_CHANCE` | `2` | шанс, что топор отскочит пилоту в плечо, % (целое — карточка мешка) | :1172 |
-| `LOGGING_RESULT_DELAY` | `(7, 15)` | результат рубки через 7–15 секунд | :1173 |
-| `LOGGING_AXE_NAME` | `'Топор'` |  | :1174 |
-| `LOGGING_WOOD_NAME` | `'Бревна'` |  | :1175 |
-| `LOGGING_PLANK_NAME` | `'Доска'` |  | :1181 |
-| `LOGGING_FIREWOOD_NAME` | `'Пак дров'` |  | :1182 |
-| `LOGGING_PLANK_YIELD` | `3` | досок из одного бревна | :1183 |
-| `LOGGING_PLANK_FEE` | `15` | НМ за распил одного бревна (в казну) | :1184 |
-| `LOGGING_FIREWOOD_YIELD` | `3` | паков дров из одного бревна | :1185 |
-| `LOGGING_FIREWOOD_AP_COST` | `4` | ОД за рубку дров из одного бревна | :1186 |
-| `LOGGING_SNAKE_KEY` | `'snake'` |  | :1190 |
-| `LOGGING_OWL_KEY` | `'owl'` |  | :1191 |
-| `LOGGING_SPOT` | `'logging'` |  | :1192 |
-| `LOGGING_SNAKE_CHANCE` | `8.0` |  | :1193 |
-| `LOGGING_SNAKE_PITY_TARGET` | `10` |  | :1194 |
-| `LOGGING_OWL_CHANCE` | `3.0` |  | :1195 |
-| `LOGGING_OWL_PITY_TARGET` | `24` |  | :1196 |
-| `LOGGING_SNAKE_POISON_CHANCE` | `30` |  | :1198 |
-| `LOGGING_SNAKE_POISON_DMG` | `2` |  | :1199 |
-| `LOGGING_OWL_FLEE_HP` | `20` |  | :1203 |
-| `LOGGING_OWL_BLIND_CHANCE` | `30` |  | :1204 |
-| `LOGGING_OWL_BLIND_ROUNDS` | `4` |  | :1205 |
-| `LOGGING_SNAKE_SEED` | `{'key': LOGGING_SNAKE_KEY, 'spot': LOGGING_SPOT, 'name': 'Лесная змея', 'hp': 30, 'dmg_min': 4, 'dmg_max': 8, 'dodge': 25, 'loss_ap': 10, 'chance': LOGGING_SNAKE_CHANCE, 'pity_target': LOGGING_SNAK…` |  | :1209 |
-| `LOGGING_OWL_SEED` | `{'key': LOGGING_OWL_KEY, 'spot': LOGGING_SPOT, 'name': 'Неясыть', 'hp': 90, 'dmg_min': 7, 'dmg_max': 12, 'dodge': 30, 'loss_ap': 15, 'chance': LOGGING_OWL_CHANCE, 'pity_target': LOGGING_OWL_PITY_TA…` |  | :1239 |
-| `LOGGING_ITEM_SEEDS` | `[(LOGGING_AXE_NAME, 'Крепкий лесорубский топор: без него к срубам не подпустят. Повышает шанс успешной рубки деревьев.', 300, 150, 1, 'mining', 0), (LOGGING_WOOD_NAME, 'Свежие срубленные брёвна из …` |  | :1271 |
-| `LOGGING_SHOP_ITEMS` | `(LOGGING_AXE_NAME,)` |  | :1305 |
-| `LOGGING_ENEMY_DROPS` | `('Змеиная кожа', 'Змеиный яд', 'Совиное перо')` |  | :1308 |
-| `LOGGING_MARKET_RESOURCES` | `(LOGGING_PLANK_NAME, LOGGING_FIREWOOD_NAME)` |  | :1311 |
-| `REPORT_DAILY_LIMIT` | `3` |  | :1313 |
-| `REPORT_AUTO_APPROVE_TROOPS` | `100` |  | :1314 |
-| `NEWS_PUBLISH_BONUS` | `10` |  | :1318 |
-| `NEWS_PUBLISH_CAP` | `28` |  | :1319 |
-| `ROLE_SALARY_PAY_DAY` | `28` |  | :1322 |
-| `REPORT_DAILY_PAY_CAP` | `4000` |  | :1327 |
-| `REPORT_MAX_TROOPS` | `1000000` |  | :1328 |
-| `REPORT_MAX_REGION` | `38` | 0 = Столица, 1..38 регионы | :1329 |
-| `REJECTED_REPORTS_FRESH_DAYS` | `7` |  | :1333 |
-| `REJECTED_REPORTS_PAGE` | `8` |  | :1334 |
-| `WALL_TEXT_MAX_LEN` | `40` | лимит символов на одно изречение | :1337 |
-| `WALL_FREE_PER_DAY` | `2` | бесплатных сообщений в сутки | :1338 |
-| `WALL_PAID_STEPS` | `[(3, 30), (3, 90), (3, 200)]` | далее платные ступени: (кол-во, цена НМ) | :1339 |
-| `WALL_REVIEW_TOTAL` | `11` | максимум сообщений в сутки (2 + 3+3+3) | :1344 |
-| `WALL_PAGE_SIZE` | `5` | постов на страницу стены | :1345 |
-| `WALL_ARCHIVE_PAGE_SIZE` | `8` | записей архива стены на страницу списка | :1346 |
-| `REPORT_ARCHIVE_PAGE` | `8` | отчётов на страницу архива МВД и в «Моих отчётах» | :1349 |
-| `POLL_MAX_DAYS` | `10` | максимум дней, сколько живёт опрос. Не закрыл | :1352 |
-| `POLL_VISIBLE` | `4` | сколько новейших опросов висит в меню голосования. | :1355 |
-| `POLL_ARCHIVE_DAYS_PER_PAGE` | `5` | дней (дат) архива опросов на страницу списка | :1358 |
-| `POLL_ARCHIVE_PER_DAY` | `6` | опросов под одним заголовком-днём | :1359 |
-| `REP_SPEECH_MAX_LEN` | `100` | лимит символов одного обращения | :1362 |
-| `REP_SPEECH_PER_DAY` | `2` | обращений в сутки от представителя | :1363 |
-| `AUTO_PROMOTE_MAX_TROOPS` | `4040` |  | :1368 |
+| `ACTIVITY_XP_MINE_ORE` | `4` | удачный удар киркой (руда, огненная руда) до Старшего Сержанта | :489 |
+| `ACTIVITY_XP_MINE_ORE_SENIOR` | `2` | то же с Старшего Сержанта и выше | :490 |
+| `ACTIVITY_XP_LOGGING_WOOD` | `4` | удачная рубка (бревно) до Старшего Сержанта, сильное | :491 |
+| `ACTIVITY_XP_LOGGING_WOOD_SENIOR` | `2` | то же с Старшего Сержанта и выше | :492 |
+| `ACTIVITY_XP_FOREST_FIND` | `1` | найденный гриб или ягода, лёгкое | :493 |
+| `ACTIVITY_XP_FISH_CATCH` | `1` | удачная поклёвка в озере и водохранилище, лёгкое | :494 |
+| `ACTIVITY_XP_DUNGEON_ENEMY` | `1` | обычный враг в подземелье, сильное | :495 |
+| `ACTIVITY_XP_DUNGEON_BOSS` | `2` | капитан или король в подземелье, сильное | :496 |
+| `ACTIVITY_XP_BEASTS` | `{'boar': (1, False), 'bear': (2, False), 'mollusk': (1, True), 'bat': (1, True), 'snake': (1, True), 'owl': (1, True)}` |  | :500 |
+| `AUTO_RANK_NAMES` | `('Рекрут', 'Рядовой', 'Ефрейтор', 'Капрал', 'Сержант', 'Старший Сержант', 'Лейтенант', 'Старший Лейтенант')` |  | :510 |
+| `AWARD_MAX_SHOP_DISCOUNT` | `40` |  | :517 |
+| `AWARD_MIN_REPORT_TAX` | `5` |  | :518 |
+| `REPORT_TAX_MIN_PERCENT` | `5` |  | :520 |
+| `PASSPORT_CATEGORY` | `'documents'` |  | :526 |
+| `RANK_STATUS_TAGS` | `{'Ефрейтор': 'pilot2', 'Старший Сержант': 'pilot1', 'Старший Лейтенант': 'veteran', 'Майор': 'master_pilot', 'Полковник': 'ace'}` |  | :528 |
+| `LEGIONER_ACCESS_CAP_ORDER` | `5` |  | :541 |
+| `RANK_DAMAGE_TIERS` | `{'ace': (4, 8), 'master_pilot': (3, 5), 'veteran': (2, 4), 'pilot1': (1, 3), 'pilot2': (1, 2), 'recruit': (1, 1), 'tourist': (0, 1)}` |  | :547 |
+| `RANK_CRIT_CHANCE` | `{'ace': 7.5, 'master_pilot': 6.0, 'veteran': 4.5, 'pilot1': 3.0, 'pilot2': 1.5, 'recruit': 0.0, 'tourist': 0.0}` |  | :565 |
+| `PILOT_CRIT_MULT` | `1.4` |  | :579 |
+| `PILOT_NO_WEAPON_DMG` | `(1, 1)` |  | :582 |
+| `DUEL_ZONE_LABELS` | `{'head': 'Голова', 'body': 'Тело', 'hands': 'Руки', 'legs': 'Ноги'}` |  | :589 |
+| `DUEL_ZONE_EMOJI` | `{'head': '🧠', 'body': '🫀', 'hands': '✊', 'legs': '🦵'}` |  | :595 |
+| `DUEL_AP_COST` | `15` | списывается с обоих при старте боя | :601 |
+| `DUEL_RATING_WIN` | `2` | рейтинг за победу | :602 |
+| `DUEL_RATING_LOSS` | `-3` | рейтинг за поражение | :603 |
+| `DUEL_RATING_DRAW` | `0` | рейтинг за ничью | :604 |
+| `DUEL_RATING_FORFEIT` | `-1` | рейтинг тому, кто покинул бой («Покинуть дуэль») | :605 |
+| `DUEL_RATING_FORFEIT_WIN` | `1` | рейтинг сопернику, если противник покинул бой (меньше чистой победы) | :606 |
+| `DUEL_MIN_DAMAGE` | `1` | минимум урона за попавший (не уклонённый) удар | :607 |
+| `DUEL_GUARD_REDUCTION` | `0.5` | доля урона, остающаяся при угаданной зоне защиты | :608 |
+| `DUEL_HEAL_BETWEEN` | `0` | восстановление HP между раундами (пока нет) | :609 |
+| `DUEL_CHALLENGE_TIMEOUT_SEC` | `120` | сколько живёт неотвеченный вызов | :610 |
+| `DUEL_STALE_SEC` | `1800` | зависшая дуэль авто-завершается как void | :611 |
+| `DUEL_GLOVES_NAME` | `'Дуэльные перчатки'` |  | :612 |
+| `DUEL_GLOVES_DAMAGE` | `7` |  | :613 |
+| `DUEL_GLOVES_PRICE` | `200` |  | :614 |
+| `DUEL_GLOVES_SELL` | `100` |  | :615 |
+| `DUEL_CLUB_CARD_NAME` | `'Клубная карта «Дом Дуэлей»'` |  | :616 |
+| `DUEL_CLUB_CARD_PRICE` | `150` |  | :617 |
+| `DUEL_CLUB_CARD_SELL` | `75` |  | :618 |
+| `DUEL_CLUB_CARD_DAYS` | `30` |  | :619 |
+| `DUEL_ACCESS_TAG` | `'pilot2'` |  | :622 |
+| `RARITY_LEVELS` | `{1: 'Обычный', 2: 'Качественный', 3: 'Редкий', 4: 'Шедевр', 5: 'Легендарный'}` |  | :624 |
+| `SALE_CONFIRM_MIN_RARITY` | `3` |  | :633 |
+| `RARITY_EMOJI` | `{1: '⬜', 2: '🟩', 3: '🟦', 4: '🟪', 5: '🟧'}` |  | :635 |
+| `ITEM_CATEGORIES` | `{'documents': 'Документы', 'weapon': 'Оружие', 'consumable': 'Расходники', 'building': 'Недвижимость', 'housing': 'Жильё', 'furniture': 'Мебель и расширения', 'seeds': 'Семена', 'equipment': 'Одежд…` |  | :643 |
+| `MARKET_LICENSE_SLOTS` | `2` | доп. слоты при активной лицензии | :668 |
+| `MARKET_LICENSE_DAYS` | `30` | срок действия лицензии (дней) | :669 |
+| `MARKET_LICENSE_PRICE` | `500` | цена лицензии в НМ | :670 |
+| `DUNGEON_HEAL_HARD_LIMIT` | `10` | после этого — ×1/2 | :687 |
+| `DUNGEON_HEAL_SOFT_MULT` | `2 / 3` |  | :688 |
+| `DUNGEON_HEAL_HARD_MULT` | `1 / 2` |  | :689 |
+| `ESCAPE_HP_BONUS` | `20` |  | :704 |
+| `DUNGEON_SMOKE_ESCAPE` | `95` |  | :705 |
+| `DUNGEON_SMOKE_MAX` | `2` |  | :706 |
+| `DUNGEON_ESCAPE_DRUNK_MULT` | `0.5` |  | :709 |
+| `AP_MAX` | `150` |  | :711 |
+| `AP_DAILY_RECOVERY` | `100` |  | :712 |
+| `AP_BONUS_FROM_CONSUMABLE` | `50` |  | :713 |
+| `AP_DAILY_RESTORE_LIMIT` | `150` |  | :718 |
+| `AP_EXHAUSTED_MINUTES` | `2880` | 2 суток | :719 |
+| `AP_EXHAUSTED_DAILY_RECOVERY` | `75` | суточное восстановление в «истощении» | :720 |
+| `AP_EXHAUSTED_MAX_AP` | `90` | максимум ОД в «истощении» | :721 |
+| `FIRE_LANTERN_EXHAUST_REDUCE_PCT` | `50` |  | :723 |
+| `SEAWEED_DAILY_LIMIT` | `6` |  | :726 |
+| `DIGESTIVE_UPSET_MINUTES` | `1440` | 24 часа | :727 |
+| `ALCOHOL_WEAK_DRUNK_LIMIT` | `3` |  | :732 |
+| `ALCOHOL_WEAK_VERY_DRUNK_LIMIT` | `6` |  | :733 |
+| `ALCOHOL_STRONG_DRUNK_LIMIT` | `1` |  | :735 |
+| `ALCOHOL_STRONG_VERY_DRUNK_LIMIT` | `2` |  | :736 |
+| `DRUNK_MINUTES` | `60` |  | :737 |
+| `VERY_DRUNK_MINUTES` | `360` | 6 часов | :738 |
+| `DRINK_EFFECT_LABELS` | `{'alcohol_weak': '🍺 Слабоалкогольный: 3 шт/сутки — «пьян», 6 — «очень пьян»', 'alcohol_strong': '🥃 Крепкий алкоголь: 1 шт — «пьян», 2 — «очень пьян»', 'indigestion': '🤢 Вызывает «несварение» на сут…` |  | :741 |
+| `SPECIAL_DEPT_CODE_MIN_LEN` | `4` |  | :752 |
+| `SPECIAL_DEPT_CODE_MAX_LEN` | `8` |  | :753 |
+| `SPECIAL_DEPT_ATTEMPTS_LIMIT` | `3` | ошибок кода подряд | :754 |
+| `SPECIAL_DEPT_BLOCK_MINUTES` | `1440` | бан на 24 часа после 3 ошибок | :755 |
+| `FISH_AP_COST` | `3` | стоимость одного заброса удочки | :758 |
+| `FISH_BAIT_MISS_SEAWEED_CHANCE` | `8` | % шанс вытащить водоросли при промахе с наживкой | :759 |
+| `RESERVOIR_AP_COST` | `5` |  | :764 |
+| `FISH_WEIGHTS` | `[{'key': 'small', 'label': 'Мелкая', 'mult': 1.0, 'chance': 40}, {'key': 'medium', 'label': 'Средняя', 'mult': 1.15, 'chance': 40}, {'key': 'large', 'label': 'Большая', 'mult': 1.25, 'chance': 20}]` |  | :769 |
+| `FISH_TREASURY_SALE_MULT` | `0.5` |  | :777 |
+| `FISH_TREASURY_DAILY_LIMIT` | `500` |  | :783 |
+| `FRIED_FISH_NAMES` | `('Жареный сиг', 'Жареный муксун', 'Жареный чир', 'Жареный налим', 'Жареный сом', 'Жареный угорь', 'Жареный форель')` |  | :787 |
+| `FOREST_AP_COST` | `4` | запасной цена поиска, если у зоны нет ap_cost в БД | :793 |
+| `FOREST_RESULT_DELAY` | `(5, 10)` | результат поиска через 5–10 секунд | :796 |
+| `FOREST_SOLD_DAILY_LIMIT` | `250` |  | :801 |
+| `FOREST_ALLOW_TOURISTS` | `False` |  | :806 |
+| `FOREST_BOAR_PITY_TARGET` | `12` |  | :809 |
+| `FOREST_BOAR_CHANCE` | `4.0` |  | :813 |
+| `CALLSIGN_PRICE` | `500` |  | :815 |
+| `PILOT_BASE_HP` | `100` |  | :817 |
+| `FOREST_BOAR_HP` | `40` |  | :822 |
+| `FOREST_BOAR_DMG` | `(4, 7)` |  | :823 |
+| `FOREST_BOAR_DODGE` | `15` |  | :824 |
+| `FOREST_BOAR_LOSS_AP` | `10` |  | :826 |
+| `FOREST_BOAR_LOOT` | `[('Мясо кабана', 50), ('Шкура кабана', 20), ('Клык кабана', 10), ('', 20)]` |  | :828 |
+| `FOREST_WHITE_WOLF_HP` | `120` |  | :840 |
+| `FOREST_WHITE_WOLF_DMG` | `(7, 12)` |  | :841 |
+| `FOREST_WHITE_WOLF_DODGE` | `20` |  | :842 |
+| `FOREST_WHITE_WOLF_LOSS_AP` | `15` |  | :844 |
+| `FOREST_WHITE_WOLF_CHANCE` | `2.0` |  | :845 |
+| `FOREST_WHITE_WOLF_PITY_TARGET` | `36` |  | :848 |
+| `FOREST_WHITE_WOLF_BLEED_CHANCE` | `30` |  | :850 |
+| `FOREST_WHITE_WOLF_BLEED_DMG` | `3` |  | :851 |
+| `FOREST_WHITE_WOLF_AUTOWIN_HP` | `20` |  | :853 |
+| `FOREST_WHITE_WOLF_SMALL_BLESSING` | `'внимание севера'` |  | :855 |
+| `FOREST_WHITE_WOLF_BIG_BLESSING` | `'благословение севера'` |  | :856 |
+| `FOREST_BOAR_SEED` | `{'key': 'boar', 'spot': 'forest', 'name': 'Дикий кабан', 'hp': FOREST_BOAR_HP, 'dmg_min': FOREST_BOAR_DMG[0], 'dmg_max': FOREST_BOAR_DMG[1], 'dodge': FOREST_BOAR_DODGE, 'loss_ap': FOREST_BOAR_LOSS_…` |  | :863 |
+| `FOREST_WHITE_WOLF_SEED` | `{'key': 'white_wolf', 'spot': 'forest', 'name': 'Белый Волк Севера', 'hp': FOREST_WHITE_WOLF_HP, 'dmg_min': FOREST_WHITE_WOLF_DMG[0], 'dmg_max': FOREST_WHITE_WOLF_DMG[1], 'dodge': FOREST_WHITE_WOLF…` |  | :888 |
+| `FOREST_BERRY_BLUEBERRY` | `'Горсть черники'` |  | :916 |
+| `FOREST_BERRY_RASPBERRY` | `'Горсть малины'` |  | :917 |
+| `FOREST_BERRY_STRAWBERRY` | `'Горсть земляники'` |  | :918 |
+| `FOREST_BEAR_SKIN_NAME` | `'Шкура медведя'` |  | :919 |
+| `FOREST_BERRY_TABLE` | `{'glade': ((FOREST_BERRY_BLUEBERRY, 50),), 'clearing': ((FOREST_BERRY_BLUEBERRY, 40), (FOREST_BERRY_RASPBERRY, 25), (FOREST_BERRY_STRAWBERRY, 20), ('bear', 5), (FIRE_BERRY_NAME, 10))}` |  | :922 |
+| `FOREST_BEAR_SEED` | `{'key': 'bear', 'spot': 'forest', 'name': 'Медведь', 'hp': round(FOREST_BOAR_HP * 1.5), 'dmg_min': round(FOREST_BOAR_DMG[0] * 1.5), 'dmg_max': round(FOREST_BOAR_DMG[1] * 1.5), 'dodge': FOREST_BOAR_…` |  | :929 |
+| `CLAN_CAPE_NAME` | `'Клановая накидка'` |  | :951 |
+| `CLAN_CAPE_DODGE` | `2` | +% уклонения, пока накидка надета | :952 |
+| `MOLLUSK_SEED` | `{'key': 'mollusk', 'spot': 'reservoir', 'name': 'Мутировавший моллюск', 'hp': 24, 'dmg_min': 5, 'dmg_max': 9, 'dodge': 20, 'loss_ap': 12, 'chance': 4, 'pity_target': 0, 'reward_nm': 0, 'photo_key':…` |  | :955 |
+| `MOLLUSK_ITEM_SEEDS` | `[('Мясо моллюска', 'Плотное мясо мутировавшего моллюска. В сыром виде есть нельзя — прожарь на кухне.', 120, 60, 2, 'resource', 0), ('Жемчужина', 'Редчайшая жемчужина из раковины мутировавшего молл…` |  | :978 |
+| `MOLLUSK_ENEMY_DROPS` | `('Мясо моллюска', 'Жемчужина')` |  | :993 |
+| `MINE_AP_COST` | `12` | стоимость одной попытки добычи | :1002 |
+| `MINE_BASE_CHANCE` | `30` | базовый шанс успеха без бонуса кирки | :1003 |
+| `MINE_PICKAXE_BONUS_PER_RANK` | `15` | надбавка к шансу за ступень кирки (ранг 1 → +15%) | :1004 |
+| `MINE_CHANCE_CAP` | `90` | потолок шанса успеха | :1005 |
+| `MINE_RESULT_DELAY` | `(7, 15)` | результат добычи через 7–15 секунд | :1006 |
+| `MINE_REQUIRED_STATUS` | `'pilot1'` | вход в копь — с «Пилота 1 класса» | :1007 |
+| `MINE_GEM_CAP` | `1` | из самоцветов за бой выпадает не больше одного | :1008 |
+| `MINE_PICKAXE_NAME` | `'Кирка'` |  | :1009 |
+| `MINE_ORE_NAME` | `'Железная руда'` |  | :1010 |
+| `MINE_LEVEL2_ORE_TARGET` | `1000` |  | :1012 |
+| `MARKET_PACK_SIZES` | `{MINE_ORE_NAME: 5}` |  | :1020 |
+| `MINE_BAT_KEY` | `'bat'` |  | :1023 |
+| `MINE_BAT_SPOT` | `'iron'` |  | :1024 |
+| `MINE_BAT_CHANCE` | `7.0` |  | :1025 |
+| `MINE_BAT_PITY_TARGET` | `12` |  | :1026 |
+| `MINE_BAT_SEED` | `{'key': MINE_BAT_KEY, 'spot': MINE_BAT_SPOT, 'name': 'Летучая мышь', 'hp': 22, 'dmg_min': 3, 'dmg_max': 7, 'dodge': 35, 'loss_ap': 15, 'chance': MINE_BAT_CHANCE, 'pity_target': MINE_BAT_PITY_TARGET…` |  | :1031 |
+| `MINE_ITEM_SEEDS` | `[(MINE_PICKAXE_NAME, 'Простая кирка шахтёра: без неё в штольню не сунешься, а с ней порода поддаётся легче. Повышает шанс успешной добычи руды.', 300, 150, 1, 'mining', 0), (MINE_ORE_NAME, 'Кусок ж…` |  | :1057 |
+| `MINE_SHOP_ITEMS` | `(MINE_PICKAXE_NAME,)` |  | :1078 |
+| `MINE_ENEMY_DROPS` | `('Изумруд', 'Рубин', 'Сапфир')` |  | :1081 |
+| `ON_HIT_EFFECTS` | `{'bleed': {'emoji': '🩸', 'title': 'Кровотечение', 'until_battle_end': True, 'params': (('chance', 'Шанс наложить, %', 'percent'), ('dmg', 'Урон, HP за ход', 'int')), 'hint': 'Раны сочатся кровью ка…` |  | :1090 |
+| `ON_HIT_KIND_ORDER` | `('bleed', 'poison', 'frostbite', 'state', 'lifesteal', 'armor_pierce')` |  | :1154 |
+| `ON_HIT_STATE_ROUNDS` | `{'оглушён': 3, 'ослеплён': 4}` |  | :1156 |
+| `CLAN_ROLES` | `{'leader': '👑 Глава клана', 'seneschal': '🛡 Сенешаль клана', 'banner': '🚩 Знаменосец клана', 'elder': '⭐ Старшина', 'member': '▪️ Пилот клана'}` |  | :1162 |
+| `CLAN_ROLE_ORDER` | `('leader', 'seneschal', 'banner', 'elder', 'member')` |  | :1169 |
+| `LOGGING_AP_COST` | `12` | стоимость одной попытки рубки | :1175 |
+| `LOGGING_BASE_CHANCE` | `35` | базовый шанс успеха без бонуса топора | :1176 |
+| `LOGGING_AXE_BONUS_PER_RANK` | `15` | надбавка к шансу за ступень топора | :1177 |
+| `LOGGING_CHANCE_CAP` | `90` | потолок шанса успеха | :1178 |
+| `GATHER_BAG_SIZE` | `100` |  | :1181 |
+| `LOGGING_AXE_SLIP_CHANCE` | `2` | шанс, что топор отскочит пилоту в плечо, % (целое — карточка мешка) | :1182 |
+| `LOGGING_RESULT_DELAY` | `(7, 15)` | результат рубки через 7–15 секунд | :1183 |
+| `LOGGING_AXE_NAME` | `'Топор'` |  | :1184 |
+| `LOGGING_WOOD_NAME` | `'Бревна'` |  | :1185 |
+| `LOGGING_PLANK_NAME` | `'Доска'` |  | :1191 |
+| `LOGGING_FIREWOOD_NAME` | `'Пак дров'` |  | :1192 |
+| `LOGGING_PLANK_YIELD` | `3` | досок из одного бревна | :1193 |
+| `LOGGING_PLANK_FEE` | `15` | НМ за распил одного бревна (в казну) | :1194 |
+| `LOGGING_FIREWOOD_YIELD` | `3` | паков дров из одного бревна | :1195 |
+| `LOGGING_FIREWOOD_AP_COST` | `4` | ОД за рубку дров из одного бревна | :1196 |
+| `LOGGING_SNAKE_KEY` | `'snake'` |  | :1200 |
+| `LOGGING_OWL_KEY` | `'owl'` |  | :1201 |
+| `LOGGING_SPOT` | `'logging'` |  | :1202 |
+| `LOGGING_SNAKE_CHANCE` | `8.0` |  | :1203 |
+| `LOGGING_SNAKE_PITY_TARGET` | `10` |  | :1204 |
+| `LOGGING_OWL_CHANCE` | `3.0` |  | :1205 |
+| `LOGGING_OWL_PITY_TARGET` | `24` |  | :1206 |
+| `LOGGING_SNAKE_POISON_CHANCE` | `30` |  | :1208 |
+| `LOGGING_SNAKE_POISON_DMG` | `2` |  | :1209 |
+| `LOGGING_OWL_FLEE_HP` | `20` |  | :1213 |
+| `LOGGING_OWL_BLIND_CHANCE` | `30` |  | :1214 |
+| `LOGGING_OWL_BLIND_ROUNDS` | `4` |  | :1215 |
+| `LOGGING_SNAKE_SEED` | `{'key': LOGGING_SNAKE_KEY, 'spot': LOGGING_SPOT, 'name': 'Лесная змея', 'hp': 30, 'dmg_min': 4, 'dmg_max': 8, 'dodge': 25, 'loss_ap': 10, 'chance': LOGGING_SNAKE_CHANCE, 'pity_target': LOGGING_SNAK…` |  | :1219 |
+| `LOGGING_OWL_SEED` | `{'key': LOGGING_OWL_KEY, 'spot': LOGGING_SPOT, 'name': 'Неясыть', 'hp': 90, 'dmg_min': 7, 'dmg_max': 12, 'dodge': 30, 'loss_ap': 15, 'chance': LOGGING_OWL_CHANCE, 'pity_target': LOGGING_OWL_PITY_TA…` |  | :1249 |
+| `LOGGING_ITEM_SEEDS` | `[(LOGGING_AXE_NAME, 'Крепкий лесорубский топор: без него к срубам не подпустят. Повышает шанс успешной рубки деревьев.', 300, 150, 1, 'mining', 0), (LOGGING_WOOD_NAME, 'Свежие срубленные брёвна из …` |  | :1281 |
+| `LOGGING_SHOP_ITEMS` | `(LOGGING_AXE_NAME,)` |  | :1315 |
+| `LOGGING_ENEMY_DROPS` | `('Змеиная кожа', 'Змеиный яд', 'Совиное перо')` |  | :1318 |
+| `LOGGING_MARKET_RESOURCES` | `(LOGGING_PLANK_NAME, LOGGING_FIREWOOD_NAME)` |  | :1321 |
+| `REPORT_DAILY_LIMIT` | `3` |  | :1323 |
+| `REPORT_AUTO_APPROVE_TROOPS` | `100` |  | :1324 |
+| `NEWS_PUBLISH_BONUS` | `10` |  | :1328 |
+| `NEWS_PUBLISH_CAP` | `28` |  | :1329 |
+| `ROLE_SALARY_PAY_DAY` | `28` |  | :1332 |
+| `REPORT_DAILY_PAY_CAP` | `4000` |  | :1337 |
+| `REPORT_MAX_TROOPS` | `1000000` |  | :1338 |
+| `REPORT_MAX_REGION` | `38` | 0 = Столица, 1..38 регионы | :1339 |
+| `REJECTED_REPORTS_FRESH_DAYS` | `7` |  | :1343 |
+| `REJECTED_REPORTS_PAGE` | `8` |  | :1344 |
+| `WALL_TEXT_MAX_LEN` | `40` | лимит символов на одно изречение | :1347 |
+| `WALL_FREE_PER_DAY` | `2` | бесплатных сообщений в сутки | :1348 |
+| `WALL_PAID_STEPS` | `[(3, 30), (3, 90), (3, 200)]` | далее платные ступени: (кол-во, цена НМ) | :1349 |
+| `WALL_REVIEW_TOTAL` | `11` | максимум сообщений в сутки (2 + 3+3+3) | :1354 |
+| `WALL_PAGE_SIZE` | `5` | постов на страницу стены | :1355 |
+| `WALL_ARCHIVE_PAGE_SIZE` | `8` | записей архива стены на страницу списка | :1356 |
+| `REPORT_ARCHIVE_PAGE` | `8` | отчётов на страницу архива МВД и в «Моих отчётах» | :1359 |
+| `POLL_MAX_DAYS` | `10` | максимум дней, сколько живёт опрос. Не закрыл | :1362 |
+| `POLL_VISIBLE` | `4` | сколько новейших опросов висит в меню голосования. | :1365 |
+| `POLL_ARCHIVE_DAYS_PER_PAGE` | `5` | дней (дат) архива опросов на страницу списка | :1368 |
+| `POLL_ARCHIVE_PER_DAY` | `6` | опросов под одним заголовком-днём | :1369 |
+| `REP_SPEECH_MAX_LEN` | `100` | лимит символов одного обращения | :1372 |
+| `REP_SPEECH_PER_DAY` | `2` | обращений в сутки от представителя | :1373 |
+| `AUTO_PROMOTE_MAX_TROOPS` | `4040` |  | :1378 |
 
 ## Древо Пламенного Круговорота (клановое расширение 'tree')
 
@@ -400,47 +403,47 @@
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `PASSPORT_ITEM_NAME` | `'Паспорт Нордхайма'` |  | :523 |
+| `PASSPORT_ITEM_NAME` | `'Паспорт Нордхайма'` |  | :525 |
 
 ## Дом Дуэлей (PvP-арена)
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `DUEL_ZONES` | `('head', 'body', 'hands', 'legs')` |  | :586 |
+| `DUEL_ZONES` | `('head', 'body', 'hands', 'legs')` |  | :588 |
 
 ## Рынок: слоты продажи
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `MARKET_BASE_SLOTS` | `1` | слоты без лицензии | :665 |
+| `MARKET_BASE_SLOTS` | `1` | слоты без лицензии | :667 |
 
 ## Налог на недвижимость (НМ/мес)
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `HOUSING_TAX` | `{'municipal': 0, 'studio': 20, 'apartment': 35, 'improved': 60, 'mansion': 100}` |  | :671 |
+| `HOUSING_TAX` | `{'municipal': 0, 'studio': 20, 'apartment': 35, 'improved': 60, 'mansion': 100}` |  | :673 |
 
 ## Банк: лимит счёта туриста (НМ)
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `TOURIST_BALANCE_LIMIT` | `200` |  | :681 |
+| `TOURIST_BALANCE_LIMIT` | `200` |  | :683 |
 
 ## Данж: лимит хила (количество применений за забег)
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `DUNGEON_HEAL_SOFT_LIMIT` | `6` | после этого — ×2/3 | :684 |
+| `DUNGEON_HEAL_SOFT_LIMIT` | `6` | после этого — ×2/3 | :686 |
 
 ## Сброс протухших забегов подземелья
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `DUNGEON_RUN_STALE_SEC` | `3600` |  | :693 |
+| `DUNGEON_RUN_STALE_SEC` | `3600` |  | :695 |
 
 ## Данж: побег и дымовая шашка
 
 | Константа | Значение | Комментарий | config.py |
 |---|---|---|---|
-| `ESCAPE_BASE_CHANCE` | `25` |  | :701 |
+| `ESCAPE_BASE_CHANCE` | `25` |  | :703 |
 

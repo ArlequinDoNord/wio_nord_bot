@@ -71,6 +71,18 @@ async def run():
         check("медведь сильный, 2 XP", ACTIVITY_XP_BEASTS["bear"] == (2, False))
         check("летучая мышь лёгкая", ACTIVITY_XP_BEASTS["bat"][1] is True)
         check("змея лёгкая", ACTIVITY_XP_BEASTS["snake"][1] is True)
+        check("волк опыта не даёт (благословение)", "white_wolf" not in ACTIVITY_XP_BEASTS)
+
+        # 4б. Рубка и шахта: 4 до Старшего Сержанта, 2 с него
+        from config import ACTIVITY_XP_MINE_ORE, ACTIVITY_XP_MINE_ORE_SENIOR
+        check("шахта до звания 4", ACTIVITY_XP_MINE_ORE == 4)
+        check("шахта с звания 2", ACTIVITY_XP_MINE_ORE_SENIOR == 2)
+        await update_user(NOVICE, troops=1000, xp_balance=1000)
+        r = await grant_activity_xp(NOVICE, 4, senior_amount=2)
+        check("до Старшего Сержанта начисляется 4", r['granted'] == 4)
+        await update_user(SENIOR, troops=1500, xp_balance=1500)
+        r = await grant_activity_xp(SENIOR, 4, senior_amount=2)
+        check("с Старшего Сержанта начисляется 2", r['granted'] == 2)
 
         # 5. Строка опыта за медведя (ru)
         await update_user(LIGHT_OK, troops=0, xp_balance=0)

@@ -1864,6 +1864,7 @@ async def init_db():
     await _migrate_enemy_on_hit_effects()
     # v0.38.1: ребаланс водохранилища (цены форели + веса пула).
     await _migrate_reservoir_balance()
+    await _migrate_fried_fish_prices()
     # Клан-холл: фото готового здания (добавляет клан, админ проставляет)
     await _ensure_column(conn, "clan_buildings", "building_photo_file_id", "TEXT")
     for _col in ("photo_dawn", "photo_day", "photo_sunset", "photo_night"):
@@ -1919,6 +1920,27 @@ async def _migrate_reservoir_balance():
                 "WHERE water = 'reservoir' AND item_id = ? "
                 "AND day_weight = ? AND night_weight = ?",
                 (new_w, new_w, item['id'], old_w, old_w))
+    await conn.commit()
+
+
+async def _migrate_fried_fish_prices():
+    """Жареная рыба продаётся по цене сырой рыбы из каталога (не дороже).
+
+    Раньше жареный сом продавался за 260 при сыром за 120, и это давало основной
+    поток НМ мимо суточного лимита. Меняем только строки со старой ценой
+    (идемпотентно при каждом старте, админские правки на другие числа не трогаем).
+    """
+    conn = await get_db()
+    fix = [
+        ("Жареный сиг", 30, 15), ("Жареный муксун", 70, 35),
+        ("Жареный чир", 150, 80), ("Жареный налим", 220, 120),
+        ("Жареный сом", 260, 120), ("Жареный угорь", 425, 250),
+        ("Жареный форель", 600, 450),
+    ]
+    for name, old_sell, new_sell in fix:
+        await conn.execute(
+            "UPDATE items SET sell_price = ? WHERE name = ? AND sell_price = ?",
+            (new_sell, name, old_sell))
     await conn.commit()
 
 
@@ -6192,15 +6214,17 @@ async def _apply_report_payout(conn, user_id: int, report_ids: list, troops_tota
     }
 
 
-async def grant_activity_xp(user_id: int, amount: int, light: bool = False) -> dict:
+async def grant_activity_xp(user_id: int, amount: int, light: bool = False,
+                             senior_amount: int = None) -> dict:
     """Опыт за обычные активности: звание (troops) и xp_balance одновременно.
 
     Ограничения: суточный лимит ACTIVITY_XP_DAILY_CAP на все активности вместе
     (сутки — игровые, как у отчётов), потолок MAX_SELF_RANK_TROOPS (выше опыт
-    за активности не растёт), туристам опыт не начисляется. Лёгкие действия
-    (light=True) не дают опыт с ACTIVITY_XP_LIGHT_CUTOFF_RANK и выше. Отчёты эти
-    ограничения не касаются. Возвращает {'granted': N, 'limit_hit': bool};
-    limit_hit=True только первый раз за сутки, чтобы сообщение не повторялось.
+    за активности не растёт), туристам опыт не начисляется. С звания
+    ACTIVITY_XP_LIGHT_CUTOFF_RANK лёгкие действия (light=True) опыт не дают, а
+    действия с senior_amount получают эту (меньшую) сумму. Отчёты эти ограничения
+    не касаются. Возвращает {'granted': N, 'limit_hit': bool}; limit_hit=True
+    только первый раз за сутки, чтобы сообщение не повторялось.
     """
     from config import (ACTIVITY_XP_DAILY_CAP, MAX_SELF_RANK_TROOPS,
                         ACTIVITY_XP_LIGHT_CUTOFF_RANK, RANKS)
@@ -6213,11 +6237,13 @@ async def grant_activity_xp(user_id: int, amount: int, light: bool = False) -> d
     u = await cur.fetchone()
     if not u:
         return empty
-    if light:
-        order = [name for name, _ in RANKS]
-        current = get_effective_rank(u['troops'] or 0, u['promoted_rank'])
-        if order.index(current) >= order.index(ACTIVITY_XP_LIGHT_CUTOFF_RANK):
-            return empty
+    order = [name for name, _ in RANKS]
+    current = get_effective_rank(u['troops'] or 0, u['promoted_rank'])
+    senior = order.index(current) >= order.index(ACTIVITY_XP_LIGHT_CUTOFF_RANK)
+    if light and senior:
+        return empty
+    if senior and senior_amount is not None:
+        amount = int(senior_amount)
     day = today_report_day()
     cur = await conn.execute(
         "SELECT amount, limit_notified FROM activity_xp_daily WHERE user_id = ? AND day = ?",
@@ -8993,6 +9019,13 @@ async def fish_sale_daily_left(user_id: int) -> bool:
         await conn.commit()
         return True
     return (user['fish_sold_today'] or 0) < FISH_TREASURY_DAILY_LIMIT
+
+
+async def fish_treasury_left(user_id: int) -> int:
+    """Сколько НМ ещё можно выручить казне за рыбу (сырую и жареную) сегодня."""
+    from config import FISH_TREASURY_DAILY_LIMIT
+    await fish_sale_daily_left(user_id)
+    return max(0, FISH_TREASURY_DAILY_LIMIT - await fish_sold_today(user_id))
 
 
 async def add_fish_sale_amount(user_id: int, amount: int):
@@ -13981,13 +14014,13 @@ async def ensure_life_items():
         ("Лапка паука", "Высушенная лапка обычного паука. Ингредиент для комбинированной наживки.",
          10, 5, 1, "resource", 0, 0, None, 0),
         ("Жареный сиг", "Жаренный на углях сиг. +15 HP в бою. Срок годности 4 суток.",
-         60, 30, 1, "consumable", -1, 15, None, 0),
+         60, 15, 1, "consumable", -1, 15, None, 0),
         ("Жареный муксун", "Нежный жареный муксун. +30 HP в бою. Срок годности 4 суток.",
-         140, 70, 2, "consumable", -1, 30, None, 0),
+         140, 35, 2, "consumable", -1, 30, None, 0),
         ("Жареный чир", "Деликатес: жареный чир. +45 HP в бою. Срок годности 4 суток.",
-         300, 150, 3, "consumable", -1, 45, None, 0),
+         300, 80, 3, "consumable", -1, 45, None, 0),
         ("Жареный налим", "Праздничный ужин: жареный налим. +55 HP в бою. Срок годности 4 суток.",
-         440, 220, 3, "consumable", -1, 55, None, 0),
+         440, 120, 3, "consumable", -1, 55, None, 0),
         (config.FIRE_SPOILED_FOOD_NAME, "Протухшая еда всех видов. Слегка восстанавливает HP, но навлекает несварение.",
          1, 0, 1, "consumable", -1, 5, None, 0),
         ("Яблоко", "Свежее яблоко из кадки. +15 HP в бою. Иногда из него выпадает семечко.",
@@ -14139,11 +14172,11 @@ async def ensure_dungeon_reservoir_items():
     # (имя, описание, цена, продажа, рарность, heal)
     reservoir_fried = (
         ("Жареный сом", "Жареный сом со специями и водорослями. +65 HP в бою подземелья. Срок годности 4 суток.",
-         520, 260, 2, 65),
+         520, 120, 2, 65),
         ("Жареный угорь", "Хрустящий жареный угорь с водорослями. +90 HP в бою подземелья. Срок годности 4 суток.",
-         850, 425, 3, 90),
+         850, 250, 3, 90),
         ("Жареный форель", "Светящаяся форель, пожаренная до золотой корочки. +140 HP в бою подземелья. Срок годности 4 суток.",
-         1200, 600, 4, 140),
+         1200, 450, 4, 140),
     )
     for (iname, idesc, iprice, isell, irarity, iheal) in reservoir_fried:
         cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (iname,))

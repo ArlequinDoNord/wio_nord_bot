@@ -440,9 +440,9 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `target` | `bot/handlers/inventory.py:1731` `inv_transfer_start` | `bot/handlers/inventory.py:1740` `inv_transfer_target` |
-| `amount` | `bot/handlers/inventory.py:1747` `inv_transfer_target` | `bot/handlers/inventory.py:1755` `inv_transfer_amount` |
-| `message` | `bot/handlers/inventory.py:1787` `inv_transfer_amount` | `bot/handlers/inventory.py:1796` `inv_transfer_message` |
+| `target` | `bot/handlers/inventory.py:1766` `inv_transfer_start` | `bot/handlers/inventory.py:1775` `inv_transfer_target` |
+| `amount` | `bot/handlers/inventory.py:1782` `inv_transfer_target` | `bot/handlers/inventory.py:1790` `inv_transfer_amount` |
+| `message` | `bot/handlers/inventory.py:1822` `inv_transfer_amount` | `bot/handlers/inventory.py:1831` `inv_transfer_message` |
 
 ### `KgbPassport` — `bot/handlers/kgb.py`
 
@@ -1098,8 +1098,8 @@
 - `fish:cast:\d+$`: `bot/handlers/fishing.py:573`
 - `fish:lake:\d+$`: `bot/handlers/fishing.py:500`
 - `fishbuy:`: `bot/handlers/shop.py:839`
-- `fishcatch:`: `bot/handlers/inventory.py:1362`
-- `fishgo:`: `bot/handlers/inventory.py:1613`
+- `fishcatch:`: `bot/handlers/inventory.py:1397`
+- `fishgo:`: `bot/handlers/inventory.py:1648`
 - `fishing:addfish:`: `bot/handlers/admin.py:8065`
 - `fishing:addlist:`: `bot/handlers/admin.py:8035`
 - `fishing:del:`: `bot/handlers/admin.py:8088`
@@ -1117,11 +1117,11 @@
 - `fishing_jx:new:`: `bot/handlers/admin.py:7818`
 - `fishing_jx:pick:`: `bot/handlers/admin.py:7770`
 - `fishing_jx:pool:`: `bot/handlers/admin.py:7741`
-- `fishmarket:`: `bot/handlers/inventory.py:1515`
+- `fishmarket:`: `bot/handlers/inventory.py:1550`
 - `fishoffer:`: `bot/handlers/shop.py:764`
-- `fishprice:`: `bot/handlers/inventory.py:1595`
-- `fishsell:`: `bot/handlers/inventory.py:1671`
-- `fishuse:`: `bot/handlers/inventory.py:1370`
+- `fishprice:`: `bot/handlers/inventory.py:1630`
+- `fishsell:`: `bot/handlers/inventory.py:1706`
+- `fishuse:`: `bot/handlers/inventory.py:1405`
 - `forest:add:`: `bot/handlers/admin.py:8818`
 - `forest:area:\d+:(glade|clearing)$`: `bot/handlers/forest.py:448`
 - `forest:battle:flee:\d+$`: `bot/handlers/forest.py:1195`
@@ -1172,23 +1172,23 @@
 - `http`: `bot/handlers/library.py:360`
 - `inv_equip:`: `bot/handlers/inventory.py:837`
 - `inv_sell:`: `bot/handlers/inventory.py:972`
-- `inv_sell_ask:`: `bot/handlers/inventory.py:1070`
+- `inv_sell_ask:`: `bot/handlers/inventory.py:1097`
 - `inv_sell_keep1:`: `bot/handlers/inventory.py:992`
-- `inv_sell_ok:`: `bot/handlers/inventory.py:1092`
+- `inv_sell_ok:`: `bot/handlers/inventory.py:1119`
 - `inv_sellall:`: `bot/handlers/inventory.py:982`
-- `inv_sellmore:`: `bot/handlers/inventory.py:1202`
+- `inv_sellmore:`: `bot/handlers/inventory.py:1237`
 - `inv_slot:`: `bot/handlers/inventory.py:891`
-- `inv_transfer:`: `bot/handlers/inventory.py:1703`
+- `inv_transfer:`: `bot/handlers/inventory.py:1738`
 - `inv_unequip:`: `bot/handlers/inventory.py:867`
 - `inv_unslot:`: `bot/handlers/inventory.py:926`
 - `inv_use:`: `bot/handlers/inventory.py:948`
 - `inventory:cat:[^:]+$`: `bot/handlers/inventory.py:628`
 - `invitem:`: `bot/handlers/inventory.py:830`
 - `itembuy:`: `bot/handlers/shop.py:968`
-- `itemgo:`: `bot/handlers/inventory.py:1300`
-- `itemmarket:`: `bot/handlers/inventory.py:1210`
+- `itemgo:`: `bot/handlers/inventory.py:1335`
+- `itemmarket:`: `bot/handlers/inventory.py:1245`
 - `itemoffer:`: `bot/handlers/shop.py:900`
-- `itemprice:`: `bot/handlers/inventory.py:1289`
+- `itemprice:`: `bot/handlers/inventory.py:1324`
 - `kgb:pick:`: `bot/handlers/kgb.py:193`
 - `kgb:sex:`: `bot/handlers/kgb.py:291`
 - `kgb:user:`: `bot/handlers/kgb.py:208`
@@ -1212,13 +1212,13 @@
 - `location:enter:`: `bot/handlers/locations.py:113`
 - `location:preview:`: `bot/handlers/locations.py:42`
 - `locstat:`: `bot/handlers/admin.py:5785`
-- `logsite:battle:flee:\d+$`: `bot/handlers/logging_site.py:1055`
-- `logsite:battle:hit:\d+$`: `bot/handlers/logging_site.py:856`
+- `logsite:battle:flee:\d+$`: `bot/handlers/logging_site.py:1056`
+- `logsite:battle:hit:\d+$`: `bot/handlers/logging_site.py:857`
 - `logsite:chop:\d+$`: `bot/handlers/logging_site.py:456`
-- `logsite:fire:(1|all):\d+$`: `bot/handlers/logging_site.py:710`
+- `logsite:fire:(1|all):\d+$`: `bot/handlers/logging_site.py:711`
 - `logsite:menu:\d+$`: `bot/handlers/logging_site.py:441`
-- `logsite:mill:\d+$`: `bot/handlers/logging_site.py:597`
-- `logsite:plank:(1|all):\d+$`: `bot/handlers/logging_site.py:650`
+- `logsite:mill:\d+$`: `bot/handlers/logging_site.py:598`
+- `logsite:plank:(1|all):\d+$`: `bot/handlers/logging_site.py:651`
 - `lootonly:`: `bot/handlers/admin.py:1756`
 - `marketok:`: `bot/handlers/admin.py:1734`
 - `mine:battle:flee:\d+$`: `bot/handlers/mine.py:740`

@@ -570,9 +570,10 @@ async def logging_chop(callback: CallbackQuery):
                 if wood['sell_price'] > 0:
                     sell_line = _tr2("logging.res.wood_sell", price=wood['sell_price'],
                                      money=plural_nordmark(wood['sell_price']))
-                from config import ACTIVITY_XP_LOGGING_WOOD
+                from config import ACTIVITY_XP_LOGGING_WOOD, ACTIVITY_XP_LOGGING_WOOD_SENIOR
                 from utils.activity_xp import activity_xp_line
-                xp = await activity_xp_line(user_id, ACTIVITY_XP_LOGGING_WOOD)
+                xp = await activity_xp_line(user_id, ACTIVITY_XP_LOGGING_WOOD,
+                                            senior_amount=ACTIVITY_XP_LOGGING_WOOD_SENIOR)
                 text = _tr2("logging.res.wood", head=head, name=wood['name'],
                             sell_line=sell_line) + ap_block + xp
             else:

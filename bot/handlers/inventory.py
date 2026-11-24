@@ -15,7 +15,7 @@ from database.db import (
     get_fish_catches, take_fish_catch, sell_one_fish_catch, get_active_run,
     process_food_expiry, add_fish_offer, add_fish_catch, RAW_FISH_SHELF_SEC,
     place_item_offer,
-    fish_sale_daily_left, add_fish_sale_amount, fish_sold_today,
+    fish_sale_daily_left, add_fish_sale_amount, fish_sold_today, fish_treasury_left,
     is_forest_mushroom, forest_sale_daily_left, add_forest_sale_amount,
     get_market_slots_info,
     item_fits_slot, ARMOR_SLOTS, EQUIPMENT_SLOT_LABELS, EQUIPMENT_LOCKED_SLOTS,
@@ -31,7 +31,7 @@ from utils.helpers import (
     row_get,
 )
 from keyboards.keyboards import cancel_keyboard, main_menu_kb
-from config import TOURIST_BOOKLET_NAME, PASSPORT_CATEGORY
+from config import TOURIST_BOOKLET_NAME, PASSPORT_CATEGORY, FRIED_FISH_NAMES
 from utils.localization import t
 
 router = Router()
@@ -1002,6 +1002,26 @@ async def inv_sell_keep1(callback: CallbackQuery):
     await _sell_confirm(callback, item_id, inv['quantity'] - 1)
 
 
+async def _fried_fish_cap(user_id: int, item, qty: int) -> tuple:
+    """Лимит казны на жареную рыбу: (qty, текст примечания, текст ошибки).
+
+    Жареная рыба идёт в тот же суточный лимит, что и сырая (FISH_TREASURY_DAILY_LIMIT).
+    """
+    from config import FISH_TREASURY_DAILY_LIMIT
+    left = await fish_treasury_left(user_id)
+    if left <= 0:
+        return 0, "", (f"🚫 Суточный лимит выкупа рыбы ({FISH_TREASURY_DAILY_LIMIT} НМ) исчерпан. "
+                       f"Продажа возобновится завтра.")
+    max_by_cap = left // item['sell_price'] if item['sell_price'] > 0 else qty
+    if max_by_cap <= 0:
+        return 0, "", f"🚫 Остаток лимита {left} НМ не хватает даже на 1 шт. Продажа — завтра."
+    if qty > max_by_cap:
+        note = (f"\n\n🚫 Казна выкупает рыбу до {FISH_TREASURY_DAILY_LIMIT} НМ в сутки — "
+                f"продать можно не больше {max_by_cap} шт. Остальное — завтра или на рынок.")
+        return max_by_cap, note, ""
+    return qty, "", ""
+
+
 async def _sell_confirm(callback: CallbackQuery, item_id: int, qty: int):
     """Подтверждение продажи: сколько и за сколько, перед списанием."""
     user_id = callback.from_user.id
@@ -1033,6 +1053,13 @@ async def _sell_confirm(callback: CallbackQuery, item_id: int, qty: int):
             cap_note = (f"\n\n🚫 Сегодня казна покупает грибы до "
                         f"{FOREST_SOLD_DAILY_LIMIT} НМ в сутки — продать можно "
                         f"не больше {qty} шт. Остальное — завтра или на рынок.")
+
+    if item['name'] in FRIED_FISH_NAMES:
+        qty, fried_note, fried_err = await _fried_fish_cap(user_id, item, qty)
+        if fried_err:
+            await callback.answer(fried_err, show_alert=True)
+            return
+        cap_note = fried_note
 
     # Занятые слотом экземпляры продать нельзя (иначе останется «призрачный слот»);
     # продаются только лишние, сверх надетых/занятых.
@@ -1138,6 +1165,12 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
         if qty > max_by_cap:
             qty = max_by_cap
             cap_note = f"\n\n🚫 Уложились в остаток суточного лимита грибов."
+    if item['name'] in FRIED_FISH_NAMES:
+        qty, fried_note, fried_err = await _fried_fish_cap(user_id, item, qty)
+        if fried_err:
+            await callback.answer(fried_err, show_alert=True)
+            return
+        cap_note = fried_note
     # Отвечаем ровно один раз: с текстом, если продажа ужалась по лимиту.
     if cap_note:
         await callback.answer(cap_note.strip(), show_alert=True)
@@ -1150,6 +1183,8 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
     await log_activity(user_id, "shop_sale", f"Продал «{item['name']}» x{qty} за {total} НМ")
     if await is_forest_mushroom(item):
         await add_forest_sale_amount(user_id, total)
+    if item['name'] in FRIED_FISH_NAMES:
+        await add_fish_sale_amount(user_id, total)
 
     # Городские склады: проданные казне ресурсы не исчезают — казна складывает
     # их на городской склад (позже пойдут на строительство).
