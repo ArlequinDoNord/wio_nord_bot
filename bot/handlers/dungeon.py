@@ -438,6 +438,8 @@ async def mollusk_hit(callback: CallbackQuery, state: FSMContext):
         await log_activity(user_id, "dungeon_reservoir", f"Победил: {name}")
         await bump_achievement(user_id, "monsters", 1)
         text = _LT("mollusk.win", pre=dot_note + regen_note + hit_line, loot=loot_line)
+        from utils.activity_xp import beast_xp_line
+        text += await beast_xp_line(user_id, "mollusk")
         await clear_dungeon_regen(state)
         step = await dungeon_new_step(state)
         await _reservoir_answer_result(callback, text, _reservoir_result_markup(step), enemy)
@@ -2223,7 +2225,7 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                         name_line = _LT("resv.catch.catfish")
                     from config import ACTIVITY_XP_FISH_CATCH
                     from utils.activity_xp import activity_xp_line
-                    xp = await activity_xp_line(user_id, ACTIVITY_XP_FISH_CATCH)
+                    xp = await activity_xp_line(user_id, ACTIVITY_XP_FISH_CATCH, light=True)
                     result = _LT(
                         "resv.catch.hit", emoji=RESERVOIR_EMOJI.get(fish_name, '🐟'), fish=fish_name,
                         tier=tier['label'].lower(), name_line=name_line, sell=sell,

@@ -483,12 +483,26 @@ MAX_SELF_RANK_TROOPS = 4040
 # суточный лимит на все активности вместе, сброс в 10:00 МСК. Выше порога
 # MAX_SELF_RANK_TROOPS опыт за активности не начисляется.
 ACTIVITY_XP_DAILY_CAP = 50
-ACTIVITY_XP_MINE_ORE = 4          # удачный удар киркой (руда, огненная руда)
-ACTIVITY_XP_LOGGING_WOOD = 4      # удачная рубка (доски-сырьё: бревно)
-ACTIVITY_XP_FOREST_FIND = 1       # найденный гриб или ягода
-ACTIVITY_XP_FISH_CATCH = 1        # удачная поклёвка в озере и водохранилище
-ACTIVITY_XP_DUNGEON_ENEMY = 1     # обычный враг в подземелье
-ACTIVITY_XP_DUNGEON_BOSS = 2      # капитан или король в подземелье
+# С этого звания «лёгкие» действия (руда, грибы, рыба, слабые враги) опыт не дают.
+# Остаются рубка и сильные враги: опыт на старшие звания идёт только с них.
+ACTIVITY_XP_LIGHT_CUTOFF_RANK = "Старший Сержант"
+ACTIVITY_XP_MINE_ORE = 2          # удачный удар киркой (руда, огненная руда), лёгкое
+ACTIVITY_XP_LOGGING_WOOD = 2      # удачная рубка (бревно), сильное
+ACTIVITY_XP_FOREST_FIND = 1       # найденный гриб или ягода, лёгкое
+ACTIVITY_XP_FISH_CATCH = 1        # удачная поклёвка в озере и водохранилище, лёгкое
+ACTIVITY_XP_DUNGEON_ENEMY = 1     # обычный враг в подземелье, сильное
+ACTIVITY_XP_DUNGEON_BOSS = 2      # капитан или король в подземелье, сильное
+# Бои с полевыми зверями: ключ врага → (опыт, лёгкое). Лёгкое — не даёт опыт
+# с ACTIVITY_XP_LIGHT_CUTOFF_RANK.
+ACTIVITY_XP_BEASTS = {
+    "boar": (1, False),
+    "white_wolf": (1, False),
+    "bear": (2, False),
+    "mollusk": (1, True),
+    "bat": (1, True),
+    "snake": (1, True),
+    "owl": (1, True),
+}
 
 # Автоматические звания (присваиваются по войскам без участия админа).
 AUTO_RANK_NAMES = ("Рекрут", "Рядовой", "Ефрейтор", "Капрал", "Сержант",

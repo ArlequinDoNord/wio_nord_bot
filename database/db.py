@@ -6192,16 +6192,18 @@ async def _apply_report_payout(conn, user_id: int, report_ids: list, troops_tota
     }
 
 
-async def grant_activity_xp(user_id: int, amount: int) -> dict:
+async def grant_activity_xp(user_id: int, amount: int, light: bool = False) -> dict:
     """Опыт за обычные активности: звание (troops) и xp_balance одновременно.
 
     Ограничения: суточный лимит ACTIVITY_XP_DAILY_CAP на все активности вместе
     (сутки — игровые, как у отчётов), потолок MAX_SELF_RANK_TROOPS (выше опыт
-    за активности не растёт), туристам опыт не начисляется. Отчёты эти ограничения
-    не касаются. Возвращает {'granted': N, 'limit_hit': bool}; limit_hit=True
-    только первый раз за сутки, чтобы сообщение о лимите не повторялось.
+    за активности не растёт), туристам опыт не начисляется. Лёгкие действия
+    (light=True) не дают опыт с ACTIVITY_XP_LIGHT_CUTOFF_RANK и выше. Отчёты эти
+    ограничения не касаются. Возвращает {'granted': N, 'limit_hit': bool};
+    limit_hit=True только первый раз за сутки, чтобы сообщение не повторялось.
     """
-    from config import ACTIVITY_XP_DAILY_CAP, MAX_SELF_RANK_TROOPS
+    from config import (ACTIVITY_XP_DAILY_CAP, MAX_SELF_RANK_TROOPS,
+                        ACTIVITY_XP_LIGHT_CUTOFF_RANK, RANKS)
     empty = {'granted': 0, 'limit_hit': False}
     amount = int(amount or 0)
     if amount <= 0 or await user_is_tourist(user_id):
@@ -6211,6 +6213,11 @@ async def grant_activity_xp(user_id: int, amount: int) -> dict:
     u = await cur.fetchone()
     if not u:
         return empty
+    if light:
+        order = [name for name, _ in RANKS]
+        current = get_effective_rank(u['troops'] or 0, u['promoted_rank'])
+        if order.index(current) >= order.index(ACTIVITY_XP_LIGHT_CUTOFF_RANK):
+            return empty
     day = today_report_day()
     cur = await conn.execute(
         "SELECT amount, limit_notified FROM activity_xp_daily WHERE user_id = ? AND day = ?",

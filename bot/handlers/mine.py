@@ -494,7 +494,7 @@ async def mine_dig(callback: CallbackQuery):
             await add_inventory_item(user_id, flame['id'], 1)
             await tree_record_collect(user_id, FIRE_ORE_NAME)
             await log_activity(user_id, "mine", f"Добыл «{flame['name']}»")
-            xp = await activity_xp_line(user_id, ACTIVITY_XP_MINE_ORE)
+            xp = await activity_xp_line(user_id, ACTIVITY_XP_MINE_ORE, light=True)
             text = _tmd("mine.flame_found", head=head, name=flame['name']) + ap_block + xp
         elif await _mine_card(user_id, chance) == "ore":
             ore = await get_item_by_name(MINE_ORE_NAME)
@@ -509,7 +509,7 @@ async def mine_dig(callback: CallbackQuery):
                 if ore['sell_price'] > 0:
                     sell_line = (f"\nКазна выкупает руду по {ore['sell_price']} "
                                  f"{plural_nordmark(ore['sell_price'])} за кусок.")
-                xp = await activity_xp_line(user_id, ACTIVITY_XP_MINE_ORE)
+                xp = await activity_xp_line(user_id, ACTIVITY_XP_MINE_ORE, light=True)
                 text = _tmd("mine.ore_found", head=head, name=ore['name'],
                             sell_line=sell_line) + ap_block + xp
             else:
@@ -662,11 +662,13 @@ async def mine_battle_hit(callback: CallbackQuery):
             result_line = _tm("battle.mine.bat.loot", loot=loot_list)
         else:
             result_line = _tm("battle.mine.bat.loot_none")
+        from utils.activity_xp import beast_xp_line
+        xp = await beast_xp_line(user_id, "bat")
         text = (
             _tm("battle.mine.bat.title", emoji=emoji) + "\n\n"
             f"{dot_note}{hit_line}"
             + _tm("battle.mine.bat.down")
-            + f"{result_line}"
+            + f"{result_line}" + xp
         )
         await _enemy_paint(callback, text=text,
                            kb=_result_markup(MINE_TOKEN.get(user_id, "")),

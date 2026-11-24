@@ -664,7 +664,7 @@ async def forest_cast(callback: CallbackQuery):
             heal_line = _LT("forest.mush.heal", heal=item['heal'])
         from config import ACTIVITY_XP_FOREST_FIND
         from utils.activity_xp import activity_xp_line
-        xp = await activity_xp_line(user_id, ACTIVITY_XP_FOREST_FIND)
+        xp = await activity_xp_line(user_id, ACTIVITY_XP_FOREST_FIND, light=True)
         text = _LT("forest.mush.found", head=head, kind=kind_label, name=item['name'],
                    heal_line=heal_line, sell_line=sell_line) + ap_block + xp
         if row.get('photo_file_id'):
@@ -805,7 +805,7 @@ async def forest_berry(callback: CallbackQuery):
         await log_activity(user_id, "forest", f"Собрал «{item['name']}» ({area_name})")
         from config import ACTIVITY_XP_FOREST_FIND
         from utils.activity_xp import activity_xp_line
-        xp = await activity_xp_line(user_id, ACTIVITY_XP_FOREST_FIND)
+        xp = await activity_xp_line(user_id, ACTIVITY_XP_FOREST_FIND, light=True)
         await _glade_paint(
             callback,
             text=_LT("forest.berry.got", head=head, name=item['name'])
@@ -1103,11 +1103,13 @@ async def forest_battle_hit(callback: CallbackQuery):
             result_line = _LT("forest.loot.lost")
         else:
             result_line = _LT("forest.loot.none")
+        from utils.activity_xp import beast_xp_line
+        xp = await beast_xp_line(user_id, battle.get('beast_key') or "boar")
         text = (
             _LT("forest.battle.title", emoji=emoji) + "\n\n"
             + f"{dot_note}{regen_note}{hit_line}"
             + _LT("forest.battle.won")
-            + result_line
+            + result_line + xp
         )
         await _glade_paint(callback, text=text,
                      kb=await _result_markup(FOREST_TOKEN.get(user_id, ""), battle_area, user_id),

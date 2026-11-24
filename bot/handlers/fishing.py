@@ -673,7 +673,7 @@ async def fish_cast(callback: CallbackQuery):
                     )
                     from config import ACTIVITY_XP_FISH_CATCH
                     from utils.activity_xp import activity_xp_line
-                    text += await activity_xp_line(user_id, ACTIVITY_XP_FISH_CATCH)
+                    text += await activity_xp_line(user_id, ACTIVITY_XP_FISH_CATCH, light=True)
                     wf_photo = await get_water_fish_photo_by_name("lake", fish_name)
                     if wf_photo:
                         await _paint(callback, text=text + ap_block, photo_id=wf_photo, kb=_result_markup(FISH_TOKEN.get(user_id, "")))

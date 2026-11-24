@@ -927,11 +927,13 @@ async def logging_battle_hit(callback: CallbackQuery):
             result_line = _tb("logging.bat.owl_loot", loot=loot_list)
         else:
             result_line = _tb("logging.bat.owl_loot_none")
+        from utils.activity_xp import beast_xp_line
+        xp = await beast_xp_line(user_id, "owl")
         text = (
             _tb("logging.bat.owl_title", emoji=emoji) + "\n\n"
             + f"{dot_note}{hit_line}"
             + _tb("logging.bat.owl_fled")
-            + f"{result_line}"
+            + f"{result_line}" + xp
         )
         await _logging_paint(callback, text=text,
                              kb=_result_markup(LOGGING_TOKEN.get(user_id, "")))
@@ -956,11 +958,13 @@ async def logging_battle_hit(callback: CallbackQuery):
             result_line = _tb("logging.bat.snake_loot", loot=loot_list)
         else:
             result_line = _tb("logging.bat.snake_loot_none")
+        from utils.activity_xp import beast_xp_line
+        xp = await beast_xp_line(user_id, "snake")
         text = (
             _tb("logging.bat.snake_title", emoji=emoji) + "\n\n"
             + f"{dot_note}{hit_line}"
             + _tb("logging.bat.snake_down")
-            + f"{result_line}"
+            + f"{result_line}" + xp
         )
         await _logging_paint(callback, text=text,
                              kb=_result_markup(LOGGING_TOKEN.get(user_id, "")))
