@@ -1,11 +1,13 @@
-"""Smoke v0.43.30: жареная рыба — цена как у сырой и общий лимит казны 500 НМ.
+"""Smoke v0.43.30: жареная рыба на треть дороже сырой, общий лимит казны 500 НМ;
+протухшая рыба превращается в один предмет «Испорченная еда».
 
 Проверяет:
-1. Миграция _migrate_fried_fish_prices переводит старую цену жареного сома (260) в 120
+1. Миграция _migrate_fried_fish_prices переводит старую цену жареного сома (260) в 160
    и идемпотентна; чужую цену (админскую) не трогает.
 2. Лимит казны на рыбу FISH_TREASURY_DAILY_LIMIT = 500, жареная рыба в FRIED_FISH_NAMES.
 3. Остаток лимита учитывает и сырую, и жареную рыбу (общий счётчик).
 4. _fried_fish_cap режет количество по остатку и отказывает при исчерпании.
+5. Протухшая сырая рыба → одна «Испорченная еда» за каждую штуку; цена испорченной 3 НМ.
 
 Запуск: .venv\\Scripts\\python.exe smoke_245.py
 """
@@ -61,12 +63,12 @@ async def run():
         await conn.commit()
         await _migrate_fried_fish_prices()
         som = await get_item_by_name("Жареный сом")
-        check("сом: 260 → 120", som['sell_price'] == 120)
+        check("сом: 260 → 160", som['sell_price'] == 160)
         ugor = await get_item_by_name("Жареный угорь")
         check("админская цена угря не тронута", ugor['sell_price'] == 999)
         await _migrate_fried_fish_prices()
         som = await get_item_by_name("Жареный сом")
-        check("миграция идемпотентна", som['sell_price'] == 120)
+        check("миграция идемпотентна", som['sell_price'] == 160)
 
         # 2. Константы
         check("лимит казны на рыбу = 500", FISH_TREASURY_DAILY_LIMIT == 500)
@@ -84,7 +86,7 @@ async def run():
 
         # 4б. Режем количество по остатку
         qty, note, err = await _fried_fish_cap(PILOT2, som, 10)
-        check("новый игрок: 10 шт. режутся до 4 (500 // 120)", qty == 4 and note != "" and err == "")
+        check("новый игрок: 10 шт. режутся до 3 (500 // 160)", qty == 3 and note != "" and err == "")
         qty, note, err = await _fried_fish_cap(PILOT2, som, 2)
         check("2 шт. проходят без примечания", qty == 2 and note == "" and err == "")
 
@@ -92,6 +94,35 @@ async def run():
         await add_fish_sale_amount(PILOT2, 500)
         qty, note, err = await _fried_fish_cap(PILOT2, som, 1)
         check("исчерпанный лимит — ошибка", qty == 0 and "исчерпан" in err)
+
+        # 5. Протухшая сырая рыба → «Испорченная еда», по одной штуке на улов
+        import time
+        from config import FIRE_SPOILED_FOOD_NAME
+        from database.db import spoil_expired_catches, add_fish_catch, get_inventory_item
+        await add_item(name="Мерцающий сом", description="тест", price=240, sell_price=120,
+                       rarity=1, category="fishing", stock=-1, added_by=0,
+                       ap_cost=0, damage=0, heal=0)
+        await add_item(name=FIRE_SPOILED_FOOD_NAME, description="тест", price=1, sell_price=0,
+                       rarity=1, category="consumable", stock=-1, added_by=0,
+                       ap_cost=0, damage=0, heal=5)
+        from database.db import _migrate_spoiled_food_price
+        await _migrate_spoiled_food_price()
+        spoiled = await get_item_by_name(FIRE_SPOILED_FOOD_NAME)
+        check("испорченная еда: цена 3 НМ", spoiled['sell_price'] == 3)
+        fish = await get_item_by_name("Мерцающий сом")
+        now = int(time.time())
+        await add_fish_catch(PILOT2, fish['id'], 1, kind="fish", expires_at=str(now - 10))
+        await add_fish_catch(PILOT2, fish['id'], 1, kind="fish", expires_at=str(now - 5))
+        await add_fish_catch(PILOT2, fish['id'], 1, kind="fish", expires_at=str(now + 3600))
+        converted = await spoil_expired_catches(PILOT2)
+        check("два протухших улова превращены", converted == 2)
+        inv = await get_inventory_item(PILOT2, spoiled['id'])
+        check("в инвентаре две испорченные еды", inv is not None and inv['quantity'] == 2)
+        conn = await get_db()
+        left = (await (await conn.execute(
+            "SELECT COUNT(*) AS c FROM fish_catches WHERE user_id = ? AND sold_at IS NULL",
+            (PILOT2,))).fetchone())['c']
+        check("свежий улов остался", left == 1)
     finally:
         await close_db()
         if os.path.exists(_TEST_DB):

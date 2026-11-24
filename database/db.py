@@ -1865,6 +1865,7 @@ async def init_db():
     # v0.38.1: ребаланс водохранилища (цены форели + веса пула).
     await _migrate_reservoir_balance()
     await _migrate_fried_fish_prices()
+    await _migrate_spoiled_food_price()
     # Клан-холл: фото готового здания (добавляет клан, админ проставляет)
     await _ensure_column(conn, "clan_buildings", "building_photo_file_id", "TEXT")
     for _col in ("photo_dawn", "photo_day", "photo_sunset", "photo_night"):
@@ -1924,23 +1925,31 @@ async def _migrate_reservoir_balance():
 
 
 async def _migrate_fried_fish_prices():
-    """Жареная рыба продаётся по цене сырой рыбы из каталога (не дороже).
+    """Жареная рыба продаётся на треть дороже сырой (×4/3), а не вдвое.
 
-    Раньше жареный сом продавался за 260 при сыром за 120, и это давало основной
+    Раньше жареный сом продавался за 260 при сыром за 120: это давало основной
     поток НМ мимо суточного лимита. Меняем только строки со старой ценой
     (идемпотентно при каждом старте, админские правки на другие числа не трогаем).
     """
     conn = await get_db()
     fix = [
-        ("Жареный сиг", 30, 15), ("Жареный муксун", 70, 35),
-        ("Жареный чир", 150, 80), ("Жареный налим", 220, 120),
-        ("Жареный сом", 260, 120), ("Жареный угорь", 425, 250),
-        ("Жареный форель", 600, 450),
+        ("Жареный сиг", 30, 20), ("Жареный муксун", 70, 47),
+        ("Жареный чир", 150, 107), ("Жареный налим", 220, 160),
+        ("Жареный сом", 260, 160), ("Жареный угорь", 425, 333),
     ]
     for name, old_sell, new_sell in fix:
         await conn.execute(
             "UPDATE items SET sell_price = ? WHERE name = ? AND sell_price = ?",
             (new_sell, name, old_sell))
+    await conn.commit()
+
+
+async def _migrate_spoiled_food_price():
+    """«Испорченная еда» — один предмет для любой испорченной рыбы, цена низкая (3 НМ)."""
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE items SET sell_price = 3 WHERE name = ? AND sell_price = 0",
+        (config.FIRE_SPOILED_FOOD_NAME,))
     await conn.commit()
 
 
@@ -8886,20 +8895,38 @@ async def add_fish_catch(user_id: int, item_id: int, weight: int = 1,
     return cursor.lastrowid
 
 
-async def get_fish_catches(user_id: int):
-    """Свежие (непротухшие) непроданные уловы игрока вместе с данными предмета.
+async def spoil_expired_catches(user_id: int) -> int:
+    """Протухшая сырая рыба (срок 4 дня) → один предмет «Испорченная еда».
 
-    Протухшая рыба удаляется (срок годности 4 дня), в инвентарь не попадает
-    и не может быть использована в рецептах кухни.
+    Каждая испорченная рыба даёт одну штуку. Возвращает число превращённых уловов.
     """
     conn = await get_db()
     now = int(time.time())
-    await conn.execute(
-        "DELETE FROM fish_catches WHERE user_id = ? AND sold_at IS NULL "
+    cur = await conn.execute(
+        "SELECT id FROM fish_catches WHERE user_id = ? AND sold_at IS NULL "
         "AND expires_at IS NOT NULL AND CAST(expires_at AS REAL) <= ?",
-        (user_id, now)
-    )
+        (user_id, now))
+    rows = await cur.fetchall()
+    if not rows:
+        return 0
+    spoiled = await get_item_by_name(config.FIRE_SPOILED_FOOD_NAME)
+    for row in rows:
+        await conn.execute("DELETE FROM fish_catches WHERE id = ?", (row['id'],))
+        if spoiled:
+            await add_inventory_item(user_id, spoiled['id'], 1)
     await conn.commit()
+    return len(rows)
+
+
+async def get_fish_catches(user_id: int):
+    """Свежие (непротухшие) непроданные уловы игрока вместе с данными предмета.
+
+    Протухшая рыба превращается в «Испорченную еду» (см. spoil_expired_catches) и
+    не может быть использована в рецептах кухни.
+    """
+    conn = await get_db()
+    now = int(time.time())
+    await spoil_expired_catches(user_id)
     cursor = await conn.execute("""
         SELECT fc.id, fc.user_id, fc.item_id, fc.weight, fc.kind, fc.created_at, fc.expires_at,
                i.name, i.sell_price, i.rarity, i.description
@@ -14014,15 +14041,15 @@ async def ensure_life_items():
         ("Лапка паука", "Высушенная лапка обычного паука. Ингредиент для комбинированной наживки.",
          10, 5, 1, "resource", 0, 0, None, 0),
         ("Жареный сиг", "Жаренный на углях сиг. +15 HP в бою. Срок годности 4 суток.",
-         60, 15, 1, "consumable", -1, 15, None, 0),
+         60, 20, 1, "consumable", -1, 15, None, 0),
         ("Жареный муксун", "Нежный жареный муксун. +30 HP в бою. Срок годности 4 суток.",
-         140, 35, 2, "consumable", -1, 30, None, 0),
+         140, 47, 2, "consumable", -1, 30, None, 0),
         ("Жареный чир", "Деликатес: жареный чир. +45 HP в бою. Срок годности 4 суток.",
-         300, 80, 3, "consumable", -1, 45, None, 0),
+         300, 107, 3, "consumable", -1, 45, None, 0),
         ("Жареный налим", "Праздничный ужин: жареный налим. +55 HP в бою. Срок годности 4 суток.",
-         440, 120, 3, "consumable", -1, 55, None, 0),
+         440, 160, 3, "consumable", -1, 55, None, 0),
         (config.FIRE_SPOILED_FOOD_NAME, "Протухшая еда всех видов. Слегка восстанавливает HP, но навлекает несварение.",
-         1, 0, 1, "consumable", -1, 5, None, 0),
+         1, 3, 1, "consumable", -1, 5, None, 0),
         ("Яблоко", "Свежее яблоко из кадки. +15 HP в бою. Иногда из него выпадает семечко.",
          20, 10, 1, "consumable", -1, 15, None, 0),
         ("Улучшенная настойка здоровья", "Мощный эликсир: +50 HP в бою подземелья.",
@@ -14172,11 +14199,11 @@ async def ensure_dungeon_reservoir_items():
     # (имя, описание, цена, продажа, рарность, heal)
     reservoir_fried = (
         ("Жареный сом", "Жареный сом со специями и водорослями. +65 HP в бою подземелья. Срок годности 4 суток.",
-         520, 120, 2, 65),
+         520, 160, 2, 65),
         ("Жареный угорь", "Хрустящий жареный угорь с водорослями. +90 HP в бою подземелья. Срок годности 4 суток.",
-         850, 250, 3, 90),
+         850, 333, 3, 90),
         ("Жареный форель", "Светящаяся форель, пожаренная до золотой корочки. +140 HP в бою подземелья. Срок годности 4 суток.",
-         1200, 450, 4, 140),
+         1200, 600, 4, 140),
     )
     for (iname, idesc, iprice, isell, irarity, iheal) in reservoir_fried:
         cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (iname,))
@@ -15410,7 +15437,11 @@ async def consume_ingredient(user_id: int, name: str, qty: int) -> bool:
 # ---------- Порча жареной рыбы ----------
 
 async def process_food_expiry(user_id: int) -> int:
-    """Конвертирует протухшую жареную рыбу в «Испорченную рыбу». Возвращает число превращённых."""
+    """Протухшая рыба (жареная в инвентаре и сырая в уловах) → «Испорченная еда».
+
+    Возвращает число превращённых штук.
+    """
+    fish_spoiled = await spoil_expired_catches(user_id)
     conn = await get_db()
     now = time.time()
     cursor = await conn.execute(
@@ -15441,7 +15472,7 @@ async def process_food_expiry(user_id: int) -> int:
         converted += row['quantity']
     if converted:
         await conn.commit()
-    return converted
+    return converted + fish_spoiled
 
 
 async def get_inventory_with_expiry(user_id: int):
