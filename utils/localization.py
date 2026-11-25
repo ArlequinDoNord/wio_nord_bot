@@ -2138,7 +2138,21 @@ STRINGS = {
         "en": "🕵️ KGB BUILDING\n────────────────\nThe State Security Service of Nordheim. Personnel files are kept here and passports are issued.",
     },
     "kgb.btn_issue": {"ru": "🛂 Выдать паспорт", "en": "🛂 Issue passport"},
+    "kgb.btn_archive": {"ru": "📚 Архив паспортов", "en": "📚 Passport archive"},
     "kgb.btn_back": {"ru": "🔙 В квартал", "en": "🔙 To the quarter"},
+    "kgb.has_passport_mark": {"ru": "✅ {series}", "en": "✅ {series}"},
+    "kgb.archive_title": {"ru": "📚 Архив паспортов. Выбери пилота:", "en": "📚 Passport archive. Pick a pilot:"},
+    "kgb.archive_empty": {"ru": "Паспортов пока не выдано.", "en": "No passports issued yet."},
+    "kgb.archive_card": {
+        "ru": "📘 {name}\n\nДействующий паспорт: № {series} {number}\nВыдан: {issue_date}\n",
+        "en": "📘 {name}\n\nCurrent passport: No. {series} {number}\nIssued: {issue_date}\n",
+    },
+    "kgb.archive_history_head": {"ru": "\nПрежние паспорта:", "en": "\nPrevious passports:"},
+    "kgb.archive_history_line": {
+        "ru": "• № {series} {number}, выдан {issue_date}, заменён {replaced_at}",
+        "en": "• No. {series} {number}, issued {issue_date}, replaced {replaced_at}",
+    },
+    "kgb.archive_no_history": {"ru": "\nПрежних паспортов не было.", "en": "\nNo previous passports."},
     "kgb.no_access": {
         "ru": "⛔ Вход в здание КГБ — только для сотрудников КГБ.",
         "en": "⛔ The KGB building is for KGB staff only.",

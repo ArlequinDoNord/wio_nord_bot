@@ -95,7 +95,7 @@
 | `tourist_booklet.py` | Буклет туриста: чек-лист городских локаций и разовая награда. | `router` | 0 | 2 | `booklet:` | — |
 | `duel.py` | Дом Дуэлей — PvP-арена «зона на зону». | `router` | 0 | 12 | `duel:` | — |
 | `mvd.py` | — | `router` | 0 | 3 | `mvd:` | — |
-| `kgb.py` | Здание КГБ: вход (глава КГБ и Хранитель) и выдача паспортов Нордхайма. | `router` | 12 | 8 | `kgb:` | `KgbPassport` |
+| `kgb.py` | Здание КГБ: вход (глава КГБ и Хранитель) и выдача паспортов Нордхайма. | `router` | 12 | 11 | `kgb:` | `KgbPassport` |
 
 ## Детально по модулям (точные и префиксные ключи `F.data`)
 
@@ -390,8 +390,8 @@
 ### `kgb.py` — Здание КГБ: вход (глава КГБ и Хранитель) и выдача паспортов Нордхайма.
 
 - Роутеры: `router`
-- Хендлеры: message=12, callback_query=8
+- Хендлеры: message=12, callback_query=11
 - FSM: `KgbPassport`
-- `F.data.startswith`: `kgb:pick:`, `kgb:sex:`, `kgb:user:`
-- `F.data ==`: `kgb:cancel`, `kgb:confirm`, `kgb:issue`, `kgb:menu`, `kgb:nophoto`
+- `F.data.startswith`: `kgb:arch:`, `kgb:archcard:`, `kgb:pick:`, `kgb:sex:`, `kgb:user:`
+- `F.data ==`: `kgb:archive`, `kgb:cancel`, `kgb:confirm`, `kgb:issue`, `kgb:menu`, `kgb:nophoto`
 

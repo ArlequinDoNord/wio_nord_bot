@@ -6,7 +6,7 @@
 > Назначение: единый обзор всех `StatesGroup`, где они ставятся и где ловятся,
 > а также реестр `callback_data` — чтобы не допускать конфликтов меню/хендлеров.
 
-Всего классов состояний: **60**; полей-состояний: **259**; уникальных `callback_data`: **293**.
+Всего классов состояний: **60**; полей-состояний: **259**; уникальных `callback_data`: **294**.
 
 ## 1. Классы состояний по модулям
 
@@ -448,18 +448,18 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `photo` | `bot/handlers/kgb.py:226` `kgb_issue_target` | `bot/handlers/kgb.py:231` `kgb_photo_step`<br>`bot/handlers/kgb.py:241` `kgb_photo_wrong`<br>`bot/handlers/kgb.py:246` `kgb_photo_skip` |
-| `series` | — | `bot/handlers/kgb.py:270` `kgb_text_step` |
-| `number` | `bot/handlers/kgb.py:317` `kgb_confirm` | `bot/handlers/kgb.py:270` `kgb_text_step` |
-| `full_name` | — | `bot/handlers/kgb.py:270` `kgb_text_step` |
-| `position` | — | `bot/handlers/kgb.py:270` `kgb_text_step` |
-| `rank` | — | `bot/handlers/kgb.py:270` `kgb_text_step` |
-| `sex` | — | `bot/handlers/kgb.py:257` `kgb_sex_wrong`<br>`bot/handlers/kgb.py:292` `kgb_sex_step` |
-| `marital` | — | `bot/handlers/kgb.py:270` `kgb_text_step` |
-| `birth` | — | `bot/handlers/kgb.py:270` `kgb_text_step` |
-| `issue` | — | `bot/handlers/kgb.py:270` `kgb_text_step` |
-| `marks` | — | `bot/handlers/kgb.py:270` `kgb_text_step` |
-| `confirm` | `bot/handlers/kgb.py:130` `_preview` | `bot/handlers/kgb.py:305` `kgb_confirm` |
+| `photo` | `bot/handlers/kgb.py:310` `kgb_issue_target` | `bot/handlers/kgb.py:315` `kgb_photo_step`<br>`bot/handlers/kgb.py:325` `kgb_photo_wrong`<br>`bot/handlers/kgb.py:330` `kgb_photo_skip` |
+| `series` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
+| `number` | `bot/handlers/kgb.py:401` `kgb_confirm` | `bot/handlers/kgb.py:354` `kgb_text_step` |
+| `full_name` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
+| `position` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
+| `rank` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
+| `sex` | — | `bot/handlers/kgb.py:341` `kgb_sex_wrong`<br>`bot/handlers/kgb.py:376` `kgb_sex_step` |
+| `marital` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
+| `birth` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
+| `issue` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
+| `marks` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
+| `confirm` | `bot/handlers/kgb.py:131` `_preview` | `bot/handlers/kgb.py:389` `kgb_confirm` |
 
 ### `KvpFSM` — `bot/handlers/kvp.py`
 
@@ -611,7 +611,7 @@
 | `forest_field:` | 3 | `forest_field:chance`, `forest_field:photo`, `forest_field:sell_price` |
 | `hq:` | 19 | `hq:farms`, `hq:menu`, `hq:noop`, `hq:order:all`, `hq:region_stats`, `hq:region_stats_refresh`, `hq:roster:0`, `hq:send`, `hq:wing`, `hq:wingadd`, `hq:wingcmd`, `hq:wingcmd_send`, `hq:wingdrop:0`, `hq:wingedit:callsign`, `hq:wingedit:emoji`, `hq:wingedit:name`, `hq:wingfarm:0`, `hq:wings`, `hq:wingtake:0` |
 | `inventory:` | 3 | `inventory:cat:documents`, `inventory:eq`, `inventory:list` |
-| `kgb:` | 7 | `kgb:cancel`, `kgb:confirm`, `kgb:issue`, `kgb:menu`, `kgb:nophoto`, `kgb:sex:f`, `kgb:sex:m` |
+| `kgb:` | 8 | `kgb:archive`, `kgb:cancel`, `kgb:confirm`, `kgb:issue`, `kgb:menu`, `kgb:nophoto`, `kgb:sex:f`, `kgb:sex:m` |
 | `kvp:` | 3 | `kvp:exit`, `kvp:resume`, `kvp:start` |
 | `lib:` | 2 | `lib:menu`, `lib:no_access` |
 | `libadmin:` | 3 | `libadmin:add`, `libadmin:list`, `libadmin:menu` |
@@ -764,11 +764,12 @@
 - `hq:wings`: `bot/handlers/hq.py:1046`
 - `inventory:eq`: `bot/handlers/inventory.py:515`
 - `inventory:list`: `bot/handlers/inventory.py:609`
-- `kgb:cancel`: `bot/handlers/kgb.py:329`
-- `kgb:confirm`: `bot/handlers/kgb.py:304`
-- `kgb:issue`: `bot/handlers/kgb.py:178`
-- `kgb:menu`: `bot/handlers/kgb.py:169`
-- `kgb:nophoto`: `bot/handlers/kgb.py:245`
+- `kgb:archive`: `bot/handlers/kgb.py:225`
+- `kgb:cancel`: `bot/handlers/kgb.py:413`
+- `kgb:confirm`: `bot/handlers/kgb.py:388`
+- `kgb:issue`: `bot/handlers/kgb.py:193`
+- `kgb:menu`: `bot/handlers/kgb.py:184`
+- `kgb:nophoto`: `bot/handlers/kgb.py:329`
 - `kvp:exit`: `bot/handlers/kvp.py:754`
 - `kvp:resume`: `bot/handlers/kvp.py:304`
 - `kvp:start`: `bot/handlers/kvp.py:264`
@@ -1189,9 +1190,11 @@
 - `itemmarket:`: `bot/handlers/inventory.py:1249`
 - `itemoffer:`: `bot/handlers/shop.py:900`
 - `itemprice:`: `bot/handlers/inventory.py:1328`
-- `kgb:pick:`: `bot/handlers/kgb.py:193`
-- `kgb:sex:`: `bot/handlers/kgb.py:291`
-- `kgb:user:`: `bot/handlers/kgb.py:208`
+- `kgb:arch:`: `bot/handlers/kgb.py:234`
+- `kgb:archcard:`: `bot/handlers/kgb.py:263`
+- `kgb:pick:`: `bot/handlers/kgb.py:209`
+- `kgb:sex:`: `bot/handlers/kgb.py:375`
+- `kgb:user:`: `bot/handlers/kgb.py:292`
 - `kvp:attack:`: `bot/handlers/kvp.py:532`
 - `kvp:attempt:`: `bot/handlers/kvp.py:457`
 - `kvp:continue:`: `bot/handlers/kvp.py:426`

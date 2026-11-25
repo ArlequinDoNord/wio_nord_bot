@@ -12,6 +12,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 
 from database.db import (
     get_all_users, get_user, get_passport, passport_number_taken, issue_passport,
+    get_passport_map, get_passport_archive, get_passport_history,
 )
 from utils.localization import t
 from utils.notify import notify_user_t
@@ -20,10 +21,16 @@ from utils.passports import (
     format_passport,
 )
 from utils.permissions import can_enter_kgb, is_kgb_head, log_action
+from config import ADMIN_IDS
 
 router = Router()
 
 PICK_PAGE_SIZE = 10
+
+
+async def can_see_passport_archive(user_id: int) -> bool:
+    """Архив паспортов: глава КГБ и владелец (ADMIN_IDS). Роль «Хранитель» сюда не входит."""
+    return user_id in ADMIN_IDS or await is_kgb_head(user_id)
 
 
 class KgbPassport(StatesGroup):
@@ -137,24 +144,37 @@ async def _preview(message: Message, state: FSMContext):
         await message.answer(text, reply_markup=_confirm_kb())
 
 
-def _pick_markup(page: int, users: list) -> InlineKeyboardMarkup:
+def _people_markup(page: int, users: list, item_cb: str, page_cb: str, back_cb: str,
+                   passports: dict = None) -> InlineKeyboardMarkup:
+    """Список пилотов по страницам. passports: {user_id: ...} — у кого уже есть паспорт.
+
+    В подписи таких пилотов стоит серия паспорта, чтобы не выдать второй по ошибке.
+    """
     pages = max(1, (len(users) + PICK_PAGE_SIZE - 1) // PICK_PAGE_SIZE)
     page = max(0, min(page, pages - 1))
+    passports = passports or {}
     rows = []
     for u in users[page * PICK_PAGE_SIZE:(page + 1) * PICK_PAGE_SIZE]:
-        label = u['first_name'] or u['username'] or str(u['user_id'])
+        uid = int(u['user_id'])
+        label = u['first_name'] or u['username'] or str(uid)
         if u['username']:
             label += f" (@{u['username']})"
-        rows.append([InlineKeyboardButton(text=label, callback_data=f"kgb:user:{u['user_id']}")])
+        if uid in passports:
+            label = t("kgb.has_passport_mark", series=passports[uid]['series']) + " " + label
+        rows.append([InlineKeyboardButton(text=label, callback_data=f"{item_cb}{uid}")])
     nav = []
     if page > 0:
-        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"kgb:pick:{page - 1}"))
+        nav.append(InlineKeyboardButton(text="◀️", callback_data=f"{page_cb}{page - 1}"))
     nav.append(InlineKeyboardButton(text=f"{page + 1}/{pages}", callback_data="noop"))
     if page < pages - 1:
-        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"kgb:pick:{page + 1}"))
+        nav.append(InlineKeyboardButton(text="▶️", callback_data=f"{page_cb}{page + 1}"))
     rows.append(nav)
-    rows.append([InlineKeyboardButton(text=t("kgb.btn_back"), callback_data="kgb:menu")])
+    rows.append([InlineKeyboardButton(text=t("kgb.btn_back"), callback_data=back_cb)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _pick_markup(page: int, users: list, passports: dict = None) -> InlineKeyboardMarkup:
+    return _people_markup(page, users, "kgb:user:", "kgb:pick:", "kgb:menu", passports)
 
 
 async def kgb_menu(callback: CallbackQuery):
@@ -162,6 +182,8 @@ async def kgb_menu(callback: CallbackQuery):
     rows = []
     if await is_kgb_head(callback.from_user.id):
         rows.append([InlineKeyboardButton(text=t("kgb.btn_issue"), callback_data="kgb:issue")])
+    if await can_see_passport_archive(callback.from_user.id):
+        rows.append([InlineKeyboardButton(text=t("kgb.btn_archive"), callback_data="kgb:archive")])
     rows.append([InlineKeyboardButton(text=t("kgb.btn_back"), callback_data="city:quarter")])
     await callback.message.answer(t("kgb.menu_title"), reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
 
@@ -187,7 +209,8 @@ async def kgb_issue_start(callback: CallbackQuery, state: FSMContext):
     if not users:
         await callback.message.answer(t("kgb.pick_empty"))
         return
-    await callback.message.answer(t("kgb.pick_title"), reply_markup=_pick_markup(0, users))
+    passports = await get_passport_map()
+    await callback.message.answer(t("kgb.pick_title"), reply_markup=_pick_markup(0, users, passports))
 
 
 @router.callback_query(F.data.startswith("kgb:pick:"))
@@ -202,7 +225,75 @@ async def kgb_issue_page(callback: CallbackQuery):
         page = 0
     users = sorted(await get_all_users(citizens_only=True),
                    key=lambda u: (u['first_name'] or u['username'] or '').lower())
-    await callback.message.answer(t("kgb.pick_title"), reply_markup=_pick_markup(page, users))
+    passports = await get_passport_map()
+    await callback.message.answer(t("kgb.pick_title"), reply_markup=_pick_markup(page, users, passports))
+
+
+@router.callback_query(F.data == "kgb:archive")
+async def kgb_archive_start(callback: CallbackQuery):
+    await callback.answer()
+    if not await can_see_passport_archive(callback.from_user.id):
+        await callback.message.answer(t("kgb.head_only"))
+        return
+    await _send_archive(callback.message, 0)
+
+
+@router.callback_query(F.data.startswith("kgb:arch:"))
+async def kgb_archive_page(callback: CallbackQuery):
+    await callback.answer()
+    if not await can_see_passport_archive(callback.from_user.id):
+        await callback.message.answer(t("kgb.head_only"))
+        return
+    try:
+        page = int(callback.data.split(":")[2])
+    except (ValueError, IndexError):
+        page = 0
+    await _send_archive(callback.message, page)
+
+
+async def _send_archive(message, page: int):
+    rows = await get_passport_archive()
+    if not rows:
+        await message.answer(t("kgb.archive_empty"), reply_markup=_archive_back_kb())
+        return
+    users = [{'user_id': r['user_id'], 'first_name': r['name'], 'username': None} for r in rows]
+    series_map = {r['user_id']: r for r in rows}
+    markup = _people_markup(page, users, "kgb:archcard:", "kgb:arch:", "kgb:menu", series_map)
+    await message.answer(t("kgb.archive_title"), reply_markup=markup)
+
+
+def _archive_back_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=t("kgb.btn_back"), callback_data="kgb:menu")]])
+
+
+@router.callback_query(F.data.startswith("kgb:archcard:"))
+async def kgb_archive_card(callback: CallbackQuery):
+    await callback.answer()
+    if not await can_see_passport_archive(callback.from_user.id):
+        await callback.message.answer(t("kgb.head_only"))
+        return
+    try:
+        uid = int(callback.data.split(":")[2])
+    except (ValueError, IndexError):
+        return
+    current = await get_passport(uid)
+    if not current:
+        await callback.message.answer(t("kgb.archive_empty"), reply_markup=_archive_back_kb())
+        return
+    user = await get_user(uid)
+    name = (user['first_name'] or user['username'] or str(uid)) if user else str(uid)
+    text = t("kgb.archive_card", name=name, series=current['series'], number=current['number'],
+             issue_date=current['issue_date'])
+    history = await get_passport_history(uid)
+    if history:
+        text += t("kgb.archive_history_head") + "\n"
+        for h in history:
+            text += t("kgb.archive_history_line", series=h['series'], number=h['number'],
+                      issue_date=h['issue_date'], replaced_at=str(h['replaced_at'])[:10]) + "\n"
+    else:
+        text += t("kgb.archive_no_history")
+    await callback.message.answer(text, reply_markup=_archive_back_kb())
 
 
 @router.callback_query(F.data.startswith("kgb:user:"))

@@ -228,6 +228,16 @@ async def init_db():
             UNIQUE (series, number)
         );
 
+        CREATE TABLE IF NOT EXISTS passport_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            series TEXT NOT NULL,
+            number TEXT NOT NULL,
+            issue_date TEXT NOT NULL,
+            replaced_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            replaced_by INTEGER
+        );
+
         CREATE TABLE IF NOT EXISTS award_monthly_paid (
             user_id INTEGER NOT NULL,
             award_id INTEGER NOT NULL,
@@ -12687,9 +12697,46 @@ async def passport_number_taken(series: str, number: str, exclude_user: int = No
     return bool(row) and (exclude_user is None or int(row['user_id']) != int(exclude_user))
 
 
-async def issue_passport(user_id: int, data: dict, issued_by: int) -> None:
-    """Сохраняет паспорт пилота (перевыдача заменяет данные) и кладёт предмет в инвентарь."""
+async def get_passport_map() -> dict:
+    """{user_id: паспорт} для всех пилотов, у кого выдан паспорт."""
     conn = await get_db()
+    cursor = await conn.execute("SELECT user_id, series, number FROM passports")
+    return {int(r['user_id']): dict(r) for r in await cursor.fetchall()}
+
+
+async def get_passport_archive() -> list:
+    """Все выданные паспорта (текущие) для архива КГБ, по дате выдачи (новые сверху)."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT p.user_id, p.series, p.number, p.issue_date, p.issued_at, "
+        "COALESCE(u.first_name, u.username, CAST(p.user_id AS TEXT)) AS name "
+        "FROM passports p LEFT JOIN users u ON u.user_id = p.user_id "
+        "ORDER BY p.issued_at DESC, p.user_id DESC")
+    return [dict(r) for r in await cursor.fetchall()]
+
+
+async def get_passport_history(user_id: int) -> list:
+    """Старые паспорта пилота (серия, номер, дата выдачи), от новых к старым."""
+    conn = await get_db()
+    cursor = await conn.execute(
+        "SELECT series, number, issue_date, replaced_at FROM passport_history "
+        "WHERE user_id = ? ORDER BY id DESC", (user_id,))
+    return [dict(r) for r in await cursor.fetchall()]
+
+
+async def issue_passport(user_id: int, data: dict, issued_by: int) -> None:
+    """Сохраняет паспорт пилота и кладёт предмет в инвентарь.
+
+    При перевыдачи старый паспорт уходит в passport_history: только серия, номер и
+    дата выдачи. Полные данные старого паспорта не сохраняются.
+    """
+    conn = await get_db()
+    old = await get_passport(user_id)
+    if old:
+        await conn.execute(
+            "INSERT INTO passport_history (user_id, series, number, issue_date, replaced_by) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (user_id, old['series'], old['number'], old['issue_date'], issued_by))
     await conn.execute(
         """INSERT OR REPLACE INTO passports
            (user_id, series, number, full_name, position, rank, sex, marital_status,

@@ -4504,6 +4504,54 @@
 - ✏️ НОВЫЙ EN:
 
 
+### kgb.archive_card
+
+- ТЕКУЩИЙ RU: `"📘 {name}\n\nДействующий паспорт: № {series} {number}\nВыдан: {issue_date}\n"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"📘 {name}\n\nCurrent passport: No. {series} {number}\nIssued: {issue_date}\n"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.archive_empty
+
+- ТЕКУЩИЙ RU: `"Паспортов пока не выдано."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"No passports issued yet."`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.archive_history_head
+
+- ТЕКУЩИЙ RU: `"\nПрежние паспорта:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"\nPrevious passports:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.archive_history_line
+
+- ТЕКУЩИЙ RU: `"• № {series} {number}, выдан {issue_date}, заменён {replaced_at}"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"• No. {series} {number}, issued {issue_date}, replaced {replaced_at}"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.archive_no_history
+
+- ТЕКУЩИЙ RU: `"\nПрежних паспортов не было."`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"\nNo previous passports."`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.archive_title
+
+- ТЕКУЩИЙ RU: `"📚 Архив паспортов. Выбери пилота:"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"📚 Passport archive. Pick a pilot:"`
+- ✏️ НОВЫЙ EN:
+
+
 ### kgb.ask_birth
 
 - ТЕКУЩИЙ RU: `"Дата рождения, ДД.ММ.ГГГГ:"`
@@ -4629,6 +4677,14 @@
 - ТЕКУЩИЙ RU: `"❌ Поле не может быть пустым и должно быть не длиннее 64 символов. Попробуй ещё раз:"`
 - ✏️ НОВЫЙ RU:
 - ТЕКУЩИЙ EN: `"❌ The field can't be empty and must be at most 64 characters. Try again:"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.btn_archive
+
+- ТЕКУЩИЙ RU: `"📚 Архив паспортов"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"📚 Passport archive"`
 - ✏️ НОВЫЙ EN:
 
 
@@ -4789,6 +4845,14 @@
 - ТЕКУЩИЙ RU: `"Пол"`
 - ✏️ НОВЫЙ RU:
 - ТЕКУЩИЙ EN: `"Sex"`
+- ✏️ НОВЫЙ EN:
+
+
+### kgb.has_passport_mark
+
+- ТЕКУЩИЙ RU: `"✅ {series}"`
+- ✏️ НОВЫЙ RU:
+- ТЕКУЩИЙ EN: `"✅ {series}"`
 - ✏️ НОВЫЙ EN:
 
 
