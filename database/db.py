@@ -1752,7 +1752,7 @@ async def init_db():
         "'Рецепт: Обжигающая трость', 'Леденец языков пламени',"
         "'Кусочек тыквенного пирога', 'Семечко тыквы', 'Тыква',"
         "'Перо ворона', 'Моток железной проволоки', 'Ручное пламенеющее устройство',"
-        "'Сахар', 'Яйца', 'Огненный венец', 'Плащ Памяти',"
+        "'Яйца', 'Огненный венец', 'Плащ Памяти',"
         "'Перчатки стража посевов', 'Вилы', 'Обжигающая трость',"
         "'Лампа Круговорота', 'Пламя Памяти', 'Эссенция Памяти')")
     # v0.15.0: авиакрыло пилота ('1'/'2'/'3' → метка в utils/wings.py; NULL — нет крыла).
@@ -1866,6 +1866,7 @@ async def init_db():
     await _migrate_reservoir_balance()
     await _migrate_fried_fish_prices()
     await _migrate_spoiled_food_price()
+    await _migrate_sugar_visible()
     # Клан-холл: фото готового здания (добавляет клан, админ проставляет)
     await _ensure_column(conn, "clan_buildings", "building_photo_file_id", "TEXT")
     for _col in ("photo_dawn", "photo_day", "photo_sunset", "photo_night"):
@@ -1942,6 +1943,21 @@ async def _migrate_fried_fish_prices():
             "UPDATE items SET sell_price = ? WHERE name = ? AND sell_price = ?",
             (new_sell, name, old_sell))
     await conn.commit()
+
+
+async def _migrate_sugar_visible():
+    """«Сахар» — обычный ингредиент, не праздничный: выводим в магазин один раз.
+
+    Раньше входил в праздничный список v0.41.3 (is_available = 0). Далее выкладка
+    пополняет его по настройкам товара; скрыть его снова можно вручную в админке.
+    """
+    if await get_setting("sugar_visible_v0_43_31") == "1":
+        return
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE items SET is_available = 1 WHERE name = ?", (config.FIRE_SUGAR_NAME,))
+    await conn.commit()
+    await set_setting("sugar_visible_v0_43_31", "1")
 
 
 async def _migrate_spoiled_food_price():
@@ -2701,6 +2717,12 @@ async def run_weekly_restock(now_msk=None) -> list:
             "UPDATE items SET stock = ?, is_available = 1 WHERE id = ?",
             (r['restock_target'], r['id']))
         done.append((r['name'], r['stock'], r['restock_target']))
+        await conn.execute(
+            "INSERT INTO admin_logs (admin_id, action, target_id, details) VALUES (0, 'restock', ?, ?)",
+            (r['id'], f"{week}: {r['name']} было {r['stock']}, стало {r['restock_target']}"))
+    await conn.execute(
+        "INSERT INTO admin_logs (admin_id, action, target_id, details) VALUES (0, 'restock_week', NULL, ?)",
+        (f"{week}: пополнено {len(done)} товаров" if done else f"{week}: пополнять нечего",))
     await conn.commit()
     await set_setting(RESTOCK_SETTING_KEY, week)
     return done

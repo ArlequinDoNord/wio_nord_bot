@@ -105,7 +105,7 @@ def _kb_callbacks(msg):
 
 async def run():
     from database.db import (init_db, close_db, add_item, get_item, update_item,
-                             run_weekly_restock, get_setting, get_db)
+                             run_weekly_restock, get_setting, get_db, _restock_week_key)
     from utils.helpers import MOSCOW_TZ
     from utils import localization
 
@@ -146,6 +146,14 @@ async def run():
     check("остаток стал 10", row["stock"] == 10)
     check("товар снова в продаже", row["is_available"] == 1)
     check("в ответе есть товар", any(x[0] == "__smoke224_a__" for x in done))
+    conn = await get_db()
+    cur = await conn.execute(
+        "SELECT action, target_id, details FROM admin_logs WHERE admin_id = 0 "
+        "AND action IN ('restock', 'restock_week') AND details LIKE ?",
+        (f"{_restock_week_key(MON_W)}%",))
+    logs = await cur.fetchall()
+    check("выкладка записана в admin_logs по товару", any(l["action"] == "restock" and l["target_id"] == a for l in logs))
+    check("итог недели записан в admin_logs", any(l["action"] == "restock_week" for l in logs))
 
     print("\n3. Один раз за неделю: повтор и рестарт не выкладывают снова")
     await update_item(a, stock=2)

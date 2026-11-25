@@ -325,6 +325,8 @@ async def scheduled_jobs(bot: Bot):
             restocked = await run_weekly_restock()
             if restocked:
                 logger.info(f"Авто-выкладка: пополнено {len(restocked)} товаров")
+                for name, was, now in restocked:
+                    logger.info(f"Авто-выкладка «{name}»: было {was}, стало {now}")
         except Exception as e:
             logger.error(f"Ошибка авто-выкладки: {e}", exc_info=True)
         try:
