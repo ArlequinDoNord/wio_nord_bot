@@ -12,7 +12,7 @@ from config import (DB_PATH, SPECIAL_DEPT_ATTEMPTS_LIMIT, SPECIAL_DEPT_BLOCK_MIN
                     DUNGEON_RUN_STALE_SEC, FOREST_BOAR_SEED, FOREST_WHITE_WOLF_SEED, FOREST_BOAR_HP, MOLLUSK_SEED,
                     MOLLUSK_ITEM_SEEDS, MOLLUSK_ENEMY_DROPS, PILOT_CRIT_MULT,
                     MINE_BAT_SEED, MINE_ITEM_SEEDS, MINE_ENEMY_DROPS, MINE_SHOP_ITEMS,
-                    MINE_PICKAXE_NAME, MINE_ORE_NAME, MINE_BAT_SPOT,
+                    MINE_PICKAXE_NAME, MINE_ORE_NAME, MINE_BAT_SPOT, MINE_MARKET_ORES,
                     LOGGING_SNAKE_SEED, LOGGING_OWL_SEED, LOGGING_ITEM_SEEDS,
                     LOGGING_ENEMY_DROPS, LOGGING_SHOP_ITEMS,
                     LOGGING_MARKET_RESOURCES)
@@ -226,6 +226,14 @@ async def init_db():
             issued_by INTEGER,
             issued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (series, number)
+        );
+
+        CREATE TABLE IF NOT EXISTS fish_kind_daily (
+            user_id INTEGER NOT NULL,
+            day TEXT NOT NULL,
+            item_id INTEGER NOT NULL,
+            qty INTEGER DEFAULT 0,
+            PRIMARY KEY (user_id, day, item_id)
         );
 
         CREATE TABLE IF NOT EXISTS passport_history (
@@ -1878,6 +1886,7 @@ async def init_db():
     await _migrate_spoiled_food_price()
     await _migrate_sugar_visible()
     await _migrate_forel_prices()
+    await _migrate_mine_ore_prices()
     # Клан-холл: фото готового здания (добавляет клан, админ проставляет)
     await _ensure_column(conn, "clan_buildings", "building_photo_file_id", "TEXT")
     for _col in ("photo_dawn", "photo_day", "photo_sunset", "photo_night"):
@@ -1968,6 +1977,33 @@ async def _migrate_forel_prices():
     await conn.execute(
         "UPDATE items SET price = 1066, sell_price = 533 "
         "WHERE name = 'Жареный форель' AND sell_price = 600")
+    await conn.commit()
+
+
+async def _migrate_mine_ore_prices():
+    """Цены руд 1 уровня по редкости (v0.43.33). Меняем только строки с нулевой ценой скупки:
+    такие руды созданы без цены, админские правки на другие числа не трогаем."""
+    conn = await get_db()
+    prices = [
+        ("Уголь", 20, 10, 1),
+        ("Солевая руда", 30, 15, 2),
+        ("Доломит", 120, 60, 3),
+        ("Пирит", 180, 90, 4),
+    ]
+    for name, price, sell, rarity in prices:
+        await conn.execute(
+            "UPDATE items SET price = ?, sell_price = ?, rarity = ? "
+            "WHERE name = ? AND sell_price = 0",
+            (price, sell, rarity, name))
+    # Железная руда: была 40/20, стала 50/25 (только строки со старой ценой).
+    await conn.execute(
+        "UPDATE items SET price = 50, sell_price = 25 WHERE name = ? AND sell_price = 20",
+        ("Железная руда",))
+    await conn.execute(
+        "UPDATE items SET description = ? WHERE name = ? AND description LIKE ?",
+        ("Кусок железной руды из копей Нордхайма. Крафтовое сырьё: казна покупает её, "
+         "и её можно продать пачками по 5 на рынке игроков.",
+         "Железная руда", "%на рынок игроков руда не выставляется%"))
     await conn.commit()
 
 
@@ -9096,6 +9132,25 @@ async def fish_sale_daily_left(user_id: int) -> bool:
     return (user['fish_sold_today'] or 0) < FISH_TREASURY_DAILY_LIMIT
 
 
+async def fish_kind_sold_today(user_id: int, item_id: int) -> bool:
+    """Продавал ли игрок сегодня (игровые сутки) этот вид рыбы казне."""
+    conn = await get_db()
+    row = await (await conn.execute(
+        "SELECT qty FROM fish_kind_daily WHERE user_id = ? AND day = ? AND item_id = ?",
+        (user_id, fish_sold_day_key(), item_id))).fetchone()
+    return bool(row and (row['qty'] or 0) > 0)
+
+
+async def mark_fish_kind_sold(user_id: int, item_id: int, qty: int = 1):
+    """Учитывает проданные единицы вида рыбы за сутки (для правила «одна штука в сутки сверх лимита»)."""
+    conn = await get_db()
+    await conn.execute(
+        "INSERT INTO fish_kind_daily (user_id, day, item_id, qty) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(user_id, day, item_id) DO UPDATE SET qty = qty + excluded.qty",
+        (user_id, fish_sold_day_key(), item_id, qty))
+    await conn.commit()
+
+
 async def fish_treasury_left(user_id: int) -> int:
     """Сколько НМ ещё можно выручить казне за рыбу (сырую и жареную) сегодня."""
     from config import FISH_TREASURY_DAILY_LIMIT
@@ -9957,18 +10012,19 @@ async def ensure_mine_items():
         row = await cursor.fetchone()
         is_drop = name in MINE_ENEMY_DROPS
         in_shop = name in MINE_SHOP_ITEMS
+        market = 1 if name in MINE_MARKET_ORES else 0
         if row is None:
             item_id = await add_item(name=name, description=desc, price=price, sell_price=sell,
                                      rarity=rare, category=category, stock=-1, added_by=0,
-                                     ap_cost=0, damage=0, heal=heal, market_ok=0)
+                                     ap_cost=0, damage=0, heal=heal, market_ok=market)
             await update_item(item_id, is_available=1 if in_shop else 0,
                               loot_only=1 if is_drop else 0)
             added = True
         else:
             await conn.execute(
-                "UPDATE items SET is_available = ?, market_ok = 0, loot_only = ?, heal = ? "
+                "UPDATE items SET is_available = ?, market_ok = ?, loot_only = ?, heal = ? "
                 "WHERE id = ?",
-                (1 if in_shop else 0, 1 if is_drop else 0, heal, row['id']))
+                (1 if in_shop else 0, market, 1 if is_drop else 0, heal, row['id']))
     if added:
         await conn.commit()
     return added
@@ -14587,7 +14643,6 @@ BONUS_BONUS_LABELS = {
     "ticket_pct": "скидка на читательский билет",
     "regen_hp": "постоянная регенерация HP",
     "super_rare": "доступ к супер-редкой рыбе",
-    "mining_pct": "% к шансу добычи руды",
     "logging_pct": "% к шансу рубки деревьев",
     "logging_ap": "ОД на рубку дерева",
     "mining_ap": "ОД на удар киркой",
@@ -14648,13 +14703,13 @@ ACHIEVEMENTS_DEF = {
         "title": "Шахты", "emoji": "⛏️", "metric": "добыто руды",
         "levels": [
             {"level": 1, "threshold": 10, "name": "Осколок",
-             "bonus": {"mining_pct": 2}},
+             "bonus": {}},
             {"level": 2, "threshold": 50, "name": "Старатель",
-             "bonus": {"mining_pct": 4, "mining_ap": -1}},
+             "bonus": {"mining_ap": -1}},
             {"level": 3, "threshold": 150, "name": "Армадило",
-             "bonus": {"mining_pct": 7, "mining_ap": -2}},
+             "bonus": {"mining_ap": -2}},
             {"level": 4, "threshold": 400, "name": "Глашатай Скади",
-             "bonus": {"mining_pct": 10, "mining_ap": -3}},
+             "bonus": {"mining_ap": -3}},
         ],
     },
     "logging": {

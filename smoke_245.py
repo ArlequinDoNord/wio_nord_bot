@@ -82,7 +82,7 @@ async def run():
 
         # 4. Отказ, когда остатка не хватает даже на одну штуку
         qty, note, err = await _fried_fish_cap(PILOT, som, 3)
-        check("на 1 шт. не хватает — ошибка", qty == 0 and err != "")
+        check("остаток 10 НМ: сомом сегодня ещё не торговали — 1 шт. сверх лимита", qty == 1 and err == "")
 
         # 4б. Режем количество по остатку
         qty, note, err = await _fried_fish_cap(PILOT2, som, 10)
@@ -93,7 +93,11 @@ async def run():
         # 4в. Исчерпанный лимит
         await add_fish_sale_amount(PILOT2, 500)
         qty, note, err = await _fried_fish_cap(PILOT2, som, 1)
-        check("исчерпанный лимит — ошибка", qty == 0 and "исчерпан" in err)
+        check("исчерпанный лимит: сом сегодня ещё не продан — 1 шт.", qty == 1 and err == "")
+        from database.db import mark_fish_kind_sold
+        await mark_fish_kind_sold(PILOT2, som['id'], 1)
+        qty, note, err = await _fried_fish_cap(PILOT2, som, 1)
+        check("исчерпанный лимит и вид уже продан — ошибка", qty == 0 and "исчерпан" in err)
 
         # 4г. Первая штука за день продаётся, даже если дороже лимита (форель 600 при лимите 500)
         await add_item(name="Жареный форель", description="тест", price=1066, sell_price=533,
@@ -103,6 +107,8 @@ async def run():
         await add_user(PILOT3, "fry3", "Пилот", "Три")
         qty, note, err = await _fried_fish_cap(PILOT3, forel, 2)
         check("первая форель 600 за день проходит (1 шт.)", qty == 1 and err == "")
+        from database.db import mark_fish_kind_sold
+        await mark_fish_kind_sold(PILOT3, forel['id'], 1)
         await add_fish_sale_amount(PILOT3, 600)
         qty, note, err = await _fried_fish_cap(PILOT3, forel, 1)
         check("вторая форель за тот же день — отказ", qty == 0 and err != "")

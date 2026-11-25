@@ -7,7 +7,7 @@
 > (комментариям-разделителям `# ── … ──`). Длинные значения усечены `…`;
 > точное значение — в `config.py` по строке из первой колонки.
 
-Всего констант: **378**; разделов: **12**.
+Всего констант: **384**; разделов: **12**.
 
 ## Буклет туриста
 
@@ -306,86 +306,92 @@
 | `MOLLUSK_ITEM_SEEDS` | `[('Мясо моллюска', 'Плотное мясо мутировавшего моллюска. В сыром виде есть нельзя — прожарь на кухне.', 120, 60, 2, 'resource', 0), ('Жемчужина', 'Редчайшая жемчужина из раковины мутировавшего молл…` |  | :980 |
 | `MOLLUSK_ENEMY_DROPS` | `('Мясо моллюска', 'Жемчужина')` |  | :995 |
 | `MINE_AP_COST` | `12` | стоимость одной попытки добычи | :1004 |
-| `MINE_BASE_CHANCE` | `30` | базовый шанс успеха без бонуса кирки | :1005 |
-| `MINE_PICKAXE_BONUS_PER_RANK` | `15` | надбавка к шансу за ступень кирки (ранг 1 → +15%) | :1006 |
-| `MINE_CHANCE_CAP` | `90` | потолок шанса успеха | :1007 |
-| `MINE_RESULT_DELAY` | `(7, 15)` | результат добычи через 7–15 секунд | :1008 |
-| `MINE_REQUIRED_STATUS` | `'pilot1'` | вход в копь — с «Пилота 1 класса» | :1009 |
-| `MINE_GEM_CAP` | `1` | из самоцветов за бой выпадает не больше одного | :1010 |
-| `MINE_PICKAXE_NAME` | `'Кирка'` |  | :1011 |
-| `MINE_ORE_NAME` | `'Железная руда'` |  | :1012 |
-| `MINE_LEVEL2_ORE_TARGET` | `1000` |  | :1014 |
-| `MARKET_PACK_SIZES` | `{MINE_ORE_NAME: 5}` |  | :1022 |
-| `MINE_BAT_KEY` | `'bat'` |  | :1025 |
-| `MINE_BAT_SPOT` | `'iron'` |  | :1026 |
-| `MINE_BAT_CHANCE` | `7.0` |  | :1027 |
-| `MINE_BAT_PITY_TARGET` | `12` |  | :1028 |
-| `MINE_BAT_SEED` | `{'key': MINE_BAT_KEY, 'spot': MINE_BAT_SPOT, 'name': 'Летучая мышь', 'hp': 22, 'dmg_min': 3, 'dmg_max': 7, 'dodge': 35, 'loss_ap': 15, 'chance': MINE_BAT_CHANCE, 'pity_target': MINE_BAT_PITY_TARGET…` |  | :1033 |
-| `MINE_ITEM_SEEDS` | `[(MINE_PICKAXE_NAME, 'Простая кирка шахтёра: без неё в штольню не сунешься, а с ней порода поддаётся легче. Повышает шанс успешной добычи руды.', 300, 150, 1, 'mining', 0), (MINE_ORE_NAME, 'Кусок ж…` |  | :1059 |
-| `MINE_SHOP_ITEMS` | `(MINE_PICKAXE_NAME,)` |  | :1080 |
-| `MINE_ENEMY_DROPS` | `('Изумруд', 'Рубин', 'Сапфир')` |  | :1083 |
-| `ON_HIT_EFFECTS` | `{'bleed': {'emoji': '🩸', 'title': 'Кровотечение', 'until_battle_end': True, 'params': (('chance', 'Шанс наложить, %', 'percent'), ('dmg', 'Урон, HP за ход', 'int')), 'hint': 'Раны сочатся кровью ка…` |  | :1092 |
-| `ON_HIT_KIND_ORDER` | `('bleed', 'poison', 'frostbite', 'state', 'lifesteal', 'armor_pierce')` |  | :1156 |
-| `ON_HIT_STATE_ROUNDS` | `{'оглушён': 3, 'ослеплён': 4}` |  | :1158 |
-| `CLAN_ROLES` | `{'leader': '👑 Глава клана', 'seneschal': '🛡 Сенешаль клана', 'banner': '🚩 Знаменосец клана', 'elder': '⭐ Старшина', 'member': '▪️ Пилот клана'}` |  | :1164 |
-| `CLAN_ROLE_ORDER` | `('leader', 'seneschal', 'banner', 'elder', 'member')` |  | :1171 |
-| `LOGGING_AP_COST` | `12` | стоимость одной попытки рубки | :1177 |
-| `LOGGING_BASE_CHANCE` | `35` | базовый шанс успеха без бонуса топора | :1178 |
-| `LOGGING_AXE_BONUS_PER_RANK` | `15` | надбавка к шансу за ступень топора | :1179 |
-| `LOGGING_CHANCE_CAP` | `90` | потолок шанса успеха | :1180 |
-| `GATHER_BAG_SIZE` | `100` |  | :1183 |
-| `LOGGING_AXE_SLIP_CHANCE` | `2` | шанс, что топор отскочит пилоту в плечо, % (целое — карточка мешка) | :1184 |
-| `LOGGING_RESULT_DELAY` | `(7, 15)` | результат рубки через 7–15 секунд | :1185 |
-| `LOGGING_AXE_NAME` | `'Топор'` |  | :1186 |
-| `LOGGING_WOOD_NAME` | `'Бревна'` |  | :1187 |
-| `LOGGING_PLANK_NAME` | `'Доска'` |  | :1193 |
-| `LOGGING_FIREWOOD_NAME` | `'Пак дров'` |  | :1194 |
-| `LOGGING_PLANK_YIELD` | `3` | досок из одного бревна | :1195 |
-| `LOGGING_PLANK_FEE` | `15` | НМ за распил одного бревна (в казну) | :1196 |
-| `LOGGING_FIREWOOD_YIELD` | `3` | паков дров из одного бревна | :1197 |
-| `LOGGING_FIREWOOD_AP_COST` | `4` | ОД за рубку дров из одного бревна | :1198 |
-| `LOGGING_SNAKE_KEY` | `'snake'` |  | :1202 |
-| `LOGGING_OWL_KEY` | `'owl'` |  | :1203 |
-| `LOGGING_SPOT` | `'logging'` |  | :1204 |
-| `LOGGING_SNAKE_CHANCE` | `8.0` |  | :1205 |
-| `LOGGING_SNAKE_PITY_TARGET` | `10` |  | :1206 |
-| `LOGGING_OWL_CHANCE` | `3.0` |  | :1207 |
-| `LOGGING_OWL_PITY_TARGET` | `24` |  | :1208 |
-| `LOGGING_SNAKE_POISON_CHANCE` | `30` |  | :1210 |
-| `LOGGING_SNAKE_POISON_DMG` | `2` |  | :1211 |
-| `LOGGING_OWL_FLEE_HP` | `20` |  | :1215 |
-| `LOGGING_OWL_BLIND_CHANCE` | `30` |  | :1216 |
-| `LOGGING_OWL_BLIND_ROUNDS` | `4` |  | :1217 |
-| `LOGGING_SNAKE_SEED` | `{'key': LOGGING_SNAKE_KEY, 'spot': LOGGING_SPOT, 'name': 'Лесная змея', 'hp': 30, 'dmg_min': 4, 'dmg_max': 8, 'dodge': 25, 'loss_ap': 10, 'chance': LOGGING_SNAKE_CHANCE, 'pity_target': LOGGING_SNAK…` |  | :1221 |
-| `LOGGING_OWL_SEED` | `{'key': LOGGING_OWL_KEY, 'spot': LOGGING_SPOT, 'name': 'Неясыть', 'hp': 90, 'dmg_min': 7, 'dmg_max': 12, 'dodge': 30, 'loss_ap': 15, 'chance': LOGGING_OWL_CHANCE, 'pity_target': LOGGING_OWL_PITY_TA…` |  | :1251 |
-| `LOGGING_ITEM_SEEDS` | `[(LOGGING_AXE_NAME, 'Крепкий лесорубский топор: без него к срубам не подпустят. Повышает шанс успешной рубки деревьев.', 300, 150, 1, 'mining', 0), (LOGGING_WOOD_NAME, 'Свежие срубленные брёвна из …` |  | :1283 |
-| `LOGGING_SHOP_ITEMS` | `(LOGGING_AXE_NAME,)` |  | :1317 |
-| `LOGGING_ENEMY_DROPS` | `('Змеиная кожа', 'Змеиный яд', 'Совиное перо')` |  | :1320 |
-| `LOGGING_MARKET_RESOURCES` | `(LOGGING_PLANK_NAME, LOGGING_FIREWOOD_NAME)` |  | :1323 |
-| `REPORT_DAILY_LIMIT` | `3` |  | :1325 |
-| `REPORT_AUTO_APPROVE_TROOPS` | `100` |  | :1326 |
-| `NEWS_PUBLISH_BONUS` | `10` |  | :1330 |
-| `NEWS_PUBLISH_CAP` | `28` |  | :1331 |
-| `ROLE_SALARY_PAY_DAY` | `28` |  | :1334 |
-| `REPORT_DAILY_PAY_CAP` | `4000` |  | :1339 |
-| `REPORT_MAX_TROOPS` | `1000000` |  | :1340 |
-| `REPORT_MAX_REGION` | `38` | 0 = Столица, 1..38 регионы | :1341 |
-| `REJECTED_REPORTS_FRESH_DAYS` | `7` |  | :1345 |
-| `REJECTED_REPORTS_PAGE` | `8` |  | :1346 |
-| `WALL_TEXT_MAX_LEN` | `40` | лимит символов на одно изречение | :1349 |
-| `WALL_FREE_PER_DAY` | `2` | бесплатных сообщений в сутки | :1350 |
-| `WALL_PAID_STEPS` | `[(3, 30), (3, 90), (3, 200)]` | далее платные ступени: (кол-во, цена НМ) | :1351 |
-| `WALL_REVIEW_TOTAL` | `11` | максимум сообщений в сутки (2 + 3+3+3) | :1356 |
-| `WALL_PAGE_SIZE` | `5` | постов на страницу стены | :1357 |
-| `WALL_ARCHIVE_PAGE_SIZE` | `8` | записей архива стены на страницу списка | :1358 |
-| `REPORT_ARCHIVE_PAGE` | `8` | отчётов на страницу архива МВД и в «Моих отчётах» | :1361 |
-| `POLL_MAX_DAYS` | `10` | максимум дней, сколько живёт опрос. Не закрыл | :1364 |
-| `POLL_VISIBLE` | `4` | сколько новейших опросов висит в меню голосования. | :1367 |
-| `POLL_ARCHIVE_DAYS_PER_PAGE` | `5` | дней (дат) архива опросов на страницу списка | :1370 |
-| `POLL_ARCHIVE_PER_DAY` | `6` | опросов под одним заголовком-днём | :1371 |
-| `REP_SPEECH_MAX_LEN` | `100` | лимит символов одного обращения | :1374 |
-| `REP_SPEECH_PER_DAY` | `2` | обращений в сутки от представителя | :1375 |
-| `AUTO_PROMOTE_MAX_TROOPS` | `4040` |  | :1380 |
+| `MINE_BASE_CHANCE` | `60` | базовый шанс успеха без бонуса кирки (PLAN:432) | :1005 |
+| `MINE_PICKAXE_BONUS_BY_RANK` | `(5, 10, 20, 30)` |  | :1007 |
+| `MINE_CHANCE_CAP` | `90` | потолок шанса успеха | :1008 |
+| `MINE_RESULT_DELAY` | `(7, 15)` | результат добычи через 7–15 секунд | :1009 |
+| `MINE_REQUIRED_STATUS` | `'pilot1'` | вход в копь — с «Пилота 1 класса» | :1010 |
+| `MINE_GEM_CAP` | `1` | из самоцветов за бой выпадает не больше одного | :1011 |
+| `MINE_PICKAXE_NAME` | `'Кирка'` |  | :1012 |
+| `MINE_ORE_NAME` | `'Железная руда'` |  | :1013 |
+| `MINE_LEVEL2_ORE_TARGET` | `1000` |  | :1015 |
+| `MINE_COAL_NAME` | `'Уголь'` |  | :1018 |
+| `MINE_SALT_ORE_NAME` | `'Солевая руда'` |  | :1019 |
+| `MINE_DOLOMITE_NAME` | `'Доломит'` |  | :1020 |
+| `MINE_PYRITE_NAME` | `'Пирит'` |  | :1021 |
+| `MINE_ORE_WEIGHTS_BY_RANK` | `{1: {MINE_COAL_NAME: 26, MINE_ORE_NAME: 17, MINE_SALT_ORE_NAME: 12, MINE_DOLOMITE_NAME: 7, MINE_PYRITE_NAME: 3}, 2: {MINE_COAL_NAME: 20, MINE_ORE_NAME: 16, MINE_SALT_ORE_NAME: 18, MINE_DOLOMITE_NAM…` |  | :1022 |
+| `MINE_MARKET_ORES` | `(MINE_ORE_NAME, MINE_COAL_NAME, MINE_SALT_ORE_NAME, MINE_DOLOMITE_NAME, MINE_PYRITE_NAME)` |  | :1030 |
+| `MARKET_PACK_SIZES` | `{MINE_ORE_NAME: 5, MINE_COAL_NAME: 5, MINE_SALT_ORE_NAME: 5, MINE_DOLOMITE_NAME: 5, MINE_PYRITE_NAME: 5}` |  | :1032 |
+| `MINE_BAT_KEY` | `'bat'` |  | :1036 |
+| `MINE_BAT_SPOT` | `'iron'` |  | :1037 |
+| `MINE_BAT_CHANCE` | `7.0` |  | :1038 |
+| `MINE_BAT_PITY_TARGET` | `12` |  | :1039 |
+| `MINE_BAT_SEED` | `{'key': MINE_BAT_KEY, 'spot': MINE_BAT_SPOT, 'name': 'Летучая мышь', 'hp': 22, 'dmg_min': 3, 'dmg_max': 7, 'dodge': 35, 'loss_ap': 15, 'chance': MINE_BAT_CHANCE, 'pity_target': MINE_BAT_PITY_TARGET…` |  | :1044 |
+| `MINE_ITEM_SEEDS` | `[(MINE_PICKAXE_NAME, 'Простая кирка шахтёра: без неё в штольню не сунешься, а с ней порода поддаётся легче. Повышает шанс успешной добычи руды.', 300, 150, 1, 'mining', 0), (MINE_ORE_NAME, 'Кусок ж…` |  | :1070 |
+| `MINE_SHOP_ITEMS` | `(MINE_PICKAXE_NAME,)` |  | :1103 |
+| `MINE_ENEMY_DROPS` | `('Изумруд', 'Рубин', 'Сапфир')` |  | :1106 |
+| `ON_HIT_EFFECTS` | `{'bleed': {'emoji': '🩸', 'title': 'Кровотечение', 'until_battle_end': True, 'params': (('chance', 'Шанс наложить, %', 'percent'), ('dmg', 'Урон, HP за ход', 'int')), 'hint': 'Раны сочатся кровью ка…` |  | :1115 |
+| `ON_HIT_KIND_ORDER` | `('bleed', 'poison', 'frostbite', 'state', 'lifesteal', 'armor_pierce')` |  | :1179 |
+| `ON_HIT_STATE_ROUNDS` | `{'оглушён': 3, 'ослеплён': 4}` |  | :1181 |
+| `CLAN_ROLES` | `{'leader': '👑 Глава клана', 'seneschal': '🛡 Сенешаль клана', 'banner': '🚩 Знаменосец клана', 'elder': '⭐ Старшина', 'member': '▪️ Пилот клана'}` |  | :1187 |
+| `CLAN_ROLE_ORDER` | `('leader', 'seneschal', 'banner', 'elder', 'member')` |  | :1194 |
+| `LOGGING_AP_COST` | `12` | стоимость одной попытки рубки | :1200 |
+| `LOGGING_BASE_CHANCE` | `35` | базовый шанс успеха без бонуса топора | :1201 |
+| `LOGGING_AXE_BONUS_PER_RANK` | `15` | надбавка к шансу за ступень топора | :1202 |
+| `LOGGING_CHANCE_CAP` | `90` | потолок шанса успеха | :1203 |
+| `GATHER_BAG_SIZE` | `100` |  | :1206 |
+| `LOGGING_AXE_SLIP_CHANCE` | `2` | шанс, что топор отскочит пилоту в плечо, % (целое — карточка мешка) | :1207 |
+| `LOGGING_RESULT_DELAY` | `(7, 15)` | результат рубки через 7–15 секунд | :1208 |
+| `LOGGING_AXE_NAME` | `'Топор'` |  | :1209 |
+| `LOGGING_WOOD_NAME` | `'Бревна'` |  | :1210 |
+| `LOGGING_PLANK_NAME` | `'Доска'` |  | :1216 |
+| `LOGGING_FIREWOOD_NAME` | `'Пак дров'` |  | :1217 |
+| `LOGGING_PLANK_YIELD` | `3` | досок из одного бревна | :1218 |
+| `LOGGING_PLANK_FEE` | `15` | НМ за распил одного бревна (в казну) | :1219 |
+| `LOGGING_FIREWOOD_YIELD` | `3` | паков дров из одного бревна | :1220 |
+| `LOGGING_FIREWOOD_AP_COST` | `4` | ОД за рубку дров из одного бревна | :1221 |
+| `LOGGING_SNAKE_KEY` | `'snake'` |  | :1225 |
+| `LOGGING_OWL_KEY` | `'owl'` |  | :1226 |
+| `LOGGING_SPOT` | `'logging'` |  | :1227 |
+| `LOGGING_SNAKE_CHANCE` | `8.0` |  | :1228 |
+| `LOGGING_SNAKE_PITY_TARGET` | `10` |  | :1229 |
+| `LOGGING_OWL_CHANCE` | `3.0` |  | :1230 |
+| `LOGGING_OWL_PITY_TARGET` | `24` |  | :1231 |
+| `LOGGING_SNAKE_POISON_CHANCE` | `30` |  | :1233 |
+| `LOGGING_SNAKE_POISON_DMG` | `2` |  | :1234 |
+| `LOGGING_OWL_FLEE_HP` | `20` |  | :1238 |
+| `LOGGING_OWL_BLIND_CHANCE` | `30` |  | :1239 |
+| `LOGGING_OWL_BLIND_ROUNDS` | `4` |  | :1240 |
+| `LOGGING_SNAKE_SEED` | `{'key': LOGGING_SNAKE_KEY, 'spot': LOGGING_SPOT, 'name': 'Лесная змея', 'hp': 30, 'dmg_min': 4, 'dmg_max': 8, 'dodge': 25, 'loss_ap': 10, 'chance': LOGGING_SNAKE_CHANCE, 'pity_target': LOGGING_SNAK…` |  | :1244 |
+| `LOGGING_OWL_SEED` | `{'key': LOGGING_OWL_KEY, 'spot': LOGGING_SPOT, 'name': 'Неясыть', 'hp': 90, 'dmg_min': 7, 'dmg_max': 12, 'dodge': 30, 'loss_ap': 15, 'chance': LOGGING_OWL_CHANCE, 'pity_target': LOGGING_OWL_PITY_TA…` |  | :1274 |
+| `LOGGING_ITEM_SEEDS` | `[(LOGGING_AXE_NAME, 'Крепкий лесорубский топор: без него к срубам не подпустят. Повышает шанс успешной рубки деревьев.', 300, 150, 1, 'mining', 0), (LOGGING_WOOD_NAME, 'Свежие срубленные брёвна из …` |  | :1306 |
+| `LOGGING_SHOP_ITEMS` | `(LOGGING_AXE_NAME,)` |  | :1340 |
+| `LOGGING_ENEMY_DROPS` | `('Змеиная кожа', 'Змеиный яд', 'Совиное перо')` |  | :1343 |
+| `LOGGING_MARKET_RESOURCES` | `(LOGGING_PLANK_NAME, LOGGING_FIREWOOD_NAME)` |  | :1346 |
+| `REPORT_DAILY_LIMIT` | `3` |  | :1348 |
+| `REPORT_AUTO_APPROVE_TROOPS` | `100` |  | :1349 |
+| `NEWS_PUBLISH_BONUS` | `10` |  | :1353 |
+| `NEWS_PUBLISH_CAP` | `28` |  | :1354 |
+| `ROLE_SALARY_PAY_DAY` | `28` |  | :1357 |
+| `REPORT_DAILY_PAY_CAP` | `4000` |  | :1362 |
+| `REPORT_MAX_TROOPS` | `1000000` |  | :1363 |
+| `REPORT_MAX_REGION` | `38` | 0 = Столица, 1..38 регионы | :1364 |
+| `REJECTED_REPORTS_FRESH_DAYS` | `7` |  | :1368 |
+| `REJECTED_REPORTS_PAGE` | `8` |  | :1369 |
+| `WALL_TEXT_MAX_LEN` | `40` | лимит символов на одно изречение | :1372 |
+| `WALL_FREE_PER_DAY` | `2` | бесплатных сообщений в сутки | :1373 |
+| `WALL_PAID_STEPS` | `[(3, 30), (3, 90), (3, 200)]` | далее платные ступени: (кол-во, цена НМ) | :1374 |
+| `WALL_REVIEW_TOTAL` | `11` | максимум сообщений в сутки (2 + 3+3+3) | :1379 |
+| `WALL_PAGE_SIZE` | `5` | постов на страницу стены | :1380 |
+| `WALL_ARCHIVE_PAGE_SIZE` | `8` | записей архива стены на страницу списка | :1381 |
+| `REPORT_ARCHIVE_PAGE` | `8` | отчётов на страницу архива МВД и в «Моих отчётах» | :1384 |
+| `POLL_MAX_DAYS` | `10` | максимум дней, сколько живёт опрос. Не закрыл | :1387 |
+| `POLL_VISIBLE` | `4` | сколько новейших опросов висит в меню голосования. | :1390 |
+| `POLL_ARCHIVE_DAYS_PER_PAGE` | `5` | дней (дат) архива опросов на страницу списка | :1393 |
+| `POLL_ARCHIVE_PER_DAY` | `6` | опросов под одним заголовком-днём | :1394 |
+| `REP_SPEECH_MAX_LEN` | `100` | лимит символов одного обращения | :1397 |
+| `REP_SPEECH_PER_DAY` | `2` | обращений в сутки от представителя | :1398 |
+| `AUTO_PROMOTE_MAX_TROOPS` | `4040` |  | :1403 |
 
 ## Древо Пламенного Круговорота (клановое расширение 'tree')
 

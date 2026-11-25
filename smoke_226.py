@@ -50,7 +50,7 @@ async def run():
     check("мешок 100 карточек", GATHER_BAG_SIZE == 100)
     check("рубка ранг 1 → бревно 50%", logging_wood_chance(1) == 50)
     check("рубка ранг 2 → бревно 65%", logging_wood_chance(2) == 65)
-    check("руда ранг 1 → руда 45%", mine_ore_chance(1) == 45)
+    check("руда ранг 1 → руда 65%", mine_ore_chance(1) == 65)
 
     print("\n2. Полный мешок: ровно заданное число карточек каждого исхода")
     comp = {"wood": 50, "firewood": 50}
@@ -104,9 +104,9 @@ async def run():
           "random.random() * 100 < LOGGING_AXE_SLIP_CHANCE" not in src_log)
     check("скольжение целое число (2%)", isinstance(LOGGING_AXE_SLIP_CHANCE, int))
     check("руда: летучая мышь до мешка",
-          src_mine.index("bat = await _bat()") < src_mine.index("_mine_card(user_id, chance)"))
+          src_mine.index("bat = await _bat()") < src_mine.index("_mine_card(user_id, mine_bag_comp"))
     check("руда: пламенная руда до мешка",
-          src_mine.index("FIRE_ORE_CHANCE") < src_mine.index("_mine_card(user_id, chance)"))
+          src_mine.index("FIRE_ORE_CHANCE") < src_mine.index("_mine_card(user_id, mine_bag_comp"))
 
     await close_db()
     print(f"\nИТОГО: {passed} passed, {failed} failed")

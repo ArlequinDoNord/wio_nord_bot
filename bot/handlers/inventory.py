@@ -16,6 +16,7 @@ from database.db import (
     process_food_expiry, add_fish_offer, add_fish_catch, RAW_FISH_SHELF_SEC,
     place_item_offer,
     fish_sale_daily_left, add_fish_sale_amount, fish_sold_today, fish_treasury_left,
+    fish_kind_sold_today, mark_fish_kind_sold,
     is_forest_mushroom, forest_sale_daily_left, add_forest_sale_amount,
     get_market_slots_info,
     item_fits_slot, ARMOR_SLOTS, EQUIPMENT_SLOT_LABELS, EQUIPMENT_LOCKED_SLOTS,
@@ -1009,15 +1010,14 @@ async def _fried_fish_cap(user_id: int, item, qty: int) -> tuple:
     """
     from config import FISH_TREASURY_DAILY_LIMIT
     left = await fish_treasury_left(user_id)
-    if left <= 0:
-        return 0, "", (f"🚫 Суточный лимит выкупа рыбы ({FISH_TREASURY_DAILY_LIMIT} НМ) исчерпан. "
-                       f"Продажа возобновится завтра.")
     max_by_cap = left // item['sell_price'] if item['sell_price'] > 0 else qty
-    if max_by_cap <= 0 and await fish_sold_today(user_id) == 0:
-        # Первая штука за день продаётся всегда, даже если её цена больше лимита
-        # (жареная форель за 600 при лимите 500).
+    if max_by_cap <= 0 and not await fish_kind_sold_today(user_id, item['id']):
+        # Одна штука каждого вида в сутки продаётся всегда, даже сверх лимита.
         max_by_cap = 1
     if max_by_cap <= 0:
+        if left <= 0:
+            return 0, "", (f"🚫 Суточный лимит выкупа рыбы ({FISH_TREASURY_DAILY_LIMIT} НМ) исчерпан. "
+                           f"Продажа возобновится завтра.")
         return 0, "", f"🚫 Остаток лимита {left} НМ не хватает даже на 1 шт. Продажа — завтра."
     if qty > max_by_cap:
         note = (f"\n\n🚫 Казна выкупает рыбу до {FISH_TREASURY_DAILY_LIMIT} НМ в сутки — "
@@ -1189,6 +1189,7 @@ async def _sell_item(callback: CallbackQuery, item_id: int, qty: int):
         await add_forest_sale_amount(user_id, total)
     if item['name'] in FRIED_FISH_NAMES:
         await add_fish_sale_amount(user_id, total)
+        await mark_fish_kind_sold(user_id, item['id'], qty)
 
     # Городские склады: проданные казне ресурсы не исчезают — казна складывает
     # их на городской склад (позже пойдут на строительство).
@@ -1716,9 +1717,9 @@ async def fish_sell(callback: CallbackQuery):
     item = await get_item(item_id)
     if not item:
         return
-    if not await fish_sale_daily_left(user_id):
+    if not await fish_sale_daily_left(user_id) and await fish_kind_sold_today(user_id, item_id):
         await callback.message.answer(
-            "🚫 Суточный лимит выкупа рыбы казной исчерпан. "
+            "🚫 Суточный лимит выкупа рыбы казной исчерпан, и этот вид сегодня уже продан. "
             "Продажа возобновится в новом дне.\n\n"
             "Рыбу можно продать на 🏪 рыбном рынке другим пилотам или "
             "использовать в рецептах."
@@ -1731,6 +1732,7 @@ async def fish_sell(callback: CallbackQuery):
     sell = fish_sell_price(item['sell_price'], weight)
     await add_nordmarks(user_id, sell, "shop_sale", f"Продажа: {item['name']}")
     await add_fish_sale_amount(user_id, sell)
+    await mark_fish_kind_sold(user_id, item_id)
     await log_activity(user_id, "shop_sale", f"Продал «{item['name']}» за {sell} НМ")
     await callback.message.answer(
         f"💵 Ты продал {item['name']} за {sell} {plural_nordmark(sell)}!"

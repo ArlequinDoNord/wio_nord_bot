@@ -440,26 +440,26 @@
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `target` | `bot/handlers/inventory.py:1770` `inv_transfer_start` | `bot/handlers/inventory.py:1779` `inv_transfer_target` |
-| `amount` | `bot/handlers/inventory.py:1786` `inv_transfer_target` | `bot/handlers/inventory.py:1794` `inv_transfer_amount` |
-| `message` | `bot/handlers/inventory.py:1826` `inv_transfer_amount` | `bot/handlers/inventory.py:1835` `inv_transfer_message` |
+| `target` | `bot/handlers/inventory.py:1772` `inv_transfer_start` | `bot/handlers/inventory.py:1781` `inv_transfer_target` |
+| `amount` | `bot/handlers/inventory.py:1788` `inv_transfer_target` | `bot/handlers/inventory.py:1796` `inv_transfer_amount` |
+| `message` | `bot/handlers/inventory.py:1828` `inv_transfer_amount` | `bot/handlers/inventory.py:1837` `inv_transfer_message` |
 
 ### `KgbPassport` — `bot/handlers/kgb.py`
 
 | Состояние | Ставится (`set_state`) | Ловится (хендлер) |
 |---|---|---|
-| `photo` | `bot/handlers/kgb.py:310` `kgb_issue_target` | `bot/handlers/kgb.py:315` `kgb_photo_step`<br>`bot/handlers/kgb.py:325` `kgb_photo_wrong`<br>`bot/handlers/kgb.py:330` `kgb_photo_skip` |
-| `series` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
-| `number` | `bot/handlers/kgb.py:401` `kgb_confirm` | `bot/handlers/kgb.py:354` `kgb_text_step` |
-| `full_name` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
-| `position` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
-| `rank` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
-| `sex` | — | `bot/handlers/kgb.py:341` `kgb_sex_wrong`<br>`bot/handlers/kgb.py:376` `kgb_sex_step` |
-| `marital` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
-| `birth` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
-| `issue` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
-| `marks` | — | `bot/handlers/kgb.py:354` `kgb_text_step` |
-| `confirm` | `bot/handlers/kgb.py:131` `_preview` | `bot/handlers/kgb.py:389` `kgb_confirm` |
+| `photo` | `bot/handlers/kgb.py:317` `kgb_issue_target` | `bot/handlers/kgb.py:322` `kgb_photo_step`<br>`bot/handlers/kgb.py:332` `kgb_photo_wrong`<br>`bot/handlers/kgb.py:337` `kgb_photo_skip` |
+| `series` | — | `bot/handlers/kgb.py:361` `kgb_text_step` |
+| `number` | `bot/handlers/kgb.py:408` `kgb_confirm` | `bot/handlers/kgb.py:361` `kgb_text_step` |
+| `full_name` | — | `bot/handlers/kgb.py:361` `kgb_text_step` |
+| `position` | — | `bot/handlers/kgb.py:361` `kgb_text_step` |
+| `rank` | — | `bot/handlers/kgb.py:361` `kgb_text_step` |
+| `sex` | — | `bot/handlers/kgb.py:348` `kgb_sex_wrong`<br>`bot/handlers/kgb.py:383` `kgb_sex_step` |
+| `marital` | — | `bot/handlers/kgb.py:361` `kgb_text_step` |
+| `birth` | — | `bot/handlers/kgb.py:361` `kgb_text_step` |
+| `issue` | — | `bot/handlers/kgb.py:361` `kgb_text_step` |
+| `marks` | — | `bot/handlers/kgb.py:361` `kgb_text_step` |
+| `confirm` | `bot/handlers/kgb.py:137` `_preview` | `bot/handlers/kgb.py:396` `kgb_confirm` |
 
 ### `KvpFSM` — `bot/handlers/kvp.py`
 
@@ -762,14 +762,14 @@
 - `hq:wingcmd`: `bot/handlers/hq.py:582`
 - `hq:wingcmd_send`: `bot/handlers/hq.py:718`
 - `hq:wings`: `bot/handlers/hq.py:1046`
-- `inventory:eq`: `bot/handlers/inventory.py:515`
-- `inventory:list`: `bot/handlers/inventory.py:609`
-- `kgb:archive`: `bot/handlers/kgb.py:225`
-- `kgb:cancel`: `bot/handlers/kgb.py:413`
-- `kgb:confirm`: `bot/handlers/kgb.py:388`
-- `kgb:issue`: `bot/handlers/kgb.py:193`
-- `kgb:menu`: `bot/handlers/kgb.py:184`
-- `kgb:nophoto`: `bot/handlers/kgb.py:329`
+- `inventory:eq`: `bot/handlers/inventory.py:516`
+- `inventory:list`: `bot/handlers/inventory.py:610`
+- `kgb:archive`: `bot/handlers/kgb.py:232`
+- `kgb:cancel`: `bot/handlers/kgb.py:420`
+- `kgb:confirm`: `bot/handlers/kgb.py:395`
+- `kgb:issue`: `bot/handlers/kgb.py:200`
+- `kgb:menu`: `bot/handlers/kgb.py:191`
+- `kgb:nophoto`: `bot/handlers/kgb.py:336`
 - `kvp:exit`: `bot/handlers/kvp.py:754`
 - `kvp:resume`: `bot/handlers/kvp.py:304`
 - `kvp:start`: `bot/handlers/kvp.py:264`
@@ -1063,11 +1063,11 @@
 - `enemy:tog:`: `bot/handlers/admin.py:10585`
 - `enemy_drops:`: `bot/handlers/admin.py:7048`
 - `enemy_field:`: `bot/handlers/admin.py:6481`
-- `eqequip:[a-z0-9_]+:\d+$`: `bot/handlers/inventory.py:533`
-- `eqlock:[a-z0-9_]+$`: `bot/handlers/inventory.py:521`
+- `eqequip:[a-z0-9_]+:\d+$`: `bot/handlers/inventory.py:534`
+- `eqlock:[a-z0-9_]+$`: `bot/handlers/inventory.py:522`
 - `eqpart:`: `bot/handlers/admin.py:1614`
-- `eqslot:[a-z0-9_]+$`: `bot/handlers/inventory.py:526`
-- `equnequip:[a-z0-9_]+$`: `bot/handlers/inventory.py:565`
+- `eqslot:[a-z0-9_]+$`: `bot/handlers/inventory.py:527`
+- `equnequip:[a-z0-9_]+$`: `bot/handlers/inventory.py:566`
 - `field:`: `bot/handlers/admin.py:2333`
 - `field:required_status`: `bot/handlers/admin.py:2061`
 - `field_req:`: `bot/handlers/admin.py:2094`
@@ -1099,8 +1099,8 @@
 - `fish:cast:\d+$`: `bot/handlers/fishing.py:573`
 - `fish:lake:\d+$`: `bot/handlers/fishing.py:500`
 - `fishbuy:`: `bot/handlers/shop.py:839`
-- `fishcatch:`: `bot/handlers/inventory.py:1401`
-- `fishgo:`: `bot/handlers/inventory.py:1652`
+- `fishcatch:`: `bot/handlers/inventory.py:1402`
+- `fishgo:`: `bot/handlers/inventory.py:1653`
 - `fishing:addfish:`: `bot/handlers/admin.py:8065`
 - `fishing:addlist:`: `bot/handlers/admin.py:8035`
 - `fishing:del:`: `bot/handlers/admin.py:8088`
@@ -1118,11 +1118,11 @@
 - `fishing_jx:new:`: `bot/handlers/admin.py:7818`
 - `fishing_jx:pick:`: `bot/handlers/admin.py:7770`
 - `fishing_jx:pool:`: `bot/handlers/admin.py:7741`
-- `fishmarket:`: `bot/handlers/inventory.py:1554`
+- `fishmarket:`: `bot/handlers/inventory.py:1555`
 - `fishoffer:`: `bot/handlers/shop.py:764`
-- `fishprice:`: `bot/handlers/inventory.py:1634`
-- `fishsell:`: `bot/handlers/inventory.py:1710`
-- `fishuse:`: `bot/handlers/inventory.py:1409`
+- `fishprice:`: `bot/handlers/inventory.py:1635`
+- `fishsell:`: `bot/handlers/inventory.py:1711`
+- `fishuse:`: `bot/handlers/inventory.py:1410`
 - `forest:add:`: `bot/handlers/admin.py:8818`
 - `forest:area:\d+:(glade|clearing)$`: `bot/handlers/forest.py:448`
 - `forest:battle:flee:\d+$`: `bot/handlers/forest.py:1195`
@@ -1171,30 +1171,30 @@
 - `hq:wingfarm:`: `bot/handlers/hq.py:462`
 - `hq:wingtake:`: `bot/handlers/hq.py:764`
 - `http`: `bot/handlers/library.py:360`
-- `inv_equip:`: `bot/handlers/inventory.py:837`
-- `inv_sell:`: `bot/handlers/inventory.py:972`
+- `inv_equip:`: `bot/handlers/inventory.py:838`
+- `inv_sell:`: `bot/handlers/inventory.py:973`
 - `inv_sell_ask:`: `bot/handlers/inventory.py:1101`
-- `inv_sell_keep1:`: `bot/handlers/inventory.py:992`
+- `inv_sell_keep1:`: `bot/handlers/inventory.py:993`
 - `inv_sell_ok:`: `bot/handlers/inventory.py:1123`
-- `inv_sellall:`: `bot/handlers/inventory.py:982`
-- `inv_sellmore:`: `bot/handlers/inventory.py:1241`
-- `inv_slot:`: `bot/handlers/inventory.py:891`
-- `inv_transfer:`: `bot/handlers/inventory.py:1742`
-- `inv_unequip:`: `bot/handlers/inventory.py:867`
-- `inv_unslot:`: `bot/handlers/inventory.py:926`
-- `inv_use:`: `bot/handlers/inventory.py:948`
-- `inventory:cat:[^:]+$`: `bot/handlers/inventory.py:628`
-- `invitem:`: `bot/handlers/inventory.py:830`
+- `inv_sellall:`: `bot/handlers/inventory.py:983`
+- `inv_sellmore:`: `bot/handlers/inventory.py:1242`
+- `inv_slot:`: `bot/handlers/inventory.py:892`
+- `inv_transfer:`: `bot/handlers/inventory.py:1744`
+- `inv_unequip:`: `bot/handlers/inventory.py:868`
+- `inv_unslot:`: `bot/handlers/inventory.py:927`
+- `inv_use:`: `bot/handlers/inventory.py:949`
+- `inventory:cat:[^:]+$`: `bot/handlers/inventory.py:629`
+- `invitem:`: `bot/handlers/inventory.py:831`
 - `itembuy:`: `bot/handlers/shop.py:968`
-- `itemgo:`: `bot/handlers/inventory.py:1339`
-- `itemmarket:`: `bot/handlers/inventory.py:1249`
+- `itemgo:`: `bot/handlers/inventory.py:1340`
+- `itemmarket:`: `bot/handlers/inventory.py:1250`
 - `itemoffer:`: `bot/handlers/shop.py:900`
-- `itemprice:`: `bot/handlers/inventory.py:1328`
-- `kgb:arch:`: `bot/handlers/kgb.py:234`
-- `kgb:archcard:`: `bot/handlers/kgb.py:263`
-- `kgb:pick:`: `bot/handlers/kgb.py:209`
-- `kgb:sex:`: `bot/handlers/kgb.py:375`
-- `kgb:user:`: `bot/handlers/kgb.py:292`
+- `itemprice:`: `bot/handlers/inventory.py:1329`
+- `kgb:arch:`: `bot/handlers/kgb.py:241`
+- `kgb:archcard:`: `bot/handlers/kgb.py:270`
+- `kgb:pick:`: `bot/handlers/kgb.py:216`
+- `kgb:sex:`: `bot/handlers/kgb.py:382`
+- `kgb:user:`: `bot/handlers/kgb.py:299`
 - `kvp:attack:`: `bot/handlers/kvp.py:532`
 - `kvp:attempt:`: `bot/handlers/kvp.py:457`
 - `kvp:continue:`: `bot/handlers/kvp.py:426`
@@ -1224,12 +1224,12 @@
 - `logsite:plank:(1|all):\d+$`: `bot/handlers/logging_site.py:651`
 - `lootonly:`: `bot/handlers/admin.py:1756`
 - `marketok:`: `bot/handlers/admin.py:1734`
-- `mine:battle:flee:\d+$`: `bot/handlers/mine.py:740`
-- `mine:battle:hit:\d+$`: `bot/handlers/mine.py:587`
-- `mine:deeper:\d+$`: `bot/handlers/mine.py:391`
-- `mine:dig:\d+$`: `bot/handlers/mine.py:400`
-- `mine:level:\d+$`: `bot/handlers/mine.py:359`
-- `mine:menu:\d+$`: `bot/handlers/mine.py:352`
+- `mine:battle:flee:\d+$`: `bot/handlers/mine.py:750`
+- `mine:battle:hit:\d+$`: `bot/handlers/mine.py:597`
+- `mine:deeper:\d+$`: `bot/handlers/mine.py:402`
+- `mine:dig:\d+$`: `bot/handlers/mine.py:411`
+- `mine:level:\d+$`: `bot/handlers/mine.py:371`
+- `mine:menu:\d+$`: `bot/handlers/mine.py:364`
 - `mkt:cancel:\d+$`: `bot/handlers/market_contracts.py:145`
 - `mkt:close:\d+$`: `bot/handlers/market_contracts.py:134`
 - `mkt:newcat:[^:]+:\d+$`: `bot/handlers/market_contracts.py:175`

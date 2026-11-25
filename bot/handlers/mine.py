@@ -3,7 +3,7 @@
 Пилот входит в копь (локация city «Железная копи», вход с «Пилота 1 класса»)
 и бьёт породу («⛏ Добыть руду»): 15 ОД за попытку, результат через 7–15 секунд.
 Без кирки копать нельзя. Шанс находки — база 30% плюс надбавка за ступень кирки
-(базовая кирка ранг 1 → +15%, итого 45%), не выше MINE_CHANCE_CAP.
+(базовая кирка ранг 1 → +5%, итого 65%), не выше MINE_CHANCE_CAP.
 
 Врагов в копи пока один — Летучая мышь. Как в сборе грибов, её встреча
 бросается ПЕРЕД находкой руды и заменяет её (мышь прерывает добычу): свой шанс
@@ -35,7 +35,8 @@ from utils.helpers import (
 )
 from utils import onhit
 from config import (
-    MINE_AP_COST, MINE_BASE_CHANCE, MINE_PICKAXE_BONUS_PER_RANK, MINE_CHANCE_CAP,
+    MINE_AP_COST, MINE_BASE_CHANCE, MINE_PICKAXE_BONUS_BY_RANK, MINE_CHANCE_CAP,
+    MINE_ORE_WEIGHTS_BY_RANK, MINE_COAL_NAME,
     MINE_RESULT_DELAY, MINE_PICKAXE_NAME, MINE_ORE_NAME, MINE_GEM_CAP,
     MINE_BAT_KEY, MINE_BAT_SPOT, MINE_BAT_SEED,
 )
@@ -203,23 +204,34 @@ async def _enemy_paint(callback, *, text: str, kb=None, image=None):
 
 # ───────── чистые функции (тестируются в smoke) ─────────
 
-async def _mine_card(user_id: int, chance: int) -> str:
-    """Исход обычной попытки копи из персонального мешка (руда или пусто)."""
-    from config import GATHER_BAG_SIZE
-    from database.db import draw_gather_card
-    return await draw_gather_card(user_id, "mine",
-                                  {"ore": chance, "none": GATHER_BAG_SIZE - chance})
+def _ore_rank(pickaxe_rank: int) -> int:
+    return min(max(1, int(pickaxe_rank or 1)), len(MINE_ORE_WEIGHTS_BY_RANK))
 
 
-def mine_ore_chance(pickaxe_rank: int, mining_bonus: int = 0) -> int:
-    """Шанс успешной добычи руды, % : база + надбавка кирки + бонус наград.
+def mine_ore_chance(pickaxe_rank: int) -> int:
+    """Шанс успешной добычи руды, %: база + надбавка по рангу кирки.
 
-    pickaxe_rank — ступень кирки (ранг = редкость предмета); линейно повышает
-    шанс на MINE_PICKAXE_BONUS_PER_RANK за ступень. Итог не выше MINE_CHANCE_CAP.
+    Надбавка по таблице MINE_PICKAXE_BONUS_BY_RANK (ранг выше таблицы — последнее
+    значение). Итог не выше MINE_CHANCE_CAP. Бонусов достижений к шансу нет.
     """
-    rank = max(1, int(pickaxe_rank or 1))
-    chance = MINE_BASE_CHANCE + MINE_PICKAXE_BONUS_PER_RANK * rank + int(mining_bonus or 0)
-    return min(MINE_CHANCE_CAP, max(0, chance))
+    bonus_table = MINE_PICKAXE_BONUS_BY_RANK
+    pick_bonus = bonus_table[min(_ore_rank(pickaxe_rank), len(bonus_table)) - 1]
+    return min(MINE_CHANCE_CAP, MINE_BASE_CHANCE + pick_bonus)
+
+
+def mine_bag_comp(pickaxe_rank: int) -> dict:
+    """Состав мешка копи: руды по весам ранга, остальное — «none». Сумма = GATHER_BAG_SIZE."""
+    from config import GATHER_BAG_SIZE
+    weights = MINE_ORE_WEIGHTS_BY_RANK[_ore_rank(pickaxe_rank)]
+    comp = dict(weights)
+    comp["none"] = GATHER_BAG_SIZE - sum(weights.values())
+    return comp
+
+
+async def _mine_card(user_id: int, comp: dict) -> str:
+    """Исход обычной попытки копи из персонального мешка: название руды или 'none'."""
+    from database.db import draw_gather_card
+    return await draw_gather_card(user_id, "mine", comp)
 
 
 def cap_gem_drops(picked: list, cap: int = MINE_GEM_CAP) -> list:
@@ -368,8 +380,7 @@ async def mine_level_cb(callback: CallbackQuery):
     pickaxe = await _pickaxe_for(user_id)
     if pickaxe:
         rank = pickaxe['rarity'] or 1
-        mining_bonus = await get_achievement_bonus(user_id, "mining", "mining_pct")
-        chance = mine_ore_chance(rank, mining_bonus=mining_bonus)
+        chance = mine_ore_chance(rank)
         pickaxe_line = _tl1("mine.level.pickaxe_has", name=pickaxe['name'], rank=rank, chance=chance)
         dig_line = _tl1("mine.level.dig_hint")
     else:
@@ -476,8 +487,7 @@ async def mine_dig(callback: CallbackQuery):
 
         # ── находка руды ──
         rank = pickaxe['rarity'] or 1
-        mining_bonus = await get_achievement_bonus(user_id, "mining", "mining_pct")
-        chance = mine_ore_chance(rank, mining_bonus=mining_bonus)
+        chance = mine_ore_chance(rank)
         head = "⛏ ЖЕЛЕЗНАЯ КОПЬ"
         ap_block = f"\n\n{await _ap_line(user_id)}"
         result_kb = _result_markup(MINE_TOKEN.get(user_id, ""))
@@ -496,8 +506,8 @@ async def mine_dig(callback: CallbackQuery):
             await log_activity(user_id, "mine", f"Добыл «{flame['name']}»")
             xp = await activity_xp_line(user_id, ACTIVITY_XP_MINE_ORE, senior_amount=ACTIVITY_XP_MINE_ORE_SENIOR)
             text = _tmd("mine.flame_found", head=head, name=flame['name']) + ap_block + xp
-        elif await _mine_card(user_id, chance) == "ore":
-            ore = await get_item_by_name(MINE_ORE_NAME)
+        elif (card := await _mine_card(user_id, mine_bag_comp(rank))) != "none":
+            ore = await get_item_by_name(card)
             if ore:
                 await add_inventory_item(user_id, ore['id'], 1)
                 await bump_achievement(user_id, "mining", 1)

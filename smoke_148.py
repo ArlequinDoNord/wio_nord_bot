@@ -108,7 +108,7 @@ def last_send(bot):
 
 async def run():
     from config import (
-        MINE_AP_COST, MINE_BASE_CHANCE, MINE_PICKAXE_BONUS_PER_RANK, MINE_CHANCE_CAP,
+        MINE_AP_COST, MINE_BASE_CHANCE, MINE_PICKAXE_BONUS_BY_RANK, MINE_CHANCE_CAP,
         MINE_RESULT_DELAY, MINE_GEM_CAP, MINE_BAT_KEY, MINE_BAT_SPOT,
         MINE_BAT_CHANCE, MINE_BAT_PITY_TARGET, MINE_PICKAXE_NAME, MINE_ORE_NAME,
         ITEM_CATEGORIES,
@@ -158,7 +158,7 @@ async def run():
     check("Кирка в магазине (is_available=1)", pick and pick["is_available"] == 1)
     check("Кирка обычная (не loot_only)", pick and not pick["loot_only"])
     check("Руда — не в магазине", ore and ore["is_available"] == 0)
-    check("Руда market_ok=0 (только казна)", ore and ore["market_ok"] == 0)
+    check("Руда market_ok=1 (рынок пачками и контракты, v0.43.33)", ore and ore["market_ok"] == 1)
     check("Руда sell_price>0", ore and ore["sell_price"] > 0)
     check("Самоцветы loot_only=1", all(g and g["loot_only"] == 1 for g in gems))
     check("Самоцветы market_ok=0", all(g and g["market_ok"] == 0 for g in gems))
@@ -166,15 +166,18 @@ async def run():
 
     # ── 2. Константы и чистая логика ──
     check("MINE_AP_COST = 12", MINE_AP_COST == 12)
-    check("база шанса = 30", MINE_BASE_CHANCE == 30)
-    check("надбавка кирки = 15/ступень", MINE_PICKAXE_BONUS_PER_RANK == 15)
+    check("база шанса = 60 (PLAN:432)", MINE_BASE_CHANCE == 60)
+    check("надбавка кирки по рангам = (5, 10, 20, 30)", tuple(MINE_PICKAXE_BONUS_BY_RANK) == (5, 10, 20, 30))
     check("кап шанса = 90", MINE_CHANCE_CAP == 90)
     check("MINE_RESULT_DELAY = (7,15)", tuple(MINE_RESULT_DELAY) == (7, 15))
     check("MINE_GEM_CAP = 1", MINE_GEM_CAP == 1)
     check("MINE_BAT_KEY/SPOT", MINE_BAT_KEY == "bat" and MINE_BAT_SPOT == "iron")
-    check("шанс руды ступень 1 = 45", mm.mine_ore_chance(1) == 45)
+    check("шанс руды ступень 1 = 65", mm.mine_ore_chance(1) == 65)
+    check("шанс руды ступень 2 = 70", mm.mine_ore_chance(2) == 70)
+    check("шанс руды ступень 3 = 80", mm.mine_ore_chance(3) == 80)
+    check("шанс руды ступень 4 = 90 (кап)", mm.mine_ore_chance(4) == 90)
     check("шанс руды ступень 5 = кап 90", mm.mine_ore_chance(5) == MINE_CHANCE_CAP)
-    check("шанс руды не ниже 0", mm.mine_ore_chance(0, mining_bonus=-999) == 0)
+    check("шанс руды не ниже 0", mm.mine_ore_chance(0) >= 0)
     three = [{"item_id": 1}, {"item_id": 2}, {"item_id": 3}]
     check("кэп гемов оставляет 1", len(mm.cap_gem_drops(three)) == 1)
     check("кэп гемов 2 из 3", len(mm.cap_gem_drops(three, cap=2)) == 2)
@@ -324,15 +327,15 @@ async def run():
     await ensure_achievements()
     m_spec = ACHIEVEMENTS_DEF.get("mining")
     check("ACHIEVEMENTS_DEF[mining] есть", bool(m_spec))
-    m_thresholds = [(lvl["threshold"], lvl["name"], lvl["bonus"].get("mining_pct"))
+    m_thresholds = [(lvl["threshold"], lvl["name"], lvl["bonus"].get("mining_ap", 0))
                     for lvl in m_spec["levels"]]
     check(
-        "mining: пороги 10/50/150/400 и названия Осколок/Старатель/Армадило/Глашатай Скади (+2/+4/+7/+10%)",
+        "mining: пороги 10/50/150/400 и названия; ОД −0/−1/−2/−3 (без бонуса шанса)",
         m_thresholds == [
-            (10, "Осколок", 2),
-            (50, "Старатель", 4),
-            (150, "Армадило", 7),
-            (400, "Глашатай Скади", 10),
+            (10, "Осколок", 0),
+            (50, "Старатель", -1),
+            (150, "Армадило", -2),
+            (400, "Глашатай Скади", -3),
         ],
     )
     _, mon_prog = await get_achievement_progress(uid, "monsters")
@@ -350,7 +353,7 @@ async def run():
     import database.db as _dbm
     saved_draw = _dbm.draw_gather_card
     async def _draw_ore(*_a, **_k):
-        return "ore"
+        return "Железная руда"
     _dbm.draw_gather_card = _draw_ore
     try:
         cb_dig = FakeCallback(uid, data=f"mine:dig:{token}", bot=FakeSender())
@@ -367,8 +370,8 @@ async def run():
     m_lvl, m_prog2 = await get_achievement_progress(uid, "mining")
     check("mining: на 10 руды открыт 1 ур. («Осколок»)",
           m_lvl == 1 and m_prog2 >= 10)
-    check("mining: бонус 1 ур. = +2%",
-          await get_achievement_bonus(uid, "mining", "mining_pct") == 2)
+    check("mining: бонус шанса от достижения нет",
+          await get_achievement_bonus(uid, "mining", "mining_pct") == 0)
 
     await close_db()
     print(f"\nSmoke 148: {passed} passed, {failed} failed")
