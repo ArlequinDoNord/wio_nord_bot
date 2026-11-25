@@ -57,7 +57,7 @@ from config import (
     DUNGEON_SMOKE_MAX,
     FISH_AP_COST,
 )
-from config import RESERVOIR_AP_COST as RESERVOIR_AP_COST_CFG, FISH_BAIT_MISS_SEAWEED_CHANCE
+from config import RESERVOIR_AP_COST as RESERVOIR_AP_COST_CFG, FISH_BAIT_SEAWEED_CHANCE
 
 
 # Достижения: ачивка «Эликсиры» считает применения зелий лечения (настоек),
@@ -2201,7 +2201,8 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
 
         if bait_name:
             chance = _catch_chance(rod, bait_name, (await get_award_bonus(callback.from_user.id))['fishing'])
-            caught = random.random() * 100 < chance
+            roll = random.random() * 100
+            caught = roll < chance
             if caught:
                 fish_name = await _pick_reservoir_fish()
                 item = await get_item_by_name(fish_name)
@@ -2238,7 +2239,7 @@ async def resv_cast(callback: CallbackQuery, state: FSMContext):
                     return
             else:
                 # Промах с наживкой: шанс вытащить водоросли (как на озере).
-                if random.random() * 100 < FISH_BAIT_MISS_SEAWEED_CHANCE:
+                if roll < chance + FISH_BAIT_SEAWEED_CHANCE:
                     sea = await get_item_by_name("Кусочек водорослей")
                     if sea:
                         kind = await get_water_fish_kind("reservoir", "Кусочек водорослей")

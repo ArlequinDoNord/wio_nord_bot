@@ -1867,6 +1867,7 @@ async def init_db():
     await _migrate_fried_fish_prices()
     await _migrate_spoiled_food_price()
     await _migrate_sugar_visible()
+    await _migrate_forel_prices()
     # Клан-холл: фото готового здания (добавляет клан, админ проставляет)
     await _ensure_column(conn, "clan_buildings", "building_photo_file_id", "TEXT")
     for _col in ("photo_dawn", "photo_day", "photo_sunset", "photo_night"):
@@ -1942,6 +1943,21 @@ async def _migrate_fried_fish_prices():
         await conn.execute(
             "UPDATE items SET sell_price = ? WHERE name = ? AND sell_price = ?",
             (new_sell, name, old_sell))
+    await conn.commit()
+
+
+async def _migrate_forel_prices():
+    """Светящаяся форель: 400 НМ (была 450); жареная форель: 533 НМ (×4/3, была 600).
+
+    Меняем только строки со старыми значениями, админские правки не трогаем.
+    """
+    conn = await get_db()
+    await conn.execute(
+        "UPDATE items SET price = 800, sell_price = 400 "
+        "WHERE name = 'Светящаяся форель' AND sell_price = 450")
+    await conn.execute(
+        "UPDATE items SET price = 1066, sell_price = 533 "
+        "WHERE name = 'Жареный форель' AND sell_price = 600")
     await conn.commit()
 
 
@@ -14205,7 +14221,7 @@ async def ensure_dungeon_reservoir_items():
         ("Искрящийся угорь", "Редкая рыба-электрик из подземного водохранилища. При разряде светится изнутри.",
          500, 250, 3),
         ("Светящаяся форель", "Секретная рыба водохранилища. Сияет холодным светом, как маленькая луна. Такой почти никто не видел.",
-         900, 450, 4),
+         800, 400, 4),
     )
     for (fname, fdesc, fprice, fsell, frarity) in reservoir_fish:
         cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (fname,))
@@ -14225,7 +14241,7 @@ async def ensure_dungeon_reservoir_items():
         ("Жареный угорь", "Хрустящий жареный угорь с водорослями. +90 HP в бою подземелья. Срок годности 4 суток.",
          850, 333, 3, 90),
         ("Жареный форель", "Светящаяся форель, пожаренная до золотой корочки. +140 HP в бою подземелья. Срок годности 4 суток.",
-         1200, 600, 4, 140),
+         1066, 533, 4, 140),
     )
     for (iname, idesc, iprice, isell, irarity, iheal) in reservoir_fried:
         cursor = await conn.execute("SELECT COUNT(*) as c FROM items WHERE name = ?", (iname,))

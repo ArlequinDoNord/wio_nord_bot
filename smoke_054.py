@@ -110,11 +110,11 @@ async def run():
 
     # ── 3a. Ребаланс v0.38.1: цены форели и жареной форели ──
     flare = await get_item_by_name("Светящаяся форель")
-    check("форель: sell_price=450", flare and flare["sell_price"] == 450)
-    check("форель: price=900", flare and flare["price"] == 900)
+    check("форель: sell_price=400 (v0.43.31)", flare and flare["sell_price"] == 400)
+    check("форель: price=800", flare and flare["price"] == 800)
     fried = await get_item_by_name("Жареный форель")
-    check("жареная форель: sell_price=600 (сырая 450 × 4/3)", fried and fried["sell_price"] == 600)
-    check("жареная форель: price=1200", fried and fried["price"] == 1200)
+    check("жареная форель: sell_price=533 (сырая 400 × 4/3)", fried and fried["sell_price"] == 533)
+    check("жареная форель: price=1066", fried and fried["price"] == 1066)
 
     # ── 3b. Веса пула водохранилища (сом 70 / угорь 25 / форель 5) ──
     from database.db import WATER_FISH_DEFAULTS

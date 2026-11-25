@@ -24,7 +24,7 @@ from database.db import (
     bump_achievement, get_achievement_bonus,
 )
 from utils.helpers import resolve_image, time_of_day_key, plural_nordmark, item_local_photo, fish_weight_tier, fish_sell_price
-from config import FISH_AP_COST, FISH_WEIGHTS, FISH_BAIT_MISS_SEAWEED_CHANCE
+from config import FISH_AP_COST, FISH_WEIGHTS, FISH_BAIT_SEAWEED_CHANCE
 
 router = Router()
 
@@ -651,7 +651,8 @@ async def fish_cast(callback: CallbackQuery):
 
         if bait_name:
             # С наживкой — рыбалка как раньше.
-            caught = random.random() * 100 < chance
+            roll = random.random() * 100
+            caught = roll < chance
             if caught:
                 fish_name = await _pick_fish(user_id)
                 fish_item = await get_item_by_name(fish_name)
@@ -686,7 +687,7 @@ async def fish_cast(callback: CallbackQuery):
                     text = "🎣 Рыбалка\n\n🐟 Что-то поймал, но предмет потерялся. Сообщи хранителю."
             else:
                 # Промах с наживкой: с небольшим шансом можно вытащить водоросли.
-                if random.random() * 100 < FISH_BAIT_MISS_SEAWEED_CHANCE:
+                if roll < chance + FISH_BAIT_SEAWEED_CHANCE:
                     sea = await get_item_by_name(SEAWEED_NAME)
                     if sea:
                         kind = await get_water_fish_kind("lake", SEAWEED_NAME)

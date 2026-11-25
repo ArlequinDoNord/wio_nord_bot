@@ -1013,6 +1013,10 @@ async def _fried_fish_cap(user_id: int, item, qty: int) -> tuple:
         return 0, "", (f"🚫 Суточный лимит выкупа рыбы ({FISH_TREASURY_DAILY_LIMIT} НМ) исчерпан. "
                        f"Продажа возобновится завтра.")
     max_by_cap = left // item['sell_price'] if item['sell_price'] > 0 else qty
+    if max_by_cap <= 0 and await fish_sold_today(user_id) == 0:
+        # Первая штука за день продаётся всегда, даже если её цена больше лимита
+        # (жареная форель за 600 при лимите 500).
+        max_by_cap = 1
     if max_by_cap <= 0:
         return 0, "", f"🚫 Остаток лимита {left} НМ не хватает даже на 1 шт. Продажа — завтра."
     if qty > max_by_cap:

@@ -26,7 +26,7 @@ os.environ["ADMIN_IDS"] = "445001"
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-PILOT, PILOT2 = 882001, 882002
+PILOT, PILOT2, PILOT3 = 882001, 882002, 882003
 
 
 async def run():
@@ -94,6 +94,18 @@ async def run():
         await add_fish_sale_amount(PILOT2, 500)
         qty, note, err = await _fried_fish_cap(PILOT2, som, 1)
         check("исчерпанный лимит — ошибка", qty == 0 and "исчерпан" in err)
+
+        # 4г. Первая штука за день продаётся, даже если дороже лимита (форель 600 при лимите 500)
+        await add_item(name="Жареный форель", description="тест", price=1066, sell_price=533,
+                       rarity=4, category="consumable", stock=-1, added_by=0,
+                       ap_cost=0, damage=0, heal=140)
+        forel = await get_item_by_name("Жареный форель")
+        await add_user(PILOT3, "fry3", "Пилот", "Три")
+        qty, note, err = await _fried_fish_cap(PILOT3, forel, 2)
+        check("первая форель 600 за день проходит (1 шт.)", qty == 1 and err == "")
+        await add_fish_sale_amount(PILOT3, 600)
+        qty, note, err = await _fried_fish_cap(PILOT3, forel, 1)
+        check("вторая форель за тот же день — отказ", qty == 0 and err != "")
 
         # 5. Протухшая сырая рыба → «Испорченная еда», по одной штуке на улов
         import time
